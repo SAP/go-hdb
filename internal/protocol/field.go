@@ -132,19 +132,6 @@ func (f *FieldSet) OutputNames(names []string) error {
 	return nil
 }
 
-// Field name.
-type fieldName string
-
-func (n *fieldName) read(rd *bufio.Reader) (int, error) {
-
-	b, size, err := readShortUtf8(rd)
-	if err != nil {
-		return 0, err
-	}
-	*n = fieldName(b)
-	return size, nil
-}
-
 // FieldValues contains rows read from database.
 type FieldValues struct {
 	s *Session
@@ -204,10 +191,6 @@ func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error
 		}
 	}
 	return nil
-}
-
-func (f *FieldValues) get(i, j int) interface{} {
-	return f.values[i*f.cols+j]
 }
 
 // NumRow returns the number of rows available in FieldValues.
