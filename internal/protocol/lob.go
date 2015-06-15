@@ -277,10 +277,6 @@ type readLobReply struct {
 	numArg  int
 }
 
-func newReadLobReply() *readLobReply {
-	return new(readLobReply)
-}
-
 func (r *readLobReply) kind() partKind {
 	return pkReadLobReply
 }
