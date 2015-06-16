@@ -36,7 +36,7 @@ func (i Identifier) String() string {
 	return strconv.Quote(s)
 }
 
-// SplitIdentifier split a string by the identifier separator "." into its Identifier components.
+// SplitIdentifier splits a string by the identifier separator "." into its Identifier components.
 func SplitIdentifier(s string) []Identifier {
 	inQuotes := false
 	f := func(c rune) bool {
