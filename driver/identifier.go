@@ -19,7 +19,6 @@ package driver
 import (
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 var reSimple = regexp.MustCompile("^[_A-Z][_#$A-Z0-9]*$")
@@ -34,40 +33,4 @@ func (i Identifier) String() string {
 		return s
 	}
 	return strconv.Quote(s)
-}
-
-// SplitIdentifier split a string by the identifier separator "." into its Identifier components.
-func SplitIdentifier(s string) []Identifier {
-	inQuotes := false
-	f := func(c rune) bool {
-		switch {
-		case c == '"':
-			inQuotes = !inQuotes
-			return false
-		case inQuotes:
-			return false
-		default:
-			return c == '.'
-		}
-	}
-
-	a := strings.FieldsFunc(s, f)
-	ids := make([]Identifier, len(a))
-	for i, s := range a {
-		if t, err := strconv.Unquote(s); err != nil { //no quotes found
-			ids[i] = Identifier(s)
-		} else {
-			ids[i] = Identifier(t)
-		}
-	}
-	return ids
-}
-
-// JoinIdentifier joins an array of Identifiers by the identifier separator "." to a string.
-func JoinIdentifier(a []Identifier) string {
-	ids := make([]string, len(a))
-	for i, id := range a {
-		ids[i] = id.String()
-	}
-	return strings.Join(ids, ".")
 }

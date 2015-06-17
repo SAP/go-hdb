@@ -20,12 +20,6 @@ import (
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-// HDB errors.
-const (
-	UserNameAlreadyExists = 331
-	RoleAlreadyExistsCode = 388
-)
-
 // Error represents errors send by the database server.
 type Error interface {
 	Code() int           // Code return the database error code.
