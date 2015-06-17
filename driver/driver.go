@@ -32,10 +32,8 @@ import (
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-const (
-	// DriverName is the driver name to use with sql.Open for hdb databases.
-	DriverName = "hdb"
-)
+// DriverName is the driver name to use with sql.Open for hdb databases.
+const DriverName = "hdb"
 
 var sqlTrace bool
 
