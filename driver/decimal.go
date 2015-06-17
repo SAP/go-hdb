@@ -18,6 +18,7 @@ package driver
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -74,6 +75,9 @@ const (
 	dfUnderflow
 )
 
+// ErrDecimalOutOfRange is returned, if a big number cannot be stored in a database decimal field.
+var ErrDecimalOutOfRange = errors.New("decimal out of range error")
+
 // big.Int free list
 var bigIntFree = sync.Pool{
 	New: func() interface{} { return new(big.Int) },
@@ -82,26 +86,6 @@ var bigIntFree = sync.Pool{
 // big.Rat free list
 var bigRatFree = sync.Pool{
 	New: func() interface{} { return new(big.Rat) },
-}
-
-// A DecimalOverflowError is created if a big number cannot be stored in a database decimal field.
-type DecimalOverflowError struct {
-	sig *big.Int
-	neg bool
-	exp int
-}
-
-func newDecimalOverflowError(sig *big.Int, neg bool, exp int) error {
-	return &DecimalOverflowError{
-		sig: sig,
-		neg: neg,
-		exp: exp,
-	}
-}
-
-// Error implements the Error interface.
-func (e *DecimalOverflowError) Error() string {
-	return fmt.Sprintf("decimal overflow error: neg %t significant %s exp %d", e.neg, e.sig, e.exp)
 }
 
 // A Decimal is the driver representation of a database decimal field value as big.Rat.
@@ -160,7 +144,7 @@ func (d *Decimal) Value() (driver.Value, error) {
 		m.Set(natZero)
 		v, err = encodeDecimal(m, false, 0)
 	case df&dfOverflow != 0:
-		err = newDecimalOverflowError(m, neg, exp)
+		err = ErrDecimalOutOfRange
 	}
 
 	// performance (avoid expensive defer)
