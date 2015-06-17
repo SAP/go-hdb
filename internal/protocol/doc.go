@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package protocol contains the hdb command network protocol implementation.
+// Package protocol implements the hdb command network protocol.
 //
 // http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf
 package protocol

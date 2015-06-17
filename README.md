@@ -1,9 +1,16 @@
-# go-hdb - A native Go HANA driver for Go's sql package
+go-hdb
+======
+
+[![GoDoc](https://godoc.org/github.com/SAP/go-hdb/driver?status.png)](https://godoc.org/github.com/SAP/go-hdb/driver)
+
+Go-hdb is a native Go HANA driver for Go's sql package.
 
 ## Install
 
-	go get github.com/SAP/go-hdb/driver
-	
+```
+go get github.com/SAP/go-hdb/driver
+```
+
 ## Features
 
 * Native Go implementation (no C libraries, CGO).

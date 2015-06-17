@@ -14,5 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package driver is a native Go (https://golang.org/) SAP HANA driver implementation for the database/sql package.
+// Package driver is a native Go SAP HANA driver implementation for the database/sql package.
 package driver
