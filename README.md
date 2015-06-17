@@ -28,7 +28,6 @@ go get github.com/SAP/go-hdb/driver
 
 ## Todos
 
-* Support of additional Go HANA datatype conversions.
+* Additional example code.
 * Additional Authentication Methods (actually only basic authentication is supported).
 * Further performance improvements.
-* Increase test code coverage and test documentation.
