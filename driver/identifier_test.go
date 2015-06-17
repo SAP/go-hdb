@@ -45,19 +45,3 @@ func TestIdentifierStringer(t *testing.T) {
 		}
 	}
 }
-
-func TestIdentifierJoinSplit(t *testing.T) {
-	ids := make([]Identifier, len(testIdentifierData))
-	for i, d := range testIdentifierData {
-		ids[i] = d.id
-	}
-
-	for i, d := range SplitIdentifier(JoinIdentifier(ids)) {
-		if i > len(ids) {
-			t.Fatalf("invalid index %d", i)
-		}
-		if d != ids[i] {
-			t.Fatalf("%d id %s - expected %s", i, d, ids[i])
-		}
-	}
-}

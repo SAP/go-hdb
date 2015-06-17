@@ -18,6 +18,7 @@ package driver
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -39,56 +40,14 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
-/*
-const (
-	realNullValue   uint32 = ^uint32(0)
-	doubleNullValue uint64 = ^uint64(0)
-)
-*/
+// ErrorIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
+var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
-type intOutOfRangeError struct {
-	v, min, max int64
-}
+// ErrorIntegerOutOfRange means that a float exceeds the size of the hdb float field.
+var ErrFloatOutOfRange = errors.New("float out of range error")
 
-func newIntOutOfRangeError(v, min, max int64) error {
-	return &intOutOfRangeError{
-		v:   v,
-		min: min,
-		max: max,
-	}
-}
-
-func (e *intOutOfRangeError) Error() string {
-	return fmt.Sprintf("value %d out of range (%d - %d)", e.v, e.min, e.max)
-}
-
-type uintOutOfRangeError struct {
-	v   uint64
-	max int64
-}
-
-func newUintOutOfRangeError(v uint64, max int64) error {
-	return &uintOutOfRangeError{
-		v:   v,
-		max: max,
-	}
-}
-
-func (e *uintOutOfRangeError) Error() string {
-	return fmt.Sprintf("value %d out of range (0 - %d)", e.v, e.max)
-}
-
-type invalidValueTypeError struct {
-	v interface{}
-}
-
-func newInvalidValueTypeError(v interface{}) error {
-	return &invalidValueTypeError{v: v}
-}
-
-func (e *invalidValueTypeError) Error() string {
-	return fmt.Sprintf("invalid value %v (type %T)", e.v, e.v)
-}
+var typeOfTime = reflect.TypeOf((*time.Time)(nil)).Elem()
+var typeOfBytes = reflect.TypeOf((*[]byte)(nil)).Elem()
 
 func columnConverter(dt p.DataType) driver.ValueConverter {
 
@@ -122,9 +81,7 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 }
 
 // unknown type
-type dbUnknownType struct {
-	//tc p.TypeCode
-}
+type dbUnknownType struct{}
 
 var _ driver.ValueConverter = dbUnknownType{} //check that type implements interface
 
@@ -157,13 +114,13 @@ func (i dbIntType) ConvertValue(v interface{}) (driver.Value, error) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
 		if i64 > i.max || i64 < i.min {
-			return nil, newIntOutOfRangeError(i64, i.min, i.max)
+			return nil, ErrIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u64 := rv.Uint()
 		if u64 > uint64(i.max) {
-			return nil, newUintOutOfRangeError(u64, i.max)
+			return nil, ErrIntegerOutOfRange
 		}
 		return int64(u64), nil
 	case reflect.Ptr:
@@ -173,7 +130,7 @@ func (i dbIntType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return i.ConvertValue(rv.Elem().Interface())
 	}
-	return nil, newInvalidValueTypeError(v)
+	return nil, fmt.Errorf("unsupported integer conversion type error %T %v", v, v)
 }
 
 //float types
@@ -198,11 +155,17 @@ func (f dbFloatType) ConvertValue(v interface{}) (driver.Value, error) {
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		if math.Abs(f64) > f.max {
-			return nil, fmt.Errorf("float converter: value %g out of range (%g - %g)", v, f.max*-1, f.max)
+			return nil, ErrFloatOutOfRange
 		}
 		return f64, nil
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return f.ConvertValue(rv.Elem().Interface())
 	}
-	return nil, newInvalidValueTypeError(v)
+	return nil, fmt.Errorf("unsupported float conversion type error %T %v", v, v)
 }
 
 //time
@@ -212,7 +175,7 @@ type dbTimeType struct{}
 
 var _ driver.ValueConverter = dbTimeType{} //check that type implements interface
 
-func (d dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
+func (t dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return nil, nil
@@ -225,6 +188,12 @@ func (d dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 
 	rv := reflect.ValueOf(v)
+
+	if rv.Type().ConvertibleTo(typeOfTime) {
+		tv := rv.Convert(typeOfTime)
+		return tv.Interface().(time.Time), nil
+	}
+
 	switch rv.Kind() {
 
 	case reflect.Ptr:
@@ -232,9 +201,9 @@ func (d dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return d.ConvertValue(rv.Elem().Interface())
+		return t.ConvertValue(rv.Elem().Interface())
 	}
-	return nil, newInvalidValueTypeError(v)
+	return nil, fmt.Errorf("unsupported time conversion type error %T %v", v, v)
 }
 
 //decimal
@@ -255,7 +224,7 @@ func (d dbDecimalType) ConvertValue(v interface{}) (driver.Value, error) {
 	case []byte:
 		return v, nil
 	}
-	return nil, newInvalidValueTypeError(v)
+	return nil, fmt.Errorf("unsupported decimal conversion type error %T %v", v, v)
 }
 
 //varchar
@@ -278,10 +247,11 @@ func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 
 	rv := reflect.ValueOf(v)
+
 	switch rv.Kind() {
 
 	case reflect.String:
-		return v, nil
+		return rv.String(), nil
 
 	case reflect.Ptr:
 		// indirect pointers
@@ -290,7 +260,13 @@ func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return d.ConvertValue(rv.Elem().Interface())
 	}
-	return nil, newInvalidValueTypeError(v)
+
+	if rv.Type().ConvertibleTo(typeOfBytes) {
+		bv := rv.Convert(typeOfBytes)
+		return bv.Interface().([]byte), nil
+	}
+
+	return nil, fmt.Errorf("unsupported character conversion type error %T %v", v, v)
 }
 
 //nvarchar
@@ -317,7 +293,7 @@ func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 	switch rv.Kind() {
 
 	case reflect.String:
-		return v, nil
+		return rv.String(), nil
 
 	case reflect.Ptr:
 		// indirect pointers
@@ -326,7 +302,13 @@ func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return d.ConvertValue(rv.Elem().Interface())
 	}
-	return nil, newInvalidValueTypeError(v)
+
+	if rv.Type().ConvertibleTo(typeOfBytes) {
+		bv := rv.Convert(typeOfBytes)
+		return bv.Interface().([]byte), nil
+	}
+
+	return nil, fmt.Errorf("unsupported unicode conversion type error %T %v", v, v)
 }
 
 //lob
@@ -343,5 +325,5 @@ func (d dbLobType) ConvertValue(v interface{}) (driver.Value, error) {
 	case int64:
 		return v, nil
 	}
-	return nil, newInvalidValueTypeError(v)
+	return nil, fmt.Errorf("unsupported lob conversion type error %T %v", v, v)
 }

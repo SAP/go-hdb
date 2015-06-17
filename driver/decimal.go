@@ -75,7 +75,7 @@ const (
 	dfUnderflow
 )
 
-// ErrDecimalOutOfRange is returned, if a big number cannot be stored in a database decimal field.
+// ErrDecimalOutOfRange means that a big.Rat exceeds the size of hdb decimal fields.
 var ErrDecimalOutOfRange = errors.New("decimal out of range error")
 
 // big.Int free list

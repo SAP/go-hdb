@@ -17,75 +17,188 @@ limitations under the License.
 package driver
 
 import (
-	"fmt"
+	"bytes"
+	"math"
 	"testing"
+	"time"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 type testCustomInt int
 
-func assertEqualErr(t *testing.T, e1, e2 error) {
-	if e1 != e2 {
-		t.Fatalf("assert equal error failed: %v - %v expected", e1, e2)
-	}
-}
-
-func assertEqualIntOutOfRangeError(t *testing.T, e error) {
-	if e == nil {
-		t.Fatal("assert equal error failed: nil")
-	}
-	if _, ok := e.(*intOutOfRangeError); !ok {
-		t.Fatalf("assert equal error failed %s (%T)", e, e)
-	}
-}
-
-func assertEqualInt(t *testing.T, i1, i2 int64) {
-	if i1 != i2 {
-		t.Fatalf("assert equal int failed %d - %d expected", i1, i2)
-	}
-}
-
-func convertInt(t *testing.T, dt p.DataType, v interface{}) (int64, error) {
+func assertEqualInt(t *testing.T, dt p.DataType, v interface{}, r int64) {
 	c := columnConverter(dt)
 	cv, err := c.ConvertValue(v)
 	if err != nil {
-		return 0, err
+		t.Fatal(err)
 	}
-	i, ok := cv.(int64)
-	if ok {
-		return i, nil
+	if cv.(int64) != r {
+		t.Fatalf("assert equal int failed %v - %d expected", cv, r)
 	}
-	return 0, fmt.Errorf("invalid type %T - %T expected", cv, i)
 }
 
-func TestConvertInt(t *testing.T) {
-	//tinyint
+func assertEqualIntOutOfRangeError(t *testing.T, dt p.DataType, v interface{}) {
+	c := columnConverter(dt)
+	_, err := c.ConvertValue(v)
+	if err != ErrIntegerOutOfRange {
+		t.Fatalf("assert equal out of range error failed %s %v", dt, v)
+	}
+}
 
-	i, err := convertInt(t, p.DtTinyint, 42)
-	assertEqualErr(t, err, nil)
-	assertEqualInt(t, i, 42)
+func TestConvertInteger(t *testing.T) {
 
-	i, err = convertInt(t, p.DtTinyint, minTinyint-1)
-	assertEqualIntOutOfRangeError(t, err)
+	// integer data types
+	assertEqualInt(t, p.DtTinyint, 42, 42)
+	assertEqualInt(t, p.DtSmallint, 42, 42)
+	assertEqualInt(t, p.DtInt, 42, 42)
+	assertEqualInt(t, p.DtBigint, 42, 42)
 
-	i, err = convertInt(t, p.DtTinyint, maxTinyint+1)
-	assertEqualIntOutOfRangeError(t, err)
+	// custom integer data type
+	assertEqualInt(t, p.DtInt, testCustomInt(42), 42)
 
-	//...
+	// integer reference
+	i := 42
+	assertEqualInt(t, p.DtBigint, &i, 42)
 
-	// int reference
-	v := 42
+	// min max values
+	assertEqualIntOutOfRangeError(t, p.DtTinyint, minTinyint-1)
+	assertEqualIntOutOfRangeError(t, p.DtTinyint, maxTinyint+1)
+	assertEqualIntOutOfRangeError(t, p.DtSmallint, minSmallint-1)
+	assertEqualIntOutOfRangeError(t, p.DtSmallint, maxSmallint+1)
+	assertEqualIntOutOfRangeError(t, p.DtInt, minInteger-1)
+	assertEqualIntOutOfRangeError(t, p.DtInt, maxInteger+1)
 
-	i, err = convertInt(t, p.DtTinyint, &v)
-	assertEqualErr(t, err, nil)
-	assertEqualInt(t, i, 42)
+}
 
-	// custom int type
-	cv := testCustomInt(42)
+type testCustomFloat float32
 
-	i, err = convertInt(t, p.DtTinyint, cv)
-	assertEqualErr(t, err, nil)
-	assertEqualInt(t, i, 42)
+func assertEqualFloat(t *testing.T, dt p.DataType, v interface{}, r float64) {
+	c := columnConverter(dt)
+	cv, err := c.ConvertValue(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cv.(float64) != r {
+		t.Fatalf("assert equal float failed %v - %f expected", cv, r)
+	}
+}
+
+func assertEqualFloatOutOfRangeError(t *testing.T, dt p.DataType, v interface{}) {
+	c := columnConverter(dt)
+	_, err := c.ConvertValue(v)
+	if err != ErrFloatOutOfRange {
+		t.Fatalf("assert equal out of range error failed %s %v", dt, v)
+	}
+}
+
+func TestConvertFloat(t *testing.T) {
+
+	realValue := float32(42.42)
+	doubleValue := float64(42.42)
+
+	// float data types
+	assertEqualFloat(t, p.DtReal, realValue, float64(realValue))
+	assertEqualFloat(t, p.DtDouble, doubleValue, doubleValue)
+
+	// custom float data type
+	assertEqualFloat(t, p.DtReal, testCustomFloat(realValue), float64(realValue))
+
+	// float reference
+	assertEqualFloat(t, p.DtReal, &realValue, float64(realValue))
+
+	// min max values
+	assertEqualFloatOutOfRangeError(t, p.DtReal, math.Nextafter(maxReal, maxDouble))
+	assertEqualFloatOutOfRangeError(t, p.DtReal, math.Nextafter(maxReal, maxDouble)*-1)
+
+}
+
+type testCustomTime time.Time
+
+func assertEqualTime(t *testing.T, v interface{}, r time.Time) {
+	c := columnConverter(p.DtTime)
+	cv, err := c.ConvertValue(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cv.(time.Time).Equal(r) {
+		t.Fatalf("assert equal time failed %v - %f expected", cv, r)
+	}
+}
+
+func TestConvertTime(t *testing.T) {
+
+	timeValue := time.Now()
+
+	// time data type
+	assertEqualTime(t, timeValue, timeValue)
+
+	// custom time data type
+	assertEqualTime(t, testCustomTime(timeValue), timeValue)
+
+	// time reference
+	assertEqualTime(t, &timeValue, timeValue)
+
+}
+
+type testCustomString string
+
+func assertEqualString(t *testing.T, dt p.DataType, v interface{}, r string) {
+	c := columnConverter(dt)
+	cv, err := c.ConvertValue(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cv.(string) != r {
+		t.Fatalf("assert equal string failed %v - %f expected", cv, r)
+	}
+}
+
+func TestConvertString(t *testing.T) {
+
+	stringValue := "Hello World"
+
+	// string data types
+	assertEqualString(t, p.DtVarchar, stringValue, stringValue)
+	assertEqualString(t, p.DtNvarchar, stringValue, stringValue)
+
+	// custom string data type
+	assertEqualString(t, p.DtVarchar, testCustomString(stringValue), stringValue)
+	assertEqualString(t, p.DtNvarchar, testCustomString(stringValue), stringValue)
+
+	// string reference
+	assertEqualString(t, p.DtVarchar, &stringValue, stringValue)
+	assertEqualString(t, p.DtNvarchar, &stringValue, stringValue)
+
+}
+
+type testCustomBytes []byte
+
+func assertEqualBytes(t *testing.T, dt p.DataType, v interface{}, r []byte) {
+	c := columnConverter(dt)
+	cv, err := c.ConvertValue(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Compare(cv.([]byte), r) != 0 {
+		t.Fatalf("assert equal bytes failed %v - %f expected", cv, r)
+	}
+}
+
+func TestConvertBytes(t *testing.T) {
+
+	bytesValue := []byte("Hello World")
+
+	// string data types
+	assertEqualBytes(t, p.DtVarchar, bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtNvarchar, bytesValue, bytesValue)
+
+	// custom string data type
+	assertEqualBytes(t, p.DtVarchar, testCustomBytes(bytesValue), bytesValue)
+	assertEqualBytes(t, p.DtNvarchar, testCustomBytes(bytesValue), bytesValue)
+
+	// string reference
+	assertEqualBytes(t, p.DtVarchar, &bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtNvarchar, &bytesValue, bytesValue)
 
 }

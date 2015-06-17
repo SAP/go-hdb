@@ -17,7 +17,6 @@ limitations under the License.
 package driver
 
 import (
-	//	"math/big"
 	"math/big"
 	"testing"
 )
@@ -25,7 +24,6 @@ import (
 func TestDecimalInfo(t *testing.T) {
 	t.Logf("maximum decimal value %v", maxDecimal)
 	t.Logf("~log2(10): %f", lg10)
-	//t.Logf("maximum decimal value %v", maxMax)
 }
 
 type testDigits10 struct {
