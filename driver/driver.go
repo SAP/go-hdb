@@ -125,7 +125,7 @@ func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
 // - leads to different behavior to prepare - stmt - execute default logic
 // - seems to be the same for Execer interface
 
-// Queryer implemets the database/sql/driver/Queryer interface.
+// Queryer implements the database/sql/driver/Queryer interface.
 func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 
 	if len(args) != 0 {

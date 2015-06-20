@@ -27,6 +27,7 @@ const (
 	bulkSamples = 10000
 )
 
+// TestBulkInsert
 func TestBulkInsert(t *testing.T) {
 
 	tmpTableName := Identifier("#tmpTable")

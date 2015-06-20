@@ -21,7 +21,7 @@ import (
 	"testing"
 )
 
-func TestQueryDummy(t *testing.T) {
+func TestConnection(t *testing.T) {
 	db, err := sql.Open(DriverName, *dsn)
 	if err != nil {
 		t.Fatal(err)

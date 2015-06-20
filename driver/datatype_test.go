@@ -131,28 +131,10 @@ var testDecimalData = []interface{}{
 	(*Decimal)(big.NewRat(1, 10)),
 	(*Decimal)(big.NewRat(-1, 10)),
 	(*Decimal)(big.NewRat(1, 1000)),
-	/* delta handling
-	if ((*big.Rat)(in)).Cmp((*big.Rat)(out)) != 0 {
-		delta := new(big.Rat)
-		delta.Sub((*big.Rat)(out), (*big.Rat)(in))
-		t.t.Fatalf("not equal %s - expected %s - delta %v", (*big.Rat)(out).FloatString(34), (*big.Rat)(in).FloatString(34), delta)
-	}
-	*/
-	//(*Decimal)(big.NewRat(1, 3)),
-	//(*Decimal)(big.NewRat(1, 1001)),
 	(*Decimal)(new(big.Rat).SetInt(maxDecimal)),
 	NullDecimal{Valid: false, Decimal: (*Decimal)(big.NewRat(1, 1))},
 	NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
 }
-
-/*
-	var maxSignificandAdd1 big.Int
-	maxSignificandAdd1.Add(maxSignificand, big1)
-	t := []*decimalRecord{
-		&decimalRecord{decimal: (*Decimal)(big.NewRat(0, 1).SetFrac(maxSignificand, big1))},
-		&decimalRecord{decimal: (*Decimal)(big.NewRat(0, 1).SetFrac(&maxSignificandAdd1, big1))},
-	}
-*/
 
 func TestDecimal(t *testing.T) {
 	testDatatype(t, "decimal", 0, testDecimalData...)

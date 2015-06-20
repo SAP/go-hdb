@@ -19,18 +19,23 @@ package driver_test
 import (
 	"database/sql"
 	"log"
+	"net/url"
 
-	// Register hdb driver.
-	_ "github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver"
 )
 
-const (
-	driverName = "hdb"
-	hdbDsn     = "hdb://user:password@host:port"
-)
+// Dsn creates data source name with the help of the net/url package.
+func dsn() string {
+	dsn := &url.URL{
+		Scheme: driver.DriverName,
+		User:   url.UserPassword("user", "password"),
+		Host:   "host:port",
+	}
+	return dsn.String()
+}
 
-func Example() {
-	db, err := sql.Open(driverName, hdbDsn)
+func Example_dsn() {
+	db, err := sql.Open(driver.DriverName, dsn()) // Use driver package driver name constant.
 	if err != nil {
 		log.Fatal(err)
 	}

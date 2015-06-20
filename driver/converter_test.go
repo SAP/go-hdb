@@ -189,15 +189,15 @@ func TestConvertBytes(t *testing.T) {
 
 	bytesValue := []byte("Hello World")
 
-	// string data types
+	// bytes data types
 	assertEqualBytes(t, p.DtVarchar, bytesValue, bytesValue)
 	assertEqualBytes(t, p.DtNvarchar, bytesValue, bytesValue)
 
-	// custom string data type
+	// custom bytes data type
 	assertEqualBytes(t, p.DtVarchar, testCustomBytes(bytesValue), bytesValue)
 	assertEqualBytes(t, p.DtNvarchar, testCustomBytes(bytesValue), bytesValue)
 
-	// string reference
+	// bytes reference
 	assertEqualBytes(t, p.DtVarchar, &bytesValue, bytesValue)
 	assertEqualBytes(t, p.DtNvarchar, &bytesValue, bytesValue)
 
