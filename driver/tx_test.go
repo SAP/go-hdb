@@ -24,20 +24,20 @@ import (
 
 func TestTransactionCommit(t *testing.T) {
 
-	db1, err := sql.Open(DriverName, *dsn)
+	db1, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db1.Close()
 
-	db2, err := sql.Open(DriverName, *dsn)
+	db2, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db2.Close()
 
-	table := testRandomIdentifier(fmt.Sprintf("%s_", "testTxCommit"))
-	if _, err := db1.Exec(fmt.Sprintf("create table %s.%s (i tinyint)", tSchema, table)); err != nil {
+	table := RandomIdentifier("testTxCommit_")
+	if _, err := db1.Exec(fmt.Sprintf("create table %s.%s (i tinyint)", TestSchema, table)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,13 +53,13 @@ func TestTransactionCommit(t *testing.T) {
 	defer tx2.Rollback()
 
 	//insert record in transaction 1
-	if _, err := tx1.Exec(fmt.Sprintf("insert into %s.%s values(42)", tSchema, table)); err != nil {
+	if _, err := tx1.Exec(fmt.Sprintf("insert into %s.%s values(42)", TestSchema, table)); err != nil {
 		t.Fatal(err)
 	}
 
 	//count records in transaction 1
 	i := 0
-	if err := tx1.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := tx1.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 1 {
@@ -67,7 +67,7 @@ func TestTransactionCommit(t *testing.T) {
 	}
 
 	//count records in transaction 2 - isolation level 'read committed'' (default) expected, so no record should be there
-	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 0 {
@@ -80,7 +80,7 @@ func TestTransactionCommit(t *testing.T) {
 	}
 
 	//in isolation level 'read commited' (default) record should be visible now
-	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 1 {
@@ -90,14 +90,14 @@ func TestTransactionCommit(t *testing.T) {
 
 func TestTransactionRollback(t *testing.T) {
 
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	table := testRandomIdentifier(fmt.Sprintf("%s_", "testTxRollback"))
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i tinyint)", tSchema, table)); err != nil {
+	table := RandomIdentifier("testTxRollback_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i tinyint)", TestSchema, table)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,13 +107,13 @@ func TestTransactionRollback(t *testing.T) {
 	}
 
 	//insert record
-	if _, err := tx.Exec(fmt.Sprintf("insert into %s.%s values(42)", tSchema, table)); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf("insert into %s.%s values(42)", TestSchema, table)); err != nil {
 		t.Fatal(err)
 	}
 
 	//count records
 	i := 0
-	if err := tx.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := tx.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 1 {
@@ -133,7 +133,7 @@ func TestTransactionRollback(t *testing.T) {
 	defer tx.Rollback()
 
 	//rollback - no record expected
-	if err := tx.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := tx.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 0 {

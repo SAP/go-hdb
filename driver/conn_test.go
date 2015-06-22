@@ -22,14 +22,14 @@ import (
 )
 
 func TestConnection(t *testing.T) {
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
 	var dummy string
-	err = db.QueryRow("SELECT * FROM DUMMY").Scan(&dummy)
+	err = db.QueryRow("select * from dummy").Scan(&dummy)
 	switch {
 	case err == sql.ErrNoRows:
 		t.Fatal(err)

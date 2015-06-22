@@ -82,7 +82,9 @@ func TestDouble(t *testing.T) {
 
 var testStringData = []interface{}{
 	"Hello HDB",
-	//"𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞", //hdb unicode size issue
+	// varchar: UTF-8 4 bytes per char -> size 40 bytes
+	// nvarchar: CESU-8 6 bytes per char -> hdb counts 2 chars per 6 byte encoding -> size 20 bytes
+	"𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞𝄞",
 	"𝄞𝄞aa",
 	"€€",
 	"𝄞𝄞€€",
@@ -93,7 +95,7 @@ var testStringData = []interface{}{
 }
 
 func TestVarchar(t *testing.T) {
-	testDatatype(t, "varchar", 20, testStringData...)
+	testDatatype(t, "varchar", 40, testStringData...)
 }
 
 func TestNVarchar(t *testing.T) {
@@ -142,25 +144,25 @@ func TestDecimal(t *testing.T) {
 
 //
 func testDatatype(t *testing.T, dataType string, dataSize int, testData ...interface{}) {
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	table := testRandomIdentifier(fmt.Sprintf("%s_", dataType))
+	table := RandomIdentifier(fmt.Sprintf("%s_", dataType))
 	if dataSize == 0 {
-		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", tSchema, table, dataType)); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", TestSchema, table, dataType)); err != nil {
 			t.Fatal(err)
 		}
 	} else {
-		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s(%d))", tSchema, table, dataType, dataSize)); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s(%d))", TestSchema, table, dataType, dataSize)); err != nil {
 			t.Fatal(err)
 		}
 
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", tSchema, table))
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", TestSchema, table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +176,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, testData ...inter
 	size := len(testData)
 	var i int
 
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,7 +184,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, testData ...inter
 		t.Fatalf("rows %d - expected %d", i, size)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s.%s order by i", tSchema, table))
+	rows, err := db.Query(fmt.Sprintf("select * from %s.%s order by i", TestSchema, table))
 	if err != nil {
 		t.Fatal(err)
 	}

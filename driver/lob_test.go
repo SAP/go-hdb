@@ -87,14 +87,14 @@ func TestNclobFile(t *testing.T) {
 }
 
 func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	table := testRandomIdentifier(fmt.Sprintf("%s_", dataType))
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", tSchema, table, dataType)); err != nil {
+	table := RandomIdentifier(fmt.Sprintf("%s_", dataType))
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", TestSchema, table, dataType)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", tSchema, table))
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", TestSchema, table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		t.Fatal(err)
 	}
 
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", tSchema, table)).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 
@@ -144,7 +144,7 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		t.Fatalf("rows %d - expected %d", i, size)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s.%s order by i", tSchema, table))
+	rows, err := db.Query(fmt.Sprintf("select * from %s.%s order by i", TestSchema, table))
 	if err != nil {
 		t.Fatal(err)
 	}

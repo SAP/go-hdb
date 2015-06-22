@@ -56,6 +56,12 @@ func checkBulkInsert(sql string) (string, bool) {
 	return sql, false
 }
 
+var reCall = regexp.MustCompile("(?i)^(\\s)*(call +)(.*)")
+
+func checkCallProcedure(sql string) bool {
+	return reCall.MatchString(sql)
+}
+
 var errProcTableQuery = errors.New("Invalid procedure table query")
 
 // driver
@@ -132,6 +138,13 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
+	// direct execution of call procedure
+	// - returns no parameter metadata (sps 82) but only field values
+	// --> let's take the 'prepare way' for stored procedures
+	if checkCallProcedure(query) {
+		return nil, driver.ErrSkip
+	}
+
 	if sqlTrace {
 		sqlLogger.Println(query)
 	}
@@ -149,7 +162,6 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return newQueryResult(c.session, id, meta, values, attributes)
 }
 
@@ -174,16 +186,16 @@ func (t *tx) Rollback() error {
 
 //statement
 type stmt struct {
-	qt                p.QueryType
-	session           *p.Session
-	query             string
-	id                uint64
-	parameterFieldSet *p.FieldSet
-	resultFieldSet    *p.FieldSet
+	qt             p.QueryType
+	session        *p.Session
+	query          string
+	id             uint64
+	prmFieldSet    *p.FieldSet
+	resultFieldSet *p.FieldSet
 }
 
-func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, parameterFieldSet *p.FieldSet, resultFieldSet *p.FieldSet) (*stmt, error) {
-	return &stmt{qt: qt, session: session, query: query, id: id, parameterFieldSet: parameterFieldSet, resultFieldSet: resultFieldSet}, nil
+func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, prmFieldSet *p.FieldSet, resultFieldSet *p.FieldSet) (*stmt, error) {
+	return &stmt{qt: qt, session: session, query: query, id: id, prmFieldSet: prmFieldSet, resultFieldSet: resultFieldSet}, nil
 }
 
 func (s *stmt) Close() error {
@@ -191,12 +203,12 @@ func (s *stmt) Close() error {
 }
 
 func (s *stmt) NumInput() int {
-	return s.parameterFieldSet.NumInputField()
+	return s.prmFieldSet.NumInputField()
 }
 
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 
-	numField := s.parameterFieldSet.NumInputField()
+	numField := s.prmFieldSet.NumInputField()
 	if len(args) != numField {
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), numField)
 	}
@@ -205,7 +217,7 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 		sqlLogger.Printf("%s %v", s.query, args)
 	}
 
-	return s.session.Exec(s.id, s.parameterFieldSet, args)
+	return s.session.Exec(s.id, s.prmFieldSet, args)
 }
 
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
@@ -226,7 +238,7 @@ func (s *stmt) defaultQuery(args []driver.Value) (driver.Rows, error) {
 		sqlLogger.Printf("%s %v", s.query, args)
 	}
 
-	rid, values, attributes, err := s.session.Query(s.id, s.parameterFieldSet, s.resultFieldSet, args)
+	rid, values, attributes, err := s.session.Query(s.id, s.prmFieldSet, s.resultFieldSet, args)
 	if err != nil {
 		return nil, err
 	}
@@ -240,16 +252,16 @@ func (s *stmt) procedureCall(args []driver.Value) (driver.Rows, error) {
 		sqlLogger.Printf("%s %v", s.query, args)
 	}
 
-	fieldValues, tableResults, err := s.session.CallProcedure(s.id, s.parameterFieldSet, args)
+	fieldValues, tableResults, err := s.session.Call(s.id, s.prmFieldSet, args)
 	if err != nil {
 		return nil, err
 	}
 
-	return newProcedureCallResult(s.session, s.parameterFieldSet, fieldValues, tableResults)
+	return newProcedureCallResult(s.session, s.prmFieldSet, fieldValues, tableResults)
 }
 
 func (s *stmt) ColumnConverter(idx int) driver.ValueConverter {
-	return columnConverter(s.parameterFieldSet.DataType(idx))
+	return columnConverter(s.prmFieldSet.DataType(idx))
 }
 
 // bulk insert statement

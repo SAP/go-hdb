@@ -344,6 +344,7 @@ func (s *Session) QueryDirect(query string) (uint64, *FieldSet, *FieldValues, Pa
 	fieldValues := newFieldValues(s)
 
 	f := func(p replyPart) {
+
 		switch p := p.(type) {
 
 		case *resultsetID:
@@ -470,8 +471,8 @@ func (s *Session) DropStatementID(id uint64) error {
 	return nil
 }
 
-// CallProcedure executes a stored procedure.
-func (s *Session) CallProcedure(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*FieldValues, []*TableResult, error) {
+// Call executes a stored procedure.
+func (s *Session) Call(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*FieldValues, []*TableResult, error) {
 
 	s.statementID.id = &id
 	if err := s.writeRequest(mtExecute, false, s.statementID, newParameters(prmFieldSet, args)); err != nil {
@@ -850,7 +851,6 @@ func (s *Session) readReply(providePart providePart, beforeRead beforeRead) erro
 	if s.mh.noOfSegm != 1 {
 		return fmt.Errorf("simple message: no of segments %d - expected 1", s.mh.noOfSegm)
 	}
-
 	if err := s.sh.read(s.rd); err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package unicode implements UTF-8 to CESU-8 and vice versa transformations.
 package unicode
 
 import (

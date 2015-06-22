@@ -24,25 +24,25 @@ import (
 )
 
 func TestProcedure(t *testing.T) {
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	procedure := testRandomIdentifier(fmt.Sprintf("%s_", "proc01"))
+	procedure := RandomIdentifier(fmt.Sprintf("%s_", "proc01"))
 
-	if _, err := db.Exec(fmt.Sprintf(proc01, tSchema, procedure)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(proc01, TestSchema, procedure)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Query(fmt.Sprintf("call %s.%s(?, ?)", tSchema, procedure), "test"); err != nil {
+	if _, err := db.Query(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), "test"); err != nil {
 		t.Fatal(err)
 	}
 
 	var out string
 
-	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", tSchema, procedure), "test").Scan(&out); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), "test").Scan(&out); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,20 +127,20 @@ func checkTableQueryData(t *testing.T, db *sql.DB, query string, data []*testTab
 }
 
 func TestProcedure2(t *testing.T) {
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	tableType := testRandomIdentifier(fmt.Sprintf("%s_", "tt2"))
-	procedure := testRandomIdentifier(fmt.Sprintf("%s_", "proc02"))
+	tableType := RandomIdentifier(fmt.Sprintf("%s_", "tt2"))
+	procedure := RandomIdentifier(fmt.Sprintf("%s_", "proc02"))
 
-	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", tSchema, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf(proc02, tSchema, procedure, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(proc02, TestSchema, procedure, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,7 +151,7 @@ func TestProcedure2(t *testing.T) {
 	//	t.Fatal(err)
 	//}
 
-	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", tSchema, procedure), 1)
+	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, procedure), 1)
 	if err != nil {
 		t.Fatal(err)
 	}

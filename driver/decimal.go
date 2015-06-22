@@ -286,8 +286,8 @@ func decodeDecimal(b []byte, m *big.Int) (bool, int) {
 	neg := (b[15] & 0x80) != 0
 	exp := int((((uint16(b[15])<<8)|uint16(b[14]))<<1)>>2) - dec128Bias
 
-	//TODO: side effect!!! in b[14]
-	b[14] &= 0x01 //keep the mantissa bit (rest: sign and exp)
+	b14 := b[14]  // save b[14]
+	b[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
 
 	//most significand byte
 	msb := 14
@@ -313,6 +313,7 @@ func decodeDecimal(b []byte, m *big.Int) (bool, int) {
 		}
 		d <<= 8
 	}
+	b[14] = b14 // restore b[14]
 	m.SetBits(w)
 	return neg, exp
 }

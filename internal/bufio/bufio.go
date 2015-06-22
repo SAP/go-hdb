@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package bufio implements buffered I/O for database read and writes on basis of the standard Go bufio package.
 package bufio
 
 import (

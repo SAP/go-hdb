@@ -18,7 +18,7 @@ API documentation and documented examples can be found at <https://godoc.org/git
 
 ## Tests
 
-For running the driver tests a HANA Database server is required. The test user must have priveleges to create a schema.
+For running the driver tests a HANA Database server is required. The test user must have privileges to create a schema.
 
 ```
 go test -dsn hdb://user:password@host:port

@@ -17,11 +17,9 @@ limitations under the License.
 package driver
 
 import (
-	"crypto/rand"
 	"database/sql"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"testing"
@@ -29,49 +27,50 @@ import (
 
 // globals
 var (
-	dsn        = flag.String("dsn", "hdb://user:password@ip_address:port", "database dsn")
-	dropSchema = flag.Bool("dropSchema", true, "drop test schema after test ran successfully")
-	tSchema    Identifier
+	// TestDsn (data source name for testing) has to be provided by calling go test with dsn parameter.
+	TestDsn string
+	// TestDropSchema could be provided by calling go test as dropSchema parameter.
+	// If set to true (default), the test schema will be dropped after successful test execution.
+	// If set to false, the test schema will remain on database after test execution.
+	TestDropSchema bool
+	// TestSchema will be used as test schema name and created on database by TestMain.
+	// The scheam name consists of the prefix "test_" and a random Identifier.
+	TestSchema Identifier
 )
 
 func TestMain(m *testing.M) {
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
+	flag.StringVar(&TestDsn, "dsn", "hdb://user:password@ip_address:port", "database dsn")
+	flag.BoolVar(&TestDropSchema, "dropSchema", true, "drop test schema after test ran successfully")
+
 	if !flag.Parsed() {
 		flag.Parse()
 	}
 
 	// init driver
-	db, err := sql.Open(DriverName, *dsn)
+	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
 	// create schema
-	tSchema = testRandomIdentifier("test_")
-	if _, err := db.Exec(fmt.Sprintf("create schema %s", tSchema)); err != nil {
+	TestSchema = RandomIdentifier("test_")
+	if _, err := db.Exec(fmt.Sprintf("create schema %s", TestSchema)); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("created schema %s", tSchema)
+	log.Printf("created schema %s", TestSchema)
 
 	exitCode := m.Run()
 
-	if exitCode == 0 && *dropSchema {
-		if _, err := db.Exec(fmt.Sprintf("drop schema %s cascade", tSchema)); err != nil {
+	if exitCode == 0 && TestDropSchema {
+		if _, err := db.Exec(fmt.Sprintf("drop schema %s cascade", TestSchema)); err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("dropped schema %s", tSchema)
+		log.Printf("dropped schema %s", TestSchema)
 	}
 
 	os.Exit(exitCode)
-}
-
-func testRandomIdentifier(prefix string) Identifier {
-	b := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		panic(err.Error()) // rand should never fail
-	}
-	return Identifier(fmt.Sprintf(fmt.Sprintf("%s%x", prefix, b)))
 }
