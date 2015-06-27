@@ -38,7 +38,7 @@ const DriverName = "hdb"
 var sqlTrace bool
 
 func init() {
-	flag.BoolVar(&sqlTrace, "hdb.sqlTrace", false, "enabling hdb sequel trace")
+	flag.BoolVar(&sqlTrace, "hdb.sqlTrace", false, "enabling hdb sql trace")
 }
 
 var sqlLogger = log.New(os.Stdout, "hdb ", log.Ldate|log.Ltime|log.Lshortfile)
