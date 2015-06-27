@@ -18,6 +18,7 @@ package protocol
 
 import (
 	"database/sql/driver"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -57,24 +58,29 @@ func padBytes(size int) int {
 	return 0
 }
 
-//wrap tcp connection
-// - timeouts
-// - ErrBadConn
+var errConn = errors.New("connection error")
+var errProtocol = errors.New("protocol error")
+
+// SessionConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type sessionConn struct {
-	conn    net.Conn
-	timeout int
+	addr            string
+	timeoutDuration time.Duration
+	conn            net.Conn
+	lastError       error
+	inTx            bool // in transaction
 }
 
-func newSessionConn(host string, timeout int) (*sessionConn, error) {
-
-	conn, err := net.DialTimeout("tcp", host, time.Duration(timeout)*time.Second)
+func newSessionConn(addr string, timeout int) (*sessionConn, error) {
+	timeoutDuration := time.Duration(timeout) * time.Second
+	conn, err := net.DialTimeout("tcp", addr, timeoutDuration)
 	if err != nil {
 		return nil, err
 	}
 
 	return &sessionConn{
-		conn:    conn,
-		timeout: timeout,
+		addr:            addr,
+		timeoutDuration: timeoutDuration,
+		conn:            conn,
 	}, nil
 }
 
@@ -82,25 +88,76 @@ func (c *sessionConn) close() error {
 	return c.conn.Close()
 }
 
+// Init sets the connection state variables back to their initial values.
+func (c *sessionConn) init() {
+	c.lastError = nil
+	c.inTx = false
+}
+
+// Reconnect tries to establish the tcp connection again.
+func (c *sessionConn) reconnect() error {
+	var err error
+
+	c.conn.Close() // ignore error
+
+	c.conn, err = net.DialTimeout("tcp", c.addr, c.timeoutDuration)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Retry tries to reconnect, if the last error was connection related.
+// Retry mustn't be called if lastError is nil.
+func (c *sessionConn) retry() bool {
+	switch c.lastError {
+	default:
+		panic("unknown session error") // should never happen
+	case errProtocol: // cannot heal this
+		return false
+	case errConn:
+		// try to reconnect
+		if err := c.reconnect(); err != nil {
+			return false
+		}
+		c.init()
+		return true
+	}
+}
+
+// Read implements the io.Reader interface.
 func (c *sessionConn) Read(b []byte) (int, error) {
+	if c.lastError != nil && !c.retry() {
+		return 0, driver.ErrBadConn
+	}
+
 	//set timeout
-	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.timeout) * time.Second)); err != nil {
+	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
+		c.lastError = errConn
 		return 0, driver.ErrBadConn
 	}
 	n, err := c.conn.Read(b)
 	if err != nil {
+		c.lastError = errProtocol
 		return n, driver.ErrBadConn
 	}
 	return n, nil
 }
 
+// Write implements the io.Writer interface.
 func (c *sessionConn) Write(b []byte) (int, error) {
+	if c.lastError != nil && !c.retry() {
+		return 0, driver.ErrBadConn
+	}
+
 	//set timeout
-	if err := c.conn.SetWriteDeadline(time.Now().Add(time.Duration(c.timeout) * time.Second)); err != nil {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
+		c.lastError = errConn
 		return 0, driver.ErrBadConn
 	}
 	n, err := c.conn.Write(b)
 	if err != nil {
+		c.lastError = errProtocol
 		return n, driver.ErrBadConn
 	}
 	return n, nil
@@ -109,14 +166,13 @@ func (c *sessionConn) Write(b []byte) (int, error) {
 type providePart func(pk partKind) replyPart
 type beforeRead func(p replyPart)
 
-// Session represents a HDB connection.
+// Session represents a HDB session.
 type Session struct {
 	prm *sessionPrm
 
 	conn *sessionConn
 	rd   *bufio.Reader
 	wr   *bufio.Writer
-	inTx bool
 
 	// reuse header
 	mh *messageHeader
@@ -203,12 +259,12 @@ func (s *Session) sessionID() int64 {
 
 // InTx indicates, if the session is in transaction mode.
 func (s *Session) InTx() bool {
-	return s.inTx
+	return s.conn.inTx
 }
 
 // SetInTx sets session in transaction mode.
 func (s *Session) SetInTx(v bool) {
-	s.inTx = v
+	s.conn.inTx = v
 }
 
 func (s *Session) init() error {
@@ -370,7 +426,7 @@ func (s *Session) QueryDirect(query string) (uint64, *FieldSet, *FieldValues, Pa
 // ExecDirect executes a sql statement without statement parameters.
 func (s *Session) ExecDirect(query string) (driver.Result, error) {
 
-	if err := s.writeRequest(mtExecuteDirect, !s.inTx, command(query)); err != nil {
+	if err := s.writeRequest(mtExecuteDirect, !s.conn.inTx, command(query)); err != nil {
 		return nil, err
 	}
 
@@ -421,7 +477,7 @@ func (s *Session) Prepare(query string) (QueryType, uint64, *FieldSet, *FieldSet
 func (s *Session) Exec(id uint64, parameterFieldSet *FieldSet, args []driver.Value) (driver.Result, error) {
 
 	s.statementID.id = &id
-	if err := s.writeRequest(mtExecute, !s.inTx, s.statementID, newParameters(parameterFieldSet, args)); err != nil {
+	if err := s.writeRequest(mtExecute, !s.conn.inTx, s.statementID, newParameters(parameterFieldSet, args)); err != nil {
 		return nil, err
 	}
 
@@ -602,7 +658,7 @@ func (s *Session) Commit() error {
 		logger.Printf("transaction flags: %s", s.txFlags)
 	}
 
-	s.inTx = false
+	s.conn.inTx = false
 	return nil
 }
 
@@ -621,7 +677,7 @@ func (s *Session) Rollback() error {
 		logger.Printf("transaction flags: %s", s.txFlags)
 	}
 
-	s.inTx = false
+	s.conn.inTx = false
 	return nil
 }
 
