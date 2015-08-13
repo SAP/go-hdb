@@ -23,8 +23,6 @@ import (
 	"sort"
 	"time"
 
-	"github.wdf.sap.corp/xs2/go-hdi/internal/logger"
-
 	"github.com/SAP/go-hdb/internal/bufio"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -284,7 +282,7 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 	case tcBlob, tcClob, tcNclob:
 		return lobInputDescriptorSize, nil
 	}
-	logger.Fatalf("data type %s not implemented", tc)
+	outLogger.Fatalf("data type %s not implemented", tc)
 	return 0, nil
 }
 
@@ -449,7 +447,7 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 		return writer, nil
 	}
 
-	logger.Fatalf("read field: type code %s not implemented", tc)
+	outLogger.Fatalf("read field: type code %s not implemented", tc)
 	return nil, nil
 }
 
@@ -565,7 +563,7 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 		return writeLob(wr)
 	}
 
-	logger.Fatalf("write field: type code %s not implemented", tc)
+	outLogger.Fatalf("write field: type code %s not implemented", tc)
 	return nil
 }
 

@@ -24,8 +24,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.wdf.sap.corp/xs2/go-hdi/internal/logger"
-
 	"github.com/SAP/go-hdb/internal/bufio"
 )
 
@@ -278,7 +276,7 @@ func readMethodName(rd *bufio.Reader) error {
 func clientChallenge() []byte {
 	r := make([]byte, clientChallengeSize)
 	if _, err := rand.Read(r); err != nil {
-		logger.Fatal("client challenge fatal error")
+		outLogger.Fatal("client challenge fatal error")
 	}
 	return r
 }
@@ -309,7 +307,7 @@ func _sha256(p []byte) []byte {
 	hash.Write(p)
 	s := hash.Sum(nil)
 	if trace {
-		logger.Printf("sha length %d value %v", len(s), s)
+		outLogger.Printf("sha length %d value %v", len(s), s)
 	}
 	return s
 }
@@ -319,7 +317,7 @@ func _hmac(key, p []byte) []byte {
 	hash.Write(p)
 	s := hash.Sum(nil)
 	if trace {
-		logger.Printf("hmac length %d value %v", len(s), s)
+		outLogger.Printf("hmac length %d value %v", len(s), s)
 	}
 	return s
 }
