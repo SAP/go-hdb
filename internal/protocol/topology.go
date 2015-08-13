@@ -67,7 +67,7 @@ func (o *topologyOptions) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("topology options: %v", o)
+		outLogger.Printf("topology options: %v", o)
 	}
 
 	return nil
@@ -85,7 +85,7 @@ func (o *topologyOptions) write(wr *bufio.Writer) error {
 	}
 
 	if trace {
-		logger.Printf("topology options: %v", o)
+		outLogger.Printf("topology options: %v", o)
 	}
 
 	return nil

@@ -23,6 +23,8 @@ import (
 	"sort"
 	"time"
 
+	"github.wdf.sap.corp/xs2/go-hdi/internal/logger"
+
 	"github.com/SAP/go-hdb/internal/bufio"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -268,7 +270,7 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 		case string:
 			return stringSize(len(v))
 		default:
-			logger.Fatalf("data type %s mismatch %T", tc, v)
+			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
 	case tcNvarchar, tcNstring:
 		switch v := v.(type) {
@@ -277,7 +279,7 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 		case string:
 			return stringSize(cesu8.StringSize(v))
 		default:
-			logger.Fatalf("data type %s mismatch %T", tc, v)
+			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
 	case tcBlob, tcClob, tcNclob:
 		return lobInputDescriptorSize, nil

@@ -79,7 +79,7 @@ func (id *resultsetID) read(rd *bufio.Reader) error {
 	*id.id = _id
 
 	if trace {
-		logger.Printf("resultset id: %d", *id.id)
+		outLogger.Printf("resultset id: %d", *id.id)
 	}
 
 	return nil
@@ -91,7 +91,7 @@ func (id *resultsetID) write(wr *bufio.Writer) error {
 		return err
 	}
 	if trace {
-		logger.Printf("resultset id: %d", *id.id)
+		outLogger.Printf("resultset id: %d", *id.id)
 	}
 
 	return nil
@@ -241,7 +241,7 @@ func (r *resultMetadata) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("read %s", r)
+		outLogger.Printf("read %s", r)
 	}
 
 	return nil
@@ -271,7 +271,7 @@ func (r *resultset) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("read %s", r)
+		outLogger.Printf("read %s", r)
 	}
 	return nil
 }

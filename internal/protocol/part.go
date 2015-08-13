@@ -132,7 +132,7 @@ func (h *partHeader) write(wr *bufio.Writer) error {
 	//no filler
 
 	if trace {
-		logger.Printf("write part header: %s", h)
+		outLogger.Printf("write part header: %s", h)
 	}
 
 	return nil
@@ -167,7 +167,7 @@ func (h *partHeader) read(rd *bufio.Reader) error {
 	// no filler
 
 	if trace {
-		logger.Printf("read part header: %s", h)
+		outLogger.Printf("read part header: %s", h)
 	}
 
 	return nil

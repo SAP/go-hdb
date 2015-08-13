@@ -66,7 +66,7 @@ func newSessionPrm(dsn string) (*sessionPrm, error) {
 	}
 
 	if trace {
-		logger.Printf("bufferSize %d fetchSize %d timeout %d", bufferSize, fetchSize, timeout)
+		outLogger.Printf("bufferSize %d fetchSize %d timeout %d", bufferSize, fetchSize, timeout)
 	}
 
 	return &sessionPrm{

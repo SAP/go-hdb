@@ -201,7 +201,7 @@ func (m *parameterMetadata) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("read %s", m)
+		outLogger.Printf("read %s", m)
 	}
 
 	return nil
@@ -280,7 +280,7 @@ func (m parameters) write(wr *bufio.Writer) error {
 	}
 
 	if trace {
-		logger.Printf("parameters: %s", m)
+		outLogger.Printf("parameters: %s", m)
 	}
 
 	return nil
@@ -310,7 +310,7 @@ func (r *outputParameters) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("read %s", r)
+		outLogger.Printf("read %s", r)
 	}
 	return nil
 }

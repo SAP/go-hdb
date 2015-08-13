@@ -55,7 +55,7 @@ func (c *statementContext) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("statement context: %v", c)
+		outLogger.Printf("statement context: %v", c)
 	}
 
 	return nil

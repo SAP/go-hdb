@@ -24,6 +24,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 
+	"github.wdf.sap.corp/xs2/go-hdi/internal/logger"
+
 	"github.com/SAP/go-hdb/internal/bufio"
 )
 
@@ -121,7 +123,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("salt size %d", size)
+		outLogger.Printf("salt size %d", size)
 	}
 
 	r.salt = make([]byte, size)
@@ -129,7 +131,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("salt %v", r.salt)
+		outLogger.Printf("salt %v", r.salt)
 	}
 
 	size, err = rd.ReadByte()
@@ -142,7 +144,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("server challenge %v", r.serverChallenge)
+		outLogger.Printf("server challenge %v", r.serverChallenge)
 	}
 
 	return nil

@@ -42,7 +42,7 @@ func (c command) write(wr *bufio.Writer) error {
 		return err
 	}
 	if trace {
-		logger.Printf("command: %s", c)
+		outLogger.Printf("command: %s", c)
 	}
 
 	return nil

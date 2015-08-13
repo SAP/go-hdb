@@ -105,7 +105,7 @@ func (o plainOptions) size() int {
 	for _, v := range o {
 		switch v := v.(type) {
 		default:
-			logger.Fatalf("type %T not implemented", v)
+			outLogger.Fatalf("type %T not implemented", v)
 		case booleanType:
 			size++
 		case intType:
@@ -140,7 +140,7 @@ func (o plainOptions) read(rd *bufio.Reader, cnt int) error {
 		switch typeCode(tc) {
 
 		default:
-			logger.Fatalf("type code %s not implemented", typeCode(tc))
+			outLogger.Fatalf("type code %s not implemented", typeCode(tc))
 
 		case tcBoolean:
 			if v, err := rd.ReadBool(); err == nil {
@@ -209,7 +209,7 @@ func (o plainOptions) write(wr *bufio.Writer) error {
 		switch v := v.(type) {
 
 		default:
-			logger.Fatalf("type %T not implemented", v)
+			outLogger.Fatalf("type %T not implemented", v)
 
 		case booleanType:
 			if err := wr.WriteInt8(int8(tcBoolean)); err != nil {

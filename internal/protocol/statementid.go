@@ -53,7 +53,7 @@ func (id *statementID) read(rd *bufio.Reader) error {
 	*id.id = _id
 
 	if trace {
-		logger.Printf("statement id: %d", *id.id)
+		outLogger.Printf("statement id: %d", *id.id)
 	}
 
 	return nil
@@ -66,7 +66,7 @@ func (id statementID) write(wr *bufio.Writer) error {
 	}
 
 	if trace {
-		logger.Printf("statement id: %d", *id.id)
+		outLogger.Printf("statement id: %d", *id.id)
 	}
 
 	return nil

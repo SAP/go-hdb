@@ -57,7 +57,7 @@ func (r *rowsAffected) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("rows affected %v", r.sums)
+		outLogger.Printf("rows affected %v", r.sums)
 	}
 
 	return nil

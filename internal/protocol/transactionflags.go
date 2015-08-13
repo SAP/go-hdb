@@ -55,7 +55,7 @@ func (f *transactionFlags) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("transaction flags: %v", f)
+		outLogger.Printf("transaction flags: %v", f)
 	}
 
 	return nil

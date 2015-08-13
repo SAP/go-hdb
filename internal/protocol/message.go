@@ -66,7 +66,7 @@ func (h *messageHeader) write(wr *bufio.Writer) error {
 	}
 
 	if trace {
-		logger.Printf("write message header: %s", h)
+		outLogger.Printf("write message header: %s", h)
 	}
 
 	return nil
@@ -96,7 +96,7 @@ func (h *messageHeader) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("read message header: %s", h)
+		outLogger.Printf("read message header: %s", h)
 	}
 
 	return nil

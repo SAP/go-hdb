@@ -94,7 +94,7 @@ func (o *connectOptions) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("connect options: %v", o)
+		outLogger.Printf("connect options: %v", o)
 	}
 
 	return nil
@@ -106,7 +106,7 @@ func (o *connectOptions) write(wr *bufio.Writer) error {
 		return err
 	}
 	if trace {
-		logger.Printf("connect options: %v", o)
+		outLogger.Printf("connect options: %v", o)
 	}
 
 	return nil

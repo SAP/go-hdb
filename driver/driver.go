@@ -85,6 +85,9 @@ func newConn(dsn string) (driver.Conn, error) {
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
+	if c.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	prepareQuery, bulkInsert := checkBulkInsert(query)
 
@@ -105,6 +108,10 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) Begin() (driver.Tx, error) {
+	if c.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
+
 	if c.session.InTx() {
 		return nil, fmt.Errorf("nested transactions are not supported")
 	}
@@ -115,6 +122,9 @@ func (c *conn) Begin() (driver.Tx, error) {
 
 // Exec implements the database/sql/driver/Execer interface.
 func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
+	if c.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	if len(args) != 0 {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
@@ -133,6 +143,9 @@ func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
 
 // Queryer implements the database/sql/driver/Queryer interface.
 func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
+	if c.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	if len(args) != 0 {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
@@ -177,10 +190,18 @@ func newTx(session *p.Session) *tx {
 }
 
 func (t *tx) Commit() error {
+	if t.session.IsBad() {
+		return driver.ErrBadConn
+	}
+
 	return t.session.Commit()
 }
 
 func (t *tx) Rollback() error {
+	if t.session.IsBad() {
+		return driver.ErrBadConn
+	}
+
 	return t.session.Rollback()
 }
 
@@ -207,6 +228,9 @@ func (s *stmt) NumInput() int {
 }
 
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
+	if s.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	numField := s.prmFieldSet.NumInputField()
 	if len(args) != numField {
@@ -221,6 +245,9 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 }
 
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
+	if s.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	switch s.qt {
 	default:
@@ -287,6 +314,9 @@ func (s *bulkInsertStmt) NumInput() int {
 }
 
 func (s *bulkInsertStmt) Exec(args []driver.Value) (driver.Result, error) {
+	if s.session.IsBad() {
+		return nil, driver.ErrBadConn
+	}
 
 	if sqlTrace {
 		sqlLogger.Printf("%s %v", s.query, args)
@@ -371,7 +401,7 @@ func (r *queryResult) Columns() []string {
 }
 
 func (r *queryResult) Close() error {
-	// if lastError is set attrs are nil
+	// if lastError is set, attrs are nil
 	if r.lastErr != nil {
 		return r.lastErr
 	}
@@ -383,6 +413,10 @@ func (r *queryResult) Close() error {
 }
 
 func (r *queryResult) Next(dest []driver.Value) error {
+	if r.session.IsBad() {
+		return driver.ErrBadConn
+	}
+
 	if r.pos >= r.fieldValues.NumRow() {
 		if r.attrs.LastPacket() {
 			return io.EOF
@@ -521,6 +555,9 @@ func (r *procedureCallResult) Close() error {
 }
 
 func (r *procedureCallResult) Next(dest []driver.Value) error {
+	if r.session.IsBad() {
+		return driver.ErrBadConn
+	}
 
 	if r.eof != nil {
 		return r.eof

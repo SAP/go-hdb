@@ -163,7 +163,7 @@ func (h *segmentHeader) write(wr *bufio.Writer) error {
 	}
 
 	if trace {
-		logger.Printf("write segment header: %s", h)
+		outLogger.Printf("write segment header: %s", h)
 	}
 
 	return nil
@@ -231,7 +231,7 @@ func (h *segmentHeader) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("read segment header: %s", h)
+		outLogger.Printf("read segment header: %s", h)
 	}
 
 	return nil

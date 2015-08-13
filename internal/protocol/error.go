@@ -118,7 +118,7 @@ func (e *hdbError) read(rd *bufio.Reader) error {
 		return err
 	}
 	if trace {
-		logger.Printf("error: %s", e)
+		outLogger.Printf("error: %s", e)
 	}
 
 	return nil

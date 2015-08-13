@@ -19,6 +19,8 @@ package protocol
 import (
 	"fmt"
 
+	"github.wdf.sap.corp/xs2/go-hdi/internal/logger"
+
 	"github.com/SAP/go-hdb/internal/bufio"
 )
 
@@ -110,7 +112,7 @@ func (r *initRequest) read(rd *bufio.Reader) error {
 
 	switch r.numOptions {
 	default:
-		logger.Fatalf("invalid number of options %d", r.numOptions)
+		outLogger.Fatalf("invalid number of options %d", r.numOptions)
 
 	case 0:
 		if err := rd.Skip(2); err != nil {
@@ -133,7 +135,7 @@ func (r *initRequest) read(rd *bufio.Reader) error {
 	}
 
 	if trace {
-		logger.Printf("read %s", r)
+		outLogger.Printf("read %s", r)
 	}
 
 	return nil

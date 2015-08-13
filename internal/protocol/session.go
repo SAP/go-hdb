@@ -18,7 +18,6 @@ package protocol
 
 import (
 	"database/sql/driver"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -44,7 +43,10 @@ func init() {
 	flag.BoolVar(&trace, "hdb.protocol.trace", false, "enabling hdb protocol trace")
 }
 
-var logger = log.New(os.Stdout, "hdb.protocol ", log.Ldate|log.Ltime|log.Lshortfile)
+var (
+	outLogger = log.New(os.Stdout, "hdb.protocol ", log.Ldate|log.Ltime|log.Lshortfile)
+	errLogger = log.New(os.Stderr, "hdb.protocol ", log.Ldate|log.Ltime|log.Lshortfile)
+)
 
 //padding
 const (
@@ -58,16 +60,14 @@ func padBytes(size int) int {
 	return 0
 }
 
-var errConn = errors.New("connection error")
-var errProtocol = errors.New("protocol error")
-
 // SessionConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type sessionConn struct {
 	addr            string
 	timeoutDuration time.Duration
 	conn            net.Conn
-	lastError       error
-	inTx            bool // in transaction
+	isBad           bool  // bad connection
+	badError        error // error cause for session bad state
+	inTx            bool  // in transaction
 }
 
 func newSessionConn(addr string, timeout int) (*sessionConn, error) {
@@ -88,57 +88,17 @@ func (c *sessionConn) close() error {
 	return c.conn.Close()
 }
 
-// Init sets the connection state variables back to their initial values.
-func (c *sessionConn) init() {
-	c.lastError = nil
-	c.inTx = false
-}
-
-// Reconnect tries to establish the tcp connection again.
-func (c *sessionConn) reconnect() error {
-	var err error
-
-	c.conn.Close() // ignore error
-
-	c.conn, err = net.DialTimeout("tcp", c.addr, c.timeoutDuration)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Retry tries to reconnect, if the last error was connection related.
-// Retry mustn't be called if lastError is nil.
-func (c *sessionConn) retry() bool {
-	switch c.lastError {
-	default:
-		panic("unknown session error") // should never happen
-	case errProtocol: // cannot heal this
-		return false
-	case errConn:
-		// try to reconnect
-		if err := c.reconnect(); err != nil {
-			return false
-		}
-		c.init()
-		return true
-	}
-}
-
 // Read implements the io.Reader interface.
 func (c *sessionConn) Read(b []byte) (int, error) {
-	if c.lastError != nil && !c.retry() {
-		return 0, driver.ErrBadConn
-	}
-
 	//set timeout
 	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
-		c.lastError = errConn
-		return 0, driver.ErrBadConn
+		return 0, err
 	}
 	n, err := c.conn.Read(b)
 	if err != nil {
-		c.lastError = errProtocol
+		errLogger.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		c.isBad = true
+		c.badError = err
 		return n, driver.ErrBadConn
 	}
 	return n, nil
@@ -146,18 +106,15 @@ func (c *sessionConn) Read(b []byte) (int, error) {
 
 // Write implements the io.Writer interface.
 func (c *sessionConn) Write(b []byte) (int, error) {
-	if c.lastError != nil && !c.retry() {
-		return 0, driver.ErrBadConn
-	}
-
 	//set timeout
 	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
-		c.lastError = errConn
-		return 0, driver.ErrBadConn
+		return 0, err
 	}
 	n, err := c.conn.Write(b)
 	if err != nil {
-		c.lastError = errProtocol
+		errLogger.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		c.isBad = true
+		c.badError = err
 		return n, driver.ErrBadConn
 	}
 	return n, nil
@@ -267,6 +224,16 @@ func (s *Session) SetInTx(v bool) {
 	s.conn.inTx = v
 }
 
+// IsBad indicates, that the session is in bad state.
+func (s *Session) IsBad() bool {
+	return s.conn.isBad
+}
+
+// BadErr returns the error, that caused the bad session state.
+func (s *Session) BadErr() error {
+	return s.conn.badError
+}
+
 func (s *Session) init() error {
 
 	if err := s.initRequest(); err != nil {
@@ -298,7 +265,7 @@ func (s *Session) init() error {
 	}
 
 	if trace {
-		logger.Printf("sessionId %d", id)
+		outLogger.Printf("sessionId %d", id)
 	}
 
 	return nil
@@ -655,7 +622,7 @@ func (s *Session) Commit() error {
 	}
 
 	if trace {
-		logger.Printf("transaction flags: %s", s.txFlags)
+		outLogger.Printf("transaction flags: %s", s.txFlags)
 	}
 
 	s.conn.inTx = false
@@ -674,7 +641,7 @@ func (s *Session) Rollback() error {
 	}
 
 	if trace {
-		logger.Printf("transaction flags: %s", s.txFlags)
+		outLogger.Printf("transaction flags: %s", s.txFlags)
 	}
 
 	s.conn.inTx = false
@@ -913,10 +880,8 @@ func (s *Session) readReply(providePart providePart, beforeRead beforeRead) erro
 
 	// TODO: protocol error (sps 82)?: message header varPartLength < segment header segmentLength (*1)
 	diff := int(s.mh.varPartLength) - int(s.sh.segmentLength)
-	if trace {
-		if diff != 0 {
-			logger.Printf("+++++diff %d", diff)
-		}
+	if trace && diff != 0 {
+		outLogger.Printf("+++++diff %d", diff)
 	}
 
 	noOfParts := int(s.sh.noOfParts)

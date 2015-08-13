@@ -41,7 +41,7 @@ func (s fetchsize) write(wr *bufio.Writer) error {
 		return err
 	}
 	if trace {
-		logger.Printf("fetchsize: %d", s)
+		outLogger.Printf("fetchsize: %d", s)
 	}
 
 	return nil

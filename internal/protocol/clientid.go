@@ -50,7 +50,7 @@ func (id clientID) write(wr *bufio.Writer) error {
 		return err
 	}
 	if trace {
-		logger.Printf("client id: %s", id)
+		outLogger.Printf("client id: %s", id)
 	}
 	return nil
 }
