@@ -17,6 +17,8 @@ limitations under the License.
 package driver
 
 import (
+	"database/sql"
+	"fmt"
 	"testing"
 )
 
@@ -44,5 +46,33 @@ func TestCheckBulkInsert(t *testing.T) {
 		if sql != d.sql {
 			t.Fatalf("test %d failed: sql %s - %s expected", i, sql, d.sql)
 		}
+	}
+}
+
+func TestInsertByQuery(t *testing.T) {
+
+	db, err := sql.Open(DriverName, TestDsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	table := RandomIdentifier("insertByQuery_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer)", TestSchema, table)); err != nil {
+		t.Fatal(err)
+	}
+
+	// insert value via Query
+	if err := db.QueryRow(fmt.Sprintf("insert into %s.%s values (?)", TestSchema, table), 42).Scan(); err != sql.ErrNoRows {
+		t.Fatal(err)
+	}
+
+	// check value
+	var i int
+	if err := db.QueryRow(fmt.Sprintf("select * from %s.%s", TestSchema, table)).Scan(&i); err != nil {
+		t.Fatal(err)
+	}
+	if i != 42 {
+		t.Fatalf("value %d - expected %d", i, 42)
 	}
 }

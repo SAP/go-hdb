@@ -175,6 +175,9 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 	if err != nil {
 		return nil, err
 	}
+	if id == 0 { // non select query
+		return noResult, nil
+	}
 	return newQueryResult(c.session, id, meta, values, attributes)
 }
 
@@ -269,7 +272,9 @@ func (s *stmt) defaultQuery(args []driver.Value) (driver.Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	if rid == 0 { // non select query
+		return noResult, nil
+	}
 	return newQueryResult(s.session, rid, s.resultFieldSet, values, attributes)
 }
 
@@ -368,7 +373,17 @@ func (s *bulkInsertStmt) ColumnConverter(idx int) driver.ValueConverter {
 	return columnConverter(s.parameterFieldSet.DataType(idx))
 }
 
-//query result
+// driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that doesn't return rows
+var noColumns = []string{}
+var noResult = new(noResultType)
+
+type noResultType struct{}
+
+func (r *noResultType) Columns() []string              { return noColumns }
+func (r *noResultType) Close() error                   { return nil }
+func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
+
+// query result
 type queryResult struct {
 	session     *p.Session
 	id          uint64
