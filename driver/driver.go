@@ -32,6 +32,9 @@ import (
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
+// DriverVersion is the version number of the hdb driver.
+const DriverVersion = "0.2.0"
+
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
 
@@ -77,7 +80,11 @@ type conn struct {
 }
 
 func newConn(dsn string) (driver.Conn, error) {
-	session, err := p.NewSession(dsn)
+	sessionPrm, err := parseDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	session, err := p.NewSession(sessionPrm)
 	if err != nil {
 		return nil, err
 	}

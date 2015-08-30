@@ -104,7 +104,7 @@ func (d *Decimal) Scan(src interface{}) error {
 	}
 
 	if (b[15] & 0x60) == 0x60 {
-		return fmt.Errorf("decimal: format (infinity, nan, ...) not supported :v", b)
+		return fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", b)
 	}
 
 	v := (*big.Rat)(d)

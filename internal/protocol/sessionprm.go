@@ -16,66 +16,14 @@ limitations under the License.
 
 package protocol
 
-import (
-	"net/url"
-	"strconv"
-)
+import "fmt"
 
-const (
-	queryLocale     = "locale"
-	queryBufferSize = "bufferSize"
-	queryFetchSize  = "fetchSize"
-	queryTimeout    = "timeout"
-)
-
-const (
-	defFetchSize = 128
-	defTimeout   = 300
-)
-
-type sessionPrm struct {
-	host, username, password       string
-	locale                         string
-	bufferSize, fetchSize, timeout int
+type SessionPrm struct {
+	Host, Username, Password       string
+	Locale                         string
+	BufferSize, FetchSize, Timeout int
 }
 
-func newSessionPrm(dsn string) (*sessionPrm, error) {
-
-	url, err := url.Parse(dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	var username, password string
-	if url.User != nil {
-		username = url.User.Username()
-		password, _ = url.User.Password()
-	}
-
-	values := url.Query()
-
-	bufferSize, err := strconv.Atoi(values.Get(queryBufferSize))
-
-	fetchSize, err := strconv.Atoi(values.Get(queryFetchSize))
-	if err != nil {
-		fetchSize = defFetchSize
-	}
-	timeout, err := strconv.Atoi(values.Get(queryTimeout))
-	if err != nil {
-		timeout = defTimeout
-	}
-
-	if trace {
-		outLogger.Printf("bufferSize %d fetchSize %d timeout %d", bufferSize, fetchSize, timeout)
-	}
-
-	return &sessionPrm{
-		host:       url.Host,
-		username:   username,
-		password:   password,
-		locale:     values.Get(queryLocale),
-		bufferSize: bufferSize,
-		fetchSize:  fetchSize,
-		timeout:    timeout,
-	}, nil
+func (p *SessionPrm) String() string {
+	return fmt.Sprintf("session parameters: bufferSize %d fetchSize %d timeout %d locale %s", p.BufferSize, p.FetchSize, p.Timeout, p.Locale)
 }

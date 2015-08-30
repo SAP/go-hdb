@@ -35,7 +35,7 @@ func dsn() string {
 }
 
 // ExampleDsn shows how to construct a dsn (data source name) as url.
-func Example_dsn() {
+func ExampleDSN() {
 	db, err := sql.Open(driver.DriverName, dsn())
 	if err != nil {
 		log.Fatal(err)

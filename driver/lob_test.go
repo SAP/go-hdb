@@ -199,5 +199,4 @@ func compare(filename string, lob io.Reader) error {
 			return fmt.Errorf("diff pos %d %x - expected %x", i, b2, b1)
 		}
 	}
-	return nil
 }

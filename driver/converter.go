@@ -86,7 +86,7 @@ type dbUnknownType struct{}
 var _ driver.ValueConverter = dbUnknownType{} //check that type implements interface
 
 func (t dbUnknownType) ConvertValue(v interface{}) (driver.Value, error) {
-	return nil, fmt.Errorf("column converter for data type %s is not implemented")
+	return nil, fmt.Errorf("column converter for data %v type %T is not implemented", v, v)
 }
 
 // int types

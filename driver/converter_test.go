@@ -150,7 +150,7 @@ func assertEqualString(t *testing.T, dt p.DataType, v interface{}, r string) {
 		t.Fatal(err)
 	}
 	if cv.(string) != r {
-		t.Fatalf("assert equal string failed %v - %f expected", cv, r)
+		t.Fatalf("assert equal string failed %v - %s expected", cv, r)
 	}
 }
 
@@ -181,7 +181,7 @@ func assertEqualBytes(t *testing.T, dt p.DataType, v interface{}, r []byte) {
 		t.Fatal(err)
 	}
 	if bytes.Compare(cv.([]byte), r) != 0 {
-		t.Fatalf("assert equal bytes failed %v - %f expected", cv, r)
+		t.Fatalf("assert equal bytes failed %v - %v expected", cv, r)
 	}
 }
 

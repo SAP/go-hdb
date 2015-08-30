@@ -125,7 +125,7 @@ type beforeRead func(p replyPart)
 
 // Session represents a HDB session.
 type Session struct {
-	prm *sessionPrm
+	prm *SessionPrm
 
 	conn *sessionConn
 	rd   *bufio.Reader
@@ -154,23 +154,22 @@ type Session struct {
 }
 
 // NewSession creates a new database session.
-func NewSession(dsn string) (*Session, error) {
+func NewSession(prm *SessionPrm) (*Session, error) {
 
-	prm, err := newSessionPrm(dsn)
-	if err != nil {
-		return nil, err
+	if trace {
+		outLogger.Printf("%s", prm)
 	}
 
-	conn, err := newSessionConn(prm.host, prm.timeout)
+	conn, err := newSessionConn(prm.Host, prm.Timeout)
 	if err != nil {
 		return nil, err
 	}
 
 	var rd *bufio.Reader
 	var wr *bufio.Writer
-	if prm.bufferSize > 0 {
-		rd = bufio.NewReaderSize(conn, prm.bufferSize)
-		wr = bufio.NewWriterSize(conn, prm.bufferSize)
+	if prm.BufferSize > 0 {
+		rd = bufio.NewReaderSize(conn, prm.BufferSize)
+		wr = bufio.NewWriterSize(conn, prm.BufferSize)
 	} else {
 		rd = bufio.NewReader(conn)
 		wr = bufio.NewWriter(conn)
@@ -275,13 +274,13 @@ func (s *Session) authenticateScramsha256() error {
 	tr := unicode.Utf8ToCesu8Transformer
 	tr.Reset()
 
-	username := make([]byte, cesu8.StringSize(s.prm.username))
-	if _, _, err := tr.Transform(username, []byte(s.prm.username), true); err != nil {
+	username := make([]byte, cesu8.StringSize(s.prm.Username))
+	if _, _, err := tr.Transform(username, []byte(s.prm.Username), true); err != nil {
 		return err // should never happen
 	}
 
-	password := make([]byte, cesu8.StringSize(s.prm.password))
-	if _, _, err := tr.Transform(password, []byte(s.prm.password), true); err != nil {
+	password := make([]byte, cesu8.StringSize(s.prm.Password))
+	if _, _, err := tr.Transform(password, []byte(s.prm.Password), true); err != nil {
 		return err //should never happen
 	}
 
@@ -325,7 +324,7 @@ func (s *Session) authenticateScramsha256() error {
 	co.set(coDataFormatVersion, dfvBaseline)
 	co.set(coDataFormatVersion2, dfvBaseline)
 	co.set(coCompleteArrayExecution, booleanType(true))
-	co.set(coClientLocale, stringType(s.prm.locale))
+	co.set(coClientLocale, stringType(s.prm.Locale))
 	co.set(coClientDistributionMode, cdmOff)
 
 	if err := s.writeRequest(mtConnect, false, freq, id, co); err != nil {
@@ -570,7 +569,7 @@ func (s *Session) Query(stmtID uint64, parameterFieldSet *FieldSet, resultFieldS
 // FetchNext fetches next chunk in query result set.
 func (s *Session) FetchNext(id uint64, resultFieldSet *FieldSet) (*FieldValues, PartAttributes, error) {
 	s.resultsetID.id = &id
-	if err := s.writeRequest(mtFetchNext, false, s.resultsetID, fetchsize(s.prm.fetchSize)); err != nil {
+	if err := s.writeRequest(mtFetchNext, false, s.resultsetID, fetchsize(s.prm.FetchSize)); err != nil {
 		return nil, nil, err
 	}
 

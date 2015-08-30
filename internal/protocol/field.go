@@ -136,8 +136,6 @@ func (f *FieldSet) OutputNames(names []string) error {
 type FieldValues struct {
 	s *Session
 
-	fieldSet *FieldSet
-
 	rows    int
 	cols    int
 	lobCols int
@@ -149,6 +147,10 @@ type FieldValues struct {
 
 func newFieldValues(s *Session) *FieldValues {
 	return &FieldValues{s: s}
+}
+
+func (f *FieldValues) String() string {
+	return fmt.Sprintf("rows %d columns %d lob columns %d", f.rows, f.cols, f.lobCols)
 }
 
 func (f *FieldValues) init(rows int, fieldSet *FieldSet) {
@@ -164,7 +166,6 @@ func (f *FieldValues) init(rows int, fieldSet *FieldSet) {
 			cols++
 		}
 	}
-	f.fieldSet = fieldSet
 	f.rows = rows
 	f.cols = cols
 	f.lobCols = lobCols
@@ -177,7 +178,7 @@ func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error
 
 	for i := 0; i < f.rows; i++ {
 		j := 0
-		for _, field := range f.fieldSet.fields {
+		for _, field := range fieldSet.fields {
 
 			if !field.out() {
 				continue
