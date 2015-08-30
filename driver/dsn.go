@@ -44,13 +44,13 @@ const (
 /*
 DSN is here for the purposes of documentation only. A DSN string is an URL string with the following format
 
-hdb://<username>:<password>@<host address>:<port number>
+	hdb://<username>:<password>@<host address>:<port number>
 
 and optional query parameters (see DSN query parameters and DSN query default values).
 
 Example:
 
-hdb://myuser:mypassword@localhost:30015?timeout=60
+	hdb://myuser:mypassword@localhost:30015?timeout=60
 */
 type DSN string
 
