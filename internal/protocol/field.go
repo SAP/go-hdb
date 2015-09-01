@@ -153,28 +153,22 @@ func (f *FieldValues) String() string {
 	return fmt.Sprintf("rows %d columns %d lob columns %d", f.rows, f.cols, f.lobCols)
 }
 
-func (f *FieldValues) init(rows int, fieldSet *FieldSet) {
+func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error {
+	f.rows = rows
 	f.descrs = make([]*LobReadDescr, 0)
 
-	cols, lobCols := 0, 0
+	f.cols, f.lobCols = 0, 0
 	for _, field := range fieldSet.fields {
 		if field.out() {
 			if field.typeCode().isLob() {
-				f.descrs = append(f.descrs, &LobReadDescr{col: cols})
-				lobCols++
+				f.descrs = append(f.descrs, &LobReadDescr{col: f.cols})
+				f.lobCols++
 			}
-			cols++
+			f.cols++
 		}
 	}
-	f.rows = rows
-	f.cols = cols
-	f.lobCols = lobCols
-	f.values = make([]driver.Value, rows*cols)
-	f.writers = make([]lobWriter, lobCols)
-}
-
-func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error {
-	f.init(rows, fieldSet)
+	f.values = make([]driver.Value, f.rows*f.cols)
+	f.writers = make([]lobWriter, f.lobCols)
 
 	for i := 0; i < f.rows; i++ {
 		j := 0

@@ -23,14 +23,14 @@ import (
 	"testing"
 )
 
-func TestProcedure(t *testing.T) {
+func TestCall1(t *testing.T) {
 	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	procedure := RandomIdentifier(fmt.Sprintf("%s_", "proc01"))
+	procedure := RandomIdentifier("proc01_")
 
 	if _, err := db.Exec(fmt.Sprintf(proc01, TestSchema, procedure)); err != nil {
 		t.Fatal(err)
@@ -126,15 +126,15 @@ func checkTableQueryData(t *testing.T, db *sql.DB, query string, data []*testTab
 	}
 }
 
-func TestProcedure2(t *testing.T) {
+func TestCall2(t *testing.T) {
 	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	tableType := RandomIdentifier(fmt.Sprintf("%s_", "tt2"))
-	procedure := RandomIdentifier(fmt.Sprintf("%s_", "proc02"))
+	tableType := RandomIdentifier("tt2_")
+	procedure := RandomIdentifier("proc02_")
 
 	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
 		t.Fatal(err)
@@ -145,11 +145,6 @@ func TestProcedure2(t *testing.T) {
 	}
 
 	var tableQuery1, tableQuery2, tableQuery3 string
-
-	// TODO: documentation -> stmt close will be triggered -> error
-	//if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", tSchema, procedure), 1).Scan(&tableQuery1, &tableQuery2, &tableQuery3); err != nil {
-	//	t.Fatal(err)
-	//}
 
 	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, procedure), 1)
 	if err != nil {
