@@ -470,7 +470,7 @@ func (s *Session) Exec(id uint64, parameterFieldSet *FieldSet, args []driver.Val
 	}
 
 	if wlr.numArg > 0 {
-		if err := s.writeLobStream(parameterFieldSet, args, wlr); err != nil {
+		if err := s.writeLobStream(parameterFieldSet, nil, args, wlr); err != nil {
 			return nil, err
 		}
 	}
@@ -501,11 +501,22 @@ func (s *Session) Call(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*
 		return nil, nil, err
 	}
 
+	wlr := newWriteLobReply() //lob streaming
+
+	f := func(pk partKind) replyPart {
+		switch pk {
+		case pkWriteLobReply:
+			return wlr
+		default:
+			return nil
+		}
+	}
+
 	prmFieldValues := newFieldValues(s)
 	var tableResults []*TableResult
 	var tableResult *TableResult
 
-	f := func(p replyPart) {
+	g := func(p replyPart) {
 
 		switch p := p.(type) {
 
@@ -527,8 +538,14 @@ func (s *Session) Call(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*
 		}
 	}
 
-	if err := s.readReply(nil, f); err != nil {
+	if err := s.readReply(f, g); err != nil {
 		return nil, nil, err
+	}
+
+	if wlr.numArg > 0 {
+		if err := s.writeLobStream(prmFieldSet, prmFieldValues, args, wlr); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return prmFieldValues, tableResults, nil
@@ -685,7 +702,7 @@ func (s *Session) readLobStream(writers []lobWriter) error {
 	return nil
 }
 
-func (s *Session) writeLobStream(parameterFieldSet *FieldSet, args []driver.Value, reply *writeLobReply) error {
+func (s *Session) writeLobStream(prmFieldSet *FieldSet, prmFieldValues *FieldValues, args []driver.Value, reply *writeLobReply) error {
 
 	num := reply.numArg
 	readers := make([]lobReader, num)
@@ -693,9 +710,9 @@ func (s *Session) writeLobStream(parameterFieldSet *FieldSet, args []driver.Valu
 	request := newWriteLobRequest(readers)
 
 	j := 0
-	for i, field := range parameterFieldSet.fields {
+	for i, field := range prmFieldSet.fields {
 
-		if field.typeCode().isLob() {
+		if field.typeCode().isLob() && field.in() {
 
 			ptr, ok := args[i].(int64)
 			if !ok {
@@ -730,12 +747,19 @@ func (s *Session) writeLobStream(parameterFieldSet *FieldSet, args []driver.Valu
 		}
 	}
 
+	g := func(p replyPart) {
+		if p, ok := p.(*outputParameters); ok {
+			p.fieldSet = prmFieldSet
+			p.fieldValues = prmFieldValues
+		}
+	}
+
 	for reply.numArg != 0 {
 		if err := s.writeRequest(mtReadLob, false, request); err != nil {
 			return err
 		}
 
-		if err := s.readReply(f, nil); err != nil {
+		if err := s.readReply(f, g); err != nil {
 			return err
 		}
 	}

@@ -17,37 +17,85 @@ limitations under the License.
 package driver
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"log"
 	"testing"
 )
 
-func TestCall1(t *testing.T) {
+func TestCallEcho(t *testing.T) {
+	const procEcho = `create procedure %[1]s.%[2]s (in idata nvarchar(25), out odata nvarchar(25))
+language SQLSCRIPT as
+begin
+    odata := idata;
+end
+`
+
+	const txt = "Hello World!"
+
 	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	procedure := RandomIdentifier("proc01_")
+	procedure := RandomIdentifier("procEcho_")
 
-	if _, err := db.Exec(fmt.Sprintf(proc01, TestSchema, procedure)); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := db.Query(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), "test"); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(procEcho, TestSchema, procedure)); err != nil {
 		t.Fatal(err)
 	}
 
 	var out string
 
-	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), "test").Scan(&out); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), txt).Scan(&out); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Logf("out: %s", out)
+	if out != txt {
+		t.Fatalf("value %s - expected %s", out, txt)
+	}
 
+}
+
+func TestCallBlobEcho(t *testing.T) {
+	const procBlobEcho = `create procedure %[1]s.%[2]s (in idata blob, out odata blob)
+language SQLSCRIPT as
+begin
+  odata := idata;
+end
+`
+
+	const txt = "Hello World!"
+
+	db, err := sql.Open(DriverName, TestDsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	procedure := RandomIdentifier("procBlobEcho_")
+
+	if _, err := db.Exec(fmt.Sprintf(procBlobEcho, TestSchema, procedure)); err != nil {
+		t.Fatal(err)
+	}
+
+	inlob := new(Lob)
+	inlob.SetReader(bytes.NewReader([]byte(txt)))
+
+	b := new(bytes.Buffer)
+	outlob := new(Lob)
+	outlob.SetWriter(b)
+
+	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), inlob).Scan(outlob); err != nil {
+		t.Fatal(err)
+	}
+
+	out := b.String()
+
+	if out != txt {
+		t.Fatalf("value %s - expected %s", out, txt)
+	}
 }
 
 type testTableData struct {
@@ -126,53 +174,8 @@ func checkTableQueryData(t *testing.T, db *sql.DB, query string, data []*testTab
 	}
 }
 
-func TestCall2(t *testing.T) {
-	db, err := sql.Open(DriverName, TestDsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	tableType := RandomIdentifier("tt2_")
-	procedure := RandomIdentifier("proc02_")
-
-	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := db.Exec(fmt.Sprintf(proc02, TestSchema, procedure, tableType)); err != nil {
-		t.Fatal(err)
-	}
-
-	var tableQuery1, tableQuery2, tableQuery3 string
-
-	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, procedure), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		log.Fatal(rows.Err())
-	}
-	if err := rows.Scan(&tableQuery1, &tableQuery2, &tableQuery3); err != nil {
-		log.Fatal(err)
-	}
-
-	checkTableQueryData(t, db, tableQuery1, testTableQuery1Data)
-	checkTableQueryData(t, db, tableQuery2, testTableQuery2Data)
-	checkTableQueryData(t, db, tableQuery3, testTableQuery3Data)
-
-}
-
-const proc01 = `create procedure %s.%s (in "DUMMY" nvarchar(25), out "MESSAGE" nvarchar(1024))
-language SQLSCRIPT as
-begin
-    "MESSAGE" := 'Hello World!';
-end
-`
-
-const proc02 = `create procedure %[1]s.%[2]s (in i integer, out t1 %[1]s.%[3]s, out t2 %[1]s.%[3]s, out t3 %[1]s.%[3]s)
+func TestCallTableOut(t *testing.T) {
+	const procTableOut = `create procedure %[1]s.%[2]s (in i integer, out t1 %[1]s.%[3]s, out t2 %[1]s.%[3]s, out t3 %[1]s.%[3]s)
 language SQLSCRIPT as
 begin
   create local temporary table #test like %[1]s.%[3]s;
@@ -197,3 +200,41 @@ begin
   drop table #test;
 end
 `
+
+	db, err := sql.Open(DriverName, TestDsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	tableType := RandomIdentifier("tt2_")
+	procedure := RandomIdentifier("procTableOut_")
+
+	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(fmt.Sprintf(procTableOut, TestSchema, procedure, tableType)); err != nil {
+		t.Fatal(err)
+	}
+
+	var tableQuery1, tableQuery2, tableQuery3 string
+
+	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, procedure), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		log.Fatal(rows.Err())
+	}
+	if err := rows.Scan(&tableQuery1, &tableQuery2, &tableQuery3); err != nil {
+		log.Fatal(err)
+	}
+
+	checkTableQueryData(t, db, tableQuery1, testTableQuery1Data)
+	checkTableQueryData(t, db, tableQuery2, testTableQuery2Data)
+	checkTableQueryData(t, db, tableQuery3, testTableQuery3Data)
+
+}
