@@ -193,7 +193,7 @@ func NewSession(prm *SessionPrm) (*Session, error) {
 		readLobRequest:    new(readLobRequest),
 		readLobReply:      new(readLobReply),
 		stmtCtx:           newStatementContext(),
-		txFlags:           newTransactionFlagsx(),
+		txFlags:           newTransactionFlags(),
 		lastError:         newHdbError(),
 	}
 

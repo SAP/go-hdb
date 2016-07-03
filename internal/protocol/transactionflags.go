@@ -27,7 +27,7 @@ type transactionFlags struct {
 	_numArg int
 }
 
-func newTransactionFlagsx() *transactionFlags {
+func newTransactionFlags() *transactionFlags {
 	return &transactionFlags{
 		options: plainOptions{},
 	}
