@@ -1,4 +1,4 @@
-// +build amd64 386
+// +build amd64 386 arm arm64
 
 /*
 Copyright 2014 SAP SE
@@ -18,5 +18,6 @@ limitations under the License.
 
 package protocol
 
-//amd64 and 386 architectures: little endian
+//amd64, 386 architectures: little endian
+//arm, arm64: go supports little endian only
 var archEndian = littleEndian
