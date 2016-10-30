@@ -21,30 +21,21 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"log"
-	"os"
 	"regexp"
 	"sync"
+
+	"github.com/SAP/go-hdb/driver/sqltrace"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.8"
+const DriverVersion = "0.8.1"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
-
-var sqlTrace bool
-
-func init() {
-	flag.BoolVar(&sqlTrace, "hdb.sqlTrace", false, "enabling hdb sql trace")
-}
-
-var sqlLogger = log.New(os.Stdout, "hdb ", log.Ldate|log.Ltime|log.Lshortfile)
 
 func init() {
 	sql.Register(DriverName, &drv{})
@@ -137,9 +128,7 @@ func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
-	if sqlTrace {
-		sqlLogger.Println(query)
-	}
+	sqltrace.Traceln(query)
 
 	return c.session.ExecDirect(query)
 }
@@ -165,9 +154,7 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 		return nil, driver.ErrSkip
 	}
 
-	if sqlTrace {
-		sqlLogger.Println(query)
-	}
+	sqltrace.Traceln(query)
 
 	id, idx, ok := decodeTableQuery(query)
 	if ok {
@@ -247,9 +234,7 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), numField)
 	}
 
-	if sqlTrace {
-		sqlLogger.Printf("%s %v", s.query, args)
-	}
+	sqltrace.Tracef("%s %v", s.query, args)
 
 	return s.session.Exec(s.id, s.prmFieldSet, args)
 }
@@ -271,9 +256,7 @@ func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
 
 func (s *stmt) defaultQuery(args []driver.Value) (driver.Rows, error) {
 
-	if sqlTrace {
-		sqlLogger.Printf("%s %v", s.query, args)
-	}
+	sqltrace.Tracef("%s %v", s.query, args)
 
 	rid, values, attributes, err := s.session.Query(s.id, s.prmFieldSet, s.resultFieldSet, args)
 	if err != nil {
@@ -287,9 +270,7 @@ func (s *stmt) defaultQuery(args []driver.Value) (driver.Rows, error) {
 
 func (s *stmt) procedureCall(args []driver.Value) (driver.Rows, error) {
 
-	if sqlTrace {
-		sqlLogger.Printf("%s %v", s.query, args)
-	}
+	sqltrace.Tracef("%s %v", s.query, args)
 
 	fieldValues, tableResults, err := s.session.Call(s.id, s.prmFieldSet, args)
 	if err != nil {
@@ -330,9 +311,7 @@ func (s *bulkInsertStmt) Exec(args []driver.Value) (driver.Result, error) {
 		return nil, driver.ErrBadConn
 	}
 
-	if sqlTrace {
-		sqlLogger.Printf("%s %v", s.query, args)
-	}
+	sqltrace.Tracef("%s %v", s.query, args)
 
 	if args == nil || len(args) == 0 {
 		return s.execFlush()
