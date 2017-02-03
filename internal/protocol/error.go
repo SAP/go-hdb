@@ -55,7 +55,7 @@ func (e *hdbError) String() string {
 
 // Error implements the Error interface.
 func (e *hdbError) Error() string {
-	return fmt.Sprintf("SQL Error %d - %s", e.errorCode, e.errorText)
+	return fmt.Sprintf("SQL %s %d - %s", e.errorLevel, e.errorCode, e.errorText)
 }
 
 // Code implements the hdb.Error interface.
@@ -68,14 +68,29 @@ func (e *hdbError) Position() int {
 	return int(e.errorPosition)
 }
 
-// Level Position implements the hdb.Error interface.
+// Level implements the hdb.Error interface.
 func (e *hdbError) Level() ErrorLevel {
 	return e.errorLevel
 }
 
-// Text Position implements the hdb.Error interface.
+// Text implements the hdb.Error interface.
 func (e *hdbError) Text() string {
 	return string(e.errorText)
+}
+
+// IsWarning implements the hdb.Error interface.
+func (e *hdbError) IsWarning() bool {
+	return e.errorLevel == HdbWarning
+}
+
+// IsError implements the hdb.Error interface.
+func (e *hdbError) IsError() bool {
+	return e.errorLevel == HdbError
+}
+
+// IsFatal implements the hdb.Error interface.
+func (e *hdbError) IsFatal() bool {
+	return e.errorLevel == HdbFatalError
 }
 
 func (e *hdbError) kind() partKind {

@@ -29,6 +29,8 @@ import (
 	"github.com/SAP/go-hdb/internal/bufio"
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
+
+	"github.com/SAP/go-hdb/driver/sqltrace"
 )
 
 const (
@@ -974,7 +976,11 @@ func (s *Session) readReply(providePart providePart, beforeRead beforeRead) erro
 	}
 
 	if replyError {
-		return s.lastError
+		if s.lastError.IsWarning() {
+			sqltrace.Traceln(s.lastError)
+		} else {
+			return s.lastError
+		}
 	}
 	return nil
 }

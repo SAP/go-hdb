@@ -76,3 +76,32 @@ func TestInsertByQuery(t *testing.T) {
 		t.Fatalf("value %d - expected %d", i, 42)
 	}
 }
+
+func TestHDBWarning(t *testing.T) {
+	// procedure gives warning:
+	// 	SQL HdbWarning 1347 - Not recommended feature: DDL statement is used in Dynamic SQL (current dynamic_sql_ddl_error_level = 1)
+	const procOut = `create procedure %[1]s.%[2]s ()
+language SQLSCRIPT as
+begin
+	exec 'create table %[3]s(id int)';
+	exec 'drop table %[3]s';
+end
+`
+
+	db, err := sql.Open(DriverName, TestDsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	procedure := RandomIdentifier("proc_")
+	tableName := RandomIdentifier("table_")
+
+	if _, err := db.Exec(fmt.Sprintf(procOut, TestSchema, procedure, tableName)); err != nil { // Create stored procedure.
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(fmt.Sprintf("call %s.%s", TestSchema, procedure)); err != nil {
+		t.Fatal(err)
+	}
+}
