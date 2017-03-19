@@ -52,6 +52,7 @@ func NewReaderSize(r io.Reader, size int) *Reader {
 	return &Reader{
 		Reader: bufio.NewReaderSize(r, size),
 		b:      make([]byte, bufferSize),
+		tr:     unicode.Cesu8ToUtf8Transformer,
 	}
 }
 
@@ -199,6 +200,7 @@ func NewWriterSize(w io.Writer, size int) *Writer {
 	return &Writer{
 		Writer: bufio.NewWriterSize(w, size),
 		b:      make([]byte, bufferSize),
+		tr:     unicode.Utf8ToCesu8Transformer,
 	}
 }
 
