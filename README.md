@@ -6,6 +6,8 @@ go-hdb
 Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It implements the SAP HANA SQL command network protocol:  
 <http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf>
 
+***Go-hdb requires Go 1.8 or newer to compile.***
+
 ## Installation
 
 ```

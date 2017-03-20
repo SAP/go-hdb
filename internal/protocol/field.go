@@ -41,6 +41,8 @@ func (p uint32Slice) sort()              { sort.Sort(p) }
 
 type field interface {
 	typeCode() typeCode
+	typeLength() (int64, bool)
+	nullable() bool
 	in() bool
 	out() bool
 	name(map[uint32]string) string
@@ -114,6 +116,24 @@ func (f *FieldSet) NumOutputField() int {
 // DataType returns the datatype of the field at index idx.
 func (f *FieldSet) DataType(idx int) DataType {
 	return f.fields[idx].typeCode().dataType()
+}
+
+// TypeCode returns the type name of the field at index idx.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
+func (f *FieldSet) TypeName(idx int) string {
+	return f.fields[idx].typeCode().typeName()
+}
+
+// TypeLength returns the type length of the field at index idx.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
+func (f *FieldSet) TypeLength(idx int) (int64, bool) {
+	return f.fields[idx].typeLength()
+}
+
+// TypeLength returns the type length of the field at index idx.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
+func (f *FieldSet) Nullable(idx int) bool {
+	return f.fields[idx].nullable()
 }
 
 // OutputNames fills the names parameter with field names of all output fields. The size of the names slice must be at least
@@ -240,7 +260,7 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 		return tinyintFieldSize, nil
 	case tcSmallint:
 		return smallintFieldSize, nil
-	case tcInt:
+	case tcInteger:
 		return intFieldSize, nil
 	case tcBigint:
 		return bigintFieldSize, nil
@@ -299,7 +319,7 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 		}
 		return []byte{value}, nil
 
-	case tcTinyint, tcSmallint, tcInt, tcBigint:
+	case tcTinyint, tcSmallint, tcInteger, tcBigint:
 
 		valid, err := rd.ReadBool()
 		if err != nil {
@@ -323,7 +343,7 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 			}
 			return nil, err
 
-		case tcInt:
+		case tcInteger:
 			if v, err := rd.ReadInt32(); err == nil {
 				return int64(v), nil
 			}
@@ -465,7 +485,7 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 
 	// TODO: char, ...
 
-	case tcTinyint, tcSmallint, tcInt, tcBigint:
+	case tcTinyint, tcSmallint, tcInteger, tcBigint:
 
 		i64, ok := v.(int64)
 		if !ok {
@@ -477,7 +497,7 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 			return wr.WriteByte(byte(i64))
 		case tcSmallint:
 			return wr.WriteInt16(int16(i64))
-		case tcInt:
+		case tcInteger:
 			return wr.WriteInt32(int32(i64))
 		case tcBigint:
 			return wr.WriteInt64(i64)

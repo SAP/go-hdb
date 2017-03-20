@@ -444,6 +444,19 @@ func (r *queryResult) Next(dest []driver.Value) error {
 	return nil
 }
 
+// go 1.8 extension
+func (r *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return r.fieldSet.TypeName(idx)
+}
+
+func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
+	return r.fieldSet.TypeLength(idx)
+}
+
+func (r *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return r.fieldSet.Nullable(idx), true
+}
+
 //call result store
 type callResultStore struct {
 	mu    sync.RWMutex

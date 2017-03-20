@@ -102,6 +102,17 @@ func (f *parameterField) typeCode() typeCode {
 	return f.tc
 }
 
+func (f *parameterField) typeLength() (int64, bool) {
+	if f.tc.isVariableLength() {
+		return int64(f.length), true
+	}
+	return 0, false
+}
+
+func (f *parameterField) nullable() bool {
+	return f.parameterOptions == poOptional
+}
+
 func (f *parameterField) in() bool {
 	return f.mode == pmInout || f.mode == pmIn
 }

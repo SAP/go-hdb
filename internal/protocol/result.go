@@ -138,6 +138,17 @@ func (f *resultField) typeCode() typeCode {
 	return f.tc
 }
 
+func (f *resultField) typeLength() (int64, bool) {
+	if f.tc.isVariableLength() {
+		return int64(f.length), true
+	}
+	return 0, false
+}
+
+func (f *resultField) nullable() bool {
+	return f.columnOptions == coOptional
+}
+
 func (f *resultField) in() bool {
 	return false
 }

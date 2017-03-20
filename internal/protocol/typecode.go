@@ -16,6 +16,8 @@ limitations under the License.
 
 package protocol
 
+import "strings"
+
 //go:generate stringer -type=typeCode
 
 // null value indicator is high bit
@@ -25,7 +27,7 @@ const (
 	tcNull      typeCode = 0
 	tcTinyint   typeCode = 1
 	tcSmallint  typeCode = 2
-	tcInt       typeCode = 3
+	tcInteger   typeCode = 3
 	tcBigint    typeCode = 4
 	tcDecimal   typeCode = 5
 	tcReal      typeCode = 6
@@ -75,10 +77,10 @@ const (
 	tcSmalldecimal typeCode = 47
 	//tcAbapitab          typeCode = 48 // not supported by GO hdb driver
 	//tcAbapstruct        typeCode = 49 // not supported by GO hdb driver
-	//tcArray             typeCode = 50 // reserved: do not use
+	tcArray     typeCode = 50
 	tcText      typeCode = 51
 	tcShorttext typeCode = 52
-	tcBintext   typeCode = 53
+	//tcFixedString       typeCode = 53 // reserved: do not use
 	//tcFixedpointdecimal typeCode = 54 // reserved: do not use
 	tcAlphanum typeCode = 55
 	//tcTlocator    typeCode = 56 // reserved: do not use
@@ -86,18 +88,18 @@ const (
 	tcSeconddate typeCode = 62
 	tcDaydate    typeCode = 63
 	tcSecondtime typeCode = 64
-	//tcCsdate      typeCode = 65 // reserved: do not use
-	//tcCstime      typeCode = 66 // reserved: do not use
+	//tcCte      typeCode = 65 // reserved: do not use
+	//tcCstimesda      typeCode = 66 // reserved: do not use
 	//tcBlobdisk    typeCode = 71 // reserved: do not use
 	//tcClobdisk    typeCode = 72 // reserved: do not use
 	//tcNclobdisk   typeCode = 73 // reserved: do not use
-	tcGeometry typeCode = 74
-	tcPoint    typeCode = 75
+	//tcGeometry    typeCode = 74 // reserved: do not use
+	//tcPoint       typeCode = 75 // reserved: do not use
 	//tcFixed16     typeCode = 76 // reserved: do not use
 	//tcBlobhybrid  typeCode = 77 // reserved: do not use
 	//tcClobhybrid  typeCode = 78 // reserved: do not use
 	//tcNclobhybrid typeCode = 79 // reserved: do not use
-	tcPointz typeCode = 80
+	//tcPointz      typeCode = 80 // reserved: do not use
 )
 
 func (k typeCode) isLob() bool {
@@ -108,6 +110,10 @@ func (k typeCode) isCharBased() bool {
 	return k == tcNvarchar || k == tcNstring || k == tcNclob
 }
 
+func (k typeCode) isVariableLength() bool {
+	return k == tcVarchar || k == tcNvarchar || k == tcVarbinary || k == tcShorttext || k == tcAlphanum
+}
+
 func (k typeCode) dataType() DataType {
 	switch k {
 	default:
@@ -116,7 +122,7 @@ func (k typeCode) dataType() DataType {
 		return DtTinyint
 	case tcSmallint:
 		return DtSmallint
-	case tcInt:
+	case tcInteger:
 		return DtInt
 	case tcBigint:
 		return DtBigint
@@ -135,4 +141,10 @@ func (k typeCode) dataType() DataType {
 	case tcBlob, tcClob, tcNclob:
 		return DtLob
 	}
+}
+
+// database type name
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
+func (k typeCode) typeName() string {
+	return strings.ToUpper(k.String()[2:])
 }
