@@ -46,6 +46,9 @@ var ErrIntegerOutOfRange = errors.New("integer out of range error")
 // ErrorIntegerOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
 
+// ErrorCharIntegerOutOfRange means that a float exceeds the size of the hdb float field.
+var ErrFloatOutOfRange = errors.New("float out of range error")
+
 var typeOfTime = reflect.TypeOf((*time.Time)(nil)).Elem()
 var typeOfBytes = reflect.TypeOf((*[]byte)(nil)).Elem()
 
@@ -59,14 +62,18 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 		return dbTinyint
 	case p.DtSmallint:
 		return dbSmallint
-	case p.DtInt:
-		return dbInt
+	case p.DtInteger:
+		return dbInteger
 	case p.DtBigint:
 		return dbBigint
 	case p.DtReal:
 		return dbReal
 	case p.DtDouble:
 		return dbDouble
+	case p.D tChar:
+		return dbChar
+	case p.DtNchar:
+		return dbNChar
 	case p.DtTime:
 		return dbTime
 	case p.DtDecimal:
@@ -90,19 +97,19 @@ func (t dbUnknownType) ConvertValue(v interface{}) (driver.Value, error) {
 }
 
 // int types
-var dbTinyint = dbIntType{min: minTinyint, max: maxTinyint}
-var dbSmallint = dbIntType{min: minSmallint, max: maxSmallint}
-var dbInt = dbIntType{min: minInteger, max: maxInteger}
-var dbBigint = dbIntType{min: minBigint, max: maxBigint}
+var dbTinyint = dbIntegerType{min: minTinyint, max: maxTinyint}
+var dbSmallint = dbIntegerType{min: minSmallint, max: maxSmallint}
+var dbInteger = dbIntegerType{min: minInteger, max: maxInteger}
+var dbBigint = dbIntegerType{min: minBigint, max: maxBigint}
 
-type dbIntType struct {
+type dbIntegerType struct {
 	min int64
 	max int64
 }
 
-var _ driver.ValueConverter = dbIntType{} //check that type implements interface
+var _ driver.ValueConverter = dbIntegerType{} //check that type implements interface
 
-func (i dbIntType) ConvertValue(v interface{}) (driver.Value, error) {
+func (i dbIntegerType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return v, nil
@@ -309,6 +316,17 @@ func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported unicode conversion type error %T %v", v, v)
+}
+
+//char
+var dbChar = dbCharType{}
+
+type dbCharType struct{}
+
+var _ driver.ValueConverter = dbCharType{} //check that type implements interface
+
+func (d dbCharType) ConvertValue(v interface{}) (driver.Value, error) {
+
 }
 
 //lob

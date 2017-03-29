@@ -23,8 +23,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
 
@@ -446,7 +448,7 @@ func (r *queryResult) Next(dest []driver.Value) error {
 
 // go 1.8 extension
 func (r *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
-	return r.fieldSet.TypeName(idx)
+	return r.fieldSet.DatabaseTypeName(idx)
 }
 
 func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
@@ -454,7 +456,38 @@ func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
 }
 
 func (r *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return r.fieldSet.Nullable(idx), true
+	return r.fieldSet.TypeNullable(idx), true
+}
+
+// ColumnTypePrecisionScale(index int) (precision, scale int64, ok bool)
+
+var (
+	scanTypeUnknown = reflect.TypeOf(new(interface{})).Elem()
+	scanTypeInteger = reflect.TypeOf(int64(0))
+	scanTypeFloat   = reflect.TypeOf(float64(0.0))
+	scanTypeTime    = reflect.TypeOf(time.Time{})
+	scanTypeString  = reflect.TypeOf(string(""))
+	scanTypeDecimal = reflect.TypeOf(Decimal{})
+	scanTypeLob     = reflect.TypeOf(Lob{})
+)
+
+func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
+	switch r.fieldSet.DataType(idx) {
+	default:
+		return scanTypeUnknown
+	case p.DtTinyint, p.DtSmallint, p.DtInteger, p.DtBigint:
+		return scanTypeInteger
+	case p.DtReal, p.DtDouble:
+		return scanTypeFloat
+	case p.DtTime:
+		return scanTypeTime
+	case p.DtDecimal:
+		return scanTypeDecimal
+	case p.DtVarchar, p.DtNvarchar:
+		return scanTypeString
+	case p.DtLob:
+		return scanTypeLob
+	}
 }
 
 //call result store

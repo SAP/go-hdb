@@ -16,7 +16,9 @@ limitations under the License.
 
 package protocol
 
-import "strings"
+import (
+	"strings"
+)
 
 //go:generate stringer -type=typeCode
 
@@ -123,13 +125,17 @@ func (k typeCode) dataType() DataType {
 	case tcSmallint:
 		return DtSmallint
 	case tcInteger:
-		return DtInt
+		return DtInteger
 	case tcBigint:
 		return DtBigint
 	case tcReal:
 		return DtReal
 	case tcDouble:
 		return DtDouble
+	case tcChar:
+		return DtChar
+	case tcNchar:
+		return DtNchar
 	case tcDate, tcTime, tcTimestamp:
 		return DtTime
 	case tcDecimal:

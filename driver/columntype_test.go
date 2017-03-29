@@ -20,7 +20,10 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"math/big"
+	"strings"
 	"testing"
+	"time"
 )
 
 type testColumnType struct {
@@ -34,44 +37,59 @@ type testColumnType struct {
 	precision int64
 	scale     int64
 	nullable  bool
+
+	value interface{}
+}
+
+var (
+	testTime    = time.Now()
+	testDecimal = (*Decimal)(big.NewRat(1, 1))
+	testString  = "HDB column type"
+	testBinary  = []byte{0x00, 0x01, 0x02}
+	testBuffer  = bytes.NewBuffer(testBinary)
+	testLob     = new(Lob)
+)
+
+func init() {
+	testLob.SetReader(testBuffer)
 }
 
 func TestColumnType(t *testing.T) {
 
 	var testColumnTypeData = []testColumnType{
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, true},
-		{"smallint", 0, false, false, "SMALLINT", 0, 0, true},
-		{"integer", 0, false, false, "INTEGER", 0, 0, true},
-		{"bigint", 0, false, false, "BIGINT", 0, 0, true},
-		{"decimal", 0, false, false, "DECIMAL", 0, 0, true}, //TODO sizeable
-		{"real", 0, false, false, "REAL", 0, 0, true},
-		{"double", 0, false, false, "DOUBLE", 0, 0, true},
-		{"char", 0, false, false, "CHAR", 0, 0, true},
-		{"varchar", 30, true, false, "VARCHAR", 0, 0, true},
-		{"nchar", 0, false, false, "NCHAR", 0, 0, true},
-		{"nvarchar", 30, true, false, "NVARCHAR", 0, 0, true},
-		{"binary", 0, false, false, "BINARY", 0, 0, true},
-		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true},
-		{"date", 0, false, false, "DATE", 0, 0, true},
-		{"time", 0, false, false, "TIME", 0, 0, true},
-		{"timestamp", 0, false, false, "TIMESTAMP", 0, 0, true},
-		{"clob", 0, false, false, "CLOB", 0, 0, true},
-		{"nclob", 0, false, false, "NCLOB", 0, 0, true},
-		{"blob", 0, false, false, "BLOB", 0, 0, true},
-		{"boolean", 0, false, false, "TINYINT", 0, 0, true},      // hdb gives TINYINT back - not BOOLEAN
-		{"smalldecimal", 0, false, false, "DECIMAL", 0, 0, true}, // hdb gives DECIMAL back - not SMALLDECIMAL
-		{"text", 0, false, false, "NCLOB", 0, 0, true},           // hdb gives NCLOB back - not TEXT
-		{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true},   // hdb gives NVARCHAR back - not SHORTTEXT
-		{"bintext", 0, false, false, "NCLOB", 0, 0, true},        // hdb gives NCLOB back - not BINTEXT
-		{"alphanum", 12, true, false, "NVARCHAR", 0, 0, true},    // hdb gives NVARCHAR back - not ALPHANUM
-		{"longdate", 0, false, false, "TIMESTAMP", 0, 0, true},   // hdb gives TIMESTAMP back - not LONGDATE
-		{"seconddate", 0, false, false, "TIMESTAMP", 0, 0, true}, // hdb gives TIMESTAMP back - not SECONDDATE
-		{"daydate", 0, false, false, "DATE", 0, 0, true},         // hdb gives DATE back - not DAYDATE
-		{"secondtime", 0, false, false, "TIME", 0, 0, true},      // hdb gives TIME back - not SECONDTIME
+		{"tinyint", 0, false, false, "TINYINT", 0, 0, true, 1},
+		{"smallint", 0, false, false, "SMALLINT", 0, 0, true, 42},
+		{"integer", 0, false, false, "INTEGER", 0, 0, true, 4711},
+		{"bigint", 0, false, false, "BIGINT", 0, 0, true, 68000},
+		{"decimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, //TODO sizeable
+		{"real", 0, false, false, "REAL", 0, 0, true, 1.0},
+		{"double", 0, false, false, "DOUBLE", 0, 0, true, 3.14},
+		{"char", 0, false, false, "CHAR", 0, 0, true, "A"},
+		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, testString},
+		{"nchar", 0, false, false, "NCHAR", 0, 0, true, "Z"},
+		{"nvarchar", 30, true, false, "NVARCHAR", 0, 0, true, testString},
+		{"binary", 0, false, false, "BINARY", 0, 0, true, testBinary},
+		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, testBinary},
+		{"date", 0, false, false, "DATE", 0, 0, true, testTime},
+		{"time", 0, false, false, "TIME", 0, 0, true, testTime},
+		{"timestamp", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},
+		{"clob", 0, false, false, "CLOB", 0, 0, true, testLob},
+		{"nclob", 0, false, false, "NCLOB", 0, 0, true, testLob},
+		{"blob", 0, false, false, "BLOB", 0, 0, true, testLob},
+		{"boolean", 0, false, false, "TINYINT", 0, 0, true, false},            // hdb gives TINYINT back - not BOOLEAN
+		{"smalldecimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
+		{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},               // hdb gives NCLOB back - not TEXT
+		{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString},    // hdb gives NVARCHAR back - not SHORTTEXT
+		{"bintext", 0, false, false, "NCLOB", 0, 0, true, testLob},            // hdb gives NCLOB back - not BINTEXT
+		{"alphanum", 12, true, false, "NVARCHAR", 0, 0, true, testString},     // hdb gives NVARCHAR back - not ALPHANUM
+		{"longdate", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},      // hdb gives TIMESTAMP back - not LONGDATE
+		{"seconddate", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},    // hdb gives TIMESTAMP back - not SECONDDATE
+		{"daydate", 0, false, false, "DATE", 0, 0, true, testTime},            // hdb gives DATE back - not DAYDATE
+		{"secondtime", 0, false, false, "TIME", 0, 0, true, testTime},         // hdb gives TIME back - not SECONDTIME
 
 		// not nullable
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, false},
-		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false},
+		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, 42},
+		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, testString},
 	}
 
 	// text, st_geometry, st_point is only supported for column table
@@ -107,6 +125,19 @@ func TestColumnType(t *testing.T) {
 	if _, err := db.Exec(fmt.Sprintf(createSql.String(), TestSchema, table)); err != nil {
 		t.Fatal(err)
 	}
+
+	args := make([]interface{}, len(testColumnTypeData))
+	for i, td := range testColumnTypeData {
+		args[i] = td.value
+	}
+
+	prms := strings.Repeat("?,", len(testColumnTypeData)-1) + "?"
+
+	if _, err := db.Exec(fmt.Sprintf("insert into %s.%s values (%s)", TestSchema, table, prms), args...); err != nil {
+		t.Fatal(err)
+	}
+
+	//	INSERT INTO T VALUES (1, 1, 'The first');
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s.%s", TestSchema, table))
 	if err != nil {

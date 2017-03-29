@@ -51,11 +51,11 @@ func TestConvertInteger(t *testing.T) {
 	// integer data types
 	assertEqualInt(t, p.DtTinyint, 42, 42)
 	assertEqualInt(t, p.DtSmallint, 42, 42)
-	assertEqualInt(t, p.DtInt, 42, 42)
+	assertEqualInt(t, p.DtInteger, 42, 42)
 	assertEqualInt(t, p.DtBigint, 42, 42)
 
 	// custom integer data type
-	assertEqualInt(t, p.DtInt, testCustomInt(42), 42)
+	assertEqualInt(t, p.DtInteger, testCustomInt(42), 42)
 
 	// integer reference
 	i := 42
@@ -66,8 +66,8 @@ func TestConvertInteger(t *testing.T) {
 	assertEqualIntOutOfRangeError(t, p.DtTinyint, maxTinyint+1)
 	assertEqualIntOutOfRangeError(t, p.DtSmallint, minSmallint-1)
 	assertEqualIntOutOfRangeError(t, p.DtSmallint, maxSmallint+1)
-	assertEqualIntOutOfRangeError(t, p.DtInt, minInteger-1)
-	assertEqualIntOutOfRangeError(t, p.DtInt, maxInteger+1)
+	assertEqualIntOutOfRangeError(t, p.DtInteger, minInteger-1)
+	assertEqualIntOutOfRangeError(t, p.DtInteger, maxInteger+1)
 
 }
 

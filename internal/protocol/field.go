@@ -118,9 +118,9 @@ func (f *FieldSet) DataType(idx int) DataType {
 	return f.fields[idx].typeCode().dataType()
 }
 
-// TypeCode returns the type name of the field at index idx.
+// DatabaseTypeName returns the type name of the field at index idx.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *FieldSet) TypeName(idx int) string {
+func (f *FieldSet) DatabaseTypeName(idx int) string {
 	return f.fields[idx].typeCode().typeName()
 }
 
@@ -130,9 +130,9 @@ func (f *FieldSet) TypeLength(idx int) (int64, bool) {
 	return f.fields[idx].typeLength()
 }
 
-// TypeLength returns the type length of the field at index idx.
+// TypeNullable returns true if the column at index idx may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *FieldSet) Nullable(idx int) bool {
+func (f *FieldSet) TypeNullable(idx int) bool {
 	return f.fields[idx].nullable()
 }
 

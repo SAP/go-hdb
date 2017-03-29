@@ -26,10 +26,12 @@ const (
 	DtUnknown DataType = iota // unknown data type
 	DtTinyint
 	DtSmallint
-	DtInt
+	DtInteger
 	DtBigint
 	DtReal
 	DtDouble
+	DtChar
+	DtNchar
 	DtDecimal
 	DtTime
 	DtVarchar
