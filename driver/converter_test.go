@@ -159,16 +159,13 @@ func TestConvertString(t *testing.T) {
 	stringValue := "Hello World"
 
 	// string data types
-	assertEqualString(t, p.DtVarchar, stringValue, stringValue)
-	assertEqualString(t, p.DtNvarchar, stringValue, stringValue)
+	assertEqualString(t, p.DtString, stringValue, stringValue)
 
 	// custom string data type
-	assertEqualString(t, p.DtVarchar, testCustomString(stringValue), stringValue)
-	assertEqualString(t, p.DtNvarchar, testCustomString(stringValue), stringValue)
+	assertEqualString(t, p.DtString, testCustomString(stringValue), stringValue)
 
 	// string reference
-	assertEqualString(t, p.DtVarchar, &stringValue, stringValue)
-	assertEqualString(t, p.DtNvarchar, &stringValue, stringValue)
+	assertEqualString(t, p.DtString, &stringValue, stringValue)
 
 }
 
@@ -190,15 +187,12 @@ func TestConvertBytes(t *testing.T) {
 	bytesValue := []byte("Hello World")
 
 	// bytes data types
-	assertEqualBytes(t, p.DtVarchar, bytesValue, bytesValue)
-	assertEqualBytes(t, p.DtNvarchar, bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtString, bytesValue, bytesValue)
 
 	// custom bytes data type
-	assertEqualBytes(t, p.DtVarchar, testCustomBytes(bytesValue), bytesValue)
-	assertEqualBytes(t, p.DtNvarchar, testCustomBytes(bytesValue), bytesValue)
+	assertEqualBytes(t, p.DtString, testCustomBytes(bytesValue), bytesValue)
 
 	// bytes reference
-	assertEqualBytes(t, p.DtVarchar, &bytesValue, bytesValue)
-	assertEqualBytes(t, p.DtNvarchar, &bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtString, &bytesValue, bytesValue)
 
 }

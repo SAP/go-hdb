@@ -71,10 +71,8 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 		return dbTime
 	case p.DtDecimal:
 		return dbDecimal
-	case p.DtVarchar:
-		return dbVarchar
-	case p.DtNvarchar:
-		return dbNvarchar
+	case p.DtString:
+		return dbString
 	case p.DtLob:
 		return dbLob
 	}
@@ -227,14 +225,14 @@ func (d dbDecimalType) ConvertValue(v interface{}) (driver.Value, error) {
 	return nil, fmt.Errorf("unsupported decimal conversion type error %T %v", v, v)
 }
 
-//varchar
-var dbVarchar = dbVarcharType{}
+//string
+var dbString = dbStringType{}
 
-type dbVarcharType struct{}
+type dbStringType struct{}
 
-var _ driver.ValueConverter = dbVarcharType{} //check that type implements interface
+var _ driver.ValueConverter = dbStringType{} //check that type implements interface
 
-func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
+func (d dbStringType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return v, nil
@@ -267,48 +265,6 @@ func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported character conversion type error %T %v", v, v)
-}
-
-//nvarchar
-var dbNvarchar = dbNvarcharType{}
-
-type dbNvarcharType struct{}
-
-var _ driver.ValueConverter = dbNvarcharType{} //check that type implements interface
-
-func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
-
-	if v == nil {
-		return v, nil
-	}
-
-	switch v := v.(type) {
-
-	case string, []byte:
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-
-	switch rv.Kind() {
-
-	case reflect.String:
-		return rv.String(), nil
-
-	case reflect.Ptr:
-		// indirect pointers
-		if rv.IsNil() {
-			return nil, nil
-		}
-		return d.ConvertValue(rv.Elem().Interface())
-	}
-
-	if rv.Type().ConvertibleTo(typeOfBytes) {
-		bv := rv.Convert(typeOfBytes)
-		return bv.Interface().([]byte), nil
-	}
-
-	return nil, fmt.Errorf("unsupported unicode conversion type error %T %v", v, v)
 }
 
 //lob
