@@ -256,24 +256,30 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 		return timestampFieldSize, nil
 	case tcDecimal:
 		return decimalFieldSize, nil
-	case tcVarchar, tcString:
+	case tcChar, tcVarchar, tcString:
 		switch v := v.(type) {
 		case []byte:
-			return stringSize(len(v))
+			return bytesSize(len(v))
 		case string:
-			return stringSize(len(v))
+			return bytesSize(len(v))
 		default:
 			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
-	case tcNvarchar, tcNstring:
+	case tcNchar, tcNvarchar, tcNstring:
 		switch v := v.(type) {
 		case []byte:
-			return stringSize(cesu8.Size(v))
+			return bytesSize(cesu8.Size(v))
 		case string:
-			return stringSize(cesu8.StringSize(v))
+			return bytesSize(cesu8.StringSize(v))
 		default:
 			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
+	case tcBinary, tcVarbinary:
+		v, ok := v.([]byte)
+		if !ok {
+			outLogger.Fatalf("data type %s mismatch %T", tc, v)
+		}
+		return bytesSize(len(v))
 	case tcBlob, tcClob, tcNclob:
 		return lobInputDescriptorSize, nil
 	}
@@ -284,20 +290,6 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 
 	switch tc {
-
-	case tcChar:
-		valid, err := rd.ReadBool()
-		if err != nil {
-			return nil, err
-		}
-		if !valid {
-			return nil, nil
-		}
-		value, err := rd.ReadByte()
-		if err != nil {
-			return nil, err
-		}
-		return []byte{value}, nil
 
 	case tcTinyint, tcSmallint, tcInt, tcBigint:
 
@@ -411,8 +403,8 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 			return b, nil
 		}
 
-	case tcVarchar:
-		value, null, err := readASCII(rd)
+	case tcChar, tcVarchar:
+		value, null, err := readBytes(rd)
 		if err != nil {
 			return nil, err
 		}
@@ -421,8 +413,18 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 		}
 		return value, nil
 
-	case tcNvarchar:
+	case tcNchar, tcNvarchar:
 		value, null, err := readUtf8(rd)
+		if err != nil {
+			return nil, err
+		}
+		if null {
+			return nil, nil
+		}
+		return value, nil
+
+	case tcBinary, tcVarbinary:
+		value, null, err := readBytes(rd)
 		if err != nil {
 			return nil, err
 		}
@@ -534,25 +536,32 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 		_, err := wr.Write(b)
 		return err
 
-	case tcVarchar, tcString:
+	case tcChar, tcVarchar, tcString:
 		switch v := v.(type) {
 		case []byte:
-			return writeASCII(wr, v)
+			return writeBytes(wr, v)
 		case string:
-			return writeASCIIString(wr, v)
+			return writeString(wr, v)
 		default:
 			return fmt.Errorf("invalid argument type %T", v)
 		}
 
-	case tcNvarchar, tcNstring:
+	case tcNchar, tcNvarchar, tcNstring:
 		switch v := v.(type) {
 		case []byte:
-			return writeUtf8(wr, v)
+			return writeUtf8Bytes(wr, v)
 		case string:
 			return writeUtf8String(wr, v)
 		default:
 			return fmt.Errorf("invalid argument type %T", v)
 		}
+
+	case tcBinary, tcVarbinary:
+		v, ok := v.([]byte)
+		if !ok {
+			return fmt.Errorf("invalid argument type %T", v)
+		}
+		return writeBytes(wr, v)
 
 	case tcBlob, tcClob, tcNclob:
 		return writeLob(wr)
@@ -672,19 +681,19 @@ func readDecimal(rd *bufio.Reader) ([]byte, bool, error) {
 	return b, false, nil
 }
 
-// string length indicators
+// string / binary length indicators
 const (
-	strLenIndNullValue byte = 255
-	strLenIndSmall     byte = 245
-	strLenIndMedium    byte = 246
-	strLenIndBig       byte = 247
+	bytesLenIndNullValue byte = 255
+	bytesLenIndSmall     byte = 245
+	bytesLenIndMedium    byte = 246
+	bytesLenIndBig       byte = 247
 )
 
-func stringSize(size int) (int, error) { //size string length indicator
+func bytesSize(size int) (int, error) { //size + length indicator
 	switch {
 	default:
 		return 0, fmt.Errorf("max string length %d exceeded %d", math.MaxInt32, size)
-	case size <= int(strLenIndSmall):
+	case size <= int(bytesLenIndSmall):
 		return size + 1, nil
 	case size <= math.MaxInt16:
 		return size + 3, nil
@@ -693,7 +702,7 @@ func stringSize(size int) (int, error) { //size string length indicator
 	}
 }
 
-func readStringSize(rd *bufio.Reader) (int, bool, error) {
+func readBytesSize(rd *bufio.Reader) (int, bool, error) {
 
 	ind, err := rd.ReadByte() //length indicator
 	if err != nil {
@@ -705,19 +714,19 @@ func readStringSize(rd *bufio.Reader) (int, bool, error) {
 	default:
 		return 0, false, fmt.Errorf("invalid length indicator %d", ind)
 
-	case ind == strLenIndNullValue:
+	case ind == bytesLenIndNullValue:
 		return 0, true, nil
 
-	case ind <= strLenIndSmall:
+	case ind <= bytesLenIndSmall:
 		return int(ind), false, nil
 
-	case ind == strLenIndMedium:
+	case ind == bytesLenIndMedium:
 		if size, err := rd.ReadInt16(); err == nil {
 			return int(size), false, nil
 		}
 		return 0, false, err
 
-	case ind == strLenIndBig:
+	case ind == bytesLenIndBig:
 		if size, err := rd.ReadInt32(); err == nil {
 			return int(size), false, nil
 		}
@@ -725,25 +734,25 @@ func readStringSize(rd *bufio.Reader) (int, bool, error) {
 	}
 }
 
-func writeStringSize(wr *bufio.Writer, size int) error {
+func writeBytesSize(wr *bufio.Writer, size int) error {
 	switch {
 
 	default:
 		return fmt.Errorf("max argument length %d of string exceeded", size)
 
-	case size <= int(strLenIndSmall):
+	case size <= int(bytesLenIndSmall):
 		if err := wr.WriteByte(byte(size)); err != nil {
 			return err
 		}
 	case size <= math.MaxInt16:
-		if err := wr.WriteByte(strLenIndMedium); err != nil {
+		if err := wr.WriteByte(bytesLenIndMedium); err != nil {
 			return err
 		}
 		if err := wr.WriteInt16(int16(size)); err != nil {
 			return err
 		}
 	case size <= math.MaxInt32:
-		if err := wr.WriteByte(strLenIndBig); err != nil {
+		if err := wr.WriteByte(bytesLenIndBig); err != nil {
 			return err
 		}
 		if err := wr.WriteInt32(int32(size)); err != nil {
@@ -753,8 +762,8 @@ func writeStringSize(wr *bufio.Writer, size int) error {
 	return nil
 }
 
-func readASCII(rd *bufio.Reader) ([]byte, bool, error) {
-	size, null, err := readStringSize(rd)
+func readBytes(rd *bufio.Reader) ([]byte, bool, error) {
+	size, null, err := readBytesSize(rd)
 	if err != nil {
 		return nil, false, err
 	}
@@ -771,7 +780,7 @@ func readASCII(rd *bufio.Reader) ([]byte, bool, error) {
 }
 
 func readUtf8(rd *bufio.Reader) ([]byte, bool, error) {
-	size, null, err := readStringSize(rd)
+	size, null, err := readBytesSize(rd)
 	if err != nil {
 		return nil, false, err
 	}
@@ -803,25 +812,25 @@ func readShortUtf8(rd *bufio.Reader) ([]byte, int, error) {
 	return b, int(size), nil
 }
 
-func writeASCII(wr *bufio.Writer, b []byte) error {
-	if err := writeStringSize(wr, len(b)); err != nil {
+func writeBytes(wr *bufio.Writer, b []byte) error {
+	if err := writeBytesSize(wr, len(b)); err != nil {
 		return err
 	}
 	_, err := wr.Write(b)
 	return err
 }
 
-func writeASCIIString(wr *bufio.Writer, s string) error {
-	if err := writeStringSize(wr, len(s)); err != nil {
+func writeString(wr *bufio.Writer, s string) error {
+	if err := writeBytesSize(wr, len(s)); err != nil {
 		return err
 	}
 	_, err := wr.WriteString(s)
 	return err
 }
 
-func writeUtf8(wr *bufio.Writer, b []byte) error {
+func writeUtf8Bytes(wr *bufio.Writer, b []byte) error {
 	size := cesu8.Size(b)
-	if err := writeStringSize(wr, size); err != nil {
+	if err := writeBytesSize(wr, size); err != nil {
 		return err
 	}
 	_, err := wr.WriteCesu8(b)
@@ -830,7 +839,7 @@ func writeUtf8(wr *bufio.Writer, b []byte) error {
 
 func writeUtf8String(wr *bufio.Writer, s string) error {
 	size := cesu8.StringSize(s)
-	if err := writeStringSize(wr, size); err != nil {
+	if err := writeBytesSize(wr, size); err != nil {
 		return err
 	}
 	_, err := wr.WriteStringCesu8(s)

@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"log"
@@ -27,7 +28,7 @@ import (
 )
 
 func TestTinyint(t *testing.T) {
-	testDatatype(t, "tinyint", 0,
+	testDatatype(t, "tinyint", 0, true,
 		uint8(minTinyint),
 		uint8(maxTinyint),
 		sql.NullInt64{Valid: false, Int64: minTinyint},
@@ -36,7 +37,7 @@ func TestTinyint(t *testing.T) {
 }
 
 func TestSmallint(t *testing.T) {
-	testDatatype(t, "smallint", 0,
+	testDatatype(t, "smallint", 0, true,
 		int16(minSmallint),
 		int16(maxSmallint),
 		sql.NullInt64{Valid: false, Int64: minSmallint},
@@ -45,7 +46,7 @@ func TestSmallint(t *testing.T) {
 }
 
 func TestInteger(t *testing.T) {
-	testDatatype(t, "integer", 0,
+	testDatatype(t, "integer", 0, true,
 		int32(minInteger),
 		int32(maxInteger),
 		sql.NullInt64{Valid: false, Int64: minInteger},
@@ -54,7 +55,7 @@ func TestInteger(t *testing.T) {
 }
 
 func TestBigint(t *testing.T) {
-	testDatatype(t, "bigint", 0,
+	testDatatype(t, "bigint", 0, true,
 		int64(minBigint),
 		int64(maxBigint),
 		sql.NullInt64{Valid: false, Int64: minBigint},
@@ -63,7 +64,7 @@ func TestBigint(t *testing.T) {
 }
 
 func TestReal(t *testing.T) {
-	testDatatype(t, "real", 0,
+	testDatatype(t, "real", 0, true,
 		float32(-maxReal),
 		float32(maxReal),
 		sql.NullFloat64{Valid: false, Float64: -maxReal},
@@ -72,12 +73,19 @@ func TestReal(t *testing.T) {
 }
 
 func TestDouble(t *testing.T) {
-	testDatatype(t, "double", 0,
+	testDatatype(t, "double", 0, true,
 		float64(-maxDouble),
 		float64(maxDouble),
 		sql.NullFloat64{Valid: false, Float64: -maxDouble},
 		sql.NullFloat64{Valid: true, Float64: maxDouble},
 	)
+}
+
+var testStringDataAscii = []interface{}{
+	"Hello HDB",
+	"aaaaaaaaaa",
+	sql.NullString{Valid: false, String: "Hello HDB"},
+	sql.NullString{Valid: true, String: "Hello HDB"},
 }
 
 var testStringData = []interface{}{
@@ -94,12 +102,44 @@ var testStringData = []interface{}{
 	sql.NullString{Valid: true, String: "Hello HDB"},
 }
 
+/*
+using unicode (CESU-8) data for char HDB
+- successful insert into table
+- but query table returns
+  SQL HdbError 7 - feature not supported: invalid character encoding: ...
+--> use ASCII test data only
+surprisingly: varchar works with unicode characters
+*/
+func TestChar(t *testing.T) {
+	testDatatype(t, "char", 40, true, testStringDataAscii...)
+}
+
 func TestVarchar(t *testing.T) {
-	testDatatype(t, "varchar", 40, testStringData...)
+	testDatatype(t, "varchar", 40, false, testStringData...)
+}
+
+func TestNChar(t *testing.T) {
+	testDatatype(t, "nchar", 20, true, testStringData...)
 }
 
 func TestNVarchar(t *testing.T) {
-	testDatatype(t, "nvarchar", 20, testStringData...)
+	testDatatype(t, "nvarchar", 20, false, testStringData...)
+}
+
+var testBinaryData = []interface{}{
+	[]byte("Hello HDB"),
+	[]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+	[]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0xff},
+	NullBytes{Valid: false, Bytes: []byte("Hello HDB")},
+	NullBytes{Valid: true, Bytes: []byte("Hello HDB")},
+}
+
+func TestBinary(t *testing.T) {
+	testDatatype(t, "binary", 20, true, testBinaryData...)
+}
+
+func TestVarbinary(t *testing.T) {
+	testDatatype(t, "varbinary", 20, false, testBinaryData...)
 }
 
 var testTimeData = []interface{}{
@@ -109,19 +149,19 @@ var testTimeData = []interface{}{
 }
 
 func TestDate(t *testing.T) {
-	testDatatype(t, "date", 0, testTimeData...)
+	testDatatype(t, "date", 0, true, testTimeData...)
 }
 
 func TestTime(t *testing.T) {
-	testDatatype(t, "time", 0, testTimeData...)
+	testDatatype(t, "time", 0, true, testTimeData...)
 }
 
 func TestTimestamp(t *testing.T) {
-	testDatatype(t, "timestamp", 0, testTimeData...)
+	testDatatype(t, "timestamp", 0, true, testTimeData...)
 }
 
 func TestSeconddate(t *testing.T) {
-	testDatatype(t, "seconddate", 0, testTimeData...)
+	testDatatype(t, "seconddate", 0, true, testTimeData...)
 }
 
 var testDecimalData = []interface{}{
@@ -139,11 +179,11 @@ var testDecimalData = []interface{}{
 }
 
 func TestDecimal(t *testing.T) {
-	testDatatype(t, "decimal", 0, testDecimalData...)
+	testDatatype(t, "decimal", 0, true, testDecimalData...)
 }
 
 //
-func testDatatype(t *testing.T, dataType string, dataSize int, testData ...interface{}) {
+func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
 	db, err := sql.Open(DriverName, TestDsn)
 	if err != nil {
 		t.Fatal(err)
@@ -233,8 +273,24 @@ func testDatatype(t *testing.T, dataType string, dataSize int, testData ...inter
 				t.Fatalf("%d value %v - expected %v", i, *out, in)
 			}
 		case *string:
-			if *out != in.(string) {
-				t.Fatalf("%d value %v - expected %v", i, *out, in)
+			if fixedSize {
+				if !compareStringFixSize(in.(string), *out) {
+					t.Fatalf("%d value %v - expected %v", i, *out, in)
+				}
+			} else {
+				if *out != in.(string) {
+					t.Fatalf("%d value %v - expected %v", i, *out, in)
+				}
+			}
+		case *[]byte:
+			if fixedSize {
+				if !compareBytesFixSize(in.([]byte), *out) {
+					t.Fatalf("%d value %v - expected %v", i, *out, in)
+				}
+			} else {
+				if bytes.Compare(*out, in.([]byte)) != 0 {
+					t.Fatalf("%d value %v - expected %v", i, *out, in)
+				}
 			}
 		case **Decimal:
 			if ((*big.Rat)(*out)).Cmp((*big.Rat)(in.(*Decimal))) != 0 {
@@ -282,8 +338,32 @@ func testDatatype(t *testing.T, dataType string, dataSize int, testData ...inter
 			if in.Valid != out.Valid {
 				t.Fatalf("%d value %v - expected %v", i, out, in)
 			}
-			if in.Valid && in.String != out.String {
+			if in.Valid {
+				if fixedSize {
+					if !compareStringFixSize(in.String, out.String) {
+						t.Fatalf("%d value %v - expected %v", i, *out, in)
+					}
+				} else {
+					if in.String != out.String {
+						t.Fatalf("%d value %v - expected %v", i, out, in)
+					}
+				}
+			}
+		case *NullBytes:
+			in := in.(NullBytes)
+			if in.Valid != out.Valid {
 				t.Fatalf("%d value %v - expected %v", i, out, in)
+			}
+			if in.Valid {
+				if fixedSize {
+					if !compareBytesFixSize(in.Bytes, out.Bytes) {
+						t.Fatalf("%d value %v - expected %v", i, *out, in)
+					}
+				} else {
+					if bytes.Compare(in.Bytes, out.Bytes) != 0 {
+						t.Fatalf("%d value %v - expected %v", i, out, in)
+					}
+				}
 			}
 		case *NullTime:
 			in := in.(NullTime)
@@ -331,6 +411,30 @@ func testDatatype(t *testing.T, dataType string, dataSize int, testData ...inter
 }
 
 // helper
+func compareStringFixSize(in, out string) bool {
+	if in != out[:len(in)] {
+		return false
+	}
+	for _, r := range out[len(in):] {
+		if r != rune(' ') {
+			return false
+		}
+	}
+	return true
+}
+
+func compareBytesFixSize(in, out []byte) bool {
+	if bytes.Compare(in, out[:len(in)]) != 0 {
+		return false
+	}
+	for _, r := range out[len(in):] {
+		if r != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func equalDate(t1, t2 time.Time) bool {
 	u1 := t1.UTC()
 	u2 := t2.UTC()

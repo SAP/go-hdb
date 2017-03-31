@@ -33,5 +33,6 @@ const (
 	DtDecimal
 	DtTime
 	DtString
+	DtBytes
 	DtLob
 )

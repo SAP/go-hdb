@@ -188,11 +188,14 @@ func TestConvertBytes(t *testing.T) {
 
 	// bytes data types
 	assertEqualBytes(t, p.DtString, bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtBytes, bytesValue, bytesValue)
 
 	// custom bytes data type
 	assertEqualBytes(t, p.DtString, testCustomBytes(bytesValue), bytesValue)
+	assertEqualBytes(t, p.DtBytes, testCustomBytes(bytesValue), bytesValue)
 
 	// bytes reference
 	assertEqualBytes(t, p.DtString, &bytesValue, bytesValue)
+	assertEqualBytes(t, p.DtBytes, &bytesValue, bytesValue)
 
 }
