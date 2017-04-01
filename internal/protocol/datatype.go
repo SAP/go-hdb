@@ -32,7 +32,7 @@ const (
 	DtDouble
 	DtDecimal
 	DtTime
-	DtVarchar
-	DtNvarchar
+	DtString
+	DtBytes
 	DtLob
 )

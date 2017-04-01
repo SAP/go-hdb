@@ -71,10 +71,10 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 		return dbTime
 	case p.DtDecimal:
 		return dbDecimal
-	case p.DtVarchar:
-		return dbVarchar
-	case p.DtNvarchar:
-		return dbNvarchar
+	case p.DtString:
+		return dbString
+	case p.DtBytes:
+		return dbBytes
 	case p.DtLob:
 		return dbLob
 	}
@@ -130,6 +130,7 @@ func (i dbIntType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return i.ConvertValue(rv.Elem().Interface())
 	}
+
 	return nil, fmt.Errorf("unsupported integer conversion type error %T %v", v, v)
 }
 
@@ -165,6 +166,7 @@ func (f dbFloatType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return f.ConvertValue(rv.Elem().Interface())
 	}
+
 	return nil, fmt.Errorf("unsupported float conversion type error %T %v", v, v)
 }
 
@@ -189,11 +191,6 @@ func (t dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	rv := reflect.ValueOf(v)
 
-	if rv.Type().ConvertibleTo(typeOfTime) {
-		tv := rv.Convert(typeOfTime)
-		return tv.Interface().(time.Time), nil
-	}
-
 	switch rv.Kind() {
 
 	case reflect.Ptr:
@@ -203,6 +200,12 @@ func (t dbTimeType) ConvertValue(v interface{}) (driver.Value, error) {
 		}
 		return t.ConvertValue(rv.Elem().Interface())
 	}
+
+	if rv.Type().ConvertibleTo(typeOfTime) {
+		tv := rv.Convert(typeOfTime)
+		return tv.Interface().(time.Time), nil
+	}
+
 	return nil, fmt.Errorf("unsupported time conversion type error %T %v", v, v)
 }
 
@@ -219,22 +222,21 @@ func (d dbDecimalType) ConvertValue(v interface{}) (driver.Value, error) {
 		return nil, nil
 	}
 
-	switch v := v.(type) {
-
-	case []byte:
+	if v, ok := v.([]byte); ok {
 		return v, nil
 	}
+
 	return nil, fmt.Errorf("unsupported decimal conversion type error %T %v", v, v)
 }
 
-//varchar
-var dbVarchar = dbVarcharType{}
+//string
+var dbString = dbStringType{}
 
-type dbVarcharType struct{}
+type dbStringType struct{}
 
-var _ driver.ValueConverter = dbVarcharType{} //check that type implements interface
+var _ driver.ValueConverter = dbStringType{} //check that type implements interface
 
-func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
+func (d dbStringType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return v, nil
@@ -252,6 +254,11 @@ func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	case reflect.String:
 		return rv.String(), nil
+
+	case reflect.Slice:
+		if rv.Type() == typeOfBytes {
+			return rv.Bytes(), nil
+		}
 
 	case reflect.Ptr:
 		// indirect pointers
@@ -269,22 +276,20 @@ func (d dbVarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 	return nil, fmt.Errorf("unsupported character conversion type error %T %v", v, v)
 }
 
-//nvarchar
-var dbNvarchar = dbNvarcharType{}
+//bytes
+var dbBytes = dbBytesType{}
 
-type dbNvarcharType struct{}
+type dbBytesType struct{}
 
-var _ driver.ValueConverter = dbNvarcharType{} //check that type implements interface
+var _ driver.ValueConverter = dbBytesType{} //check that type implements interface
 
-func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
+func (d dbBytesType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return v, nil
 	}
 
-	switch v := v.(type) {
-
-	case string, []byte:
+	if v, ok := v.([]byte); ok {
 		return v, nil
 	}
 
@@ -292,8 +297,10 @@ func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 
 	switch rv.Kind() {
 
-	case reflect.String:
-		return rv.String(), nil
+	case reflect.Slice:
+		if rv.Type() == typeOfBytes {
+			return rv.Bytes(), nil
+		}
 
 	case reflect.Ptr:
 		// indirect pointers
@@ -308,7 +315,7 @@ func (d dbNvarcharType) ConvertValue(v interface{}) (driver.Value, error) {
 		return bv.Interface().([]byte), nil
 	}
 
-	return nil, fmt.Errorf("unsupported unicode conversion type error %T %v", v, v)
+	return nil, fmt.Errorf("unsupported bytes conversion type error %T %v", v, v)
 }
 
 //lob
@@ -320,10 +327,9 @@ var _ driver.ValueConverter = dbLobType{} //check that type implements interface
 
 func (d dbLobType) ConvertValue(v interface{}) (driver.Value, error) {
 
-	switch v := v.(type) {
-
-	case int64:
+	if v, ok := v.(int64); ok {
 		return v, nil
 	}
+
 	return nil, fmt.Errorf("unsupported lob conversion type error %T %v", v, v)
 }

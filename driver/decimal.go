@@ -130,9 +130,9 @@ func (d *Decimal) Scan(src interface{}) error {
 }
 
 // Value implements the database/sql/Valuer interface.
-func (d *Decimal) Value() (driver.Value, error) {
+func (d Decimal) Value() (driver.Value, error) {
 	m := bigIntFree.Get().(*big.Int)
-	neg, exp, df := convertRatToDecimal((*big.Rat)(d), m, dec128Digits, dec128MinExp, dec128MaxExp)
+	neg, exp, df := convertRatToDecimal((*big.Rat)(&d), m, dec128Digits, dec128MinExp, dec128MaxExp)
 
 	var v driver.Value
 	var err error

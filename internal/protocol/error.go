@@ -124,7 +124,13 @@ func (e *hdbError) read(rd *bufio.Reader) error {
 		return err
 	}
 
-	if e.errorText, err = rd.ReadCesu8(int(e.errorTextLength)); err != nil {
+	// read error text as ASCII data as some errors return invalid CESU-8 characters
+	// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invaid CESU-8 characters>
+	//	if e.errorText, err = rd.ReadCesu8(int(e.errorTextLength)); err != nil {
+	//		return err
+	//	}
+	e.errorText = make([]byte, int(e.errorTextLength))
+	if _, err = rd.Read(e.errorText); err != nil {
 		return err
 	}
 
