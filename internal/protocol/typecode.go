@@ -140,10 +140,10 @@ func (k typeCode) dataType() DataType {
 		return DtTime
 	case tcDecimal:
 		return DtDecimal
-	case tcVarchar, tcString:
-		return DtVarchar
-	case tcNvarchar, tcNstring:
-		return DtNvarchar
+	case tcChar, tcVarchar, tcString, tcNchar, tcNvarchar, tcNstring:
+		return DtString
+	case tcBinary, tcVarbinary:
+		return DtBytes
 	case tcBlob, tcClob, tcNclob:
 		return DtLob
 	}
