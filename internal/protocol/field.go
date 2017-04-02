@@ -245,13 +245,17 @@ const (
 	dateFieldSize          = 4
 	timeFieldSize          = 4
 	timestampFieldSize     = dateFieldSize + timeFieldSize
+	longdateFieldSize      = 8
+	seconddateFieldSize    = 8
+	daydateFieldSize       = 4
+	secondtimeFieldSize    = 4
 	decimalFieldSize       = 16
 	lobInputDescriptorSize = 9
 )
 
 func fieldSize(tc typeCode, v driver.Value) (int, error) {
 
-	if v == nil {
+	if v == nil { //HDB bug: secondtime null value --> see writeField
 		return 0, nil
 	}
 
@@ -274,6 +278,14 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 		return timeFieldSize, nil
 	case tcTimestamp:
 		return timestampFieldSize, nil
+	case tcLongdate:
+		return longdateFieldSize, nil
+	case tcSeconddate:
+		return seconddateFieldSize, nil
+	case tcDaydate:
+		return daydateFieldSize, nil
+	case tcSecondtime:
+		return secondtimeFieldSize, nil
 	case tcDecimal:
 		return decimalFieldSize, nil
 	case tcChar, tcVarchar, tcString:
@@ -300,7 +312,7 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
 		return bytesSize(len(v))
-	case tcBlob, tcClob, tcNclob:
+	case tcNlocator, tcBlob, tcClob, tcNclob:
 		return lobInputDescriptorSize, nil
 	}
 	outLogger.Fatalf("data type %s not implemented", tc)
@@ -411,6 +423,54 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 
 		return time.Date(year, month, day, hour, minute, 0, nanosecs, time.UTC), nil
 
+	case tcLongdate:
+
+		time, null, err := readLongdate(rd)
+		if err != nil {
+			return nil, err
+		}
+		if null {
+			return nil, nil
+		}
+
+		return time, nil
+
+	case tcSeconddate:
+
+		time, null, err := readSeconddate(rd)
+		if err != nil {
+			return nil, err
+		}
+		if null {
+			return nil, nil
+		}
+
+		return time, nil
+
+	case tcDaydate:
+
+		time, null, err := readDaydate(rd)
+		if err != nil {
+			return nil, err
+		}
+		if null {
+			return nil, nil
+		}
+
+		return time, nil
+
+	case tcSecondtime:
+
+		time, null, err := readSecondtime(rd)
+		if err != nil {
+			return nil, err
+		}
+		if null {
+			return nil, nil
+		}
+
+		return time, nil
+
 	case tcDecimal:
 
 		b, null, err := readDecimal(rd)
@@ -470,7 +530,12 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 
 func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 
+	//HDB bug: secondtime null value cannot be set by setting high byte
+	//         trying so, gives
+	//         SQL HdbError 1033 - error while parsing protocol: no such data type: type_code=192, index=2
+
 	// null value
+	//if v == nil && tc != tcSecondtime
 	if v == nil {
 		if err := wr.WriteByte(byte(tc) | 0x80); err != nil { //set high bit
 			return err
@@ -485,13 +550,21 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 
 	switch tc {
 
-	// TODO: char, ...
-
 	case tcTinyint, tcSmallint, tcInteger, tcBigint:
+		var i64 int64
 
-		i64, ok := v.(int64)
-		if !ok {
+		switch v := v.(type) {
+		default:
 			return fmt.Errorf("invalid argument type %T", v)
+
+		case bool:
+			if v {
+				i64 = 1
+			} else {
+				i64 = 0
+			}
+		case int64:
+			i64 = v
 		}
 
 		switch tc {
@@ -545,6 +618,38 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 		}
 		return writeTime(wr, t)
 
+	case tcLongdate:
+		t, ok := v.(time.Time)
+		if !ok {
+			return fmt.Errorf("invalid argument type %T", v)
+		}
+		return writeLongdate(wr, t)
+
+	case tcSeconddate:
+		t, ok := v.(time.Time)
+		if !ok {
+			return fmt.Errorf("invalid argument type %T", v)
+		}
+		return writeSeconddate(wr, t)
+
+	case tcDaydate:
+		t, ok := v.(time.Time)
+		if !ok {
+			return fmt.Errorf("invalid argument type %T", v)
+		}
+		return writeDaydate(wr, t)
+
+	case tcSecondtime:
+		// HDB bug: write null value explicite
+		if v == nil {
+			return wr.WriteInt32(86401)
+		}
+		t, ok := v.(time.Time)
+		if !ok {
+			return fmt.Errorf("invalid argument type %T", v)
+		}
+		return writeSecondtime(wr, t)
+
 	case tcDecimal:
 		b, ok := v.([]byte)
 		if !ok {
@@ -583,7 +688,7 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 		}
 		return writeBytes(wr, v)
 
-	case tcBlob, tcClob, tcNclob:
+	case tcNlocator, tcBlob, tcClob, tcNclob:
 		return writeLob(wr)
 	}
 
@@ -688,6 +793,145 @@ func writeTime(wr *bufio.Writer, t time.Time) error {
 	}
 
 	return nil
+}
+
+var zeroTime = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+func readLongdate(rd *bufio.Reader) (time.Time, bool, error) {
+
+	longdate, err := rd.ReadInt64()
+	if err != nil {
+		return zeroTime, false, err
+	}
+
+	if longdate == 3155380704000000001 { // null value
+		return zeroTime, true, nil
+	}
+
+	return convertLongdateToTime(longdate), false, nil
+}
+
+func writeLongdate(wr *bufio.Writer, t time.Time) error {
+
+	if err := wr.WriteInt64(convertTimeToLongdate(t)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readSeconddate(rd *bufio.Reader) (time.Time, bool, error) {
+
+	seconddate, err := rd.ReadInt64()
+	if err != nil {
+		return zeroTime, false, err
+	}
+
+	if seconddate == 315538070401 { // null value
+		return zeroTime, true, nil
+	}
+
+	return convertSeconddateToTime(seconddate), false, nil
+}
+
+func writeSeconddate(wr *bufio.Writer, t time.Time) error {
+
+	if err := wr.WriteInt64(convertTimeToSeconddate(t)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readDaydate(rd *bufio.Reader) (time.Time, bool, error) {
+
+	daydate, err := rd.ReadInt32()
+	if err != nil {
+		return zeroTime, false, err
+	}
+
+	if daydate == 3652062 { // null value
+		return zeroTime, true, nil
+	}
+
+	return convertDaydateToTime(int64(daydate)), false, nil
+}
+
+func writeDaydate(wr *bufio.Writer, t time.Time) error {
+
+	if err := wr.WriteInt32(int32(convertTimeToDayDate(t))); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readSecondtime(rd *bufio.Reader) (time.Time, bool, error) {
+	secondtime, err := rd.ReadInt32()
+	if err != nil {
+		return zeroTime, false, err
+	}
+
+	if secondtime == 86401 { // null value
+		return zeroTime, true, nil
+	}
+
+	return convertSecondtimeToTime(int(secondtime)), false, nil
+}
+
+func writeSecondtime(wr *bufio.Writer, t time.Time) error {
+
+	if err := wr.WriteInt32(int32(convertTimeToSecondtime(t))); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// nanosecond: HDB - 7 digits precision (not 9 digits)
+func convertTimeToLongdate(t time.Time) int64 {
+	t = t.UTC()
+	return (((((((int64(convertTimeToDayDate(t))-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60)+int64(t.Second()))*10000000 + int64(t.Nanosecond()/100) + 1
+}
+
+func convertLongdateToTime(longdate int64) time.Time {
+	const dayfactor = 10000000 * 24 * 60 * 60
+	longdate--
+	d := (longdate % dayfactor) * 100
+	t := convertDaydateToTime((longdate / dayfactor) + 1)
+	return t.Add(time.Duration(d))
+}
+
+func convertTimeToSeconddate(t time.Time) int64 {
+	t = t.UTC()
+	return (((((int64(convertTimeToDayDate(t))-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60 + int64(t.Second()) + 1
+}
+
+func convertSeconddateToTime(seconddate int64) time.Time {
+	const dayfactor = 24 * 60 * 60
+	seconddate--
+	d := (seconddate % dayfactor) * 1000000000
+	t := convertDaydateToTime((seconddate / dayfactor) + 1)
+	return t.Add(time.Duration(d))
+}
+
+const julianHdb = 1721423 // 1 January 0001 00:00:00 (1721424) - 1
+
+func convertTimeToDayDate(t time.Time) int64 {
+	return int64(timeToJulianDay(t) - julianHdb)
+}
+
+func convertDaydateToTime(daydate int64) time.Time {
+	return julianDayToTime(int(daydate) + julianHdb)
+}
+
+func convertTimeToSecondtime(t time.Time) int {
+	t = t.UTC()
+	return (t.Hour()*60+t.Minute())*60 + t.Second() + 1
+}
+
+func convertSecondtimeToTime(secondtime int) time.Time {
+	return time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(int64(secondtime-1) * 1000000000))
 }
 
 func readDecimal(rd *bufio.Reader) ([]byte, bool, error) {

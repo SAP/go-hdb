@@ -113,7 +113,7 @@ func (k typeCode) isCharBased() bool {
 }
 
 func (k typeCode) isVariableLength() bool {
-	return k == tcVarchar || k == tcNvarchar || k == tcVarbinary || k == tcShorttext || k == tcAlphanum
+	return k == tcChar || k == tcNchar || k == tcVarchar || k == tcNvarchar || k == tcBinary || k == tcVarbinary || k == tcShorttext || k == tcAlphanum
 }
 
 func (k typeCode) dataType() DataType {
@@ -132,11 +132,7 @@ func (k typeCode) dataType() DataType {
 		return DtReal
 	case tcDouble:
 		return DtDouble
-	case tcChar:
-		return DtChar
-	case tcNchar:
-		return DtNchar
-	case tcDate, tcTime, tcTimestamp:
+	case tcDate, tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
 		return DtTime
 	case tcDecimal:
 		return DtDecimal
@@ -144,7 +140,7 @@ func (k typeCode) dataType() DataType {
 		return DtString
 	case tcBinary, tcVarbinary:
 		return DtBytes
-	case tcBlob, tcClob, tcNclob:
+	case tcNlocator, tcBlob, tcClob, tcNclob:
 		return DtLob
 	}
 }

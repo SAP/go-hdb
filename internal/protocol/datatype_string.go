@@ -4,9 +4,9 @@ package protocol
 
 import "fmt"
 
-const _DataType_name = "DtUnknownDtTinyintDtSmallintDtIntDtBigintDtRealDtDoubleDtDecimalDtTimeDtVarcharDtNvarcharDtLob"
+const _DataType_name = "DtUnknownDtTinyintDtSmallintDtIntegerDtBigintDtRealDtDoubleDtDecimalDtTimeDtStringDtBytesDtLob"
 
-var _DataType_index = [...]uint8{0, 9, 18, 28, 33, 41, 47, 55, 64, 70, 79, 89, 94}
+var _DataType_index = [...]uint8{0, 9, 18, 28, 37, 45, 51, 59, 68, 74, 82, 89, 94}
 
 func (i DataType) String() string {
 	if i >= DataType(len(_DataType_index)-1) {

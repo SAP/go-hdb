@@ -180,6 +180,7 @@ func (f *resultField) read(rd *bufio.Reader) error {
 	} else {
 		return err
 	}
+
 	if f.fraction, err = rd.ReadInt16(); err != nil {
 		return err
 	}

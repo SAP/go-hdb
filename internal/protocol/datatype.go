@@ -30,8 +30,6 @@ const (
 	DtBigint
 	DtReal
 	DtDouble
-	DtChar
-	DtNchar
 	DtDecimal
 	DtTime
 	DtString

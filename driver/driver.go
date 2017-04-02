@@ -39,6 +39,9 @@ const DriverVersion = "0.9"
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
 
+// needed for testing
+const driverDataFormatVersion = 1
+
 func init() {
 	sql.Register(DriverName, &drv{})
 }
@@ -467,6 +470,7 @@ var (
 	scanTypeFloat   = reflect.TypeOf(float64(0.0))
 	scanTypeTime    = reflect.TypeOf(time.Time{})
 	scanTypeString  = reflect.TypeOf(string(""))
+	scanTypeBytes   = reflect.TypeOf([]byte{})
 	scanTypeDecimal = reflect.TypeOf(Decimal{})
 	scanTypeLob     = reflect.TypeOf(Lob{})
 )
@@ -483,8 +487,10 @@ func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
 		return scanTypeTime
 	case p.DtDecimal:
 		return scanTypeDecimal
-	case p.DtVarchar, p.DtNvarchar:
+	case p.DtString:
 		return scanTypeString
+	case p.DtBytes:
+		return scanTypeBytes
 	case p.DtLob:
 		return scanTypeLob
 	}

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime/debug"
 	"time"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
@@ -46,9 +47,6 @@ var ErrIntegerOutOfRange = errors.New("integer out of range error")
 // ErrorIntegerOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
 
-// ErrorCharIntegerOutOfRange means that a float exceeds the size of the hdb float field.
-var ErrFloatOutOfRange = errors.New("float out of range error")
-
 var typeOfTime = reflect.TypeOf((*time.Time)(nil)).Elem()
 var typeOfBytes = reflect.TypeOf((*[]byte)(nil)).Elem()
 
@@ -57,6 +55,7 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 	switch dt {
 
 	default:
+		debug.PrintStack()
 		return dbUnknownType{}
 	case p.DtTinyint:
 		return dbTinyint
@@ -70,10 +69,6 @@ func columnConverter(dt p.DataType) driver.ValueConverter {
 		return dbReal
 	case p.DtDouble:
 		return dbDouble
-	case p.D tChar:
-		return dbChar
-	case p.DtNchar:
-		return dbNChar
 	case p.DtTime:
 		return dbTime
 	case p.DtDecimal:
@@ -118,6 +113,9 @@ func (i dbIntegerType) ConvertValue(v interface{}) (driver.Value, error) {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 
+	// bool is represented in HDB as tinyint
+	case reflect.Bool:
+		return rv.Bool(), nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
 		if i64 > i.max || i64 < i.min {
@@ -323,17 +321,6 @@ func (d dbBytesType) ConvertValue(v interface{}) (driver.Value, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported bytes conversion type error %T %v", v, v)
-}
-
-//char
-var dbChar = dbCharType{}
-
-type dbCharType struct{}
-
-var _ driver.ValueConverter = dbCharType{} //check that type implements interface
-
-func (d dbCharType) ConvertValue(v interface{}) (driver.Value, error) {
-
 }
 
 //lob

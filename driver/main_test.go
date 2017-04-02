@@ -58,6 +58,7 @@ func TestMain(m *testing.M) {
 
 	// create schema
 	TestSchema = RandomIdentifier("test_")
+
 	if _, err := db.Exec(fmt.Sprintf("create schema %s", TestSchema)); err != nil {
 		log.Fatal(err)
 	}

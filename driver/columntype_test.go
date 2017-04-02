@@ -54,6 +54,20 @@ func init() {
 	testLob.SetReader(testBuffer)
 }
 
+func dataType(dt string) string {
+	if driverDataFormatVersion == 1 {
+		switch dt {
+		case "DAYDATE":
+			return "DATE"
+		case "SECONDTIME":
+			return "TIME"
+		case "LONGDATE", "SECONDDATE":
+			return "TIMESTAMP"
+		}
+	}
+	return dt
+}
+
 func TestColumnType(t *testing.T) {
 
 	var testColumnTypeData = []testColumnType{
@@ -64,35 +78,34 @@ func TestColumnType(t *testing.T) {
 		{"decimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, //TODO sizeable
 		{"real", 0, false, false, "REAL", 0, 0, true, 1.0},
 		{"double", 0, false, false, "DOUBLE", 0, 0, true, 3.14},
-		{"char", 0, false, false, "CHAR", 0, 0, true, "A"},
+		{"char", 30, true, false, "CHAR", 0, 0, true, testString},
 		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, testString},
-		{"nchar", 0, false, false, "NCHAR", 0, 0, true, "Z"},
-		{"nvarchar", 30, true, false, "NVARCHAR", 0, 0, true, testString},
-		{"binary", 0, false, false, "BINARY", 0, 0, true, testBinary},
+		{"nchar", 20, true, false, "NCHAR", 0, 0, true, testString},
+		{"nvarchar", 20, true, false, "NVARCHAR", 0, 0, true, testString},
+		{"binary", 10, true, false, "BINARY", 0, 0, true, testBinary},
 		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, testBinary},
-		{"date", 0, false, false, "DATE", 0, 0, true, testTime},
-		{"time", 0, false, false, "TIME", 0, 0, true, testTime},
-		{"timestamp", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},
+		{"date", 0, false, false, dataType("DAYDATE"), 0, 0, true, testTime},
+		{"time", 0, false, false, dataType("SECONDTIME"), 0, 0, true, testTime},
+		{"timestamp", 0, false, false, dataType("LONGDATE"), 0, 0, true, testTime},
 		{"clob", 0, false, false, "CLOB", 0, 0, true, testLob},
 		{"nclob", 0, false, false, "NCLOB", 0, 0, true, testLob},
 		{"blob", 0, false, false, "BLOB", 0, 0, true, testLob},
 		{"boolean", 0, false, false, "TINYINT", 0, 0, true, false},            // hdb gives TINYINT back - not BOOLEAN
 		{"smalldecimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
-		{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},               // hdb gives NCLOB back - not TEXT
-		{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString},    // hdb gives NVARCHAR back - not SHORTTEXT
-		{"bintext", 0, false, false, "NCLOB", 0, 0, true, testLob},            // hdb gives NCLOB back - not BINTEXT
-		{"alphanum", 12, true, false, "NVARCHAR", 0, 0, true, testString},     // hdb gives NVARCHAR back - not ALPHANUM
-		{"longdate", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},      // hdb gives TIMESTAMP back - not LONGDATE
-		{"seconddate", 0, false, false, "TIMESTAMP", 0, 0, true, testTime},    // hdb gives TIMESTAMP back - not SECONDDATE
-		{"daydate", 0, false, false, "DATE", 0, 0, true, testTime},            // hdb gives DATE back - not DAYDATE
-		{"secondtime", 0, false, false, "TIME", 0, 0, true, testTime},         // hdb gives TIME back - not SECONDTIME
+		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},               // hdb gives NCLOB back - not TEXT
+		//{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString}, // hdb gives NVARCHAR back - not SHORTTEXT
+		//{"alphanum", 15, true, false, "NVARCHAR", 0, 0, true, testString},  // hdb gives NVARCHAR back - not ALPHANUM
+		{"longdate", 0, false, false, dataType("LONGDATE"), 0, 0, true, testTime},
+		{"seconddate", 0, false, false, dataType("SECONDDATE"), 0, 0, true, testTime},
+		{"daydate", 0, false, false, dataType("DAYDATE"), 0, 0, true, testTime},
+		{"secondtime", 0, false, false, dataType("SECONDTIME"), 0, 0, true, testTime},
 
 		// not nullable
 		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, 42},
 		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, testString},
 	}
 
-	// text, st_geometry, st_point is only supported for column table
+	// text is only supported for column table
 
 	var createSql bytes.Buffer
 
@@ -133,11 +146,20 @@ func TestColumnType(t *testing.T) {
 
 	prms := strings.Repeat("?,", len(testColumnTypeData)-1) + "?"
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s.%s values (%s)", TestSchema, table, prms), args...); err != nil {
+	// use trancactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	//	INSERT INTO T VALUES (1, 1, 'The first');
+	if _, err := tx.Exec(fmt.Sprintf("insert into %s.%s values (%s)", TestSchema, table, prms), args...); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s.%s", TestSchema, table))
 	if err != nil {

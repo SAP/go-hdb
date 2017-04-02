@@ -144,6 +144,7 @@ func (f *parameterField) read(rd *bufio.Reader) error {
 	} else {
 		return err
 	}
+
 	if mode, err := rd.ReadInt8(); err == nil {
 		f.mode = parameterMode(mode)
 	} else {
@@ -247,10 +248,6 @@ func (m *parameters) size() (int, error) {
 	cnt := len(m.fields)
 
 	for i, arg := range m.args {
-
-		if arg == nil { // null value
-			continue
-		}
 
 		// mass insert
 		field := m.fields[i%cnt]
