@@ -42,6 +42,7 @@ func (p uint32Slice) sort()              { sort.Sort(p) }
 type field interface {
 	typeCode() typeCode
 	typeLength() (int64, bool)
+	typePrecisionScale() (int64, int64, bool)
 	nullable() bool
 	in() bool
 	out() bool
@@ -128,6 +129,12 @@ func (f *FieldSet) DatabaseTypeName(idx int) string {
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
 func (f *FieldSet) TypeLength(idx int) (int64, bool) {
 	return f.fields[idx].typeLength()
+}
+
+// TypePrecisionScale returns the type precision and scale (decimal types) of the field at index idx.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
+func (f *FieldSet) TypePrecisionScale(idx int) (int64, int64, bool) {
+	return f.fields[idx].typePrecisionScale()
 }
 
 // TypeNullable returns true if the column at index idx may be null, false otherwise.

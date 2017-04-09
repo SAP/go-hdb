@@ -458,31 +458,45 @@ func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
 	return r.fieldSet.TypeLength(idx)
 }
 
+func (r *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return r.fieldSet.TypePrecisionScale(idx)
+}
+
 func (r *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
 	return r.fieldSet.TypeNullable(idx), true
 }
 
-// ColumnTypePrecisionScale(index int) (precision, scale int64, ok bool)
-
 var (
-	scanTypeUnknown = reflect.TypeOf(new(interface{})).Elem()
-	scanTypeInteger = reflect.TypeOf(int64(0))
-	scanTypeFloat   = reflect.TypeOf(float64(0.0))
-	scanTypeTime    = reflect.TypeOf(time.Time{})
-	scanTypeString  = reflect.TypeOf(string(""))
-	scanTypeBytes   = reflect.TypeOf([]byte{})
-	scanTypeDecimal = reflect.TypeOf(Decimal{})
-	scanTypeLob     = reflect.TypeOf(Lob{})
+	scanTypeUnknown  = reflect.TypeOf(new(interface{})).Elem()
+	scanTypeTinyint  = reflect.TypeOf(uint8(0))
+	scanTypeSmallint = reflect.TypeOf(int16(0))
+	scanTypeInteger  = reflect.TypeOf(int32(0))
+	scanTypeBigint   = reflect.TypeOf(int64(0))
+	scanTypeReal     = reflect.TypeOf(float32(0.0))
+	scanTypeDouble   = reflect.TypeOf(float64(0.0))
+	scanTypeTime     = reflect.TypeOf(time.Time{})
+	scanTypeString   = reflect.TypeOf(string(""))
+	scanTypeBytes    = reflect.TypeOf([]byte{})
+	scanTypeDecimal  = reflect.TypeOf(Decimal{})
+	scanTypeLob      = reflect.TypeOf(Lob{})
 )
 
 func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
 	switch r.fieldSet.DataType(idx) {
 	default:
 		return scanTypeUnknown
-	case p.DtTinyint, p.DtSmallint, p.DtInteger, p.DtBigint:
+	case p.DtTinyint:
+		return scanTypeTinyint
+	case p.DtSmallint:
+		return scanTypeSmallint
+	case p.DtInteger:
 		return scanTypeInteger
-	case p.DtReal, p.DtDouble:
-		return scanTypeFloat
+	case p.DtBigint:
+		return scanTypeBigint
+	case p.DtReal:
+		return scanTypeReal
+	case p.DtDouble:
+		return scanTypeDouble
 	case p.DtTime:
 		return scanTypeTime
 	case p.DtDecimal:

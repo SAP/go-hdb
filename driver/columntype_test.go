@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -30,13 +31,15 @@ type testColumnType struct {
 	sqlType string
 	length  int64
 
-	varLength bool
-	sizeable  bool
+	varLength   bool
+	sizeable    bool
+	decimalType bool
 
 	typeName  string
 	precision int64
 	scale     int64
 	nullable  bool
+	scanType  reflect.Type
 
 	value interface{}
 }
@@ -71,38 +74,38 @@ func dataType(dt string) string {
 func TestColumnType(t *testing.T) {
 
 	var testColumnTypeData = []testColumnType{
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, true, 1},
-		{"smallint", 0, false, false, "SMALLINT", 0, 0, true, 42},
-		{"integer", 0, false, false, "INTEGER", 0, 0, true, 4711},
-		{"bigint", 0, false, false, "BIGINT", 0, 0, true, 68000},
-		{"decimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, //TODO sizeable
-		{"real", 0, false, false, "REAL", 0, 0, true, 1.0},
-		{"double", 0, false, false, "DOUBLE", 0, 0, true, 3.14},
-		{"char", 30, true, false, "CHAR", 0, 0, true, testString},
-		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, testString},
-		{"nchar", 20, true, false, "NCHAR", 0, 0, true, testString},
-		{"nvarchar", 20, true, false, "NVARCHAR", 0, 0, true, testString},
-		{"binary", 10, true, false, "BINARY", 0, 0, true, testBinary},
-		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, testBinary},
-		{"date", 0, false, false, dataType("DAYDATE"), 0, 0, true, testTime},
-		{"time", 0, false, false, dataType("SECONDTIME"), 0, 0, true, testTime},
-		{"timestamp", 0, false, false, dataType("LONGDATE"), 0, 0, true, testTime},
-		{"clob", 0, false, false, "CLOB", 0, 0, true, testLob},
-		{"nclob", 0, false, false, "NCLOB", 0, 0, true, testLob},
-		{"blob", 0, false, false, "BLOB", 0, 0, true, testLob},
-		{"boolean", 0, false, false, "TINYINT", 0, 0, true, false},            // hdb gives TINYINT back - not BOOLEAN
-		{"smalldecimal", 0, false, false, "DECIMAL", 0, 0, true, testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
-		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},               // hdb gives NCLOB back - not TEXT
-		//{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString}, // hdb gives NVARCHAR back - not SHORTTEXT
-		//{"alphanum", 15, true, false, "NVARCHAR", 0, 0, true, testString},  // hdb gives NVARCHAR back - not ALPHANUM
-		{"longdate", 0, false, false, dataType("LONGDATE"), 0, 0, true, testTime},
-		{"seconddate", 0, false, false, dataType("SECONDDATE"), 0, 0, true, testTime},
-		{"daydate", 0, false, false, dataType("DAYDATE"), 0, 0, true, testTime},
-		{"secondtime", 0, false, false, dataType("SECONDTIME"), 0, 0, true, testTime},
+		{"tinyint", 0, false, false, false, "TINYINT", 0, 0, true, scanTypeTinyint, 1},
+		{"smallint", 0, false, false, false, "SMALLINT", 0, 0, true, scanTypeSmallint, 42},
+		{"integer", 0, false, false, false, "INTEGER", 0, 0, true, scanTypeInteger, 4711},
+		{"bigint", 0, false, false, false, "BIGINT", 0, 0, true, scanTypeBigint, 68000},
+		{"decimal", 0, false, false, true, "DECIMAL", 34, 32767, true, scanTypeDecimal, testDecimal},
+		{"real", 0, false, false, false, "REAL", 0, 0, true, scanTypeReal, 1.0},
+		{"double", 0, false, false, false, "DOUBLE", 0, 0, true, scanTypeDouble, 3.14},
+		{"char", 30, true, false, false, "CHAR", 0, 0, true, scanTypeString, testString},
+		{"varchar", 30, true, false, false, "VARCHAR", 0, 0, true, scanTypeString, testString},
+		{"nchar", 20, true, false, false, "NCHAR", 0, 0, true, scanTypeString, testString},
+		{"nvarchar", 20, true, false, false, "NVARCHAR", 0, 0, true, scanTypeString, testString},
+		{"binary", 10, true, false, false, "BINARY", 0, 0, true, scanTypeBytes, testBinary},
+		{"varbinary", 10, true, false, false, "VARBINARY", 0, 0, true, scanTypeBytes, testBinary},
+		{"date", 0, false, false, false, dataType("DAYDATE"), 0, 0, true, scanTypeTime, testTime},
+		{"time", 0, false, false, false, dataType("SECONDTIME"), 0, 0, true, scanTypeTime, testTime},
+		{"timestamp", 0, false, false, false, dataType("LONGDATE"), 0, 0, true, scanTypeTime, testTime},
+		{"clob", 0, false, false, false, "CLOB", 0, 0, true, scanTypeLob, testLob},
+		{"nclob", 0, false, false, false, "NCLOB", 0, 0, true, scanTypeLob, testLob},
+		{"blob", 0, false, false, false, "BLOB", 0, 0, true, scanTypeLob, testLob},
+		{"boolean", 0, false, false, false, "TINYINT", 0, 0, true, scanTypeTinyint, false},                // hdb gives TINYINT back - not BOOLEAN
+		{"smalldecimal", 0, false, false, true, "DECIMAL", 16, 32767, true, scanTypeDecimal, testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
+		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},             // hdb gives NCLOB back - not TEXT
+		//{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString},  // hdb gives NVARCHAR back - not SHORTTEXT
+		//{"alphanum", 15, true, false, "NVARCHAR", 0, 0, true, testString},   // hdb gives NVARCHAR back - not ALPHANUM
+		{"longdate", 0, false, false, false, dataType("LONGDATE"), 0, 0, true, scanTypeTime, testTime},
+		{"seconddate", 0, false, false, false, dataType("SECONDDATE"), 0, 0, true, scanTypeTime, testTime},
+		{"daydate", 0, false, false, false, dataType("DAYDATE"), 0, 0, true, scanTypeTime, testTime},
+		{"secondtime", 0, false, false, false, dataType("SECONDTIME"), 0, 0, true, scanTypeTime, testTime},
 
 		// not nullable
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, 42},
-		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, testString},
+		{"tinyint", 0, false, false, false, "TINYINT", 0, 0, false, scanTypeTinyint, 42},
+		{"nvarchar", 25, true, false, false, "NVARCHAR", 0, 0, false, scanTypeString, testString},
 	}
 
 	// text is only supported for column table
@@ -188,6 +191,17 @@ func TestColumnType(t *testing.T) {
 			t.Fatalf("index %d sql type %s length %d - expected %d", i, td.sqlType, length, td.length)
 		}
 
+		precision, scale, ok := ct.DecimalSize()
+		if td.decimalType != ok {
+			t.Fatalf("index %d sql type %s decimal %t - expected %t", i, td.sqlType, ok, td.decimalType)
+		}
+		if td.precision != precision {
+			t.Fatalf("index %d sql type %s precision %d - expected %d", i, td.sqlType, precision, td.precision)
+		}
+		if td.scale != scale {
+			t.Fatalf("index %d sql type %s scale %d - expected %d", i, td.sqlType, scale, td.scale)
+		}
+
 		nullable, ok := ct.Nullable()
 		if !ok {
 			t.Fatalf("index %d sql type %s - nullable info is expected to be provided", i, td.sqlType)
@@ -196,35 +210,8 @@ func TestColumnType(t *testing.T) {
 			t.Fatalf("index %d sql type %s nullable %t - expected %t", i, td.sqlType, nullable, td.nullable)
 		}
 
-		//precision, scale, ok := ct.DecimalSize()
-		//if td.
-
-		/*
-
-					sqlType string
-			length  int64
-
-			varLength bool
-			sizeable  bool
-
-			typeName  string
-			precision int64
-			scale     int64
-			nullable  bool
-		*/
-
-	}
-
-	/*
-		for i, ct := range cts {
-			t.Log(ct.DatabaseTypeName())
-			precision, scale, ok := ct.DecimalSize()
-			t.Logf("precision %d scale %d ok %t", precision, scale, ok)
-			length, ok := ct.Length()
-			t.Logf("lenght %d ok %t", length, ok)
-			t.Log(ct.Name())
-			t.Log(ct.ScanType().String())
-
+		if ct.ScanType() != td.scanType {
+			t.Fatalf("index %d sql type %s scan type %v - expected %v", i, td.sqlType, ct.ScanType(), td.scanType)
 		}
-	*/
+	}
 }

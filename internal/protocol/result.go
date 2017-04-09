@@ -145,6 +145,13 @@ func (f *resultField) typeLength() (int64, bool) {
 	return 0, false
 }
 
+func (f *resultField) typePrecisionScale() (int64, int64, bool) {
+	if f.tc.isDecimalType() {
+		return int64(f.length), int64(f.fraction), true
+	}
+	return 0, 0, false
+}
+
 func (f *resultField) nullable() bool {
 	return f.columnOptions == coOptional
 }

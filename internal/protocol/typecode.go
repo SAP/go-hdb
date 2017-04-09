@@ -116,6 +116,10 @@ func (k typeCode) isVariableLength() bool {
 	return k == tcChar || k == tcNchar || k == tcVarchar || k == tcNvarchar || k == tcBinary || k == tcVarbinary || k == tcShorttext || k == tcAlphanum
 }
 
+func (k typeCode) isDecimalType() bool {
+	return k == tcSmalldecimal || k == tcDecimal
+}
+
 func (k typeCode) dataType() DataType {
 	switch k {
 	default:
