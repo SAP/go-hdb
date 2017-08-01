@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
@@ -71,6 +72,15 @@ func (d *drv) Open(dsn string) (driver.Conn, error) {
 }
 
 // database connection
+
+//  check if conn implements all required interfaces
+var _ driver.Conn = (*conn)(nil)
+var _ driver.ConnBeginTx = (*conn)(nil)        // golang 1.8
+var _ driver.ConnPrepareContext = (*conn)(nil) // golang 1.8
+var _ driver.ExecerContext = (*conn)(nil)      // golang 1.8
+var _ driver.Pinger = (*conn)(nil)             // golang 1.8
+var _ driver.QueryerContext = (*conn)(nil)     // golang 1.8
+
 type conn struct {
 	session *p.Session
 }
@@ -180,6 +190,32 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 	return newQueryResult(c.session, id, meta, values, attributes)
 }
 
+// connection: golang 1.8 extensions
+func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+
+	return nil, nil
+}
+
+func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+
+	return nil, nil
+}
+
+func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+
+	return nil, nil
+}
+
+func (c *conn) Ping(ctx context.Context) error {
+
+	return nil
+}
+
+func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+
+	return nil, nil
+}
+
 //transaction
 type tx struct {
 	session *p.Session
@@ -208,6 +244,12 @@ func (t *tx) Rollback() error {
 }
 
 //statement
+
+//  check if stmt implements all required interfaces
+var _ driver.Stmt = (*stmt)(nil)
+var _ driver.StmtExecContext = (*stmt)(nil)  // golang 1.8
+var _ driver.StmtQueryContext = (*stmt)(nil) // golang 1.8
+
 type stmt struct {
 	qt             p.QueryType
 	session        *p.Session
@@ -289,7 +331,24 @@ func (s *stmt) ColumnConverter(idx int) driver.ValueConverter {
 	return columnConverter(s.prmFieldSet.DataType(idx))
 }
 
+// statement: golang 1.8 extensions
+func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+
+	return nil, nil
+}
+
+func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+
+	return nil, nil
+}
+
 // bulk insert statement
+
+//  check if bulkInsertStmt implements all required interfaces
+var _ driver.Stmt = (*bulkInsertStmt)(nil)
+var _ driver.StmtExecContext = (*bulkInsertStmt)(nil)  // golang 1.8
+var _ driver.StmtQueryContext = (*bulkInsertStmt)(nil) // golang 1.8
+
 type bulkInsertStmt struct {
 	session           *p.Session
 	query             string
@@ -364,17 +423,51 @@ func (s *bulkInsertStmt) ColumnConverter(idx int) driver.ValueConverter {
 	return columnConverter(s.parameterFieldSet.DataType(idx))
 }
 
+// statement: golang 1.8 extensions
+func (s *bulkInsertStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+
+	return nil, nil
+}
+
+func (s *bulkInsertStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+
+	return nil, nil
+}
+
 // driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that doesn't return rows
 var noColumns = []string{}
 var noResult = new(noResultType)
+
+//  check if noResultType implements all required interfaces
+var _ driver.Rows = (*noResultType)(nil)
+
+//  the following golang 1.8 interfaces are not implemented, bacause no result values are provided anyway:
+//  - RowsColumnTypeDatabaseTypeName
+//  - RowsColumnTypeLength
+//  - RowsColumnTypeNullable
+//  - RowsColumnTypePrecisionScale
+//  - RowsColumnTypeScanType
+var _ driver.RowsNextResultSet = (*noResultType)(nil) // golang 1.8
 
 type noResultType struct{}
 
 func (r *noResultType) Columns() []string              { return noColumns }
 func (r *noResultType) Close() error                   { return nil }
 func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
+func (r *noResultType) HasNextResultSet() bool         { return false }
+func (r *noResultType) NextResultSet() error           { return io.EOF }
 
 // query result
+
+//  check if queryResult implements all required interfaces
+var _ driver.Rows = (*queryResult)(nil)
+var _ driver.RowsColumnTypeDatabaseTypeName = (*queryResult)(nil) // golang 1.8
+var _ driver.RowsColumnTypeLength = (*queryResult)(nil)           // golang 1.8
+var _ driver.RowsColumnTypeNullable = (*queryResult)(nil)         // golang 1.8
+var _ driver.RowsColumnTypePrecisionScale = (*queryResult)(nil)   // golang 1.8
+var _ driver.RowsColumnTypeScanType = (*queryResult)(nil)         // golang 1.8
+var _ driver.RowsNextResultSet = (*queryResult)(nil)              // golang 1.8
+
 type queryResult struct {
 	session     *p.Session
 	id          uint64
@@ -449,7 +542,7 @@ func (r *queryResult) Next(dest []driver.Value) error {
 	return nil
 }
 
-// go 1.8 extension
+// result: go 1.8 extension
 func (r *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
 	return r.fieldSet.DatabaseTypeName(idx)
 }
@@ -510,6 +603,14 @@ func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
 	}
 }
 
+func (r *queryResult) HasNextResultSet() bool {
+	return false
+}
+
+func (r *queryResult) NextResultSet() error {
+	return io.EOF
+}
+
 //call result store
 type callResultStore struct {
 	mu    sync.RWMutex
@@ -568,6 +669,16 @@ func (s *callResultStore) del(k uint64) {
 var procedureCallResultStore = new(callResultStore)
 
 //procedure call result
+
+//  check if procedureCallResult implements all required interfaces
+//var _ driver.Rows = (*procedureCallResult)(nil)
+//var _ driver.RowsColumnTypeDatabaseTypeName = (*procedureCallResult)(nil) // golang 1.8
+//var _ driver.RowsColumnTypeLength = (*procedureCallResult)(nil)           // golang 1.8
+//var _ driver.RowsColumnTypeNullable = (*procedureCallResult)(nil)         // golang 1.8
+//var _ driver.RowsColumnTypePrecisionScale = (*procedureCallResult)(nil)   // golang 1.8
+//var _ driver.RowsColumnTypeScanType = (*procedureCallResult)(nil)         // golang 1.8
+//var _ driver.RowsNextResultSet = (*procedureCallResult)(nil)              // golang 1.8
+
 type procedureCallResult struct {
 	id          uint64
 	session     *p.Session
