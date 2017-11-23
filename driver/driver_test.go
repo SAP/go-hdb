@@ -105,3 +105,38 @@ end
 		t.Fatal(err)
 	}
 }
+
+func TestQueryAttributeAlias(t *testing.T) {
+
+	db, err := sql.Open(DriverName, TestDsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	table := RandomIdentifier("queryAttributeAlias_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, j integer)", TestSchema, table)); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query(fmt.Sprintf("select i as x, j from %s.%s", TestSchema, table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("columns %s", columns)
+
+	if columns[0] != "X" {
+		t.Fatalf("value %s - expected %s", columns[0], "X")
+	}
+
+	if columns[1] != "J" {
+		t.Fatalf("value %s - expected %s", columns[1], "J")
+	}
+}

@@ -147,7 +147,7 @@ func (f *resultField) out() bool {
 }
 
 func (f *resultField) name(names map[uint32]string) string {
-	return names[f.columnnameOffset]
+	return names[f.columnDisplaynameOffset]
 }
 
 func (f *resultField) nameOffsets() []uint32 {
