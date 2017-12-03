@@ -325,6 +325,8 @@ func (s *bulkInsertStmt) execFlush() (driver.Result, error) {
 		return driver.ResultNoRows, nil
 	}
 
+	sqltrace.Traceln("execFlush")
+
 	result, err := s.session.Exec(s.id, s.parameterFieldSet, s.args)
 	s.args = s.args[:0]
 	s.numArg = 0
@@ -340,6 +342,26 @@ func (s *bulkInsertStmt) execBuffer(args []driver.Value) (driver.Result, error) 
 
 	var result driver.Result = driver.ResultNoRows
 	var err error
+
+	/*
+		incompatible change in go1.9:
+		- column converter convert value is only executed if num input != -1
+		- num input cannot be set as flush exec command does not have parameters
+		--> in go1.9 the driver values aren't converted
+		--> driver value types could be invalid (not allowed driver parameter type, e.g. INT)
+		--> invalid parameter types cannot be handled in protocol implementation
+		--> execute the conversion here
+		TODO: check after implemetation of NamedValueChecker
+	*/
+	if minGo1_9 {
+		for i, arg := range args {
+			arg, err := s.ColumnConverter(i).ConvertValue(arg)
+			if err != nil {
+				return result, err
+			}
+			args[i] = arg
+		}
+	}
 
 	if s.numArg == maxSmallint { // TODO: check why bigArgument count does not work
 		result, err = s.execFlush()
