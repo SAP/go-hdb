@@ -160,8 +160,20 @@ func TestTimestamp(t *testing.T) {
 	testDatatype(t, "timestamp", 0, true, testTimeData...)
 }
 
+func TestLongdate(t *testing.T) {
+	testDatatype(t, "longdate", 0, true, testTimeData...)
+}
+
 func TestSeconddate(t *testing.T) {
 	testDatatype(t, "seconddate", 0, true, testTimeData...)
+}
+
+func TestDaydate(t *testing.T) {
+	testDatatype(t, "daydate", 0, true, testTimeData...)
+}
+
+func TestSecondtime(t *testing.T) {
+	testDatatype(t, "secondtime", 0, true, testTimeData...)
 }
 
 var testDecimalData = []interface{}{
@@ -182,6 +194,15 @@ func TestDecimal(t *testing.T) {
 	testDatatype(t, "decimal", 0, true, testDecimalData...)
 }
 
+func TestBoolean(t *testing.T) {
+	testDatatype(t, "boolean", 0, true,
+		true,
+		false,
+		sql.NullBool{Valid: false, Bool: true},
+		sql.NullBool{Valid: true, Bool: false},
+	)
+}
+
 //
 func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
 	db, err := sql.Open(DriverName, TestDsn)
@@ -191,6 +212,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 	defer db.Close()
 
 	table := RandomIdentifier(fmt.Sprintf("%s_", dataType))
+
 	if dataSize == 0 {
 		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", TestSchema, table, dataType)); err != nil {
 			t.Fatal(err)
@@ -229,6 +251,11 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		t.Fatal(err)
 	}
 	defer rows.Close()
+
+	var timestampCheck = equalLongdate
+	if driverDataFormatVersion == 1 {
+		timestampCheck = equalTimestamp
+	}
 
 	i = 0
 	for rows.Next() {
@@ -292,30 +319,34 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			}
-		case **Decimal:
-			if ((*big.Rat)(*out)).Cmp((*big.Rat)(in.(*Decimal))) != 0 {
-				t.Fatalf("%d value %s - expected %s", i, (*big.Rat)(*out), (*big.Rat)(in.(*Decimal)))
-			}
 		case *time.Time:
 			switch dataType {
 			default:
 				t.Fatalf("unknown data type %s", dataType)
-			case "date":
+			case "date", "daydate":
 				if !equalDate(*out, in.(time.Time)) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
-			case "time":
+			case "time", "secondtime":
 				if !equalTime(*out, in.(time.Time)) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
-			case "timestamp":
-				if !equalTimestamp(*out, in.(time.Time)) {
+			case "timestamp", "longdate":
+				if !timestampCheck(*out, in.(time.Time)) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "seconddate":
 				if !equalDateTime(*out, in.(time.Time)) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
+			}
+		case **Decimal:
+			if ((*big.Rat)(*out)).Cmp((*big.Rat)(in.(*Decimal))) != 0 {
+				t.Fatalf("%d value %s - expected %s", i, (*big.Rat)(*out), (*big.Rat)(in.(*Decimal)))
+			}
+		case *bool:
+			if *out != in.(bool) {
+				t.Fatalf("%d value %v - expected %v", i, *out, in)
 			}
 		case *sql.NullInt64:
 			in := in.(sql.NullInt64)
@@ -374,16 +405,16 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 				switch dataType {
 				default:
 					t.Fatalf("unknown data type %s", dataType)
-				case "date":
+				case "date", "daydate":
 					if !equalDate(out.Time, in.Time) {
 						t.Fatalf("%d value %v - expected %v", i, *out, in)
 					}
-				case "time":
+				case "time", "secondtime":
 					if !equalTime(out.Time, in.Time) {
 						t.Fatalf("%d value %v - expected %v", i, *out, in)
 					}
-				case "timestamp":
-					if !equalTimestamp(out.Time, in.Time) {
+				case "timestamp", "longdate":
+					if !timestampCheck(out.Time, in.Time) {
 						t.Fatalf("%d value %v - expected %v", i, *out, in)
 					}
 				case "seconddate":
@@ -401,6 +432,14 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 				if ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) != 0 {
 					t.Fatalf("%d value %s - expected %s", i, (*big.Rat)(in.Decimal), (*big.Rat)(in.Decimal))
 				}
+			}
+		case *sql.NullBool:
+			in := in.(sql.NullBool)
+			if in.Valid != out.Valid {
+				t.Fatalf("%d value %v - expected %v", i, out, in)
+			}
+			if in.Valid && in.Bool != out.Bool {
+				t.Fatalf("%d value %v - expected %v", i, out, in)
 			}
 		}
 		i++
@@ -460,4 +499,9 @@ func equalMilliSecond(t1, t2 time.Time) bool {
 
 func equalTimestamp(t1, t2 time.Time) bool {
 	return equalDate(t1, t2) && equalTime(t1, t2) && equalMilliSecond(t1, t2)
+}
+
+func equalLongdate(t1, t2 time.Time) bool {
+	//HDB: nanosecond 7-digit precision
+	return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
 }

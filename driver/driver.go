@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	//	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/binary"
@@ -32,10 +33,13 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.9.3"
+const DriverVersion = "0.9.4"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
+
+// needed for testing
+const driverDataFormatVersion = 1
 
 func init() {
 	sql.Register(DriverName, &drv{})
@@ -66,6 +70,10 @@ func (d *drv) Open(dsn string) (driver.Conn, error) {
 }
 
 // database connection
+
+//  check if conn implements all required interfaces
+var _ driver.Conn = (*conn)(nil)
+
 type conn struct {
 	session *p.Session
 }
@@ -203,6 +211,10 @@ func (t *tx) Rollback() error {
 }
 
 //statement
+
+//  check if stmt implements all required interfaces
+var _ driver.Stmt = (*stmt)(nil)
+
 type stmt struct {
 	qt             p.QueryType
 	session        *p.Session
@@ -285,6 +297,10 @@ func (s *stmt) ColumnConverter(idx int) driver.ValueConverter {
 }
 
 // bulk insert statement
+
+//  check if bulkInsertStmt implements all required interfaces
+var _ driver.Stmt = (*bulkInsertStmt)(nil)
+
 type bulkInsertStmt struct {
 	session           *p.Session
 	query             string
@@ -385,13 +401,24 @@ func (s *bulkInsertStmt) ColumnConverter(idx int) driver.ValueConverter {
 var noColumns = []string{}
 var noResult = new(noResultType)
 
+//  check if noResultType implements all required interfaces
+var _ driver.Rows = (*noResultType)(nil)
+
 type noResultType struct{}
 
 func (r *noResultType) Columns() []string              { return noColumns }
 func (r *noResultType) Close() error                   { return nil }
 func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
 
+// rows
+type rows struct {
+}
+
 // query result
+
+//  check if queryResult implements all required interfaces
+var _ driver.Rows = (*queryResult)(nil)
+
 type queryResult struct {
 	session     *p.Session
 	id          uint64
@@ -524,6 +551,10 @@ func (s *callResultStore) del(k uint64) {
 var procedureCallResultStore = new(callResultStore)
 
 //procedure call result
+
+//  check if procedureCallResult implements all required interfaces
+var _ driver.Rows = (*procedureCallResult)(nil)
+
 type procedureCallResult struct {
 	id          uint64
 	session     *p.Session
