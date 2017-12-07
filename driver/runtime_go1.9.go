@@ -1,3 +1,5 @@
+// +build go1.9
+
 /*
 Copyright 2014 SAP SE
 
@@ -16,4 +18,6 @@ limitations under the License.
 
 package driver
 
-var minGo1_9 bool = false
+func init() {
+	minGo1_9 = true
+}
