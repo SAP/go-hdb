@@ -31,7 +31,7 @@ go test -dsn hdb://user:password@host:port
 * Support of databse/sql/driver Execer and Queryer interface for parameter free statements and queries.
 * Support of bulk inserts.
 * Support of UTF-8 to / from CESU-8 encodings for HANA Unicode types.
-* Build-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
+* Built-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
 * Support of Large Object streaming.
 * Support of Stored Procedures with table output parameters. 
 
