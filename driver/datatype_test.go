@@ -205,7 +205,7 @@ func TestBoolean(t *testing.T) {
 
 //
 func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

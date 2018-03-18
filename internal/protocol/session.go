@@ -17,6 +17,7 @@ limitations under the License.
 package protocol
 
 import (
+	"context"
 	"database/sql/driver"
 	"flag"
 	"fmt"
@@ -64,26 +65,23 @@ func padBytes(size int) int {
 
 // SessionConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type sessionConn struct {
-	addr            string
-	timeoutDuration time.Duration
-	conn            net.Conn
-	isBad           bool  // bad connection
-	badError        error // error cause for session bad state
-	inTx            bool  // in transaction
+	addr     string
+	timeout  time.Duration
+	conn     net.Conn
+	isBad    bool  // bad connection
+	badError error // error cause for session bad state
+	inTx     bool  // in transaction
 }
 
-func newSessionConn(addr string, timeout int) (*sessionConn, error) {
-	timeoutDuration := time.Duration(timeout) * time.Second
-	conn, err := net.DialTimeout("tcp", addr, timeoutDuration)
+func newSessionConn(ctx context.Context, addr string, timeoutSec int) (*sessionConn, error) {
+	timeout := time.Duration(timeoutSec) * time.Second
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sessionConn{
-		addr:            addr,
-		timeoutDuration: timeoutDuration,
-		conn:            conn,
-	}, nil
+	return &sessionConn{addr: addr, timeout: timeout, conn: conn}, nil
 }
 
 func (c *sessionConn) close() error {
@@ -93,7 +91,7 @@ func (c *sessionConn) close() error {
 // Read implements the io.Reader interface.
 func (c *sessionConn) Read(b []byte) (int, error) {
 	//set timeout
-	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
+	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
 		return 0, err
 	}
 	n, err := c.conn.Read(b)
@@ -109,7 +107,7 @@ func (c *sessionConn) Read(b []byte) (int, error) {
 // Write implements the io.Writer interface.
 func (c *sessionConn) Write(b []byte) (int, error) {
 	//set timeout
-	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeoutDuration)); err != nil {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
 		return 0, err
 	}
 	n, err := c.conn.Write(b)
@@ -125,9 +123,19 @@ func (c *sessionConn) Write(b []byte) (int, error) {
 type providePart func(pk partKind) replyPart
 type beforeRead func(p replyPart)
 
+// session parameter
+type sessionPrm interface {
+	Host() string
+	Username() string
+	Password() string
+	Locale() string
+	FetchSize() int
+	Timeout() int
+}
+
 // Session represents a HDB session.
 type Session struct {
-	prm *SessionPrm
+	prm sessionPrm
 
 	conn *sessionConn
 	rd   *bufio.Reader
@@ -156,26 +164,19 @@ type Session struct {
 }
 
 // NewSession creates a new database session.
-func NewSession(prm *SessionPrm) (*Session, error) {
+func NewSession(ctx context.Context, prm sessionPrm) (*Session, error) {
 
 	if trace {
 		outLogger.Printf("%s", prm)
 	}
 
-	conn, err := newSessionConn(prm.Host, prm.Timeout)
+	conn, err := newSessionConn(ctx, prm.Host(), prm.Timeout())
 	if err != nil {
 		return nil, err
 	}
 
-	var rd *bufio.Reader
-	var wr *bufio.Writer
-	if prm.BufferSize > 0 {
-		rd = bufio.NewReaderSize(conn, prm.BufferSize)
-		wr = bufio.NewWriterSize(conn, prm.BufferSize)
-	} else {
-		rd = bufio.NewReader(conn)
-		wr = bufio.NewWriter(conn)
-	}
+	rd := bufio.NewReader(conn)
+	wr := bufio.NewWriter(conn)
 
 	s := &Session{
 		prm:               prm,
@@ -276,13 +277,13 @@ func (s *Session) authenticateScramsha256() error {
 	tr := unicode.Utf8ToCesu8Transformer
 	tr.Reset()
 
-	username := make([]byte, cesu8.StringSize(s.prm.Username))
-	if _, _, err := tr.Transform(username, []byte(s.prm.Username), true); err != nil {
+	username := make([]byte, cesu8.StringSize(s.prm.Username()))
+	if _, _, err := tr.Transform(username, []byte(s.prm.Username()), true); err != nil {
 		return err // should never happen
 	}
 
-	password := make([]byte, cesu8.StringSize(s.prm.Password))
-	if _, _, err := tr.Transform(password, []byte(s.prm.Password), true); err != nil {
+	password := make([]byte, cesu8.StringSize(s.prm.Password()))
+	if _, _, err := tr.Transform(password, []byte(s.prm.Password()), true); err != nil {
 		return err //should never happen
 	}
 
@@ -327,7 +328,9 @@ func (s *Session) authenticateScramsha256() error {
 	//co.set(coDataFormatVersion2, dfvSPS06)
 	co.set(coDataFormatVersion2, dfvBaseline)
 	co.set(coCompleteArrayExecution, booleanType(true))
-	co.set(coClientLocale, stringType(s.prm.Locale))
+	if s.prm.Locale() != "" {
+		co.set(coClientLocale, stringType(s.prm.Locale()))
+	}
 	co.set(coClientDistributionMode, cdmOff)
 
 	if err := s.writeRequest(mtConnect, false, freq, id, co); err != nil {
@@ -589,7 +592,7 @@ func (s *Session) Query(stmtID uint64, parameterFieldSet *FieldSet, resultFieldS
 // FetchNext fetches next chunk in query result set.
 func (s *Session) FetchNext(id uint64, resultFieldSet *FieldSet) (*FieldValues, PartAttributes, error) {
 	s.resultsetID.id = &id
-	if err := s.writeRequest(mtFetchNext, false, s.resultsetID, fetchsize(s.prm.FetchSize)); err != nil {
+	if err := s.writeRequest(mtFetchNext, false, s.resultsetID, fetchsize(s.prm.FetchSize())); err != nil {
 		return nil, nil, err
 	}
 
@@ -875,19 +878,14 @@ func (s *Session) writeRequest(messageType messageType, commit bool, requests ..
 			return err
 		}
 
-		if err := s.wr.WriteZeroes(pad); err != nil {
-			return err
-		}
+		s.wr.WriteZeroes(pad)
 
 		bufferSize -= int64(partHeaderSize + size + pad)
 
 	}
 
-	if err := s.wr.Flush(); err != nil {
-		return err
-	}
+	return s.wr.Flush()
 
-	return nil
 }
 
 func (s *Session) readReply(providePart providePart, beforeRead beforeRead) error {
@@ -970,7 +968,8 @@ func (s *Session) readReply(providePart providePart, beforeRead beforeRead) erro
 
 		// TODO: workaround (see *)
 		if i != (noOfParts-1) || (i == (noOfParts-1) && diff == 0) {
-			if err := s.rd.Skip(padBytes(int(s.ph.bufferLength))); err != nil {
+			s.rd.Skip(padBytes(int(s.ph.bufferLength)))
+			if err := s.rd.GetError(); err != nil {
 				return err
 			}
 		}

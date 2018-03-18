@@ -129,14 +129,10 @@ func (r *writeLobReply) read(rd *bufio.Reader) error {
 	}
 
 	for i := 0; i < r.numArg; i++ {
-		if id, err := rd.ReadUint64(); err == nil {
-			r.ids[i] = locatorID(id)
-		} else {
-			return err
-		}
+		r.ids[i] = locatorID(rd.ReadUint64())
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 //write lob request
@@ -187,30 +183,17 @@ func (r *writeLobRequest) write(wr *bufio.Writer) error {
 	for _, reader := range r.readers {
 		if !reader.done() {
 
-			if err := wr.WriteUint64(uint64(reader.id())); err != nil {
-				return err
-			}
+			wr.WriteUint64(uint64(reader.id()))
 
 			opt := int8(0x02) // data included
 			if reader.eof() {
 				opt |= 0x04 // last data
 			}
 
-			if err := wr.WriteInt8(opt); err != nil {
-				return err
-			}
-
-			if err := wr.WriteInt64(-1); err != nil { //offset (-1 := append)
-				return err
-			}
-
-			if err := wr.WriteInt32(int32(reader.size())); err != nil { // size
-				return err
-			}
-
-			if _, err := wr.Write(reader.bytes()); err != nil {
-				return err
-			}
+			wr.WriteInt8(opt)
+			wr.WriteInt64(-1)                   //offset (-1 := append)
+			wr.WriteInt32(int32(reader.size())) // size
+			wr.Write(reader.bytes())
 		}
 	}
 	return nil
@@ -249,23 +232,13 @@ func (r *readLobRequest) write(wr *bufio.Writer) error {
 			continue
 		}
 
-		if err := wr.WriteUint64(uint64(writer.id())); err != nil {
-			return err
-		}
+		wr.WriteUint64(uint64(writer.id()))
 
 		readOfs, readLen := writer.readOfsLen()
 
-		if err := wr.WriteInt64(readOfs + 1); err != nil { //1-based
-			return err
-		}
-
-		if err := wr.WriteInt32(readLen); err != nil {
-			return err
-		}
-
-		if err := wr.WriteZeroes(4); err != nil {
-			return err
-		}
+		wr.WriteInt64(readOfs + 1) //1-based
+		wr.WriteInt32(readLen)
+		wr.WriteZeroes(4)
 	}
 	return nil
 }
@@ -288,10 +261,7 @@ func (r *readLobReply) setNumArg(numArg int) {
 func (r *readLobReply) read(rd *bufio.Reader) error {
 	for i := 0; i < r.numArg; i++ {
 
-		id, err := rd.ReadUint64()
-		if err != nil {
-			return err
-		}
+		id := rd.ReadUint64()
 
 		var writer lobWriter
 		for _, writer = range r.writers {
@@ -303,27 +273,16 @@ func (r *readLobReply) read(rd *bufio.Reader) error {
 			return fmt.Errorf("internal error: no lob writer found for id %d", id)
 		}
 
-		opt, err := rd.ReadInt8()
-		if err != nil {
-			return err
-		}
-
-		chunkLen, err := rd.ReadInt32()
-		if err != nil {
-			return err
-		}
-
-		if err := rd.Skip(3); err != nil {
-			return err
-		}
-
+		opt := rd.ReadInt8()
+		chunkLen := rd.ReadInt32()
+		rd.Skip(3)
 		eof := (lobOptions(opt) & loLastdata) != 0
 
 		if err := writer.write(rd, int(chunkLen), eof); err != nil {
 			return err
 		}
 	}
-	return nil
+	return rd.GetError()
 }
 
 // lobWriter reads lob chunks and writes them into lob field.
@@ -374,9 +333,7 @@ func (l *baseLobWriter) write(rd *bufio.Reader, size int, eof bool) error {
 	}
 
 	l.b = resizeBuffer(l.b, size+l.ofs)
-	if err := rd.ReadFull(l.b[l.ofs:]); err != nil {
-		return err
-	}
+	rd.ReadFull(l.b[l.ofs:])
 	if l.wr != nil {
 		return l._flush()
 	}

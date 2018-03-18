@@ -47,20 +47,15 @@ func (r *rowsAffected) read(rd *bufio.Reader) error {
 		r.sums = r.sums[:r._numArg]
 	}
 
-	var err error
-
 	for i := 0; i < r._numArg; i++ {
-		r.sums[i], err = rd.ReadInt32()
-		if err != nil {
-			return err
-		}
+		r.sums[i] = rd.ReadInt32()
 	}
 
 	if trace {
 		outLogger.Printf("rows affected %v", r.sums)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 func (r *rowsAffected) total() int64 {

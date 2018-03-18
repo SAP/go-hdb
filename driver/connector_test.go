@@ -1,3 +1,5 @@
+// +build go1.10
+
 /*
 Copyright 2014 SAP SE
 
@@ -14,22 +16,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver
+package driver_test
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"testing"
+
+	goHdbDriver "github.com/SAP/go-hdb/driver"
 )
 
-func TestConnection(t *testing.T) {
-	db, err := sql.Open(DriverName, TestDSN)
+func TestConnector(t *testing.T) {
+	dsnConnector, err := goHdbDriver.NewDSNConnector(goHdbDriver.TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
+	testConnector(t, dsnConnector)
+
+	basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
+	testConnector(t, basicAuthConnector)
+}
+
+func testConnector(t *testing.T, connector driver.Connector) {
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	var dummy string
-	err = db.QueryRow("select * from dummy").Scan(&dummy)
+	err := db.QueryRow("select * from dummy").Scan(&dummy)
 	switch {
 	case err == sql.ErrNoRows:
 		t.Fatal(err)

@@ -26,11 +26,11 @@ import (
 /*
 ExampleDecimal creates a table with a single decimal attribute, insert a record into it and select the entry afterwards.
 This demonstrates the usage of the type Decimal to write and scan decimal database attributes.
-For variables TestDsn and TestSchema see main_test.go.
+For variables TestDSN and TestSchema see main_test.go.
 */
 func ExampleDecimal() {
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		log.Fatal(err)
 	}

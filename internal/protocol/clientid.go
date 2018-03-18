@@ -46,9 +46,8 @@ func (id clientID) numArg() int {
 }
 
 func (id clientID) write(wr *bufio.Writer) error {
-	if _, err := wr.Write(id); err != nil {
-		return err
-	}
+	wr.Write(id)
+
 	if trace {
 		outLogger.Printf("client id: %s", id)
 	}

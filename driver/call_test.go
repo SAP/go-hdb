@@ -34,7 +34,7 @@ end
 
 	const txt = "Hello World!"
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ end
 
 	const txt = "Hello World!"
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ begin
 end
 `
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

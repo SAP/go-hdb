@@ -12,13 +12,17 @@ Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It imp
 go get github.com/SAP/go-hdb/driver
 ```
 
+## Building
+
+To build go-hdb you need to have a working Go environment with [version 1.9.4 or higher installed](https://golang.org/dl/).
+
 ## Documentation
 
 API documentation and documented examples can be found at <https://godoc.org/github.com/SAP/go-hdb/driver>.
 
 ## Tests
 
-For running the driver tests a HANA Database server is required. The test user must have privileges to create a schema.
+To run the driver tests a HANA Database server is required. The test user must have privileges to create database schemas.
 
 ```
 go test -dsn hdb://user:password@host:port
@@ -31,7 +35,7 @@ go test -dsn hdb://user:password@host:port
 * Support of databse/sql/driver Execer and Queryer interface for parameter free statements and queries.
 * Support of bulk inserts.
 * Support of UTF-8 to / from CESU-8 encodings for HANA Unicode types.
-* Build-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
+* Built-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
 * Support of Large Object streaming.
 * Support of Stored Procedures with table output parameters. 
 

@@ -27,9 +27,9 @@ import (
 
 // globals
 var (
-	// TestDsn (data source name for testing) has to be provided by calling go test with dsn parameter.
-	TestDsn string
-	// TestDropSchema could be provided by calling go test as dropSchema parameter.
+	// TestDSN (data source name for testing) has to be provided by calling go test with dsn parameter.
+	TestDSN string
+	// TestDropSchema could be provided by calling go test with dropSchema parameter.
 	// If set to true (default), the test schema will be dropped after successful test execution.
 	// If set to false, the test schema will remain on database after test execution.
 	TestDropSchema bool
@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
-	flag.StringVar(&TestDsn, "dsn", "hdb://user:password@ip_address:port", "database dsn")
+	flag.StringVar(&TestDSN, "dsn", "hdb://user:password@ip_address:port", "database dsn")
 	flag.BoolVar(&TestDropSchema, "dropSchema", true, "drop test schema after test ran successfully")
 
 	if !flag.Parsed() {
@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// init driver
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		log.Fatal(err)
 	}

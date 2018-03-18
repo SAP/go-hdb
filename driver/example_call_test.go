@@ -25,7 +25,7 @@ import (
 /*
 ExampleCallSimpleOut creates a stored procedure with one output parameter and executes it.
 Stored procedures with output parameters must be executed by sql.Query or sql.QueryRow.
-For variables TestDsn and TestSchema see main_test.go.
+For variables TestDSN and TestSchema see main_test.go.
 */
 func Example_callSimpleOut() {
 	const procOut = `create procedure %s.%s (out message nvarchar(1024))
@@ -35,7 +35,7 @@ begin
 end
 `
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,7 +64,7 @@ Stored procedures with table output parameters must be executed by sql.Query as 
 the query after execution and prevent querying output table values.
 The scan type of a table output parameter is a string containing an opaque value to query table output values
 by standard sql.Query or sql.QueryRow methods.
-For variables TestDsn and TestSchema see main_test.go.
+For variables TestDSN and TestSchema see main_test.go.
 */
 func Example_callTableOut() {
 	const procTable = `create procedure %[1]s.%[2]s (out t %[1]s.%[3]s)
@@ -79,7 +79,7 @@ begin
 end
 `
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		log.Fatal(err)
 	}

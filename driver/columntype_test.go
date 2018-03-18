@@ -131,9 +131,7 @@ func TestColumnType(t *testing.T) {
 	}
 	createSql.WriteString(")")
 
-	t.Log(createSql.String())
-
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -71,25 +71,19 @@ func (id *resultsetID) setNumArg(int) {
 }
 
 func (id *resultsetID) read(rd *bufio.Reader) error {
-
-	_id, err := rd.ReadUint64()
-	if err != nil {
-		return err
-	}
+	_id := rd.ReadUint64()
 	*id.id = _id
 
 	if trace {
 		outLogger.Printf("resultset id: %d", *id.id)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 func (id *resultsetID) write(wr *bufio.Writer) error {
+	wr.WriteUint64(*id.id)
 
-	if err := wr.WriteUint64(*id.id); err != nil {
-		return err
-	}
 	if trace {
 		outLogger.Printf("resultset id: %d", *id.id)
 	}
@@ -175,43 +169,17 @@ func (f *resultField) nameOffsets() []uint32 {
 //
 
 func (f *resultField) read(rd *bufio.Reader) error {
-	var err error
+	f.columnOptions = columnOptions(rd.ReadInt8())
+	f.tc = typeCode(rd.ReadInt8())
+	f.fraction = rd.ReadInt16()
+	f.length = rd.ReadInt16()
+	rd.Skip(2) //filler
+	f.tablenameOffset = rd.ReadUint32()
+	f.schemanameOffset = rd.ReadUint32()
+	f.columnnameOffset = rd.ReadUint32()
+	f.columnDisplaynameOffset = rd.ReadUint32()
 
-	if co, err := rd.ReadInt8(); err == nil {
-		f.columnOptions = columnOptions(co)
-	} else {
-		return err
-	}
-	if tc, err := rd.ReadInt8(); err == nil {
-		f.tc = typeCode(tc)
-	} else {
-		return err
-	}
-	if f.fraction, err = rd.ReadInt16(); err != nil {
-		return err
-	}
-	if f.length, err = rd.ReadInt16(); err != nil {
-		return err
-	}
-
-	if err := rd.Skip(2); err != nil { //filler
-		return err
-	}
-
-	if f.tablenameOffset, err = rd.ReadUint32(); err != nil {
-		return err
-	}
-	if f.schemanameOffset, err = rd.ReadUint32(); err != nil {
-		return err
-	}
-	if f.columnnameOffset, err = rd.ReadUint32(); err != nil {
-		return err
-	}
-	if f.columnDisplaynameOffset, err = rd.ReadUint32(); err != nil {
-		return err
-	}
-
-	return nil
+	return rd.GetError()
 }
 
 //resultset metadata
@@ -247,14 +215,8 @@ func (r *resultMetadata) read(rd *bufio.Reader) error {
 		if diff := int(offset - pos); diff > 0 {
 			rd.Skip(diff)
 		}
-
-		b, size, err := readShortUtf8(rd)
-		if err != nil {
-			return err
-		}
-
+		b, size := readShortUtf8(rd)
 		r.fieldSet.names[offset] = string(b)
-
 		pos += uint32(1 + size)
 	}
 
@@ -262,7 +224,7 @@ func (r *resultMetadata) read(rd *bufio.Reader) error {
 		outLogger.Printf("read %s", r)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 //resultset

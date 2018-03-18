@@ -17,6 +17,7 @@ limitations under the License.
 package driver
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"testing"
@@ -49,9 +50,26 @@ func TestCheckBulkInsert(t *testing.T) {
 	}
 }
 
+func TestPing(t *testing.T) {
+
+	db, err := sql.Open(DriverName, TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+}
+
 func TestInsertByQuery(t *testing.T) {
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +106,7 @@ begin
 end
 `
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +126,7 @@ end
 
 func TestQueryAttributeAlias(t *testing.T) {
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +148,6 @@ func TestQueryAttributeAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("columns %s", columns)
-
 	if columns[0] != "X" {
 		t.Fatalf("value %s - expected %s", columns[0], "X")
 	}
@@ -139,4 +155,53 @@ func TestQueryAttributeAlias(t *testing.T) {
 	if columns[1] != "J" {
 		t.Fatalf("value %s - expected %s", columns[1], "J")
 	}
+}
+
+func TestRowsAffected(t *testing.T) {
+	const maxRows = 10
+
+	db, err := sql.Open(DriverName, TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	table := RandomIdentifier("rowsAffected_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer)", TestSchema, table)); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?)", TestSchema, table))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// insert
+	for i := 0; i < maxRows; i++ {
+		result, err := stmt.Exec(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rowsAffected != 1 {
+			t.Fatalf("%d rows affected %d - expected %d", i, rowsAffected, 1)
+		}
+	}
+
+	// update
+	result, err := db.Exec(fmt.Sprintf("update %s.%s set i = %d where i <> %d", TestSchema, table, maxRows, maxRows))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rowsAffected != maxRows {
+		t.Fatalf("rows affected %d - expected %d", rowsAffected, maxRows)
+	}
+
 }

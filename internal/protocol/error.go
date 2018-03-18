@@ -102,27 +102,12 @@ func (e *hdbError) setNumArg(int) {
 }
 
 func (e *hdbError) read(rd *bufio.Reader) error {
-	var err error
 
-	if e.errorCode, err = rd.ReadInt32(); err != nil {
-		return err
-	}
-	if e.errorPosition, err = rd.ReadInt32(); err != nil {
-		return err
-	}
-	if e.errorTextLength, err = rd.ReadInt32(); err != nil {
-		return err
-	}
-
-	el, err := rd.ReadInt8()
-	if err != nil {
-		return err
-	}
-	e.errorLevel = ErrorLevel(el)
-
-	if err := rd.ReadFull(e.sqlState[:]); err != nil {
-		return err
-	}
+	e.errorCode = rd.ReadInt32()
+	e.errorPosition = rd.ReadInt32()
+	e.errorTextLength = rd.ReadInt32()
+	e.errorLevel = ErrorLevel(rd.ReadInt8())
+	rd.ReadFull(e.sqlState[:])
 
 	// read error text as ASCII data as some errors return invalid CESU-8 characters
 	// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invaid CESU-8 characters>
@@ -130,17 +115,14 @@ func (e *hdbError) read(rd *bufio.Reader) error {
 	//		return err
 	//	}
 	e.errorText = make([]byte, int(e.errorTextLength))
-	if _, err = rd.Read(e.errorText); err != nil {
-		return err
-	}
+	rd.ReadFull(e.errorText)
 
 	// part bufferlength is by one greater than real error length? --> read filler byte
-	if _, err := rd.ReadByte(); err != nil {
-		return err
-	}
+	rd.ReadByte()
+
 	if trace {
 		outLogger.Printf("error: %s", e)
 	}
 
-	return nil
+	return rd.GetError()
 }

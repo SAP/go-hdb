@@ -1,3 +1,5 @@
+// +build go1.10
+
 /*
 Copyright 2014 SAP SE
 
@@ -14,16 +16,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package protocol
+package driver
 
-import "fmt"
+import (
+	"database/sql/driver"
+)
 
-type SessionPrm struct {
-	Host, Username, Password       string
-	Locale                         string
-	BufferSize, FetchSize, Timeout int
-}
+// driver
 
-func (p *SessionPrm) String() string {
-	return fmt.Sprintf("session parameters: bufferSize %d fetchSize %d timeout %d locale %s", p.BufferSize, p.FetchSize, p.Timeout, p.Locale)
+//  check if driver implements all required interfaces
+var _ driver.DriverContext = (*hdbDrv)(nil)
+
+func (d *hdbDrv) OpenConnector(dsn string) (driver.Connector, error) {
+	return NewDSNConnector(dsn)
 }

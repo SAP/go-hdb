@@ -56,18 +56,10 @@ func (r *scramsha256InitialRequest) numArg() int {
 }
 
 func (r *scramsha256InitialRequest) write(wr *bufio.Writer) error {
-	if err := wr.WriteInt16(3); err != nil { //field count
-		return err
-	}
-	if err := writeAuthField(wr, r.username); err != nil {
-		return err
-	}
-	if err := writeAuthField(wr, []byte(mnSCRAMSHA256)); err != nil {
-		return err
-	}
-	if err := writeAuthField(wr, r.clientChallenge); err != nil {
-		return err
-	}
+	wr.WriteInt16(3)
+	writeAuthField(wr, r.username)
+	writeAuthField(wr, []byte(mnSCRAMSHA256))
+	writeAuthField(wr, r.clientChallenge)
 	return nil
 }
 
@@ -89,63 +81,41 @@ func (r *scramsha256InitialReply) setNumArg(int) {
 }
 
 func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
-	cnt, err := rd.ReadInt16()
-	if err != nil {
-		return err
-	}
-
+	cnt := rd.ReadInt16()
 	if err := readMethodName(rd); err != nil {
 		return err
 	}
-
-	size, err := rd.ReadByte()
-	if err != nil {
-		return err
-	}
+	size := rd.ReadByte()
 	if size != serverChallengeDataSize {
 		return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
 	}
 
 	//server challenge data
 
-	cnt, err = rd.ReadInt16()
-	if err != nil {
-		return err
-	}
+	cnt = rd.ReadInt16()
 	if cnt != 2 {
 		return fmt.Errorf("invalid server challenge data field count %d - %d expected", cnt, 2)
 	}
 
-	size, err = rd.ReadByte()
-	if err != nil {
-		return err
-	}
+	size = rd.ReadByte()
 	if trace {
 		outLogger.Printf("salt size %d", size)
 	}
 
 	r.salt = make([]byte, size)
-	if err := rd.ReadFull(r.salt); err != nil {
-		return err
-	}
+	rd.ReadFull(r.salt)
 	if trace {
 		outLogger.Printf("salt %v", r.salt)
 	}
 
-	size, err = rd.ReadByte()
-	if err != nil {
-		return err
-	}
-
+	size = rd.ReadByte()
 	r.serverChallenge = make([]byte, size)
-	if err := rd.ReadFull(r.serverChallenge); err != nil {
-		return err
-	}
+	rd.ReadFull(r.serverChallenge)
 	if trace {
 		outLogger.Printf("server challenge %v", r.serverChallenge)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 type scramsha256FinalRequest struct {
@@ -170,18 +140,10 @@ func (r *scramsha256FinalRequest) numArg() int {
 }
 
 func (r *scramsha256FinalRequest) write(wr *bufio.Writer) error {
-	if err := wr.WriteInt16(3); err != nil { //field count
-		return err
-	}
-	if err := writeAuthField(wr, r.username); err != nil {
-		return err
-	}
-	if err := writeAuthField(wr, []byte(mnSCRAMSHA256)); err != nil {
-		return err
-	}
-	if err := writeAuthField(wr, r.clientProof); err != nil {
-		return err
-	}
+	wr.WriteInt16(3)
+	writeAuthField(wr, r.username)
+	writeAuthField(wr, []byte(mnSCRAMSHA256))
+	writeAuthField(wr, r.clientProof)
 	return nil
 }
 
@@ -202,30 +164,21 @@ func (r *scramsha256FinalReply) setNumArg(int) {
 }
 
 func (r *scramsha256FinalReply) read(rd *bufio.Reader) error {
-	cnt, err := rd.ReadInt16()
-	if err != nil {
-		return err
-	}
+	cnt := rd.ReadInt16()
 	if cnt != 2 {
 		return fmt.Errorf("invalid final reply field count %d - %d expected", cnt, 2)
 	}
-
 	if err := readMethodName(rd); err != nil {
 		return err
 	}
 
 	//serverProof
-	size, err := rd.ReadByte()
-	if err != nil {
-		return err
-	}
+	size := rd.ReadByte()
 
 	serverProof := make([]byte, size)
-	if err := rd.ReadFull(serverProof); err != nil {
-		return err
-	}
+	rd.ReadFull(serverProof)
 
-	return nil
+	return rd.GetError()
 }
 
 //helper
@@ -239,7 +192,7 @@ func authFieldSize(f []byte) int {
 	return size + 1 //length indicator size := 1
 }
 
-func writeAuthField(wr *bufio.Writer, f []byte) error {
+func writeAuthField(wr *bufio.Writer, f []byte) {
 	size := len(f)
 	if size >= 250 {
 		// - different indicators compared to db field handling
@@ -247,26 +200,14 @@ func writeAuthField(wr *bufio.Writer, f []byte) error {
 		panic("not implemented error")
 	}
 
-	if err := wr.WriteByte(byte(size)); err != nil {
-		return err
-	}
-
-	if _, err := wr.Write(f); err != nil {
-		return err
-	}
-
-	return nil
+	wr.WriteByte(byte(size))
+	wr.Write(f)
 }
 
 func readMethodName(rd *bufio.Reader) error {
-	size, err := rd.ReadByte()
-	if err != nil {
-		return err
-	}
+	size := rd.ReadByte()
 	methodName := make([]byte, size)
-	if err := rd.ReadFull(methodName); err != nil {
-		return err
-	}
+	rd.ReadFull(methodName)
 	if string(methodName) != mnSCRAMSHA256 {
 		return fmt.Errorf("invalid authentication method %s - %s expected", methodName, mnSCRAMSHA256)
 	}

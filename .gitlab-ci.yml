@@ -1,0 +1,47 @@
+variables:
+  GIT_STRATEGY: clone
+  GIT_CHECKOUT: "true"
+  CI_DEBUG_TRACE: "false"
+
+before_script:
+  - export GOPATH=/go
+  - go get golang.org/x/text/transform
+  - export BUILD_PATH=$GOPATH/src/github.com/SAP/go-hdb
+  - mkdir -p $BUILD_PATH
+  - mv $CI_PROJECT_DIR/* $BUILD_PATH
+  - cd $BUILD_PATH
+  
+stages:
+  - build
+  - test
+ 
+build:
+  stage: build
+  image: golang:latest
+  script:
+    - cd driver
+    - export GOARCH=amd64
+    - export GOOS=linux
+    - go install
+    - export GOARCH=amd64
+    - export GOOS=windows
+    - go install
+
+.test_template: &test_definition
+  stage: test
+  script:
+    - cd $BUILD_PATH/driver
+    - go test -dsn $GO_HANA_DSN -test.v
+    - cd $BUILD_PATH/internal/protocol
+    - go test -test.v
+    - cd $BUILD_PATH/internal/unicode/cesu8
+    - go test -test.v
+
+golang_1_9_4:
+  image: golang:1.9.4
+  <<: *test_definition 
+  
+golang_1_10:
+  image: golang:1.10
+  <<: *test_definition
+  

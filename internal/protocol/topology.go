@@ -62,26 +62,19 @@ func (o *topologyOptions) setNumArg(numArg int) {
 }
 
 func (o *topologyOptions) read(rd *bufio.Reader) error {
-	if err := o.mlo.read(rd, o._numArg); err != nil {
-		return err
-	}
+	o.mlo.read(rd, o._numArg)
 
 	if trace {
 		outLogger.Printf("topology options: %v", o)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 func (o *topologyOptions) write(wr *bufio.Writer) error {
-
 	for _, m := range o.mlo {
-		if err := wr.WriteInt16(int16(len(m))); err != nil {
-			return err
-		}
-		if err := o.mlo.write(wr); err != nil {
-			return err
-		}
+		wr.WriteInt16(int16(len(m)))
+		o.mlo.write(wr)
 	}
 
 	if trace {

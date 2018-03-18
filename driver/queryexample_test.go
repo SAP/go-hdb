@@ -14,35 +14,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver_test
+package driver
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
-	"net/url"
-
-	"github.com/SAP/go-hdb/driver"
 )
 
-// dsn creates data source name with the help of the net/url package.
-func dsn() string {
-	dsn := &url.URL{
-		Scheme: driver.DriverName,
-		User:   url.UserPassword("user", "password"),
-		Host:   "host:port",
-	}
-	return dsn.String()
-}
-
-// ExampleDSN shows how to construct a DSN (data source name) as url.
-func ExampleDSN() {
-	db, err := sql.Open(driver.DriverName, dsn())
+// ExampleQuery: tbd
+func Example_query() {
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	table := RandomIdentifier("testNamedArg_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, j integer)", TestSchema, table)); err != nil {
 		log.Fatal(err)
 	}
+
+	var i = 0
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s where i = :1 and j = :1", TestSchema, table), 1).Scan(&i); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Print(i)
+	// output: 0
 }

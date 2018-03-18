@@ -24,13 +24,13 @@ import (
 
 func TestTransactionCommit(t *testing.T) {
 
-	db1, err := sql.Open(DriverName, TestDsn)
+	db1, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db1.Close()
 
-	db2, err := sql.Open(DriverName, TestDsn)
+	db2, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestTransactionCommit(t *testing.T) {
 
 func TestTransactionRollback(t *testing.T) {
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

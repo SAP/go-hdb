@@ -139,39 +139,15 @@ func (f *parameterField) nameOffsets() []uint32 {
 //
 
 func (f *parameterField) read(rd *bufio.Reader) error {
-	var err error
-
-	if po, err := rd.ReadInt8(); err == nil {
-		f.parameterOptions = parameterOptions(po)
-	} else {
-		return err
-	}
-	if tc, err := rd.ReadInt8(); err == nil {
-		f.tc = typeCode(tc)
-	} else {
-		return err
-	}
-	if mode, err := rd.ReadInt8(); err == nil {
-		f.mode = parameterMode(mode)
-	} else {
-		return err
-	}
-	if err := rd.Skip(1); err != nil { //filler
-		return err
-	}
-	if f.nameOffset, err = rd.ReadUint32(); err != nil {
-		return err
-	}
-	if f.length, err = rd.ReadInt16(); err != nil {
-		return err
-	}
-	if f.fraction, err = rd.ReadInt16(); err != nil {
-		return err
-	}
-	if err := rd.Skip(4); err != nil { //filler
-		return err
-	}
-	return nil
+	f.parameterOptions = parameterOptions(rd.ReadInt8())
+	f.tc = typeCode(rd.ReadInt8())
+	f.mode = parameterMode(rd.ReadInt8())
+	rd.Skip(1) //filler
+	f.nameOffset = rd.ReadUint32()
+	f.length = rd.ReadInt16()
+	f.fraction = rd.ReadInt16()
+	rd.Skip(4) //filler
+	return rd.GetError()
 }
 
 // parameter metadata
@@ -208,10 +184,7 @@ func (m *parameterMetadata) read(rd *bufio.Reader) error {
 			rd.Skip(diff)
 		}
 
-		b, size, err := readShortUtf8(rd)
-		if err != nil {
-			return err
-		}
+		b, size := readShortUtf8(rd)
 
 		m.fieldSet.names[offset] = string(b)
 
@@ -222,7 +195,7 @@ func (m *parameterMetadata) read(rd *bufio.Reader) error {
 		outLogger.Printf("read %s", m)
 	}
 
-	return nil
+	return rd.GetError()
 }
 
 // parameters

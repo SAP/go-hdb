@@ -32,7 +32,7 @@ func TestBulkInsert(t *testing.T) {
 
 	tmpTableName := Identifier("#tmpTable")
 
-	db, err := sql.Open(DriverName, TestDsn)
+	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}

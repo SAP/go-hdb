@@ -122,7 +122,7 @@ func assertEqualTime(t *testing.T, v interface{}, r time.Time) {
 		t.Fatal(err)
 	}
 	if !cv.(time.Time).Equal(r) {
-		t.Fatalf("assert equal time failed %v - %f expected", cv, r)
+		t.Fatalf("assert equal time failed %v - %v expected", cv, r)
 	}
 }
 
