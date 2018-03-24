@@ -18,6 +18,7 @@ package protocol
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql/driver"
 	"flag"
 	"fmt"
@@ -73,12 +74,17 @@ type sessionConn struct {
 	inTx     bool  // in transaction
 }
 
-func newSessionConn(ctx context.Context, addr string, timeoutSec int) (*sessionConn, error) {
+func newSessionConn(ctx context.Context, addr string, timeoutSec int, config *tls.Config) (*sessionConn, error) {
 	timeout := time.Duration(timeoutSec) * time.Second
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
+	}
+
+	// is TLS connection requested?
+	if config != nil {
+		conn = tls.Client(conn, config)
 	}
 
 	return &sessionConn{addr: addr, timeout: timeout, conn: conn}, nil
@@ -131,6 +137,7 @@ type sessionPrm interface {
 	Locale() string
 	FetchSize() int
 	Timeout() int
+	TLSConfig() *tls.Config
 }
 
 // Session represents a HDB session.
@@ -170,7 +177,7 @@ func NewSession(ctx context.Context, prm sessionPrm) (*Session, error) {
 		outLogger.Printf("%s", prm)
 	}
 
-	conn, err := newSessionConn(ctx, prm.Host(), prm.Timeout())
+	conn, err := newSessionConn(ctx, prm.Host(), prm.Timeout(), prm.TLSConfig())
 	if err != nil {
 		return nil, err
 	}

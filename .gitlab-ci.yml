@@ -32,6 +32,7 @@ build:
   script:
     - cd $BUILD_PATH/driver
     - go test -dsn $GO_HANA_DSN -test.v
+    - go test -dsn $GO_HANA_TLS_DSN -test.v
     - cd $BUILD_PATH/internal/protocol
     - go test -test.v
     - cd $BUILD_PATH/internal/unicode/cesu8

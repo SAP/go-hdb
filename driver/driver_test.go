@@ -182,13 +182,7 @@ func TestRowsAffected(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if rowsAffected != 1 {
-			t.Fatalf("%d rows affected %d - expected %d", i, rowsAffected, 1)
-		}
+		checkAffectedRows(t, result, 1)
 	}
 
 	// update
@@ -196,12 +190,59 @@ func TestRowsAffected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkAffectedRows(t, result, maxRows)
+}
+
+func TestUpsert(t *testing.T) {
+	db, err := sql.Open(DriverName, TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	table := RandomIdentifier("upsert_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (key int primary key, val int)", TestSchema, table)); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := db.Exec(fmt.Sprintf("upsert %s.%s values (1, 1)", TestSchema, table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAffectedRows(t, result, 1)
+
+	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (:1, :1) where key = :2", TestSchema, table), 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAffectedRows(t, result, 1)
+
+	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (?, ?) where key = ?", TestSchema, table), 1, 9, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAffectedRows(t, result, 1)
+
+	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (?, ?) with primary key", TestSchema, table), 1, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAffectedRows(t, result, 1)
+
+	result, err = db.Exec(fmt.Sprintf("upsert %[1]s.%[2]s select key + ?, val from %[1]s.%[2]s", TestSchema, table), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAffectedRows(t, result, 2)
+
+}
+
+func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rowsAffected != maxRows {
-		t.Fatalf("rows affected %d - expected %d", rowsAffected, maxRows)
+	if rowsAffected != rowsExpected {
+		t.Fatalf("rows affected %d - expected %d", rowsAffected, rowsExpected)
 	}
-
 }
