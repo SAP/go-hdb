@@ -112,7 +112,7 @@ func (o plainOptions) read(rd *bufio.Reader, cnt int) {
 	for i := 0; i < cnt; i++ {
 
 		k := rd.ReadInt8()
-		tc := rd.ReadByte()
+		tc := rd.ReadB()
 
 		switch TypeCode(tc) {
 

@@ -17,13 +17,15 @@ limitations under the License.
 package driver
 
 import (
-	"bufio"
 	"bytes"
 	"database/sql"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/big"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -205,31 +207,38 @@ func TestBoolean(t *testing.T) {
 	)
 }
 
-const lobString = "Hello World"
+var testLobData []interface{}
+
+func createTestLobData(t *testing.T) {
+	testLobDataReaders := testLobDataReaders(t)
+
+	size := len(testLobDataReaders)
+	testLobData = make([]interface{}, size+2)
+
+	for i := 0; i < size; i++ {
+		testLobData[i] = Lob{rd: testLobDataReaders[i]}
+	}
+	testLobData[size] = NullLob{Valid: false, Lob: new(Lob).SetReader(testLobDataReaders[0])}
+	testLobData[size+1] = NullLob{Valid: true, Lob: new(Lob).SetReader(testLobDataReaders[0])}
+}
 
 func TestClob(t *testing.T) {
-	testLobData := []interface{}{
-		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
-		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
-		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	if testLobData == nil {
+		createTestLobData(t)
 	}
 	testDatatype(t, "clob", 0, true, testLobData...)
 }
 
 func TestNclob(t *testing.T) {
-	testLobData := []interface{}{
-		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
-		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
-		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	if testLobData == nil {
+		createTestLobData(t)
 	}
 	testDatatype(t, "nclob", 0, true, testLobData...)
 }
 
 func TestBlob(t *testing.T) {
-	testLobData := []interface{}{
-		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
-		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
-		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	if testLobData == nil {
+		createTestLobData(t)
 	}
 	testDatatype(t, "blob", 0, true, testLobData...)
 }
@@ -268,6 +277,13 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 	}
 
 	for i, in := range testData {
+
+		switch in := in.(type) {
+		case Lob:
+			in.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+		case NullLob:
+			in.Lob.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+		}
 
 		if _, err := stmt.Exec(i, in); err != nil {
 			t.Fatal(err)
@@ -396,8 +412,13 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 				t.Fatalf("%d value %v - expected %v", i, *out, in)
 			}
 		case *Lob:
-			if out.wr.(*bytes.Buffer).String() != lobString {
-				t.Fatalf("%d value %s - expected %s", i, out.wr.(*bytes.Buffer).String(), lobString)
+			inLob := in.(Lob)
+			ok, err := compareLob(&inLob, out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok {
+				t.Fatalf("%d lob content no equal", i)
 			}
 		case *sql.NullInt64:
 			in := in.(sql.NullInt64)
@@ -498,8 +519,12 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 				t.Fatalf("%d value %v - expected %v", i, out, in)
 			}
 			if in.Valid {
-				if out.Lob.wr.(*bytes.Buffer).String() != lobString {
-					t.Fatalf("%d value %s - expected %s", i, out.Lob.wr.(*bytes.Buffer).String(), lobString)
+				ok, err := compareLob(in.Lob, out.Lob)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !ok {
+					t.Fatalf("%d lob content no equal", i)
 				}
 			}
 		}
@@ -511,6 +536,49 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 }
 
 // helper
+func testLobDataReaders(t *testing.T) (data []*bytes.Reader) {
+	data = make([]*bytes.Reader, 0)
+
+	filter := func(name string) bool {
+		for _, ext := range []string{".go"} {
+			if filepath.Ext(name) == ext {
+				return true
+			}
+		}
+		return false
+	}
+
+	walk := func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() && filter(info.Name()) {
+			content, err := ioutil.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = append(data, bytes.NewReader(content))
+		}
+		return nil
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	filepath.Walk(root, walk)
+	return data
+}
+
+func compareLob(in, out *Lob) (bool, error) {
+	in.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+	content, err := ioutil.ReadAll(in.rd)
+	if err != nil {
+		return false, err
+	}
+	if !bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes()) {
+		return false, nil
+	}
+	return true, nil
+}
+
 func compareStringFixSize(in, out string) bool {
 	if in != out[:len(in)] {
 		return false
@@ -533,35 +601,6 @@ func compareBytesFixSize(in, out []byte) bool {
 		}
 	}
 	return true
-}
-
-func compareLob(out, in io.ReadSeeker) error {
-
-	if _, err := in.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if _, err := out.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-
-	r1 := bufio.NewReader(in)
-	r2 := bufio.NewReader(out)
-
-	for i := 0; ; i++ {
-		b1, err1 := r1.ReadByte()
-		b2, err2 := r2.ReadByte()
-		switch {
-		case err1 == io.EOF && err2 == io.EOF:
-			return nil
-		case err1 != nil:
-			return fmt.Errorf("unexpected in Lob EOF at %d", i)
-		case err2 != nil:
-			return fmt.Errorf("unexpected out Lob EOF at %d", i)
-		}
-		if b1 != b2 {
-			return fmt.Errorf("diff pos %d %x - expected %x", i, b2, b1)
-		}
-	}
 }
 
 func equalDate(t1, t2 time.Time) bool {

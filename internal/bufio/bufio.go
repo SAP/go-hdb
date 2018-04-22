@@ -66,8 +66,8 @@ func (r *Reader) Skip(cnt int) {
 	_, r.err = r.rd.Discard(cnt)
 }
 
-// ReadByte reads and returns a byte.
-func (r *Reader) ReadByte() byte {
+// ReadB reads and returns a byte.
+func (r *Reader) ReadB() byte { // ReadB as sig differs from ReadByte (vet issues)
 	if r.err != nil {
 		return 0
 	}
@@ -89,12 +89,12 @@ func (r *Reader) ReadBool() bool {
 	if r.err != nil {
 		return false
 	}
-	return !(r.ReadByte() == 0)
+	return !(r.ReadB() == 0)
 }
 
 // ReadInt8 reads and returns an int8.
 func (r *Reader) ReadInt8() int8 {
-	return int8(r.ReadByte())
+	return int8(r.ReadB())
 }
 
 // ReadInt16 reads and returns an int16.
@@ -273,8 +273,8 @@ func (w *Writer) Write(p []byte) {
 	w.wr.Write(p)
 }
 
-// WriteByte writes a byte.
-func (w *Writer) WriteByte(b byte) {
+// WriteB writes a byte.
+func (w *Writer) WriteB(b byte) { // WriteB as sig differs from WriteByte (vet issues)
 	if w.err != nil {
 		return
 	}

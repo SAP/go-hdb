@@ -77,7 +77,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 	if err := readMethodName(rd); err != nil {
 		return err
 	}
-	size := rd.ReadByte()
+	size := rd.ReadB()
 	if size != serverChallengeDataSize {
 		return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
 	}
@@ -89,7 +89,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 		return fmt.Errorf("invalid server challenge data field count %d - %d expected", cnt, 2)
 	}
 
-	size = rd.ReadByte()
+	size = rd.ReadB()
 	if trace {
 		outLogger.Printf("salt size %d", size)
 	}
@@ -100,7 +100,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 		outLogger.Printf("salt %v", r.salt)
 	}
 
-	size = rd.ReadByte()
+	size = rd.ReadB()
 	r.serverChallenge = make([]byte, size)
 	rd.ReadFull(r.serverChallenge)
 	if trace {
@@ -165,7 +165,7 @@ func (r *scramsha256FinalReply) read(rd *bufio.Reader) error {
 	}
 
 	//serverProof
-	size := rd.ReadByte()
+	size := rd.ReadB()
 
 	serverProof := make([]byte, size)
 	rd.ReadFull(serverProof)
@@ -192,12 +192,12 @@ func writeAuthField(wr *bufio.Writer, f []byte) {
 		panic("not implemented error")
 	}
 
-	wr.WriteByte(byte(size))
+	wr.WriteB(byte(size))
 	wr.Write(f)
 }
 
 func readMethodName(rd *bufio.Reader) error {
-	size := rd.ReadByte()
+	size := rd.ReadB()
 	methodName := make([]byte, size)
 	rd.ReadFull(methodName)
 	if string(methodName) != mnSCRAMSHA256 {

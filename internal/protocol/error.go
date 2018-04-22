@@ -118,7 +118,7 @@ func (e *hdbError) read(rd *bufio.Reader) error {
 	rd.ReadFull(e.errorText)
 
 	// part bufferlength is by one greater than real error length? --> read filler byte
-	rd.ReadByte()
+	rd.ReadB()
 
 	if trace {
 		outLogger.Printf("error: %s", e)

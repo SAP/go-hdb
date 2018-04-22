@@ -304,7 +304,7 @@ func (f *FieldValues) readField(rd *bufio.Reader, tc TypeCode) (interface{}, err
 
 		switch tc {
 		case tcTinyint:
-			return int64(rd.ReadByte()), nil
+			return int64(rd.ReadB()), nil
 		case tcSmallint:
 			return int64(rd.ReadInt16()), nil
 		case tcInteger:
@@ -426,12 +426,12 @@ func writeField(wr *bufio.Writer, tc TypeCode, v driver.Value) error {
 	// null value
 	//if v == nil && tc != tcSecondtime
 	if v == nil {
-		wr.WriteByte(byte(tc) | 0x80) //set high bit
+		wr.WriteB(byte(tc) | 0x80) //set high bit
 		return nil
 	}
 
 	// type code
-	wr.WriteByte(byte(tc))
+	wr.WriteB(byte(tc))
 
 	switch tc {
 
@@ -457,7 +457,7 @@ func writeField(wr *bufio.Writer, tc TypeCode, v driver.Value) error {
 
 		switch tc {
 		case tcTinyint:
-			wr.WriteByte(byte(i64))
+			wr.WriteB(byte(i64))
 		case tcSmallint:
 			wr.WriteInt16(int16(i64))
 		case tcInteger:
@@ -610,7 +610,7 @@ func writeDate(wr *bufio.Writer, t time.Time) {
 }
 
 func readTime(rd *bufio.Reader) (int, int, int, bool) {
-	hour := rd.ReadByte()
+	hour := rd.ReadB()
 	null := (hour & 0x80) == 0 //null value
 	hour &= 0x7f
 	minute := rd.ReadInt8()
@@ -623,7 +623,7 @@ func writeTime(wr *bufio.Writer, t time.Time) {
 	//store in utc
 	utc := t.UTC()
 
-	wr.WriteByte(byte(utc.Hour()) | 0x80)
+	wr.WriteB(byte(utc.Hour()) | 0x80)
 	wr.WriteInt8(int8(utc.Minute()))
 	millisecs := utc.Second()*1000 + utc.Round(time.Millisecond).Nanosecond()/1000000
 	wr.WriteUint16(uint16(millisecs))
@@ -757,7 +757,7 @@ func bytesSize(size int) (int, error) { //size + length indicator
 
 func readBytesSize(rd *bufio.Reader) (int, bool) {
 
-	ind := rd.ReadByte() //length indicator
+	ind := rd.ReadB() //length indicator
 
 	switch {
 
@@ -786,12 +786,12 @@ func writeBytesSize(wr *bufio.Writer, size int) error {
 		return fmt.Errorf("max argument length %d of string exceeded", size)
 
 	case size <= int(bytesLenIndSmall):
-		wr.WriteByte(byte(size))
+		wr.WriteB(byte(size))
 	case size <= math.MaxInt16:
-		wr.WriteByte(bytesLenIndMedium)
+		wr.WriteB(bytesLenIndMedium)
 		wr.WriteInt16(int16(size))
 	case size <= math.MaxInt32:
-		wr.WriteByte(bytesLenIndBig)
+		wr.WriteB(bytesLenIndBig)
 		wr.WriteInt32(int32(size))
 	}
 	return nil
@@ -818,7 +818,7 @@ func readUtf8(rd *bufio.Reader) ([]byte, bool) {
 
 // strings with one byte length
 func readShortUtf8(rd *bufio.Reader) ([]byte, int) {
-	size := rd.ReadByte()
+	size := rd.ReadB()
 	b := rd.ReadCesu8(int(size))
 	return b, int(size)
 }
@@ -869,7 +869,7 @@ func readLob(s *Session, rd *bufio.Reader, tc TypeCode) (bool, lobChunkWriter, e
 
 // TODO: first write: add content? - actually no data transferred
 func writeLob(wr *bufio.Writer) {
-	wr.WriteByte(0)
+	wr.WriteB(0)
 	wr.WriteInt32(0)
 	wr.WriteInt32(0)
 }
