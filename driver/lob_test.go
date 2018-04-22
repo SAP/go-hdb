@@ -22,7 +22,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,12 +38,12 @@ func testFiles() ([]*testFile, error) {
 	var testFiles []*testFile
 
 	filter := func(name string) bool {
-		for _, ext := range []string{} {
+		for _, ext := range []string{".go"} {
 			if filepath.Ext(name) == ext {
-				return false
+				return true
 			}
 		}
-		return true
+		return false
 	}
 
 	walk := func(path string, info os.FileInfo, err error) error {
@@ -129,12 +128,12 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		file.Close()
 	}
 
-	size := len(testFiles)
-	var i int
-
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+
+	size := len(testFiles)
+	var i int
 
 	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
 		t.Fatal(err)
@@ -157,7 +156,7 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		lob.SetWriter(b)
 
 		if err := rows.Scan(&i, lob); err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		testFile := testFiles[i]
@@ -171,7 +170,7 @@ func testLobFile(t *testing.T, dataType string, testFiles []*testFile) {
 		i++
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 }
 

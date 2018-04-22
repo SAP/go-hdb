@@ -20,6 +20,7 @@ build:
   image: golang:latest
   script:
     - cd driver
+    - go version
     - export GOARCH=amd64
     - export GOOS=linux
     - go install
@@ -34,6 +35,8 @@ build:
     - go test -dsn $GO_HANA_DSN -test.v
     - go test -dsn $GO_HANA_TLS_DSN -test.v
     - cd $BUILD_PATH/internal/protocol
+    - go test -test.v
+    - cd $BUILD_PATH/internal/scanner
     - go test -test.v
     - cd $BUILD_PATH/internal/unicode/cesu8
     - go test -test.v

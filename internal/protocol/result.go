@@ -18,6 +18,7 @@ package protocol
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/SAP/go-hdb/internal/bufio"
 )
@@ -92,94 +93,101 @@ func (id *resultsetID) write(wr *bufio.Writer) error {
 }
 
 const (
-	resultTableName = iota // used as index: start with 0
-	resultSchemaName
-	resultColumnName
-	resultColumnDisplayName
-	maxResultNames
+	tableName = iota
+	schemaName
+	columnName
+	columnDisplayName
+	maxNames
 )
 
 type resultField struct {
-	columnOptions           columnOptions
-	tc                      typeCode
-	fraction                int16
-	length                  int16
-	tablenameOffset         uint32
-	schemanameOffset        uint32
-	columnnameOffset        uint32
-	columnDisplaynameOffset uint32
+	fieldNames    fieldNames
+	columnOptions columnOptions
+	tc            TypeCode
+	fraction      int16
+	length        int16
+	offsets       [maxNames]uint32
 }
 
-func newResultField() *resultField {
-	return &resultField{}
+func newResultField(fieldNames fieldNames) *resultField {
+	return &resultField{fieldNames: fieldNames}
 }
 
 func (f *resultField) String() string {
-	return fmt.Sprintf("columnsOptions %s typeCode %s fraction %d length %d tablenameOffset %d schemanameOffset %d columnnameOffset %d columnDisplaynameOffset %d",
+	return fmt.Sprintf("columnsOptions %s typeCode %s fraction %d length %d tablename %s schemaname %s columnname %s columnDisplayname %s",
 		f.columnOptions,
 		f.tc,
 		f.fraction,
 		f.length,
-		f.tablenameOffset,
-		f.schemanameOffset,
-		f.columnnameOffset,
-		f.columnDisplaynameOffset,
+		f.fieldNames.name(f.offsets[tableName]),
+		f.fieldNames.name(f.offsets[schemaName]),
+		f.fieldNames.name(f.offsets[columnName]),
+		f.fieldNames.name(f.offsets[columnDisplayName]),
 	)
 }
 
 // Field interface
-func (f *resultField) typeCode() typeCode {
+func (f *resultField) TypeCode() TypeCode {
 	return f.tc
 }
 
-func (f *resultField) typeLength() (int64, bool) {
+// TypeLength returns the type length of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
+func (f *resultField) TypeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
 	return 0, false
 }
 
-func (f *resultField) typePrecisionScale() (int64, int64, bool) {
+// TypePrecisionScale returns the type precision and scale (decimal types) of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
+func (f *resultField) TypePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
 	return 0, 0, false
 }
 
-func (f *resultField) nullable() bool {
+// Nullable returns true if the field may be null, false otherwise.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
+func (f *resultField) Nullable() bool {
 	return f.columnOptions == coOptional
 }
 
-func (f *resultField) in() bool {
+func (f *resultField) In() bool {
 	return false
 }
 
-func (f *resultField) out() bool {
+func (f *resultField) Out() bool {
 	return true
 }
 
-func (f *resultField) name(names map[uint32]string) string {
-	return names[f.columnDisplaynameOffset]
+func (f *resultField) Name() string {
+	return f.fieldNames.name(f.offsets[columnDisplayName])
 }
 
-func (f *resultField) nameOffsets() []uint32 {
-	return []uint32{f.tablenameOffset, f.schemanameOffset, f.columnnameOffset, f.columnDisplaynameOffset}
+func (f *resultField) lobReader() io.Reader {
+	return nil
+}
+
+func (f *resultField) SetLobReader(rd io.Reader) error {
+	return fmt.Errorf("result field does not support lob readers")
 }
 
 //
 
-func (f *resultField) read(rd *bufio.Reader) error {
+func (f *resultField) read(rd *bufio.Reader) {
 	f.columnOptions = columnOptions(rd.ReadInt8())
-	f.tc = typeCode(rd.ReadInt8())
+	f.tc = TypeCode(rd.ReadInt8())
 	f.fraction = rd.ReadInt16()
 	f.length = rd.ReadInt16()
 	rd.Skip(2) //filler
-	f.tablenameOffset = rd.ReadUint32()
-	f.schemanameOffset = rd.ReadUint32()
-	f.columnnameOffset = rd.ReadUint32()
-	f.columnDisplaynameOffset = rd.ReadUint32()
-
-	return rd.GetError()
+	for i := 0; i < maxNames; i++ {
+		offset := rd.ReadUint32()
+		f.offsets[i] = offset
+		f.fieldNames.addOffset(offset)
+	}
 }
 
 //resultset metadata
@@ -203,20 +211,18 @@ func (r *resultMetadata) setNumArg(numArg int) {
 func (r *resultMetadata) read(rd *bufio.Reader) error {
 
 	for i := 0; i < r.numArg; i++ {
-		field := newResultField()
-		if err := field.read(rd); err != nil {
-			return err
-		}
+		field := newResultField(r.fieldSet.names)
+		field.read(rd)
 		r.fieldSet.fields[i] = field
 	}
 
 	pos := uint32(0)
-	for _, offset := range r.fieldSet.nameOffsets() {
+	for _, offset := range r.fieldSet.names.sortOffsets() {
 		if diff := int(offset - pos); diff > 0 {
 			rd.Skip(diff)
 		}
 		b, size := readShortUtf8(rd)
-		r.fieldSet.names[offset] = string(b)
+		r.fieldSet.names.setName(offset, string(b))
 		pos += uint32(1 + size)
 	}
 

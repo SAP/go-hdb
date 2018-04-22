@@ -19,6 +19,7 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"time"
@@ -27,10 +28,14 @@ import (
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
 
+var test uint32
+
 const (
 	realNullValue   uint32 = ^uint32(0)
 	doubleNullValue uint64 = ^uint64(0)
 )
+
+const noFieldName uint32 = 0xFFFFFFFF
 
 type uint32Slice []uint32
 
@@ -39,28 +44,60 @@ func (p uint32Slice) Less(i, j int) bool { return p[i] < p[j] }
 func (p uint32Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p uint32Slice) sort()              { sort.Sort(p) }
 
-type field interface {
-	typeCode() typeCode
-	typeLength() (int64, bool)
-	typePrecisionScale() (int64, int64, bool)
-	nullable() bool
-	in() bool
-	out() bool
-	name(map[uint32]string) string
-	nameOffsets() []uint32
+type Field interface {
+	TypeCode() TypeCode
+	TypeLength() (int64, bool)
+	TypePrecisionScale() (int64, int64, bool)
+	Nullable() bool
+	In() bool
+	Out() bool
+	Name() string
+	SetLobReader(rd io.Reader) error
 	String() string
+}
+
+type fieldNames map[uint32]string
+
+func newFieldNames() fieldNames {
+	return make(map[uint32]string)
+}
+
+func (f fieldNames) addOffset(offset uint32) {
+	if offset != noFieldName {
+		f[offset] = ""
+	}
+}
+
+func (f fieldNames) name(offset uint32) string {
+	if name, ok := f[offset]; ok {
+		return name
+	}
+	return ""
+}
+
+func (f fieldNames) setName(offset uint32, name string) {
+	f[offset] = name
+}
+
+func (f fieldNames) sortOffsets() []uint32 {
+	offsets := make([]uint32, 0, len(f))
+	for k := range f {
+		offsets = append(offsets, k)
+	}
+	uint32Slice(offsets).sort()
+	return offsets
 }
 
 // FieldSet contains database field metadata.
 type FieldSet struct {
-	fields []field
-	names  map[uint32]string
+	fields []Field
+	names  fieldNames
 }
 
 func newFieldSet(size int) *FieldSet {
 	return &FieldSet{
-		fields: make([]field, size),
-		names:  make(map[uint32]string),
+		fields: make([]Field, size),
+		names:  newFieldNames(),
 	}
 }
 
@@ -73,30 +110,11 @@ func (f *FieldSet) String() string {
 	return fmt.Sprintf("%v", a)
 }
 
-func (f *FieldSet) nameOffsets() []uint32 {
-	for _, field := range f.fields {
-		for _, offset := range field.nameOffsets() {
-			if offset != 0xFFFFFFFF {
-				f.names[offset] = ""
-			}
-		}
-	}
-	// sort offsets (not sure if offsets are monotonically increasing in any case)
-	offsets := make([]uint32, len(f.names))
-	i := 0
-	for offset := range f.names {
-		offsets[i] = offset
-		i++
-	}
-	uint32Slice(offsets).sort()
-	return offsets
-}
-
 // NumInputField returns the number of input fields in a database statement.
 func (f *FieldSet) NumInputField() int {
 	cnt := 0
 	for _, field := range f.fields {
-		if field.in() {
+		if field.In() {
 			cnt++
 		}
 	}
@@ -107,45 +125,16 @@ func (f *FieldSet) NumInputField() int {
 func (f *FieldSet) NumOutputField() int {
 	cnt := 0
 	for _, field := range f.fields {
-		if field.out() {
+		if field.Out() {
 			cnt++
 		}
 	}
 	return cnt
 }
 
-// DataType returns the datatype of the field at index idx.
-func (f *FieldSet) DataType(idx int) DataType {
-	return f.fields[idx].typeCode().dataType()
-}
-
-// DatabaseTypeName returns the type name of the field at index idx.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *FieldSet) DatabaseTypeName(idx int) string {
-	return f.fields[idx].typeCode().typeName()
-}
-
-// TypeLength returns the type length of the field at index idx.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *FieldSet) TypeLength(idx int) (int64, bool) {
-	return f.fields[idx].typeLength()
-}
-
-// TypePrecisionScale returns the type precision and scale (decimal types) of the field at index idx.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *FieldSet) TypePrecisionScale(idx int) (int64, int64, bool) {
-	return f.fields[idx].typePrecisionScale()
-}
-
-// TypeNullable returns true if the column at index idx may be null, false otherwise.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *FieldSet) TypeNullable(idx int) bool {
-	return f.fields[idx].nullable()
-}
-
-// Name returns the field name.
-func (f *FieldSet) Name(idx int) string {
-	return f.fields[idx].name(f.names)
+// Field returns the field at index idx.
+func (f *FieldSet) Field(idx int) Field {
+	return f.fields[idx]
 }
 
 // OutputNames fills the names parameter with field names of all output fields. The size of the names slice must be at least
@@ -153,11 +142,11 @@ func (f *FieldSet) Name(idx int) string {
 func (f *FieldSet) OutputNames(names []string) error {
 	i := 0
 	for _, field := range f.fields {
-		if field.out() {
+		if field.Out() {
 			if i >= len(names) { // assert names size
 				return fmt.Errorf("names size too short %d - expected min %d", len(names), i)
 			}
-			names[i] = field.name(f.names)
+			names[i] = field.Name()
 			i++
 		}
 	}
@@ -168,13 +157,9 @@ func (f *FieldSet) OutputNames(names []string) error {
 type FieldValues struct {
 	s *Session
 
-	rows    int
-	cols    int
-	lobCols int
-	values  []driver.Value
-
-	descrs  []*LobReadDescr // Caution: store descriptor to guarantee valid addresses
-	writers []lobWriter
+	rows   int
+	cols   int
+	values []driver.Value
 }
 
 func newFieldValues(s *Session) *FieldValues {
@@ -182,36 +167,26 @@ func newFieldValues(s *Session) *FieldValues {
 }
 
 func (f *FieldValues) String() string {
-	return fmt.Sprintf("rows %d columns %d lob columns %d", f.rows, f.cols, f.lobCols)
+	return fmt.Sprintf("rows %d columns %d", f.rows, f.cols)
 }
 
 func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error {
-	f.rows = rows
-	f.descrs = make([]*LobReadDescr, 0)
 
-	f.cols, f.lobCols = 0, 0
-	for _, field := range fieldSet.fields {
-		if field.out() {
-			if field.typeCode().isLob() {
-				f.descrs = append(f.descrs, &LobReadDescr{col: f.cols})
-				f.lobCols++
-			}
-			f.cols++
-		}
-	}
+	f.rows, f.cols = rows, fieldSet.NumOutputField()
 	f.values = make([]driver.Value, f.rows*f.cols)
-	f.writers = make([]lobWriter, f.lobCols)
 
 	for i := 0; i < f.rows; i++ {
 		j := 0
+
 		for _, field := range fieldSet.fields {
 
-			if !field.out() {
+			if !field.Out() {
 				continue
 			}
 
 			var err error
-			f.values[i*f.cols+j], err = readField(rd, field.typeCode())
+
+			f.values[i*f.cols+j], err = f.readField(rd, field.TypeCode())
 			if err != nil {
 				return err
 			}
@@ -219,6 +194,7 @@ func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error
 			j++
 		}
 	}
+
 	return nil
 }
 
@@ -230,23 +206,6 @@ func (f *FieldValues) NumRow() int {
 // Row fills the dest value slice with row data at index idx.
 func (f *FieldValues) Row(idx int, dest []driver.Value) {
 	copy(dest, f.values[idx*f.cols:(idx+1)*f.cols])
-
-	if f.lobCols == 0 {
-		return
-	}
-
-	for i, descr := range f.descrs {
-		col := descr.col
-		writer := dest[col].(lobWriter)
-		f.writers[i] = writer
-		descr.w = writer
-		dest[col] = lobReadDescrToPointer(descr)
-	}
-
-	// last descriptor triggers lob read
-	f.descrs[f.lobCols-1].fn = func() error {
-		return f.s.readLobStream(f.writers)
-	}
 }
 
 const (
@@ -267,7 +226,7 @@ const (
 	lobInputDescriptorSize = 9
 )
 
-func fieldSize(tc typeCode, v driver.Value) (int, error) {
+func fieldSize(tc TypeCode, v driver.Value) (int, error) {
 
 	if v == nil { //HDB bug: secondtime null value --> see writeField
 		return 0, nil
@@ -326,14 +285,14 @@ func fieldSize(tc typeCode, v driver.Value) (int, error) {
 			outLogger.Fatalf("data type %s mismatch %T", tc, v)
 		}
 		return bytesSize(len(v))
-	case tcNlocator, tcBlob, tcClob, tcNclob:
+	case tcBlob, tcClob, tcNclob:
 		return lobInputDescriptorSize, nil
 	}
 	outLogger.Fatalf("data type %s not implemented", tc)
 	return 0, nil
 }
 
-func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
+func (f *FieldValues) readField(rd *bufio.Reader, tc TypeCode) (interface{}, error) {
 
 	switch tc {
 
@@ -448,7 +407,7 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 		return value, nil
 
 	case tcBlob, tcClob, tcNclob:
-		null, writer, err := readLob(rd, tc)
+		null, writer, err := readLob(f.s, rd, tc)
 		if null {
 			return nil, nil
 		}
@@ -459,8 +418,7 @@ func readField(rd *bufio.Reader, tc typeCode) (interface{}, error) {
 	return nil, nil
 }
 
-func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
-
+func writeField(wr *bufio.Writer, tc TypeCode, v driver.Value) error {
 	//HDB bug: secondtime null value cannot be set by setting high byte
 	//         trying so, gives
 	//         SQL HdbError 1033 - error while parsing protocol: no such data type: type_code=192, index=2
@@ -616,7 +574,7 @@ func writeField(wr *bufio.Writer, tc typeCode, v driver.Value) error {
 		}
 		writeBytes(wr, v)
 
-	case tcNlocator, tcBlob, tcClob, tcNclob:
+	case tcBlob, tcClob, tcNclob:
 		writeLob(wr)
 	}
 
@@ -887,28 +845,26 @@ func writeUtf8String(wr *bufio.Writer, s string) {
 	wr.WriteStringCesu8(s)
 }
 
-func readLob(rd *bufio.Reader, tc typeCode) (bool, lobWriter, error) {
+func readLob(s *Session, rd *bufio.Reader, tc TypeCode) (bool, lobChunkWriter, error) {
 	rd.ReadInt8() // type code (is int here)
 	opt := rd.ReadInt8()
+	null := (lobOptions(opt) & loNullindicator) != 0
+	if null {
+		return true, nil, nil
+	}
+	eof := (lobOptions(opt) & loLastdata) != 0
 	rd.Skip(2)
+
 	charLen := rd.ReadInt64()
 	byteLen := rd.ReadInt64()
 	id := rd.ReadUint64()
 	chunkLen := rd.ReadInt32()
 
-	null := (lobOptions(opt) & loNullindicator) != 0
-	eof := (lobOptions(opt) & loLastdata) != 0
-
-	var writer lobWriter
-	if tc.isCharBased() {
-		writer = newCharLobWriter(locatorID(id), charLen, byteLen)
-	} else {
-		writer = newBinaryLobWriter(locatorID(id), charLen, byteLen)
+	lobChunkWriter := newLobChunkWriter(tc.isCharBased(), s, locatorID(id), charLen, byteLen)
+	if err := lobChunkWriter.write(rd, int(chunkLen), eof); err != nil {
+		return null, lobChunkWriter, err
 	}
-	if err := writer.write(rd, int(chunkLen), eof); err != nil {
-		return null, writer, err
-	}
-	return null, writer, nil
+	return null, lobChunkWriter, nil
 }
 
 // TODO: first write: add content? - actually no data transferred

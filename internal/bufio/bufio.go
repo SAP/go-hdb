@@ -27,15 +27,11 @@ import (
 	"golang.org/x/text/transform"
 )
 
-const (
-	bufferSize = 128
-)
-
 // Reader is a bufio.Reader extended by methods needed for hdb protocol.
 type Reader struct {
 	rd  *bufio.Reader
 	err error
-	b   []byte // scratch buffer (min 8 Bytes)
+	b   [8]byte // scratch buffer (8 Bytes)
 	tr  transform.Transformer
 }
 
@@ -43,7 +39,6 @@ type Reader struct {
 func NewReader(r io.Reader) *Reader {
 	return &Reader{
 		rd: bufio.NewReader(r),
-		b:  make([]byte, bufferSize),
 		tr: unicode.Cesu8ToUtf8Transformer,
 	}
 }
@@ -52,7 +47,6 @@ func NewReader(r io.Reader) *Reader {
 func NewReaderSize(r io.Reader, size int) *Reader {
 	return &Reader{
 		rd: bufio.NewReaderSize(r, size),
-		b:  make([]byte, bufferSize),
 		tr: unicode.Cesu8ToUtf8Transformer,
 	}
 }
@@ -210,11 +204,13 @@ func (r *Reader) ReadCesu8(size int) []byte {
 	return p[:n]
 }
 
+const writerBufferSize = 4096
+
 // Writer is a bufio.Writer extended by methods needed for hdb protocol.
 type Writer struct {
 	wr  *bufio.Writer
 	err error
-	b   []byte // // scratch buffer (min 8 Bytes)
+	b   []byte // scratch buffer (min 8 Bytes)
 	tr  transform.Transformer
 }
 
@@ -222,7 +218,7 @@ type Writer struct {
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{
 		wr: bufio.NewWriter(w),
-		b:  make([]byte, bufferSize),
+		b:  make([]byte, writerBufferSize),
 		tr: unicode.Utf8ToCesu8Transformer,
 	}
 }
@@ -231,7 +227,7 @@ func NewWriter(w io.Writer) *Writer {
 func NewWriterSize(w io.Writer, size int) *Writer {
 	return &Writer{
 		wr: bufio.NewWriterSize(w, size),
-		b:  make([]byte, bufferSize),
+		b:  make([]byte, writerBufferSize),
 		tr: unicode.Utf8ToCesu8Transformer,
 	}
 }

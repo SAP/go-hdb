@@ -25,4 +25,5 @@ _testmain.go
 # Miscellaneous
 
 *.out
+*.prof
 todo*.*

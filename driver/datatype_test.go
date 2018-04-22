@@ -17,9 +17,11 @@ limitations under the License.
 package driver
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"reflect"
@@ -203,6 +205,35 @@ func TestBoolean(t *testing.T) {
 	)
 }
 
+const lobString = "Hello World"
+
+func TestClob(t *testing.T) {
+	testLobData := []interface{}{
+		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
+		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	}
+	testDatatype(t, "clob", 0, true, testLobData...)
+}
+
+func TestNclob(t *testing.T) {
+	testLobData := []interface{}{
+		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
+		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	}
+	testDatatype(t, "nclob", 0, true, testLobData...)
+}
+
+func TestBlob(t *testing.T) {
+	testLobData := []interface{}{
+		Lob{rd: bytes.NewBufferString(lobString)}, //use Lob instead of *Lob because scan would use **Lob --> issue in sql.covertAssign
+		NullLob{Valid: false, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+		NullLob{Valid: true, Lob: new(Lob).SetReader(bytes.NewBufferString(lobString))},
+	}
+	testDatatype(t, "blob", 0, true, testLobData...)
+}
+
 //
 func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
 	db, err := sql.Open(DriverName, TestDSN)
@@ -224,15 +255,27 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", TestSchema, table))
+	// use trancactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", TestSchema, table))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i, in := range testData {
+
 		if _, err := stmt.Exec(i, in); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 
 	size := len(testData)
@@ -266,6 +309,10 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		switch out := out.(type) {
 		case *NullDecimal:
 			out.Decimal = (*Decimal)(new(big.Rat))
+		case *Lob:
+			out.SetWriter(new(bytes.Buffer))
+		case *NullLob:
+			out.Lob = new(Lob).SetWriter(new(bytes.Buffer))
 		}
 
 		if err := rows.Scan(&i, out); err != nil {
@@ -347,6 +394,10 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		case *bool:
 			if *out != in.(bool) {
 				t.Fatalf("%d value %v - expected %v", i, *out, in)
+			}
+		case *Lob:
+			if out.wr.(*bytes.Buffer).String() != lobString {
+				t.Fatalf("%d value %s - expected %s", i, out.wr.(*bytes.Buffer).String(), lobString)
 			}
 		case *sql.NullInt64:
 			in := in.(sql.NullInt64)
@@ -441,6 +492,16 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 			if in.Valid && in.Bool != out.Bool {
 				t.Fatalf("%d value %v - expected %v", i, out, in)
 			}
+		case *NullLob:
+			in := in.(NullLob)
+			if in.Valid != out.Valid {
+				t.Fatalf("%d value %v - expected %v", i, out, in)
+			}
+			if in.Valid {
+				if out.Lob.wr.(*bytes.Buffer).String() != lobString {
+					t.Fatalf("%d value %s - expected %s", i, out.Lob.wr.(*bytes.Buffer).String(), lobString)
+				}
+			}
 		}
 		i++
 	}
@@ -472,6 +533,35 @@ func compareBytesFixSize(in, out []byte) bool {
 		}
 	}
 	return true
+}
+
+func compareLob(out, in io.ReadSeeker) error {
+
+	if _, err := in.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if _, err := out.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	r1 := bufio.NewReader(in)
+	r2 := bufio.NewReader(out)
+
+	for i := 0; ; i++ {
+		b1, err1 := r1.ReadByte()
+		b2, err2 := r2.ReadByte()
+		switch {
+		case err1 == io.EOF && err2 == io.EOF:
+			return nil
+		case err1 != nil:
+			return fmt.Errorf("unexpected in Lob EOF at %d", i)
+		case err2 != nil:
+			return fmt.Errorf("unexpected out Lob EOF at %d", i)
+		}
+		if b1 != b2 {
+			return fmt.Errorf("diff pos %d %x - expected %x", i, b2, b1)
+		}
+	}
 }
 
 func equalDate(t1, t2 time.Time) bool {

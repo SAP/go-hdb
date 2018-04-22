@@ -40,6 +40,10 @@ func Example_query() {
 		log.Fatal(err)
 	}
 
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s where i = ? and j = :3", TestSchema, table), 1, "soso", 2).Scan(&i); err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Print(i)
 	// output: 0
 }

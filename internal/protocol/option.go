@@ -114,10 +114,10 @@ func (o plainOptions) read(rd *bufio.Reader, cnt int) {
 		k := rd.ReadInt8()
 		tc := rd.ReadByte()
 
-		switch typeCode(tc) {
+		switch TypeCode(tc) {
 
 		default:
-			outLogger.Fatalf("type code %s not implemented", typeCode(tc))
+			outLogger.Fatalf("type code %s not implemented", TypeCode(tc))
 
 		case tcBoolean:
 			o[k] = booleanType(rd.ReadBool())

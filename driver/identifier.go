@@ -36,7 +36,7 @@ func RandomIdentifier(prefix string) Identifier {
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
 		panic(err.Error()) // rand should never fail
 	}
-	return Identifier(fmt.Sprintf(fmt.Sprintf("%s%x", prefix, b)))
+	return Identifier(fmt.Sprintf("%s%x", prefix, b))
 }
 
 // String implements Stringer interface.

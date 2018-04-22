@@ -19,6 +19,7 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
+	"io"
 
 	"github.com/SAP/go-hdb/internal/bufio"
 )
@@ -74,80 +75,90 @@ func (k parameterMode) String() string {
 }
 
 type parameterField struct {
+	fieldNames       fieldNames
 	parameterOptions parameterOptions
-	tc               typeCode
+	tc               TypeCode
 	mode             parameterMode
 	fraction         int16
 	length           int16
-	nameOffset       uint32
+	offset           uint32
+	chunkReader      lobChunkReader
+	lobLocatorID     locatorID
 }
 
-func newParameterField() *parameterField {
-	return &parameterField{}
+func newParameterField(fieldNames fieldNames) *parameterField {
+	return &parameterField{fieldNames: fieldNames}
 }
 
 func (f *parameterField) String() string {
-	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s fraction %d length %d nameOffset %d",
+	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s fraction %d length %d name %s",
 		f.parameterOptions,
 		f.tc,
 		f.mode,
 		f.fraction,
 		f.length,
-		f.nameOffset,
+		f.Name(),
 	)
 }
 
 // field interface
-func (f *parameterField) typeCode() typeCode {
+func (f *parameterField) TypeCode() TypeCode {
 	return f.tc
 }
 
-func (f *parameterField) typeLength() (int64, bool) {
+// TypeLength returns the type length of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
+func (f *parameterField) TypeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
 	return 0, false
 }
 
-func (f *parameterField) typePrecisionScale() (int64, int64, bool) {
+// TypePrecisionScale returns the type precision and scale (decimal types) of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
+func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
 	return 0, 0, false
 }
 
-func (f *parameterField) nullable() bool {
+// Nullable returns true if the field may be null, false otherwise.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
+func (f *parameterField) Nullable() bool {
 	return f.parameterOptions == poOptional
 }
 
-func (f *parameterField) in() bool {
+func (f *parameterField) In() bool {
 	return f.mode == pmInout || f.mode == pmIn
 }
 
-func (f *parameterField) out() bool {
+func (f *parameterField) Out() bool {
 	return f.mode == pmInout || f.mode == pmOut
 }
 
-func (f *parameterField) name(names map[uint32]string) string {
-	return names[f.nameOffset]
+func (f *parameterField) Name() string {
+	return f.fieldNames.name(f.offset)
 }
 
-func (f *parameterField) nameOffsets() []uint32 {
-	return []uint32{f.nameOffset}
+func (f *parameterField) SetLobReader(rd io.Reader) error {
+	f.chunkReader = newLobChunkReader(f.TypeCode().isCharBased(), rd)
+	return nil
 }
 
 //
 
-func (f *parameterField) read(rd *bufio.Reader) error {
+func (f *parameterField) read(rd *bufio.Reader) {
 	f.parameterOptions = parameterOptions(rd.ReadInt8())
-	f.tc = typeCode(rd.ReadInt8())
+	f.tc = TypeCode(rd.ReadInt8())
 	f.mode = parameterMode(rd.ReadInt8())
 	rd.Skip(1) //filler
-	f.nameOffset = rd.ReadUint32()
+	f.offset = rd.ReadUint32()
+	f.fieldNames.addOffset(f.offset)
 	f.length = rd.ReadInt16()
 	f.fraction = rd.ReadInt16()
 	rd.Skip(4) //filler
-	return rd.GetError()
 }
 
 // parameter metadata
@@ -171,23 +182,18 @@ func (m *parameterMetadata) setNumArg(numArg int) {
 func (m *parameterMetadata) read(rd *bufio.Reader) error {
 
 	for i := 0; i < m.numArg; i++ {
-		field := newParameterField()
-		if err := field.read(rd); err != nil {
-			return err
-		}
+		field := newParameterField(m.fieldSet.names)
+		field.read(rd)
 		m.fieldSet.fields[i] = field
 	}
 
 	pos := uint32(0)
-	for _, offset := range m.fieldSet.nameOffsets() {
+	for _, offset := range m.fieldSet.names.sortOffsets() {
 		if diff := int(offset - pos); diff > 0 {
 			rd.Skip(diff)
 		}
-
 		b, size := readShortUtf8(rd)
-
-		m.fieldSet.names[offset] = string(b)
-
+		m.fieldSet.names.setName(offset, string(b))
 		pos += uint32(1 + size)
 	}
 
@@ -200,17 +206,17 @@ func (m *parameterMetadata) read(rd *bufio.Reader) error {
 
 // parameters
 type parameters struct {
-	fields []field //input fields
+	fields []Field //input fields
 	args   []driver.Value
 }
 
 func newParameters(fieldSet *FieldSet, args []driver.Value) *parameters {
 	m := &parameters{
-		fields: make([]field, 0, len(fieldSet.fields)),
+		fields: make([]Field, 0, len(fieldSet.fields)),
 		args:   args,
 	}
 	for _, field := range fieldSet.fields {
-		if field.in() {
+		if field.In() {
 			m.fields = append(m.fields, field)
 		}
 	}
@@ -235,7 +241,7 @@ func (m *parameters) size() (int, error) {
 		// mass insert
 		field := m.fields[i%cnt]
 
-		fieldSize, err := fieldSize(field.typeCode(), arg)
+		fieldSize, err := fieldSize(field.TypeCode(), arg)
 		if err != nil {
 			return 0, err
 		}
@@ -265,7 +271,7 @@ func (m parameters) write(wr *bufio.Writer) error {
 		//mass insert
 		field := m.fields[i%cnt]
 
-		if err := writeField(wr, field.typeCode(), arg); err != nil {
+		if err := writeField(wr, field.TypeCode(), arg); err != nil {
 			return err
 		}
 	}

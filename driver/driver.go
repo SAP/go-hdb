@@ -35,7 +35,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.11.0"
+const DriverVersion = "0.11.1"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -136,7 +136,8 @@ var (
 	_ driver.QueryerContext = (*conn)(nil)
 	//go 1.9 issue (QueryerContext is only called if Queryer is implemented)
 	// QueryContext is needed for stored procedures with table output parameters.
-	_ driver.Queryer = (*conn)(nil)
+	_ driver.Queryer           = (*conn)(nil)
+	_ driver.NamedValueChecker = (*conn)(nil)
 )
 
 type conn struct {
@@ -283,6 +284,20 @@ func (c *conn) Ping(ctx context.Context) error {
 	return err
 }
 
+// CheckNamedValue implements NamedValueChecker interface.
+// implemented for conn:
+// if querier or execer is called, sql checks parameters before in case of
+// parameters the method can be 'skipped' and force the prepare path
+// --> guarantee that a valid driver value is returned
+// --> if not implemented, Lob need to have a pseudo Value method to return a valid driver value
+func (s *conn) CheckNamedValue(nv *driver.NamedValue) error {
+	switch nv.Value.(type) {
+	case Lob, *Lob:
+		nv.Value = nil
+	}
+	return nil
+}
+
 //transaction
 
 //  check if tx implements all required interfaces
@@ -427,12 +442,13 @@ func (s *stmt) procedureCall(args []driver.NamedValue) (driver.Rows, error) {
 	return newProcedureCallResult(s.session, s.prmFieldSet, fieldValues, tableResults)
 }
 
-func (s *stmt) ColumnConverter(idx int) driver.ValueConverter {
-	return columnConverter(s.prmFieldSet.DataType(idx))
-}
+// Deprecated: see NamedValueChecker.
+//func (s *stmt) ColumnConverter(idx int) driver.ValueConverter {
+//}
 
+// CheckNamedValue implements NamedValueChecker interface.
 func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
-	return driver.ErrSkip
+	return checkNamedValue(s.prmFieldSet, nv)
 }
 
 // bulk insert statement
@@ -446,16 +462,16 @@ var (
 )
 
 type bulkInsertStmt struct {
-	session           *p.Session
-	query             string
-	id                uint64
-	parameterFieldSet *p.FieldSet
-	numArg            int
-	args              []driver.Value
+	session     *p.Session
+	query       string
+	id          uint64
+	prmFieldSet *p.FieldSet
+	numArg      int
+	args        []driver.Value
 }
 
-func newBulkInsertStmt(session *p.Session, query string, id uint64, parameterFieldSet *p.FieldSet) (*bulkInsertStmt, error) {
-	return &bulkInsertStmt{session: session, query: query, id: id, parameterFieldSet: parameterFieldSet, args: make([]driver.Value, 0)}, nil
+func newBulkInsertStmt(session *p.Session, query string, id uint64, prmFieldSet *p.FieldSet) (*bulkInsertStmt, error) {
+	return &bulkInsertStmt{session: session, query: query, id: id, prmFieldSet: prmFieldSet, args: make([]driver.Value, 0)}, nil
 }
 
 func (s *bulkInsertStmt) Close() error {
@@ -498,7 +514,7 @@ func (s *bulkInsertStmt) execFlush() (driver.Result, error) {
 
 	sqltrace.Traceln("execFlush")
 
-	result, err := s.session.Exec(s.id, s.parameterFieldSet, s.args)
+	result, err := s.session.Exec(s.id, s.prmFieldSet, s.args)
 	s.args = s.args[:0]
 	s.numArg = 0
 	return result, err
@@ -506,31 +522,13 @@ func (s *bulkInsertStmt) execFlush() (driver.Result, error) {
 
 func (s *bulkInsertStmt) execBuffer(args []driver.Value) (driver.Result, error) {
 
-	numField := s.parameterFieldSet.NumInputField()
+	numField := s.prmFieldSet.NumInputField()
 	if len(args) != numField {
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), numField)
 	}
 
 	var result driver.Result = driver.ResultNoRows
 	var err error
-
-	/*
-		incompatible change in go1.9:
-		- column converter convert value is only executed if num input != -1
-		- num input cannot be set as flush exec command does not have parameters
-		--> in go1.9 the driver values aren't converted
-		--> driver value types could be invalid (not allowed driver parameter type, e.g. INT)
-		--> invalid parameter types cannot be handled in protocol implementation
-		--> execute the conversion here
-		TODO: check after implemetation of NamedValueChecker
-	*/
-	for i, arg := range args {
-		arg, err := s.ColumnConverter(i).ConvertValue(arg)
-		if err != nil {
-			return result, err
-		}
-		args[i] = arg
-	}
 
 	if s.numArg == maxSmallint { // TODO: check why bigArgument count does not work
 		result, err = s.execFlush()
@@ -550,12 +548,13 @@ func (s *bulkInsertStmt) QueryContext(ctx context.Context, args []driver.NamedVa
 	return nil, fmt.Errorf("query not allowed in context of bulk insert statement %s", s.query)
 }
 
-func (s *bulkInsertStmt) ColumnConverter(idx int) driver.ValueConverter {
-	return columnConverter(s.parameterFieldSet.DataType(idx))
-}
+// Deprecated: see NamedValueChecker.
+//func (s *bulkInsertStmt) ColumnConverter(idx int) driver.ValueConverter {
+//}
 
+// CheckNamedValue implements NamedValueChecker interface.
 func (s *bulkInsertStmt) CheckNamedValue(nv *driver.NamedValue) error {
-	return driver.ErrSkip
+	return checkNamedValue(s.prmFieldSet, nv)
 }
 
 // driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that doesn't return rows
@@ -664,19 +663,19 @@ func (r *queryResult) Next(dest []driver.Value) error {
 }
 
 func (r *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
-	return r.fieldSet.DatabaseTypeName(idx)
+	return r.fieldSet.Field(idx).TypeCode().TypeName()
 }
 
 func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
-	return r.fieldSet.TypeLength(idx)
+	return r.fieldSet.Field(idx).TypeLength()
 }
 
 func (r *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return r.fieldSet.TypePrecisionScale(idx)
+	return r.fieldSet.Field(idx).TypePrecisionScale()
 }
 
 func (r *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return r.fieldSet.TypeNullable(idx), true
+	return r.fieldSet.Field(idx).Nullable(), true
 }
 
 var (
@@ -695,7 +694,7 @@ var (
 )
 
 func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
-	switch r.fieldSet.DataType(idx) {
+	switch r.fieldSet.Field(idx).TypeCode().DataType() {
 	default:
 		return scanTypeUnknown
 	case p.DtTinyint:

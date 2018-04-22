@@ -28,8 +28,7 @@ import (
 type testCustomInt int
 
 func assertEqualInt(t *testing.T, dt p.DataType, v interface{}, r int64) {
-	c := columnConverter(dt)
-	cv, err := c.ConvertValue(v)
+	cv, err := convertNamedValue(0, nil, dt, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,8 +38,7 @@ func assertEqualInt(t *testing.T, dt p.DataType, v interface{}, r int64) {
 }
 
 func assertEqualIntOutOfRangeError(t *testing.T, dt p.DataType, v interface{}) {
-	c := columnConverter(dt)
-	_, err := c.ConvertValue(v)
+	_, err := convertNamedValue(0, nil, dt, v)
 	if err != ErrIntegerOutOfRange {
 		t.Fatalf("assert equal out of range error failed %s %v", dt, v)
 	}
@@ -74,8 +72,7 @@ func TestConvertInteger(t *testing.T) {
 type testCustomFloat float32
 
 func assertEqualFloat(t *testing.T, dt p.DataType, v interface{}, r float64) {
-	c := columnConverter(dt)
-	cv, err := c.ConvertValue(v)
+	cv, err := convertNamedValue(0, nil, dt, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,8 +82,7 @@ func assertEqualFloat(t *testing.T, dt p.DataType, v interface{}, r float64) {
 }
 
 func assertEqualFloatOutOfRangeError(t *testing.T, dt p.DataType, v interface{}) {
-	c := columnConverter(dt)
-	_, err := c.ConvertValue(v)
+	_, err := convertNamedValue(0, nil, dt, v)
 	if err != ErrFloatOutOfRange {
 		t.Fatalf("assert equal out of range error failed %s %v", dt, v)
 	}
@@ -116,8 +112,7 @@ func TestConvertFloat(t *testing.T) {
 type testCustomTime time.Time
 
 func assertEqualTime(t *testing.T, v interface{}, r time.Time) {
-	c := columnConverter(p.DtTime)
-	cv, err := c.ConvertValue(v)
+	cv, err := convertNamedValue(0, nil, p.DtTime, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +139,7 @@ func TestConvertTime(t *testing.T) {
 type testCustomString string
 
 func assertEqualString(t *testing.T, dt p.DataType, v interface{}, r string) {
-	c := columnConverter(dt)
-	cv, err := c.ConvertValue(v)
+	cv, err := convertNamedValue(0, nil, dt, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,8 +166,7 @@ func TestConvertString(t *testing.T) {
 type testCustomBytes []byte
 
 func assertEqualBytes(t *testing.T, dt p.DataType, v interface{}, r []byte) {
-	c := columnConverter(dt)
-	cv, err := c.ConvertValue(v)
+	cv, err := convertNamedValue(0, nil, dt, v)
 	if err != nil {
 		t.Fatal(err)
 	}

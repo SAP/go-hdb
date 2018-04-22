@@ -1,5 +1,3 @@
-// +build go1.8
-
 /*
 Copyright 2014 SAP SE
 
@@ -46,19 +44,6 @@ type testColumnType struct {
 	value interface{}
 }
 
-var (
-	testTime    = time.Now()
-	testDecimal = (*Decimal)(big.NewRat(1, 1))
-	testString  = "HDB column type"
-	testBinary  = []byte{0x00, 0x01, 0x02}
-	testBuffer  = bytes.NewBuffer(testBinary)
-	testLob     = new(Lob)
-)
-
-func init() {
-	testLob.SetReader(testBuffer)
-}
-
 func dataType(dt string) string {
 	if driverDataFormatVersion == 1 {
 		switch dt {
@@ -74,6 +59,17 @@ func dataType(dt string) string {
 }
 
 func TestColumnType(t *testing.T) {
+
+	var (
+		testTime    = time.Now()
+		testDecimal = (*Decimal)(big.NewRat(1, 1))
+		testString  = "HDB column type"
+		testBinary  = []byte{0x00, 0x01, 0x02}
+		testBuffer  = bytes.NewBuffer(testBinary)
+		testLob     = new(Lob)
+	)
+
+	testLob.SetReader(testBuffer)
 
 	var testColumnTypeData = []testColumnType{
 		{"tinyint", 0, false, false, false, "TINYINT", 0, 0, true, scanTypeTinyint, 1},
@@ -113,8 +109,9 @@ func TestColumnType(t *testing.T) {
 	// text is only supported for column table
 
 	var createSql bytes.Buffer
+	table := RandomIdentifier("testColumnType_")
 
-	createSql.WriteString("create column table %s.%s (") // some data types are only valid for column tables
+	createSql.WriteString(fmt.Sprintf("create column table %s.%s (", TestSchema, table)) // some data types are only valid for column tables
 	for i, td := range testColumnTypeData {
 
 		if i != 0 {
@@ -137,8 +134,7 @@ func TestColumnType(t *testing.T) {
 	}
 	defer db.Close()
 
-	table := RandomIdentifier("testColumnType_")
-	if _, err := db.Exec(fmt.Sprintf(createSql.String(), TestSchema, table)); err != nil {
+	if _, err := db.Exec(createSql.String()); err != nil {
 		t.Fatal(err)
 	}
 

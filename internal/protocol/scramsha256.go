@@ -39,10 +39,6 @@ type scramsha256InitialRequest struct {
 	clientChallenge []byte
 }
 
-func newScramsha256InitialRequest() *scramsha256InitialRequest {
-	return &scramsha256InitialRequest{}
-}
-
 func (r *scramsha256InitialRequest) kind() partKind {
 	return pkAuthentication
 }
@@ -66,10 +62,6 @@ func (r *scramsha256InitialRequest) write(wr *bufio.Writer) error {
 type scramsha256InitialReply struct {
 	salt            []byte
 	serverChallenge []byte
-}
-
-func newScramsha256InitialReply() *scramsha256InitialReply {
-	return &scramsha256InitialReply{}
 }
 
 func (r *scramsha256InitialReply) kind() partKind {

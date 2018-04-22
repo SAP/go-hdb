@@ -17,7 +17,6 @@ var (
 	_connectOption_index_1 = [...]uint8{0, 31, 41}
 	_connectOption_index_2 = [...]uint8{0, 17, 43, 67, 92, 121, 141, 166}
 	_connectOption_index_3 = [...]uint16{0, 20, 42, 62, 77, 107, 126, 146, 176, 200, 224, 236, 244, 264, 275}
-	_connectOption_index_4 = [...]uint8{0, 22}
 )
 
 func (i connectOption) String() string {
