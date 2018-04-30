@@ -85,7 +85,7 @@ func TestDouble(t *testing.T) {
 	)
 }
 
-var testStringDataAscii = []interface{}{
+var testStringDataASCII = []interface{}{
 	"Hello HDB",
 	"aaaaaaaaaa",
 	sql.NullString{Valid: false, String: "Hello HDB"},
@@ -115,7 +115,7 @@ using unicode (CESU-8) data for char HDB
 surprisingly: varchar works with unicode characters
 */
 func TestChar(t *testing.T) {
-	testDatatype(t, "char", 40, true, testStringDataAscii...)
+	testDatatype(t, "char", 40, true, testStringDataASCII...)
 }
 
 func TestVarchar(t *testing.T) {

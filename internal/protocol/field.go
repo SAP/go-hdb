@@ -19,7 +19,6 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
-	"io"
 	"math"
 	"sort"
 	"time"
@@ -43,18 +42,6 @@ func (p uint32Slice) Len() int           { return len(p) }
 func (p uint32Slice) Less(i, j int) bool { return p[i] < p[j] }
 func (p uint32Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p uint32Slice) sort()              { sort.Sort(p) }
-
-type Field interface {
-	TypeCode() TypeCode
-	TypeLength() (int64, bool)
-	TypePrecisionScale() (int64, int64, bool)
-	Nullable() bool
-	In() bool
-	Out() bool
-	Name() string
-	SetLobReader(rd io.Reader) error
-	String() string
-}
 
 type fieldNames map[uint32]string
 
@@ -88,114 +75,24 @@ func (f fieldNames) sortOffsets() []uint32 {
 	return offsets
 }
 
-// FieldSet contains database field metadata.
-type FieldSet struct {
-	fields []Field
-	names  fieldNames
-}
-
-func newFieldSet(size int) *FieldSet {
-	return &FieldSet{
-		fields: make([]Field, size),
-		names:  newFieldNames(),
-	}
-}
-
-// String implements the Stringer interface.
-func (f *FieldSet) String() string {
-	a := make([]string, len(f.fields))
-	for i, f := range f.fields {
-		a[i] = f.String()
-	}
-	return fmt.Sprintf("%v", a)
-}
-
-// NumInputField returns the number of input fields in a database statement.
-func (f *FieldSet) NumInputField() int {
-	cnt := 0
-	for _, field := range f.fields {
-		if field.In() {
-			cnt++
-		}
-	}
-	return cnt
-}
-
-// NumOutputField returns the number of output fields of a query or stored procedure.
-func (f *FieldSet) NumOutputField() int {
-	cnt := 0
-	for _, field := range f.fields {
-		if field.Out() {
-			cnt++
-		}
-	}
-	return cnt
-}
-
-// Field returns the field at index idx.
-func (f *FieldSet) Field(idx int) Field {
-	return f.fields[idx]
-}
-
-// OutputNames fills the names parameter with field names of all output fields. The size of the names slice must be at least
-// NumOutputField big.
-func (f *FieldSet) OutputNames(names []string) error {
-	i := 0
-	for _, field := range f.fields {
-		if field.Out() {
-			if i >= len(names) { // assert names size
-				return fmt.Errorf("names size too short %d - expected min %d", len(names), i)
-			}
-			names[i] = field.Name()
-			i++
-		}
-	}
-	return nil
-}
-
 // FieldValues contains rows read from database.
 type FieldValues struct {
-	s *Session
-
 	rows   int
 	cols   int
 	values []driver.Value
 }
 
-func newFieldValues(s *Session) *FieldValues {
-	return &FieldValues{s: s}
+func newFieldValues() *FieldValues {
+	return &FieldValues{}
 }
 
 func (f *FieldValues) String() string {
 	return fmt.Sprintf("rows %d columns %d", f.rows, f.cols)
 }
 
-func (f *FieldValues) read(rows int, fieldSet *FieldSet, rd *bufio.Reader) error {
-
-	f.rows, f.cols = rows, fieldSet.NumOutputField()
-	f.values = make([]driver.Value, f.rows*f.cols)
-
-	for i := 0; i < f.rows; i++ {
-		j := 0
-
-		for _, field := range fieldSet.fields {
-
-			if !field.Out() {
-				continue
-			}
-
-			var err error
-
-			f.values[i*f.cols+j], err = f.readField(rd, field.TypeCode())
-			if err != nil {
-				return err
-			}
-
-			j++
-		}
-	}
-
-	return nil
+func (f *FieldValues) resize(rows, cols int) {
+	f.rows, f.cols = rows, cols
+	f.values = make([]driver.Value, rows*cols)
 }
 
 // NumRow returns the number of rows available in FieldValues.
@@ -226,7 +123,8 @@ const (
 	lobInputDescriptorSize = 9
 )
 
-func fieldSize(tc TypeCode, v driver.Value) (int, error) {
+func fieldSize(tc TypeCode, arg driver.NamedValue) (int, error) {
+	v := arg.Value
 
 	if v == nil { //HDB bug: secondtime null value --> see writeField
 		return 0, nil
@@ -292,7 +190,7 @@ func fieldSize(tc TypeCode, v driver.Value) (int, error) {
 	return 0, nil
 }
 
-func (f *FieldValues) readField(rd *bufio.Reader, tc TypeCode) (interface{}, error) {
+func readField(session *Session, rd *bufio.Reader, tc TypeCode) (interface{}, error) {
 
 	switch tc {
 
@@ -407,7 +305,7 @@ func (f *FieldValues) readField(rd *bufio.Reader, tc TypeCode) (interface{}, err
 		return value, nil
 
 	case tcBlob, tcClob, tcNclob:
-		null, writer, err := readLob(f.s, rd, tc)
+		null, writer, err := readLob(session, rd, tc)
 		if null {
 			return nil, nil
 		}
@@ -418,7 +316,8 @@ func (f *FieldValues) readField(rd *bufio.Reader, tc TypeCode) (interface{}, err
 	return nil, nil
 }
 
-func writeField(wr *bufio.Writer, tc TypeCode, v driver.Value) error {
+func writeField(wr *bufio.Writer, tc TypeCode, arg driver.NamedValue) error {
+	v := arg.Value
 	//HDB bug: secondtime null value cannot be set by setting high byte
 	//         trying so, gives
 	//         SQL HdbError 1033 - error while parsing protocol: no such data type: type_code=192, index=2

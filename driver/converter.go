@@ -40,23 +40,23 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
-// ErrorIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
+// ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
 var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
-// ErrorIntegerOutOfRange means that a float exceeds the size of the hdb float field.
+// ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
 
 var typeOfTime = reflect.TypeOf((*time.Time)(nil)).Elem()
 var typeOfBytes = reflect.TypeOf((*[]byte)(nil)).Elem()
 
-func checkNamedValue(fieldSet *p.FieldSet, nv *driver.NamedValue) error {
+func checkNamedValue(prmFieldSet *p.ParameterFieldSet, nv *driver.NamedValue) error {
 	idx := nv.Ordinal - 1
 
-	if idx >= fieldSet.NumInputField() {
+	if idx >= prmFieldSet.NumInputField() {
 		return nil
 	}
 
-	f := fieldSet.Field(idx)
+	f := prmFieldSet.Field(idx)
 	dt := f.TypeCode().DataType()
 
 	value, err := convertNamedValue(idx, f, dt, nv.Value)
@@ -69,7 +69,7 @@ func checkNamedValue(fieldSet *p.FieldSet, nv *driver.NamedValue) error {
 	return nil
 }
 
-func convertNamedValue(idx int, f p.Field, dt p.DataType, v driver.Value) (driver.Value, error) {
+func convertNamedValue(idx int, f *p.ParameterField, dt p.DataType, v driver.Value) (driver.Value, error) {
 	var err error
 
 	// let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
@@ -308,7 +308,7 @@ func convertNvBytes(v interface{}) (driver.Value, error) {
 }
 
 // Lob
-func convertNvLob(idx int, f p.Field, v interface{}) (driver.Value, error) {
+func convertNvLob(idx int, f *p.ParameterField, v interface{}) (driver.Value, error) {
 
 	if v == nil {
 		return v, nil

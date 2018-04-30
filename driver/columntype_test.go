@@ -108,25 +108,25 @@ func TestColumnType(t *testing.T) {
 
 	// text is only supported for column table
 
-	var createSql bytes.Buffer
+	var createSQL bytes.Buffer
 	table := RandomIdentifier("testColumnType_")
 
-	createSql.WriteString(fmt.Sprintf("create column table %s.%s (", TestSchema, table)) // some data types are only valid for column tables
+	createSQL.WriteString(fmt.Sprintf("create column table %s.%s (", TestSchema, table)) // some data types are only valid for column tables
 	for i, td := range testColumnTypeData {
 
 		if i != 0 {
-			createSql.WriteString(",")
+			createSQL.WriteString(",")
 		}
 
-		createSql.WriteString(fmt.Sprintf("X%d %s", i, td.sqlType))
+		createSQL.WriteString(fmt.Sprintf("X%d %s", i, td.sqlType))
 		if td.length != 0 {
-			createSql.WriteString(fmt.Sprintf("(%d)", td.length))
+			createSQL.WriteString(fmt.Sprintf("(%d)", td.length))
 		}
 		if !td.nullable {
-			createSql.WriteString(" not null")
+			createSQL.WriteString(" not null")
 		}
 	}
-	createSql.WriteString(")")
+	createSQL.WriteString(")")
 
 	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestColumnType(t *testing.T) {
 	}
 	defer db.Close()
 
-	if _, err := db.Exec(createSql.String()); err != nil {
+	if _, err := db.Exec(createSQL.String()); err != nil {
 		t.Fatal(err)
 	}
 

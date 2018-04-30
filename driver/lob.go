@@ -38,7 +38,6 @@ func NewLob(rd io.Reader, wr io.Writer) *Lob {
 
 // SetReader sets the io.Reader source for a lob field to be written to database
 // and return *Lob, to enable simple call chaining.
-
 func (l *Lob) SetReader(rd io.Reader) *Lob {
 	l.rd = rd
 	return l
@@ -78,7 +77,7 @@ func (l *Lob) Scan(src interface{}) error {
 // it can be used as a scan destination, similar to NullString.
 type NullLob struct {
 	Lob   *Lob
-	Valid bool // Valid is true if Decimal is not NULL
+	Valid bool // Valid is true if Lob is not NULL
 }
 
 // Scan implements the database/sql/Scanner interface.

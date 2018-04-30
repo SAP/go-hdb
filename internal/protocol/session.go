@@ -26,6 +26,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/internal/bufio"
@@ -175,6 +176,10 @@ type Session struct {
 	stmtCtx   *statementContext
 	txFlags   *transactionFlags
 	lastError *hdbError
+
+	//serialize write request - read reply
+	//supports calling session methods in go routines (driver methods with context cancellation)
+	mu sync.Mutex
 }
 
 // NewSession creates a new database session.
@@ -358,15 +363,17 @@ func (s *Session) authenticateScramsha256() error {
 }
 
 // QueryDirect executes a query without query parameters.
-func (s *Session) QueryDirect(query string) (uint64, *FieldSet, *FieldValues, PartAttributes, error) {
+func (s *Session) QueryDirect(query string) (uint64, *ResultFieldSet, *FieldValues, PartAttributes, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err := s.writeRequest(mtExecuteDirect, false, command(query)); err != nil {
 		return 0, nil, nil, nil, err
 	}
 
 	var id uint64
-	var fieldSet *FieldSet
-	fieldValues := newFieldValues(s)
+	var resultFieldSet *ResultFieldSet
+	fieldValues := newFieldValues()
 
 	f := func(p replyPart) {
 
@@ -375,10 +382,11 @@ func (s *Session) QueryDirect(query string) (uint64, *FieldSet, *FieldValues, Pa
 		case *resultsetID:
 			p.id = &id
 		case *resultMetadata:
-			fieldSet = newFieldSet(p.numArg)
-			p.fieldSet = fieldSet
+			resultFieldSet = newResultFieldSet(p.numArg)
+			p.resultFieldSet = resultFieldSet
 		case *resultset:
-			p.fieldSet = fieldSet
+			p.s = s
+			p.resultFieldSet = resultFieldSet
 			p.fieldValues = fieldValues
 		}
 	}
@@ -387,13 +395,13 @@ func (s *Session) QueryDirect(query string) (uint64, *FieldSet, *FieldValues, Pa
 		return 0, nil, nil, nil, err
 	}
 
-	attrs := s.ph.partAttributes
-
-	return id, fieldSet, fieldValues, attrs, nil
+	return id, resultFieldSet, fieldValues, s.ph.partAttributes, nil
 }
 
 // ExecDirect executes a sql statement without statement parameters.
 func (s *Session) ExecDirect(query string) (driver.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err := s.writeRequest(mtExecuteDirect, !s.conn.inTx, command(query)); err != nil {
 		return nil, err
@@ -410,15 +418,17 @@ func (s *Session) ExecDirect(query string) (driver.Result, error) {
 }
 
 // Prepare prepares a sql statement.
-func (s *Session) Prepare(query string) (QueryType, uint64, *FieldSet, *FieldSet, error) {
+func (s *Session) Prepare(query string) (QueryType, uint64, *ParameterFieldSet, *ResultFieldSet, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err := s.writeRequest(mtPrepare, false, command(query)); err != nil {
 		return QtNone, 0, nil, nil, err
 	}
 
 	var id uint64
-	var prmFieldSet *FieldSet
-	var resultFieldSet *FieldSet
+	var prmFieldSet *ParameterFieldSet
+	var resultFieldSet *ResultFieldSet
 
 	f := func(p replyPart) {
 
@@ -427,11 +437,11 @@ func (s *Session) Prepare(query string) (QueryType, uint64, *FieldSet, *FieldSet
 		case *statementID:
 			p.id = &id
 		case *parameterMetadata:
-			prmFieldSet = newFieldSet(p.numArg)
-			p.fieldSet = prmFieldSet
+			prmFieldSet = newParameterFieldSet(p.numArg)
+			p.prmFieldSet = prmFieldSet
 		case *resultMetadata:
-			resultFieldSet = newFieldSet(p.numArg)
-			p.fieldSet = resultFieldSet
+			resultFieldSet = newResultFieldSet(p.numArg)
+			p.resultFieldSet = resultFieldSet
 		}
 	}
 
@@ -443,10 +453,12 @@ func (s *Session) Prepare(query string) (QueryType, uint64, *FieldSet, *FieldSet
 }
 
 // Exec executes a sql statement.
-func (s *Session) Exec(id uint64, parameterFieldSet *FieldSet, args []driver.Value) (driver.Result, error) {
+func (s *Session) Exec(id uint64, prmFieldSet *ParameterFieldSet, args []driver.NamedValue) (driver.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.statementID.id = &id
-	if err := s.writeRequest(mtExecute, !s.conn.inTx, s.statementID, newParameters(parameterFieldSet, args)); err != nil {
+	if err := s.writeRequest(mtExecute, !s.conn.inTx, s.statementID, newInputParameters(prmFieldSet.inputFields(), args)); err != nil {
 		return nil, err
 	}
 
@@ -461,7 +473,7 @@ func (s *Session) Exec(id uint64, parameterFieldSet *FieldSet, args []driver.Val
 		result = driver.RowsAffected(s.rowsAffected.total())
 	}
 
-	if err := s.writeLobStream(parameterFieldSet, nil, args); err != nil {
+	if err := s.writeLobStream(prmFieldSet, nil, args); err != nil {
 		return nil, err
 	}
 
@@ -470,6 +482,8 @@ func (s *Session) Exec(id uint64, parameterFieldSet *FieldSet, args []driver.Val
 
 // DropStatementID releases the hdb statement handle.
 func (s *Session) DropStatementID(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.statementID.id = &id
 	if err := s.writeRequest(mtDropStatementID, false, s.statementID); err != nil {
@@ -484,40 +498,44 @@ func (s *Session) DropStatementID(id uint64) error {
 }
 
 // Call executes a stored procedure.
-func (s *Session) Call(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*FieldValues, []*TableResult, error) {
+func (s *Session) Call(id uint64, prmFieldSet *ParameterFieldSet, args []driver.NamedValue) (*FieldValues, []*TableResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.statementID.id = &id
-	if err := s.writeRequest(mtExecute, false, s.statementID, newParameters(prmFieldSet, args)); err != nil {
+	if err := s.writeRequest(mtExecute, false, s.statementID, newInputParameters(prmFieldSet.inputFields(), args)); err != nil {
 		return nil, nil, err
 	}
 
-	prmFieldValues := newFieldValues(s)
+	prmFieldValues := newFieldValues()
 	var tableResults []*TableResult
 	var tableResult *TableResult
 
-	g := func(p replyPart) {
+	f := func(p replyPart) {
 
 		switch p := p.(type) {
 
 		case *outputParameters:
-			p.fieldSet = prmFieldSet
+			p.s = s
+			p.outputFields = prmFieldSet.outputFields()
 			p.fieldValues = prmFieldValues
 
 		// table output parameters: meta, id, result (only first param?)
 		case *resultMetadata:
 			tableResult = newTableResult(s, p.numArg)
 			tableResults = append(tableResults, tableResult)
-			p.fieldSet = tableResult.fieldSet
+			p.resultFieldSet = tableResult.resultFieldSet
 		case *resultsetID:
 			p.id = &(tableResult.id)
 		case *resultset:
+			p.s = s
 			tableResult.attrs = s.ph.partAttributes
-			p.fieldSet = tableResult.fieldSet
+			p.resultFieldSet = tableResult.resultFieldSet
 			p.fieldValues = tableResult.fieldValues
 		}
 	}
 
-	if err := s.readReply(g); err != nil {
+	if err := s.readReply(f); err != nil {
 		return nil, nil, err
 	}
 
@@ -529,15 +547,17 @@ func (s *Session) Call(id uint64, prmFieldSet *FieldSet, args []driver.Value) (*
 }
 
 // Query executes a query.
-func (s *Session) Query(stmtID uint64, parameterFieldSet *FieldSet, resultFieldSet *FieldSet, args []driver.Value) (uint64, *FieldValues, PartAttributes, error) {
+func (s *Session) Query(stmtID uint64, prmFieldSet *ParameterFieldSet, resultFieldSet *ResultFieldSet, args []driver.NamedValue) (uint64, *FieldValues, PartAttributes, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.statementID.id = &stmtID
-	if err := s.writeRequest(mtExecute, false, s.statementID, newParameters(parameterFieldSet, args)); err != nil {
+	if err := s.writeRequest(mtExecute, false, s.statementID, newInputParameters(prmFieldSet.inputFields(), args)); err != nil {
 		return 0, nil, nil, err
 	}
 
 	var rsetID uint64
-	fieldValues := newFieldValues(s)
+	fieldValues := newFieldValues()
 
 	f := func(p replyPart) {
 
@@ -546,7 +566,8 @@ func (s *Session) Query(stmtID uint64, parameterFieldSet *FieldSet, resultFieldS
 		case *resultsetID:
 			p.id = &rsetID
 		case *resultset:
-			p.fieldSet = resultFieldSet
+			p.s = s
+			p.resultFieldSet = resultFieldSet
 			p.fieldValues = fieldValues
 		}
 	}
@@ -555,41 +576,41 @@ func (s *Session) Query(stmtID uint64, parameterFieldSet *FieldSet, resultFieldS
 		return 0, nil, nil, err
 	}
 
-	attrs := s.ph.partAttributes
-
-	return rsetID, fieldValues, attrs, nil
+	return rsetID, fieldValues, s.ph.partAttributes, nil
 }
 
 // FetchNext fetches next chunk in query result set.
-func (s *Session) FetchNext(id uint64, resultFieldSet *FieldSet) (*FieldValues, PartAttributes, error) {
+func (s *Session) FetchNext(id uint64, resultFieldSet *ResultFieldSet, fieldValues *FieldValues) (PartAttributes, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.resultsetID.id = &id
 	if err := s.writeRequest(mtFetchNext, false, s.resultsetID, fetchsize(s.prm.FetchSize())); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
-	fieldValues := newFieldValues(s)
 
 	f := func(p replyPart) {
 
 		switch p := p.(type) {
 
 		case *resultset:
-			p.fieldSet = resultFieldSet
+			p.s = s
+			p.resultFieldSet = resultFieldSet
 			p.fieldValues = fieldValues
 		}
 	}
 
 	if err := s.readReply(f); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	attrs := s.ph.partAttributes
-
-	return fieldValues, attrs, nil
+	return s.ph.partAttributes, nil
 }
 
 // CloseResultsetID releases the hdb resultset handle.
 func (s *Session) CloseResultsetID(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	s.resultsetID.id = &id
 	if err := s.writeRequest(mtCloseResultset, false, s.resultsetID); err != nil {
@@ -605,6 +626,8 @@ func (s *Session) CloseResultsetID(id uint64) error {
 
 // Commit executes a database commit.
 func (s *Session) Commit() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err := s.writeRequest(mtCommit, false); err != nil {
 		return err
@@ -624,6 +647,8 @@ func (s *Session) Commit() error {
 
 // Rollback executes a database rollback.
 func (s *Session) Rollback() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if err := s.writeRequest(mtRollback, false); err != nil {
 		return err
@@ -660,20 +685,19 @@ func (s *Session) readLobStream(w lobChunkWriter) error {
 	return nil
 }
 
-func (s *Session) writeLobStream(prmFieldSet *FieldSet, prmFieldValues *FieldValues, args []driver.Value) error {
+func (s *Session) writeLobStream(prmFieldSet *ParameterFieldSet, prmFieldValues *FieldValues, args []driver.NamedValue) error {
 
 	if s.writeLobReply.numArg == 0 {
 		return nil
 	}
 
-	lobPrmFields := make([]*parameterField, s.writeLobReply.numArg)
+	lobPrmFields := make([]*ParameterField, s.writeLobReply.numArg)
 
 	j := 0
 	for _, f := range prmFieldSet.fields {
-		pf := f.(*parameterField)
-		if pf.TypeCode().isLob() && pf.In() && pf.chunkReader != nil {
-			pf.lobLocatorID = s.writeLobReply.ids[j]
-			lobPrmFields[j] = pf
+		if f.TypeCode().isLob() && f.In() && f.chunkReader != nil {
+			f.lobLocatorID = s.writeLobReply.ids[j]
+			lobPrmFields[j] = f
 			j++
 		}
 	}
@@ -683,9 +707,10 @@ func (s *Session) writeLobStream(prmFieldSet *FieldSet, prmFieldValues *FieldVal
 
 	s.writeLobRequest.lobPrmFields = lobPrmFields
 
-	g := func(p replyPart) {
+	f := func(p replyPart) {
 		if p, ok := p.(*outputParameters); ok {
-			p.fieldSet = prmFieldSet
+			p.s = s
+			p.outputFields = prmFieldSet.outputFields()
 			p.fieldValues = prmFieldValues
 		}
 	}
@@ -695,7 +720,7 @@ func (s *Session) writeLobStream(prmFieldSet *FieldSet, prmFieldValues *FieldVal
 			return err
 		}
 
-		if err := s.readReply(g); err != nil {
+		if err := s.readReply(f); err != nil {
 			return err
 		}
 	}

@@ -34,7 +34,7 @@ func newClientID() clientID {
 }
 
 func (id clientID) kind() partKind {
-	return partKind(35) //TODO: extend part kind
+	return partKind(pkClientID)
 }
 
 func (id clientID) size() (int, error) {

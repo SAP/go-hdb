@@ -103,7 +103,7 @@ func (r *writeLobReply) read(rd *bufio.Reader) error {
 
 //write lob request
 type writeLobRequest struct {
-	lobPrmFields []*parameterField
+	lobPrmFields []*ParameterField
 }
 
 func (r *writeLobRequest) kind() partKind {

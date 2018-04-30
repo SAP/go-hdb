@@ -35,7 +35,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.11.2"
+const DriverVersion = "0.11.3"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -70,7 +70,7 @@ var readOnly = map[bool]string{
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
 var ErrUnsupportedIsolationLevel = errors.New("Unsupported isolation level")
 
-// ErrNestedTransactions is the error raised if a tranasction is created within a transaction as this is not supported by hdb.
+// ErrNestedTransaction is the error raised if a tranasction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("Nested transactions are not supported")
 
 // needed for testing
@@ -127,10 +127,11 @@ func (d *hdbDrv) Open(dsn string) (driver.Conn, error) {
 
 //  check if conn implements all required interfaces
 var (
-	_ driver.Conn          = (*conn)(nil)
-	_ driver.Pinger        = (*conn)(nil)
-	_ driver.ConnBeginTx   = (*conn)(nil)
-	_ driver.ExecerContext = (*conn)(nil)
+	_ driver.Conn               = (*conn)(nil)
+	_ driver.ConnPrepareContext = (*conn)(nil)
+	_ driver.Pinger             = (*conn)(nil)
+	_ driver.ConnBeginTx        = (*conn)(nil)
+	_ driver.ExecerContext      = (*conn)(nil)
 	//go 1.9 issue (ExecerContext is only called if Execer is implemented)
 	_ driver.Execer         = (*conn)(nil)
 	_ driver.QueryerContext = (*conn)(nil)
@@ -153,21 +154,47 @@ func newConn(ctx context.Context, c *Connector) (driver.Conn, error) {
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
+	panic("deprecated")
+}
+
+func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
 
-	prepareQuery, bulkInsert := checkBulkInsert(query)
+	done := make(chan struct{})
+	go func() {
+		prepareQuery, bulkInsert := checkBulkInsert(query)
+		var (
+			qt             p.QueryType
+			id             uint64
+			prmFieldSet    *p.ParameterFieldSet
+			resultFieldSet *p.ResultFieldSet
+		)
+		qt, id, prmFieldSet, resultFieldSet, err = c.session.Prepare(prepareQuery)
+		if err != nil {
+			goto done
+		}
+		select {
+		default:
+		case <-ctx.Done():
+			return
+		}
+		if bulkInsert {
+			stmt, err = newBulkInsertStmt(c.session, prepareQuery, id, prmFieldSet)
+		} else {
+			stmt, err = newStmt(qt, c.session, prepareQuery, id, prmFieldSet, resultFieldSet)
+		}
+	done:
+		close(done)
+	}()
 
-	qt, id, parameterFieldSet, resultFieldSet, err := c.session.Prepare(prepareQuery)
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return stmt, err
 	}
-
-	if bulkInsert {
-		return newBulkInsertStmt(c.session, prepareQuery, id, parameterFieldSet)
-	}
-	return newStmt(qt, c.session, prepareQuery, id, parameterFieldSet, resultFieldSet)
 }
 
 func (c *conn) Close() error {
@@ -179,7 +206,7 @@ func (c *conn) Begin() (driver.Tx, error) {
 	panic("deprecated")
 }
 
-func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
 
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
@@ -193,18 +220,29 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if !ok {
 		return nil, ErrUnsupportedIsolationLevel
 	}
-	// set isolation level
-	if _, err := c.ExecContext(ctx, fmt.Sprintf(isolationLevelStmt, level), nil); err != nil {
-		return nil, err
-	}
-	// set access mode
-	if _, err := c.ExecContext(ctx, fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly]), nil); err != nil {
-		return nil, err
-	}
 
-	c.session.SetInTx(true)
-	return newTx(c.session), nil
+	done := make(chan struct{})
+	go func() {
+		// set isolation level
+		if _, err = c.ExecContext(ctx, fmt.Sprintf(isolationLevelStmt, level), nil); err != nil {
+			goto done
+		}
+		// set access mode
+		if _, err = c.ExecContext(ctx, fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly]), nil); err != nil {
+			goto done
+		}
+		c.session.SetInTx(true)
+		tx = newTx(c.session)
+	done:
+		close(done)
+	}()
 
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return tx, err
+	}
 }
 
 // Exec implements the database/sql/driver/Execer interface.
@@ -214,7 +252,7 @@ func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
 }
 
 // ExecContext implements the database/sql/driver/ExecerContext interface.
-func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
@@ -225,12 +263,19 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	sqltrace.Traceln(query)
 
-	return c.session.ExecDirect(query)
-}
+	done := make(chan struct{})
+	go func() {
+		r, err = c.session.ExecDirect(query)
+		close(done)
+	}()
 
-// bug?: check args is performed indepently of queryer raising ErrSkip or not
-// - leads to different behavior to prepare - stmt - execute default logic
-// - seems to be the same for Execer interface
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return r, err
+	}
+}
 
 // Queryer implements the database/sql/driver/Queryer interface.
 // delete after go 1.9 compatibility is given up.
@@ -239,7 +284,7 @@ func (c *conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 }
 
 // QueryContext implements the database/sql/driver/QueryerContext interface.
-func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
@@ -266,22 +311,57 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return r.tableRows(int(idx))
 	}
 
-	id, meta, values, attributes, err := c.session.QueryDirect(query)
-	if err != nil {
-		return nil, err
+	done := make(chan struct{})
+	go func() {
+		var (
+			id             uint64
+			resultFieldSet *p.ResultFieldSet
+			fieldValues    *p.FieldValues
+			attributes     p.PartAttributes
+		)
+		id, resultFieldSet, fieldValues, attributes, err = c.session.QueryDirect(query)
+		if err != nil {
+			goto done
+		}
+		select {
+		default:
+		case <-ctx.Done():
+			return
+		}
+		if id == 0 { // non select query
+			rows = noResult
+		} else {
+			rows, err = newQueryResult(c.session, id, resultFieldSet, fieldValues, attributes)
+		}
+	done:
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return rows, err
 	}
-	if id == 0 { // non select query
-		return noResult, nil
-	}
-	return newQueryResult(c.session, id, meta, values, attributes)
 }
 
-func (c *conn) Ping(ctx context.Context) error {
+func (c *conn) Ping(ctx context.Context) (err error) {
 	if c.session.IsBad() {
 		return driver.ErrBadConn
 	}
-	_, err := c.QueryContext(ctx, pingQuery, nil)
-	return err
+
+	done := make(chan struct{})
+	go func() {
+		_, err = c.QueryContext(ctx, pingQuery, nil)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return err
+	}
 }
 
 // CheckNamedValue implements NamedValueChecker interface.
@@ -290,7 +370,7 @@ func (c *conn) Ping(ctx context.Context) error {
 // parameters the method can be 'skipped' and force the prepare path
 // --> guarantee that a valid driver value is returned
 // --> if not implemented, Lob need to have a pseudo Value method to return a valid driver value
-func (s *conn) CheckNamedValue(nv *driver.NamedValue) error {
+func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 	switch nv.Value.(type) {
 	case Lob, *Lob:
 		nv.Value = nil
@@ -346,11 +426,11 @@ type stmt struct {
 	session        *p.Session
 	query          string
 	id             uint64
-	prmFieldSet    *p.FieldSet
-	resultFieldSet *p.FieldSet
+	prmFieldSet    *p.ParameterFieldSet
+	resultFieldSet *p.ResultFieldSet
 }
 
-func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, prmFieldSet *p.FieldSet, resultFieldSet *p.FieldSet) (*stmt, error) {
+func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, prmFieldSet *p.ParameterFieldSet, resultFieldSet *p.ResultFieldSet) (*stmt, error) {
 	return &stmt{qt: qt, session: session, query: query, id: id, prmFieldSet: prmFieldSet, resultFieldSet: resultFieldSet}, nil
 }
 
@@ -366,7 +446,7 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 	panic("deprecated")
 }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
 	if s.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
@@ -378,65 +458,83 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 	sqltrace.Tracef("%s %v", s.query, args)
 
-	dargs := make([]driver.Value, len(args))
-	for i, arg := range args {
-		dargs[i] = arg.Value
-	}
+	done := make(chan struct{})
+	go func() {
+		r, err = s.session.Exec(s.id, s.prmFieldSet, args)
+		close(done)
+	}()
 
-	return s.session.Exec(s.id, s.prmFieldSet, dargs)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return r, err
+	}
 }
 
-func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
+func (s *stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	panic("deprecated")
 }
 
-func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
 
 	if s.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
 
-	switch s.qt {
-	default:
-		rows, err := s.defaultQuery(args)
-		return rows, err
-	case p.QtProcedureCall:
-		rows, err := s.procedureCall(args)
+	done := make(chan struct{})
+	go func() {
+		switch s.qt {
+		default:
+			rows, err = s.defaultQuery(ctx, args)
+		case p.QtProcedureCall:
+			rows, err = s.procedureCall(ctx, args)
+		}
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
 		return rows, err
 	}
 }
 
-func (s *stmt) defaultQuery(args []driver.NamedValue) (driver.Rows, error) {
+func (s *stmt) defaultQuery(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 
 	sqltrace.Tracef("%s %v", s.query, args)
 
-	dargs := make([]driver.Value, len(args))
-	for i, arg := range args {
-		dargs[i] = arg.Value
-	}
-
-	rid, values, attributes, err := s.session.Query(s.id, s.prmFieldSet, s.resultFieldSet, dargs)
+	rid, values, attributes, err := s.session.Query(s.id, s.prmFieldSet, s.resultFieldSet, args)
 	if err != nil {
 		return nil, err
 	}
+
+	select {
+	default:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 	if rid == 0 { // non select query
 		return noResult, nil
 	}
 	return newQueryResult(s.session, rid, s.resultFieldSet, values, attributes)
 }
 
-func (s *stmt) procedureCall(args []driver.NamedValue) (driver.Rows, error) {
+func (s *stmt) procedureCall(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 
 	sqltrace.Tracef("%s %v", s.query, args)
 
-	dargs := make([]driver.Value, len(args))
-	for i, arg := range args {
-		dargs[i] = arg.Value
-	}
-
-	fieldValues, tableResults, err := s.session.Call(s.id, s.prmFieldSet, dargs)
+	fieldValues, tableResults, err := s.session.Call(s.id, s.prmFieldSet, args)
 	if err != nil {
 		return nil, err
+	}
+
+	select {
+	default:
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
 	return newProcedureCallResult(s.session, s.prmFieldSet, fieldValues, tableResults)
@@ -465,13 +563,13 @@ type bulkInsertStmt struct {
 	session     *p.Session
 	query       string
 	id          uint64
-	prmFieldSet *p.FieldSet
+	prmFieldSet *p.ParameterFieldSet
 	numArg      int
-	args        []driver.Value
+	args        []driver.NamedValue
 }
 
-func newBulkInsertStmt(session *p.Session, query string, id uint64, prmFieldSet *p.FieldSet) (*bulkInsertStmt, error) {
-	return &bulkInsertStmt{session: session, query: query, id: id, prmFieldSet: prmFieldSet, args: make([]driver.Value, 0)}, nil
+func newBulkInsertStmt(session *p.Session, query string, id uint64, prmFieldSet *p.ParameterFieldSet) (*bulkInsertStmt, error) {
+	return &bulkInsertStmt{session: session, query: query, id: id, prmFieldSet: prmFieldSet, args: make([]driver.NamedValue, 0)}, nil
 }
 
 func (s *bulkInsertStmt) Close() error {
@@ -486,7 +584,7 @@ func (s *bulkInsertStmt) Exec(args []driver.Value) (driver.Result, error) {
 	panic("deprecated")
 }
 
-func (s *bulkInsertStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+func (s *bulkInsertStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
 
 	if s.session.IsBad() {
 		return nil, driver.ErrBadConn
@@ -494,16 +592,22 @@ func (s *bulkInsertStmt) ExecContext(ctx context.Context, args []driver.NamedVal
 
 	sqltrace.Tracef("%s %v", s.query, args)
 
-	if args == nil || len(args) == 0 {
-		return s.execFlush()
-	}
+	done := make(chan struct{})
+	go func() {
+		if args == nil || len(args) == 0 {
+			r, err = s.execFlush()
+		} else {
+			r, err = s.execBuffer(args)
+		}
+		close(done)
+	}()
 
-	dargs := make([]driver.Value, len(args))
-	for i, arg := range args {
-		dargs[i] = arg.Value
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-done:
+		return r, err
 	}
-
-	return s.execBuffer(dargs)
 }
 
 func (s *bulkInsertStmt) execFlush() (driver.Result, error) {
@@ -520,7 +624,7 @@ func (s *bulkInsertStmt) execFlush() (driver.Result, error) {
 	return result, err
 }
 
-func (s *bulkInsertStmt) execBuffer(args []driver.Value) (driver.Result, error) {
+func (s *bulkInsertStmt) execBuffer(args []driver.NamedValue) (driver.Result, error) {
 
 	numField := s.prmFieldSet.NumInputField()
 	if len(args) != numField {
@@ -589,29 +693,29 @@ var (
 )
 
 type queryResult struct {
-	session     *p.Session
-	id          uint64
-	fieldSet    *p.FieldSet
-	fieldValues *p.FieldValues
-	pos         int
-	attrs       p.PartAttributes
-	columns     []string
-	lastErr     error
+	session        *p.Session
+	id             uint64
+	resultFieldSet *p.ResultFieldSet
+	fieldValues    *p.FieldValues
+	pos            int
+	attrs          p.PartAttributes
+	columns        []string
+	lastErr        error
 }
 
-func newQueryResult(session *p.Session, id uint64, fieldSet *p.FieldSet, fieldValues *p.FieldValues, attrs p.PartAttributes) (driver.Rows, error) {
-	columns := make([]string, fieldSet.NumOutputField())
-	if err := fieldSet.OutputNames(columns); err != nil {
-		return nil, err
+func newQueryResult(session *p.Session, id uint64, resultFieldSet *p.ResultFieldSet, fieldValues *p.FieldValues, attrs p.PartAttributes) (driver.Rows, error) {
+	columns := make([]string, resultFieldSet.NumField())
+	for i := 0; i < len(columns); i++ {
+		columns[i] = resultFieldSet.Field(i).Name()
 	}
 
 	return &queryResult{
-		session:     session,
-		id:          id,
-		fieldSet:    fieldSet,
-		fieldValues: fieldValues,
-		attrs:       attrs,
-		columns:     columns,
+		session:        session,
+		id:             id,
+		resultFieldSet: resultFieldSet,
+		fieldValues:    fieldValues,
+		attrs:          attrs,
+		columns:        columns,
 	}, nil
 }
 
@@ -643,7 +747,7 @@ func (r *queryResult) Next(dest []driver.Value) error {
 
 		var err error
 
-		if r.fieldValues, r.attrs, err = r.session.FetchNext(r.id, r.fieldSet); err != nil {
+		if r.attrs, err = r.session.FetchNext(r.id, r.resultFieldSet, r.fieldValues); err != nil {
 			r.lastErr = err //fieldValues and attrs are nil
 			return err
 		}
@@ -663,19 +767,19 @@ func (r *queryResult) Next(dest []driver.Value) error {
 }
 
 func (r *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
-	return r.fieldSet.Field(idx).TypeCode().TypeName()
+	return r.resultFieldSet.Field(idx).TypeCode().TypeName()
 }
 
 func (r *queryResult) ColumnTypeLength(idx int) (int64, bool) {
-	return r.fieldSet.Field(idx).TypeLength()
+	return r.resultFieldSet.Field(idx).TypeLength()
 }
 
 func (r *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return r.fieldSet.Field(idx).TypePrecisionScale()
+	return r.resultFieldSet.Field(idx).TypePrecisionScale()
 }
 
 func (r *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return r.fieldSet.Field(idx).Nullable(), true
+	return r.resultFieldSet.Field(idx).Nullable(), true
 }
 
 var (
@@ -694,7 +798,7 @@ var (
 )
 
 func (r *queryResult) ColumnTypeScanType(idx int) reflect.Type {
-	switch r.fieldSet.Field(idx).TypeCode().DataType() {
+	switch r.resultFieldSet.Field(idx).TypeCode().DataType() {
 	default:
 		return scanTypeUnknown
 	case p.DtTinyint:
@@ -787,19 +891,20 @@ var _ driver.Rows = (*procedureCallResult)(nil)
 type procedureCallResult struct {
 	id          uint64
 	session     *p.Session
-	fieldSet    *p.FieldSet
+	prmFieldSet *p.ParameterFieldSet
 	fieldValues *p.FieldValues
 	_tableRows  []driver.Rows
 	columns     []string
 	eof         error
 }
 
-func newProcedureCallResult(session *p.Session, fieldSet *p.FieldSet, fieldValues *p.FieldValues, tableResults []*p.TableResult) (driver.Rows, error) {
+func newProcedureCallResult(session *p.Session, prmFieldSet *p.ParameterFieldSet, fieldValues *p.FieldValues, tableResults []*p.TableResult) (driver.Rows, error) {
 
-	fieldIdx := fieldSet.NumOutputField()
+	fieldIdx := prmFieldSet.NumOutputField()
 	columns := make([]string, fieldIdx+len(tableResults))
-	if err := fieldSet.OutputNames(columns); err != nil {
-		return nil, err
+
+	for i := 0; i < fieldIdx; i++ {
+		columns[i] = prmFieldSet.OutputField(i).Name()
 	}
 
 	tableRows := make([]driver.Rows, len(tableResults))
@@ -818,7 +923,7 @@ func newProcedureCallResult(session *p.Session, fieldSet *p.FieldSet, fieldValue
 
 	result := &procedureCallResult{
 		session:     session,
-		fieldSet:    fieldSet,
+		prmFieldSet: prmFieldSet,
 		fieldValues: fieldValues,
 		_tableRows:  tableRows,
 		columns:     columns,
@@ -855,7 +960,7 @@ func (r *procedureCallResult) Next(dest []driver.Value) error {
 		r.fieldValues.Row(0, dest)
 	}
 
-	i := r.fieldSet.NumOutputField()
+	i := r.prmFieldSet.NumOutputField()
 	for j := range r._tableRows {
 		dest[i] = encodeTableQuery(r.id, uint64(j))
 		i++

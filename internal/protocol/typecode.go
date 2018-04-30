@@ -22,8 +22,10 @@ import (
 
 //go:generate stringer -type=TypeCode
 
-// null value indicator is high bit
+// TypeCode identify the type of a field transferred to or from the database.
 type TypeCode byte
+
+// null value indicator is high bit
 
 const (
 	tcNull      TypeCode = 0
@@ -120,6 +122,7 @@ func (k TypeCode) isDecimalType() bool {
 	return k == tcSmalldecimal || k == tcDecimal
 }
 
+// DataType converts a type code into one of the supported data types by the driver.
 func (k TypeCode) DataType() DataType {
 	switch k {
 	default:

@@ -26,7 +26,7 @@ import (
 func TestCheckBulkInsert(t *testing.T) {
 
 	var data = []struct {
-		bulkSql    string
+		bulkSQL    string
 		sql        string
 		bulkInsert bool
 	}{
@@ -40,7 +40,7 @@ func TestCheckBulkInsert(t *testing.T) {
 	}
 
 	for i, d := range data {
-		sql, bulkInsert := checkBulkInsert(d.bulkSql)
+		sql, bulkInsert := checkBulkInsert(d.bulkSQL)
 		if sql != d.sql {
 			t.Fatalf("test %d failed: bulk insert flag %t - %t expected", i, bulkInsert, d.bulkInsert)
 		}
