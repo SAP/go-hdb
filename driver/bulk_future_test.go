@@ -1,4 +1,4 @@
-// +build !future
+// +build future
 
 /*
 Copyright 2014 SAP SE
@@ -28,33 +28,6 @@ const (
 	bulkSamples = 10000
 )
 
-func TestCheckBulkInsert(t *testing.T) {
-
-	var data = []struct {
-		bulkSQL    string
-		sql        string
-		bulkInsert bool
-	}{
-		{"bulk insert", "insert", true},
-		{"   bulk   insert  ", "insert  ", true},
-		{"BuLk iNsErT", "iNsErT", true},
-		{"   bUlK   InSeRt  ", "InSeRt  ", true},
-		{"  bulkinsert  ", "  bulkinsert  ", false},
-		{"bulk", "bulk", false},
-		{"insert", "insert", false},
-	}
-
-	for i, d := range data {
-		sql, bulkInsert := checkBulkInsert(d.bulkSQL)
-		if sql != d.sql {
-			t.Fatalf("test %d failed: bulk insert flag %t - %t expected", i, bulkInsert, d.bulkInsert)
-		}
-		if sql != d.sql {
-			t.Fatalf("test %d failed: sql %s - %s expected", i, sql, d.sql)
-		}
-	}
-}
-
 // TestBulkInsert
 func TestBulkInsert(t *testing.T) {
 
@@ -77,19 +50,19 @@ func TestBulkInsert(t *testing.T) {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("bulk insert into %s values (?)", tmpTableName))
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", tmpTableName))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
 	defer stmt.Close()
 
-	for i := 0; i < bulkSamples; i++ {
-		if _, err := stmt.Exec(i); err != nil {
+	for i := 0; i < (bulkSamples - 1); i++ {
+		if _, err := stmt.Exec(i, NoFlush); err != nil {
 			t.Fatalf("insert failed: %s", err)
 		}
 	}
 	// final flush
-	if _, err := stmt.Exec(); err != nil {
+	if _, err := stmt.Exec(bulkSamples - 1); err != nil {
 		t.Fatalf("final insert (flush) failed: %s", err)
 	}
 
@@ -129,6 +102,7 @@ func TestBulkInsert(t *testing.T) {
 	}
 }
 
+// TODO
 // TestBulkInsertDuplicates
 func TestBulkInsertDuplicates(t *testing.T) {
 

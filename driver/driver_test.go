@@ -23,33 +23,6 @@ import (
 	"testing"
 )
 
-func TestCheckBulkInsert(t *testing.T) {
-
-	var data = []struct {
-		bulkSQL    string
-		sql        string
-		bulkInsert bool
-	}{
-		{"bulk insert", "insert", true},
-		{"   bulk   insert  ", "insert  ", true},
-		{"BuLk iNsErT", "iNsErT", true},
-		{"   bUlK   InSeRt  ", "InSeRt  ", true},
-		{"  bulkinsert  ", "  bulkinsert  ", false},
-		{"bulk", "bulk", false},
-		{"insert", "insert", false},
-	}
-
-	for i, d := range data {
-		sql, bulkInsert := checkBulkInsert(d.bulkSQL)
-		if sql != d.sql {
-			t.Fatalf("test %d failed: bulk insert flag %t - %t expected", i, bulkInsert, d.bulkInsert)
-		}
-		if sql != d.sql {
-			t.Fatalf("test %d failed: sql %s - %s expected", i, sql, d.sql)
-		}
-	}
-}
-
 func TestPing(t *testing.T) {
 
 	db, err := sql.Open(DriverName, TestDSN)

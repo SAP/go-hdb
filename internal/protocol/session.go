@@ -175,7 +175,7 @@ type Session struct {
 	//standard replies
 	stmtCtx   *statementContext
 	txFlags   *transactionFlags
-	lastError *hdbError
+	lastError *hdbErrors
 
 	//serialize write request - read reply
 	//supports calling session methods in go routines (driver methods with context cancellation)
@@ -224,7 +224,7 @@ func NewSession(ctx context.Context, prm sessionPrm) (*Session, error) {
 		readLobReply:              new(readLobReply),
 		stmtCtx:                   newStatementContext(),
 		txFlags:                   newTransactionFlags(),
-		lastError:                 newHdbError(),
+		lastError:                 new(hdbErrors),
 	}
 
 	if err = s.init(); err != nil {
@@ -845,6 +845,7 @@ func (s *Session) writeRequest(messageType messageType, commit bool, requests ..
 
 func (s *Session) readReply(beforeRead beforeRead) error {
 
+	replyRowsAffected := false
 	replyError := false
 
 	if err := s.mh.read(s.rd); err != nil {
@@ -864,6 +865,7 @@ func (s *Session) readReply(beforeRead beforeRead) error {
 	}
 
 	noOfParts := int(s.sh.noOfParts)
+	lastPart := noOfParts - 1
 
 	for i := 0; i < noOfParts; i++ {
 
@@ -907,6 +909,7 @@ func (s *Session) readReply(beforeRead beforeRead) error {
 		case pkTransactionFlags:
 			part = s.txFlags
 		case pkRowsAffected:
+			replyRowsAffected = true
 			part = s.rowsAffected
 		case pkReadLobReply:
 			part = s.readLobReply
@@ -926,21 +929,47 @@ func (s *Session) readReply(beforeRead beforeRead) error {
 			return err
 		}
 
-		// TODO: workaround (see *)
-		if i != (noOfParts-1) || (i == (noOfParts-1) && diff == 0) {
-			s.rd.Skip(padBytes(int(s.ph.bufferLength)))
-			if err := s.rd.GetError(); err != nil {
-				return err
+		if i != lastPart { // not last part
+			// Error padding (protocol error?)
+			// driver test TestHDBWarning
+			//   --> 18 bytes fix error bytes + 103 bytes error text => 121 bytes (7 bytes padding needed)
+			//   but s.ph.bufferLength = 122 (standard padding would only consume 6 bytes instead of 7)
+			// driver test TestBulkInsertDuplicates
+			//   --> returns 3 errors (number of total bytes matches s.ph.bufferLength)
+			// ==> hdbErrors take care about padding
+			if s.ph.partKind != pkError {
+				s.rd.Skip(padBytes(int(s.ph.bufferLength)))
 			}
 		}
 	}
 
+	// last part
+	// TODO: workaround (see *)
+	if diff == 0 {
+		s.rd.Skip(padBytes(int(s.ph.bufferLength)))
+	}
+
+	if err := s.rd.GetError(); err != nil {
+		return err
+	}
+
 	if replyError {
-		if s.lastError.IsWarning() {
-			sqltrace.Traceln(s.lastError)
-		} else {
-			return s.lastError
+		if replyRowsAffected { //link statement to error
+			j := 0
+			for i, rows := range s.rowsAffected.rows {
+				if rows == raExecutionFailed {
+					s.lastError.setStmtNo(j, i)
+					j++
+				}
+			}
 		}
+		if s.lastError.isWarnings() {
+			for _, _error := range s.lastError.errors {
+				sqltrace.Traceln(_error)
+			}
+			return nil
+		}
+		return s.lastError
 	}
 	return nil
 }
