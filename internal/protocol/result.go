@@ -122,12 +122,13 @@ func (f *ResultFieldSet) read(rd *bufio.Reader) {
 
 	pos := uint32(0)
 	for _, offset := range f.names.sortOffsets() {
-		if diff := int(offset - pos); diff > 0 {
+		diff := int(offset - pos)
+		if diff > 0 {
 			rd.Skip(diff)
 		}
 		b, size := readShortUtf8(rd)
 		f.names.setName(offset, string(b))
-		pos += uint32(1 + size)
+		pos += uint32(1 + size + diff)
 	}
 }
 

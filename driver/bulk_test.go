@@ -95,7 +95,7 @@ func TestBulkInsert(t *testing.T) {
 
 	i := 0
 	err = tx.QueryRow(fmt.Sprintf("select count(*) from %s", tmpTableName)).Scan(&i)
-	if _, err := stmt.Exec(); err != nil {
+	if err != nil {
 		t.Fatalf("select count failed: %s", err)
 	}
 

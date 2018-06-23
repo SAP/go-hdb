@@ -925,21 +925,18 @@ func (s *Session) readReply(beforeRead beforeRead) error {
 			beforeRead(part)
 		}
 
+		s.rd.ResetCnt()
 		if err := part.read(s.rd); err != nil {
 			return err
 		}
+		cnt := s.rd.Cnt()
+
+		if cnt != int(s.ph.bufferLength) {
+			outLogger.Printf("+++ partLenght: %d - not equal read byte amount: %d", s.ph.bufferLength, cnt)
+		}
 
 		if i != lastPart { // not last part
-			// Error padding (protocol error?)
-			// driver test TestHDBWarning
-			//   --> 18 bytes fix error bytes + 103 bytes error text => 121 bytes (7 bytes padding needed)
-			//   but s.ph.bufferLength = 122 (standard padding would only consume 6 bytes instead of 7)
-			// driver test TestBulkInsertDuplicates
-			//   --> returns 3 errors (number of total bytes matches s.ph.bufferLength)
-			// ==> hdbErrors take care about padding
-			if s.ph.partKind != pkError {
-				s.rd.Skip(padBytes(int(s.ph.bufferLength)))
-			}
+			s.rd.Skip(padBytes(int(s.ph.bufferLength)))
 		}
 	}
 

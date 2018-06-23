@@ -56,19 +56,19 @@ func TestBulkInsert(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	for i := 0; i < (bulkSamples - 1); i++ {
-		if _, err := stmt.Exec(i, NoFlush); err != nil {
+	prm := NoFlush
+	for i := 0; i < bulkSamples; i++ {
+		if i == (bulkSamples - 1) {
+			prm = Flush
+		}
+		if _, err := stmt.Exec(i, prm); err != nil {
 			t.Fatalf("insert failed: %s", err)
 		}
-	}
-	// final flush
-	if _, err := stmt.Exec(bulkSamples - 1); err != nil {
-		t.Fatalf("final insert (flush) failed: %s", err)
 	}
 
 	i := 0
 	err = tx.QueryRow(fmt.Sprintf("select count(*) from %s", tmpTableName)).Scan(&i)
-	if _, err := stmt.Exec(); err != nil {
+	if err != nil {
 		t.Fatalf("select count failed: %s", err)
 	}
 
@@ -102,7 +102,6 @@ func TestBulkInsert(t *testing.T) {
 	}
 }
 
-// TODO
 // TestBulkInsertDuplicates
 func TestBulkInsertDuplicates(t *testing.T) {
 
@@ -118,27 +117,28 @@ func TestBulkInsertDuplicates(t *testing.T) {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("bulk insert into %s.%s values (?,?)", TestSchema, table))
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values (?,?)", TestSchema, table))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
 	defer stmt.Close()
 
+	prm := NoFlush
 	for i := 1; i < 4; i++ {
-		if _, err := stmt.Exec(i, i); err != nil {
+		if i == 3 {
+			prm = Flush
+		}
+		if _, err := stmt.Exec(i, i, prm); err != nil {
 			t.Fatalf("insert failed: %s", err)
 		}
-	}
-	if _, err := stmt.Exec(); err != nil {
-		t.Fatalf("final insert (flush) failed: %s", err)
 	}
 
-	for i := 0; i < 5; i++ {
-		if _, err := stmt.Exec(i, i); err != nil {
+	for i := 0; i < 4; i++ {
+		if _, err := stmt.Exec(i, i, NoFlush); err != nil {
 			t.Fatalf("insert failed: %s", err)
 		}
 	}
-	_, err = stmt.Exec()
+	_, err = stmt.Exec(5, 5)
 	if err == nil {
 		t.Fatal("error duplicate key expected")
 	}

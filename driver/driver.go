@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
@@ -32,7 +33,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.12.0"
+const DriverVersion = "0.12.1"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -81,10 +82,21 @@ const (
 )
 
 // bulk statement
-const noFlush = "$nf"
+const (
+	bulk = "b$"
+)
 
-// NoFlush is to be used as parameter in bulk inserts.
-var NoFlush = sql.Named(noFlush, nil)
+var (
+	flushTok   = new(struct{})
+	noFlushTok = new(struct{})
+)
+
+var (
+	// NoFlush is to be used as parameter in bulk statements to delay execution.
+	NoFlush = sql.Named(bulk, &noFlushTok)
+	// Flush can be used as optional parameter in bulk statements but is not required to trigger execution.
+	Flush = sql.Named(bulk, &flushTok)
+)
 
 var drv = &hdbDrv{}
 
@@ -250,8 +262,8 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 
 // CheckNamedValue implements NamedValueChecker interface.
 // implemented for conn:
-// if querier or execer is called, sql checks parameters before in case of
-// parameters the method can be 'skipped' and force the prepare path
+// if querier or execer is called, sql checks parameters before
+// in case of parameters the method can be 'skipped' and force the prepare path
 // --> guarantee that a valid driver value is returned
 // --> if not implemented, Lob need to have a pseudo Value method to return a valid driver value
 func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
@@ -297,6 +309,8 @@ func (t *tx) Rollback() error {
 
 //statement
 
+var argsPool = sync.Pool{}
+
 //  check if stmt implements all required interfaces
 var (
 	_ driver.Stmt              = (*stmt)(nil)
@@ -312,6 +326,9 @@ type stmt struct {
 	id             uint64
 	prmFieldSet    *p.ParameterFieldSet
 	resultFieldSet *p.ResultFieldSet
+	bulk, noFlush  bool
+	numArg         int
+	args           []driver.NamedValue
 }
 
 func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, prmFieldSet *p.ParameterFieldSet, resultFieldSet *p.ResultFieldSet) (*stmt, error) {
@@ -319,6 +336,13 @@ func newStmt(qt p.QueryType, session *p.Session, query string, id uint64, prmFie
 }
 
 func (s *stmt) Close() error {
+	if s.args != nil {
+		if len(s.args) != 0 {
+			sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, int(len(s.args)/s.NumInput()))
+		}
+		argsPool.Put(s.args)
+		s.args = nil
+	}
 	return s.session.DropStatementID(s.id)
 }
 
@@ -342,12 +366,54 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 
 	sqltrace.Tracef("%s %v", s.query, args)
 
+	// init noFlush
+	noFlush := s.noFlush
+	s.noFlush = false
+
+	var _args []driver.NamedValue
+
 	done := make(chan struct{})
+
+	if !s.bulk {
+		go func() {
+			r, err = s.session.Exec(s.id, s.prmFieldSet, args)
+			close(done)
+		}()
+		goto done
+	}
+
+	if s.args == nil {
+		s.args, _ = argsPool.Get().([]driver.NamedValue)
+		if s.args == nil {
+			s.args = make([]driver.NamedValue, 0, len(args)*1000)
+		}
+		s.args = s.args[:0]
+	}
+
+	s.args = append(s.args, args...)
+	s.numArg++
+
+	if noFlush && s.numArg < maxSmallint { //TODO: check why bigArgument count does not work
+		return driver.ResultNoRows, nil
+	}
+
+	_args, _ = argsPool.Get().([]driver.NamedValue)
+	if _args == nil || cap(_args) < len(s.args) {
+		_args = make([]driver.NamedValue, len(s.args))
+	}
+	_args = _args[:len(s.args)]
+
+	copy(_args, s.args)
+	s.args = s.args[:0]
+	s.numArg = 0
+
 	go func() {
-		r, err = s.session.Exec(s.id, s.prmFieldSet, args)
+		r, err = s.session.Exec(s.id, s.prmFieldSet, _args)
+		argsPool.Put(_args)
 		close(done)
 	}()
 
+done:
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -366,12 +432,16 @@ func (s *stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 // CheckNamedValue implements NamedValueChecker interface.
 func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
-	if nv.Name == noFlush {
-		//...
-
-		print("remove variable")
-
-		return driver.ErrRemoveArgument
+	if nv.Name == bulk {
+		if ptr, ok := nv.Value.(**struct{}); ok {
+			switch ptr {
+			case &noFlushTok:
+				s.bulk, s.noFlush = true, true
+				return driver.ErrRemoveArgument
+			case &flushTok:
+				return driver.ErrRemoveArgument
+			}
+		}
 	}
 	return checkNamedValue(s.prmFieldSet, nv)
 }

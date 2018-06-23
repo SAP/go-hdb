@@ -33,6 +33,7 @@ type Reader struct {
 	err error
 	b   [8]byte // scratch buffer (8 Bytes)
 	tr  transform.Transformer
+	cnt int
 }
 
 // NewReader creates a new Reader instance.
@@ -51,7 +52,17 @@ func NewReaderSize(r io.Reader, size int) *Reader {
 	}
 }
 
-// GetError returns reader error
+// ResetCnt resets the byte read counter.
+func (r *Reader) ResetCnt() {
+	r.cnt = 0
+}
+
+// Cnt returns the value of the byte read counter.
+func (r *Reader) Cnt() int {
+	return r.cnt
+}
+
+// GetError returns reader error.
 func (r *Reader) GetError() error {
 	err := r.err
 	r.err = nil
@@ -63,7 +74,9 @@ func (r *Reader) Skip(cnt int) {
 	if r.err != nil {
 		return
 	}
-	_, r.err = r.rd.Discard(cnt)
+	var n int
+	n, r.err = r.rd.Discard(cnt)
+	r.cnt += n
 }
 
 // ReadB reads and returns a byte.
@@ -73,6 +86,7 @@ func (r *Reader) ReadB() byte { // ReadB as sig differs from ReadByte (vet issue
 	}
 	var b byte
 	b, r.err = r.rd.ReadByte()
+	r.cnt++
 	return b
 }
 
@@ -81,7 +95,9 @@ func (r *Reader) ReadFull(p []byte) {
 	if r.err != nil {
 		return
 	}
-	_, r.err = io.ReadFull(r.rd, p)
+	var n int
+	n, r.err = io.ReadFull(r.rd, p)
+	r.cnt += n
 }
 
 // ReadBool reads and returns a boolean.
@@ -102,7 +118,10 @@ func (r *Reader) ReadInt16() int16 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:2]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:2])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return int16(binary.LittleEndian.Uint16(r.b[:2]))
@@ -113,7 +132,10 @@ func (r *Reader) ReadUint16() uint16 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:2]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:2])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return binary.LittleEndian.Uint16(r.b[:2])
@@ -124,7 +146,10 @@ func (r *Reader) ReadInt32() int32 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:4]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:4])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return int32(binary.LittleEndian.Uint32(r.b[:4]))
@@ -135,7 +160,10 @@ func (r *Reader) ReadUint32() uint32 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:4]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:4])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return binary.LittleEndian.Uint32(r.b[:4])
@@ -146,7 +174,10 @@ func (r *Reader) ReadInt64() int64 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:8]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:8])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return int64(binary.LittleEndian.Uint64(r.b[:8]))
@@ -157,7 +188,10 @@ func (r *Reader) ReadUint64() uint64 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:8]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:8])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	return binary.LittleEndian.Uint64(r.b[:8])
@@ -168,7 +202,10 @@ func (r *Reader) ReadFloat32() float32 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:4]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:4])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	bits := binary.LittleEndian.Uint32(r.b[:4])
@@ -180,7 +217,10 @@ func (r *Reader) ReadFloat64() float64 {
 	if r.err != nil {
 		return 0
 	}
-	if _, r.err = io.ReadFull(r.rd, r.b[:8]); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, r.b[:8])
+	r.cnt += n
+	if r.err != nil {
 		return 0
 	}
 	bits := binary.LittleEndian.Uint64(r.b[:8])
@@ -193,11 +233,13 @@ func (r *Reader) ReadCesu8(size int) []byte {
 		return nil
 	}
 	p := make([]byte, size)
-	if _, r.err = io.ReadFull(r.rd, p); r.err != nil {
+	var n int
+	n, r.err = io.ReadFull(r.rd, p)
+	r.cnt += n
+	if r.err != nil {
 		return nil
 	}
 	r.tr.Reset()
-	var n int
 	if n, _, r.err = r.tr.Transform(p, p, true); r.err != nil { // inplace transformation
 		return nil
 	}

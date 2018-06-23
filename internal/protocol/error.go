@@ -194,6 +194,21 @@ func (e *hdbErrors) read(rd *bufio.Reader) error {
 			outLogger.Printf("error %d: %s", i, _error)
 		}
 
+		if e.numArg == 1 {
+			// Error (protocol error?):
+			// if only one error (numArg == 1): s.ph.bufferLength is one byte greater than data to be read
+			// if more than one error: s.ph.bufferlength matches read bytes + padding
+			//
+			// Examples:
+			// driver test TestHDBWarning
+			//   --> 18 bytes fix error bytes + 103 bytes error text => 121 bytes (7 bytes padding needed)
+			//   but s.ph.bufferLength = 122 (standard padding would only consume 6 bytes instead of 7)
+			// driver test TestBulkInsertDuplicates
+			//   --> returns 3 errors (number of total bytes matches s.ph.bufferLength)
+			rd.Skip(1)
+			break
+		}
+
 		pad := padBytes(int(fixLength + _error.errorTextLength))
 		if pad != 0 {
 			rd.Skip(pad)

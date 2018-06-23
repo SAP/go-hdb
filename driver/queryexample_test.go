@@ -22,6 +22,12 @@ import (
 	"log"
 )
 
+/*
+ExampleCallSimpleOut creates a stored procedure with one output parameter and executes it.
+Stored procedures with output parameters must be executed by sql.Query or sql.QueryRow.
+For variables TestDSN and TestSchema see main_test.go.
+*/
+
 // ExampleQuery: tbd
 func Example_query() {
 	db, err := sql.Open(DriverName, TestDSN)

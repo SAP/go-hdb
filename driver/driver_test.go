@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,30 @@ func TestInsertByQuery(t *testing.T) {
 	}
 	if i != 42 {
 		t.Fatalf("value %d - expected %d", i, 42)
+	}
+}
+
+func TestHDBError(t *testing.T) {
+	db, err := sql.Open(DriverName, TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	//select from not existing table with different table name length
+	//to check if padding, etc works (see hint in protocol.error.Read(...))
+	for i := 0; i < 9; i++ {
+		_, err := db.Query(fmt.Sprintf("select * from %s.%s", TestSchema, strings.Repeat("x", i+1)))
+		if err == nil {
+			t.Fatal("hdb error expected")
+		}
+		dbError, ok := err.(Error)
+		if !ok {
+			t.Fatalf("hdb error expected got %v", err)
+		}
+		if dbError.Code() != 259 {
+			t.Fatalf("hdb error code: %d - expected: %d", dbError.Code(), 259)
+		}
 	}
 }
 
