@@ -1,5 +1,3 @@
-// +build go1.10
-
 /*
 Copyright 2014 SAP SE
 

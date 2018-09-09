@@ -28,17 +28,6 @@ build:
     - export GOOS=windows
     - go install
 
-.test_template: &test_definition_1_9
-  stage: test
-  script:
-    - cd $BUILD_PATH/driver
-    - go test -dsn $GO_HANA_DSN -test.v
-    - go test -dsn $GO_HANA_TLS_DSN -test.v
-    - cd $BUILD_PATH/internal/protocol
-    - go test -test.v
-    - cd $BUILD_PATH/internal/unicode/cesu8
-    - go test -test.v
-
 .test_template: &test_definition
   stage: test
   script:
@@ -52,11 +41,11 @@ build:
     - cd $BUILD_PATH/internal/unicode/cesu8
     - go test -test.v
 
-golang_1_9_4:
-  image: golang:1.9.4
-  <<: *test_definition_1_9 
+golang_1_10_4:
+  image: golang:1.10.4
+  <<: *test_definition 
   
-golang_1_10:
-  image: golang:1.10
+golang_1_11:
+  image: golang:1.11
   <<: *test_definition
   

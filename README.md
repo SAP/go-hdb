@@ -16,7 +16,7 @@ go get github.com/SAP/go-hdb/driver
 
 ## Building
 
-To build go-hdb you need to have a working Go environment with [version 1.9.4 or higher installed](https://golang.org/dl/).
+To build go-hdb you need to have a working Go environment with [version 1.10.4 or higher installed](https://golang.org/dl/).
 
 ## Documentation
 
@@ -40,7 +40,8 @@ go test -dsn hdb://user:password@host:port
 * Built-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
 * Support of Large Object streaming.
 * Support of Stored Procedures with table output parameters.
-* Support of TLS TCP connections. 
+* Support of TLS TCP connections.
+* Support of little-endian (e.g. amd64) and big-endian architectures (e.g. s390x). 
 
 ## Dependencies
 
