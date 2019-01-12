@@ -34,7 +34,7 @@ go test -dsn hdb://user:password@host:port
 
 * Native Go implementation (no C libraries, CGO).
 * Go <http://golang.org/pkg/database/sql> package compliant.
-* Support of databse/sql/driver Execer and Queryer interface for parameter free statements and queries.
+* Support of database/sql/driver Execer and Queryer interface for parameter free statements and queries.
 * Support of bulk inserts.
 * Support of UTF-8 to / from CESU-8 encodings for HANA Unicode types.
 * Built-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.

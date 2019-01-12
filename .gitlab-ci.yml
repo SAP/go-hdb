@@ -42,10 +42,10 @@ build:
     - go test -test.v
 
 golang_1_10_4:
-  image: golang:1.10.4
+  image: golang:1.10.7
   <<: *test_definition 
   
 golang_1_11:
-  image: golang:1.11
+  image: golang:1.11.4
   <<: *test_definition
   
