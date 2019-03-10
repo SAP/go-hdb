@@ -1,3 +1,5 @@
+// +build !future
+
 /*
 Copyright 2014 SAP SE
 

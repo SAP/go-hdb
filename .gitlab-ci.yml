@@ -3,14 +3,6 @@ variables:
   GIT_CHECKOUT: "true"
   CI_DEBUG_TRACE: "false"
 
-before_script:
-  - export GOPATH=/go
-  - go get golang.org/x/text/transform
-  - export BUILD_PATH=$GOPATH/src/github.com/SAP/go-hdb
-  - mkdir -p $BUILD_PATH
-  - mv $CI_PROJECT_DIR/* $BUILD_PATH
-  - cd $BUILD_PATH
-  
 stages:
   - build
   - test
@@ -19,7 +11,7 @@ build:
   stage: build
   image: golang:latest
   script:
-    - cd driver
+    - cd $CI_PROJECT_DIR/driver
     - go version
     - export GOARCH=amd64
     - export GOOS=linux
@@ -31,21 +23,22 @@ build:
 .test_template: &test_definition
   stage: test
   script:
-    - cd $BUILD_PATH/driver
+    - cd $CI_PROJECT_DIR/driver
     - go test -dsn $GO_HANA_DSN -test.v
+    - cd $CI_PROJECT_DIR/internal/protocol
+    - go test -test.v
+    - cd $CI_PROJECT_DIR/internal/scanner
+    - go test -test.v
+    - cd $CI_PROJECT_DIR/internal/unicode/cesu8
+    - go test -test.v
+    - cd $CI_PROJECT_DIR/driver
     - go test -dsn $GO_HANA_TLS_DSN -test.v
-    - cd $BUILD_PATH/internal/protocol
-    - go test -test.v
-    - cd $BUILD_PATH/internal/scanner
-    - go test -test.v
-    - cd $BUILD_PATH/internal/unicode/cesu8
-    - go test -test.v
 
-golang_1_10_4:
-  image: golang:1.10.7
+golang_1_11_5:
+  image: golang:1.11.5
   <<: *test_definition 
   
-golang_1_11:
-  image: golang:1.11.4
+golang_1_12:
+  image: golang:1.12
   <<: *test_definition
   
