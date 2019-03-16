@@ -38,7 +38,7 @@ golang_1_11_5:
   image: golang:1.11.5
   <<: *test_definition 
   
-golang_1_12:
-  image: golang:1.12
+golang_1_12_1:
+  image: golang:1.12.1
   <<: *test_definition
   

@@ -29,7 +29,7 @@ import (
 )
 
 /*
-SessionVaribles maps session varibles to their values.
+SessionVaribles maps session variables to their values.
 All defined session variables will be set once after a database connection is opened.
 */
 type SessionVariables map[string]string
