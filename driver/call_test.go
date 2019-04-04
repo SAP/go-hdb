@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"log"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCallEcho(t *testing.T) {
@@ -239,4 +241,39 @@ end
 	checkTableQueryData(t, db, tableQuery2, testTableQuery2Data)
 	checkTableQueryData(t, db, tableQuery3, testTableQuery3Data)
 
+}
+
+func TestCallColumnMetadata(t *testing.T) {
+	r := require.New(t)
+	const procVarcharEcho = `create procedure %[1]s.%[2]s (in idata varchar(4), out odata varchar(4))
+language SQLSCRIPT as
+begin
+  odata := idata;
+end
+`
+
+	db, err := sql.Open(DriverName, TestDSN)
+	r.NoError(err)
+	defer db.Close()
+
+	procedure := RandomIdentifier("procVarcharEcho_")
+
+	_, err = db.Exec(fmt.Sprintf(procVarcharEcho, TestSchema, procedure))
+	r.NoError(err)
+
+	rows, err := db.Query(fmt.Sprintf("call %s.%s('foo', ?)", TestSchema, procedure))
+	r.NoError(err)
+
+	cols, err := rows.Columns()
+	r.NoError(err)
+	r.Equal([]string{"ODATA"}, cols)
+
+	ct, err := rows.ColumnTypes()
+	r.NoError(err)
+	r.Len(ct, 1)
+
+	r.Equal("VARCHAR", ct[0].DatabaseTypeName())
+	length, ok := ct[0].Length()
+	r.True(ok)
+	r.EqualValues(4, length)
 }

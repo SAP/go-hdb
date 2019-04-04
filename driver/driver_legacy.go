@@ -473,6 +473,22 @@ func (r *procedureCallResult) Next(dest []driver.Value) error {
 	return nil
 }
 
+func (r *procedureCallResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return r.prmFieldSet.Field(idx).TypeCode().TypeName()
+}
+
+func (r *procedureCallResult) ColumnTypeLength(idx int) (int64, bool) {
+	return r.prmFieldSet.Field(idx).TypeLength()
+}
+
+func (r *procedureCallResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return r.prmFieldSet.Field(idx).TypePrecisionScale()
+}
+
+func (r *procedureCallResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return r.prmFieldSet.Field(idx).Nullable(), true
+}
+
 func (r *procedureCallResult) tableRows(idx int) (driver.Rows, error) {
 	if idx >= len(r._tableRows) {
 		return nil, fmt.Errorf("table row index %d exceeds maximun %d", idx, len(r._tableRows)-1)
