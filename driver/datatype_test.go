@@ -31,6 +31,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTinyint(t *testing.T) {
@@ -252,6 +254,29 @@ func TestBlob(t *testing.T) {
 	testDatatype(t, "blob", 0, true, testLobData...)
 }
 
+func TestTimestampRounding(t *testing.T) {
+	r := require.New(t)
+	db, err := sql.Open(DriverName, TestDSN)
+	r.NoError(err)
+	defer db.Close()
+
+	table := RandomIdentifier("timestampRounding_")
+
+	_, err = db.Exec(fmt.Sprintf("create table %s.%s (t timestamp);", TestSchema, table))
+	r.NoError(err)
+
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?);", TestSchema, table))
+	r.NoError(err)
+
+	_, err = stmt.Exec(time.Date(2000, 12, 31, 23, 59, 59, 999999900, time.UTC))
+	r.NoError(err)
+
+	var act time.Time
+	r.NoError(db.QueryRow(fmt.Sprintf("select * from %s.%s;", TestSchema, table)).Scan(&act))
+
+	r.Equal(time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC).UTC(), act)
+}
+
 //
 func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
 	db, err := sql.Open(DriverName, TestDSN)
@@ -270,10 +295,9 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s(%d))", TestSchema, table, dataType, dataSize)); err != nil {
 			t.Fatal(err)
 		}
-
 	}
 
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {

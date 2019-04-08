@@ -400,6 +400,7 @@ func writeField(wr *bufio.Writer, tc TypeCode, arg driver.NamedValue) error {
 		if !ok {
 			return fmt.Errorf("invalid argument type %T", v)
 		}
+		t = t.Round(time.Millisecond)
 		writeDate(wr, t)
 		writeTime(wr, t)
 
@@ -524,7 +525,7 @@ func writeTime(wr *bufio.Writer, t time.Time) {
 
 	wr.WriteB(byte(utc.Hour()) | 0x80)
 	wr.WriteInt8(int8(utc.Minute()))
-	millisecs := utc.Second()*1000 + utc.Round(time.Millisecond).Nanosecond()/1000000
+	millisecs := utc.Second()*1000 + utc.Nanosecond()/1000000
 	wr.WriteUint16(uint16(millisecs))
 }
 
