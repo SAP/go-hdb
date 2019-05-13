@@ -27,8 +27,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestTinyint(t *testing.T) {
@@ -207,38 +209,45 @@ func TestBoolean(t *testing.T) {
 	)
 }
 
-var testLobData []interface{}
-
-func createTestLobData(t *testing.T) {
-	testLobDataReaders := testLobDataReaders(t)
-
-	size := len(testLobDataReaders)
-	testLobData = make([]interface{}, size+2)
-
-	for i := 0; i < size; i++ {
-		testLobData[i] = Lob{rd: testLobDataReaders[i]}
-	}
-	testLobData[size] = NullLob{Valid: false, Lob: new(Lob).SetReader(testLobDataReaders[0])}
-	testLobData[size+1] = NullLob{Valid: true, Lob: new(Lob).SetReader(testLobDataReaders[0])}
-}
-
 func TestClob(t *testing.T) {
-	if testLobData == nil {
-		createTestLobData(t)
+	testInitLobFiles(t)
+	testLobDataASCII := make([]interface{}, 0, len(testLobFiles))
+	first := true
+	for _, f := range testLobFiles {
+		if f.isASCII {
+			if first {
+				testLobDataASCII = append(testLobDataASCII, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+				testLobDataASCII = append(testLobDataASCII, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+				first = false
+			}
+			testLobDataASCII = append(testLobDataASCII, Lob{rd: bytes.NewReader(f.content)})
+		}
 	}
-	testDatatype(t, "clob", 0, true, testLobData...)
+	testDatatype(t, "clob", 0, true, testLobDataASCII...)
 }
 
 func TestNclob(t *testing.T) {
-	if testLobData == nil {
-		createTestLobData(t)
+	testInitLobFiles(t)
+	testLobData := make([]interface{}, 0, len(testLobFiles)+2)
+	for i, f := range testLobFiles {
+		if i == 0 {
+			testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+			testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+		}
+		testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
 	}
 	testDatatype(t, "nclob", 0, true, testLobData...)
 }
 
 func TestBlob(t *testing.T) {
-	if testLobData == nil {
-		createTestLobData(t)
+	testInitLobFiles(t)
+	testLobData := make([]interface{}, 0, len(testLobFiles)+2)
+	for i, f := range testLobFiles {
+		if i == 0 {
+			testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+			testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+		}
+		testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
 	}
 	testDatatype(t, "blob", 0, true, testLobData...)
 }
@@ -536,35 +545,52 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 }
 
 // helper
-func testLobDataReaders(t *testing.T) (data []*bytes.Reader) {
-	data = make([]*bytes.Reader, 0)
+type testLobFile struct {
+	content []byte
+	isASCII bool
+}
 
-	filter := func(name string) bool {
-		for _, ext := range []string{".go"} {
-			if filepath.Ext(name) == ext {
-				return true
+var testLobFiles []*testLobFile = make([]*testLobFile, 0)
+
+var testInitLobFilesOnce sync.Once
+
+func testInitLobFiles(t *testing.T) {
+	testInitLobFilesOnce.Do(func() {
+		filter := func(name string) bool {
+			for _, ext := range []string{".go"} {
+				if filepath.Ext(name) == ext {
+					return true
+				}
 			}
+			return false
 		}
-		return false
-	}
 
-	walk := func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() && filter(info.Name()) {
-			content, err := ioutil.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
+		walk := func(path string, info os.FileInfo, err error) error {
+			if !info.IsDir() && filter(info.Name()) {
+				content, err := ioutil.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				testLobFiles = append(testLobFiles, &testLobFile{isASCII: isASCII(content), content: content})
 			}
-			data = append(data, bytes.NewReader(content))
+			return nil
 		}
-		return nil
-	}
 
-	root, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
+		root, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		filepath.Walk(root, walk)
+	})
+}
+
+func isASCII(content []byte) bool {
+	for _, b := range content {
+		if b >= utf8.RuneSelf {
+			return false
+		}
 	}
-	filepath.Walk(root, walk)
-	return data
+	return true
 }
 
 func compareLob(in, out *Lob) (bool, error) {
