@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"time"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
@@ -128,6 +129,7 @@ func convertNvInteger(v interface{}, min, max int64) (driver.Value, error) {
 	}
 
 	rv := reflect.ValueOf(v)
+
 	switch rv.Kind() {
 
 	// bool is represented in HDB as tinyint
@@ -145,6 +147,11 @@ func convertNvInteger(v interface{}, min, max int64) (driver.Value, error) {
 			return nil, ErrIntegerOutOfRange
 		}
 		return int64(u64), nil
+	case reflect.String:
+		sInt, err := strconv.ParseInt(rv.String(), 10, 64)
+		if err == nil {
+			return sInt, nil
+		}
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
@@ -172,6 +179,11 @@ func convertNvFloat(v interface{}, max float64) (driver.Value, error) {
 			return nil, ErrFloatOutOfRange
 		}
 		return f64, nil
+	case reflect.String:
+		sFloat, err := strconv.ParseFloat(rv.String(), 64)
+		if err == nil {
+			return sFloat, nil
+		}
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
