@@ -108,6 +108,12 @@ func (d *Decimal) Scan(src interface{}) error {
 	}
 
 	v := (*big.Rat)(d)
+
+	// GO 1.14 (incompatible change in Rat.Denom())
+	// if v is not initialized v.Denom() returns no reference to v.b but new int instead
+	// --> init v (via v.Set(v)) before store v.Denom() in q
+	v.Set(v)
+
 	p := v.Num()
 	q := v.Denom()
 

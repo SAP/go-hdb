@@ -150,8 +150,9 @@ func TestVarbinary(t *testing.T) {
 
 var testTimeData = []interface{}{
 	time.Now(),
-	NullTime{Valid: false, Time: time.Now()},
-	NullTime{Valid: true, Time: time.Now()},
+	time.Date(2000, 12, 31, 23, 59, 59, 999999999, time.UTC),
+	sql.NullTime{Valid: false, Time: time.Now()},
+	sql.NullTime{Valid: true, Time: time.Now()},
 }
 
 func TestDate(t *testing.T) {
@@ -392,23 +393,26 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 				}
 			}
 		case *time.Time:
+			in := in.(time.Time)
+			in = in.UTC() // db time in utc
+
 			switch dataType {
 			default:
 				t.Fatalf("unknown data type %s", dataType)
 			case "date", "daydate":
-				if !equalDate(*out, in.(time.Time)) {
+				if !equalDate(*out, in) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "time", "secondtime":
-				if !equalTime(*out, in.(time.Time)) {
+				if !equalTime(*out, in) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "timestamp", "longdate":
-				if !timestampCheck(*out, in.(time.Time)) {
+				if !timestampCheck(*out, in) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "seconddate":
-				if !equalDateTime(*out, in.(time.Time)) {
+				if !equalDateTime(*out, in) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			}
@@ -477,12 +481,14 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 					}
 				}
 			}
-		case *NullTime:
-			in := in.(NullTime)
+		case *sql.NullTime:
+			in := in.(sql.NullTime)
 			if in.Valid != out.Valid {
 				t.Fatalf("%d value %v - expected %v", i, out, in)
 			}
 			if in.Valid {
+				in.Time = in.Time.UTC() // db time in utc
+
 				switch dataType {
 				default:
 					t.Fatalf("unknown data type %s", dataType)
@@ -630,30 +636,23 @@ func compareBytesFixSize(in, out []byte) bool {
 }
 
 func equalDate(t1, t2 time.Time) bool {
-	u1 := t1.UTC()
-	u2 := t2.UTC()
-	return u1.Year() == u2.Year() && u1.Month() == u2.Month() && u1.Day() == u2.Day()
+	return t1.Year() == t2.Year() && t1.Month() == t2.Month() && t1.Day() == t2.Day()
 }
 
 func equalTime(t1, t2 time.Time) bool {
-	u1 := t1.UTC()
-	u2 := t2.UTC()
-	return u1.Hour() == u2.Hour() && u1.Minute() == u2.Minute() && u1.Second() == u2.Second()
+	return t1.Hour() == t2.Hour() && t1.Minute() == t2.Minute() && t1.Second() == t2.Second()
 }
 
 func equalDateTime(t1, t2 time.Time) bool {
 	return equalDate(t1, t2) && equalTime(t1, t2)
 }
 
-// equalMillisecond tests if the nanosecond part of two time types rounded to milliseconds are equal.
-func equalMilliSecond(t1, t2 time.Time) bool {
-	u1 := t1.UTC()
-	u2 := t2.UTC()
-	return u1.Round(time.Millisecond).Nanosecond() == u2.Round(time.Millisecond).Nanosecond()
+func equalMillisecond(t1, t2 time.Time) bool {
+	return t1.Nanosecond() == t2.Nanosecond()/1000000*1000000
 }
 
 func equalTimestamp(t1, t2 time.Time) bool {
-	return equalDate(t1, t2) && equalTime(t1, t2) && equalMilliSecond(t1, t2)
+	return equalDate(t1, t2) && equalTime(t1, t2) && equalMillisecond(t1, t2)
 }
 
 func equalLongdate(t1, t2 time.Time) bool {

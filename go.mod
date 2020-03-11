@@ -1,3 +1,5 @@
 module github.com/SAP/go-hdb
 
-require golang.org/x/text v0.3.0
+go 1.14
+
+require golang.org/x/text v0.3.2

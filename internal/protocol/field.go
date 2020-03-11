@@ -381,60 +381,35 @@ func writeField(wr *bufio.Writer, tc TypeCode, arg driver.NamedValue) error {
 		}
 		wr.WriteFloat64(f64)
 
-	case tcDate:
+	case tcDate, tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
 		t, ok := v.(time.Time)
 		if !ok {
 			return fmt.Errorf("invalid argument type %T", v)
 		}
-		writeDate(wr, t)
+		//store in utc
+		t = t.UTC()
 
-	case tcTime:
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
+		switch tc {
+		case tcDate:
+			writeDate(wr, t)
+		case tcTime:
+			writeTime(wr, t)
+		case tcTimestamp:
+			writeDate(wr, t)
+			writeTime(wr, t)
+		case tcLongdate:
+			writeLongdate(wr, t)
+		case tcSeconddate:
+			writeSeconddate(wr, t)
+		case tcDaydate:
+			writeDaydate(wr, t)
+		case tcSecondtime:
+			// HDB bug: write null value explicite
+			//if v == nil {
+			//	wr.WriteInt32(86401)
+			//return nil
+			writeSecondtime(wr, t)
 		}
-		writeTime(wr, t)
-
-	case tcTimestamp:
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
-		}
-		writeDate(wr, t)
-		writeTime(wr, t)
-
-	case tcLongdate:
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
-		}
-		writeLongdate(wr, t)
-
-	case tcSeconddate:
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
-		}
-		writeSeconddate(wr, t)
-
-	case tcDaydate:
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
-		}
-		writeDaydate(wr, t)
-
-	case tcSecondtime:
-		// HDB bug: write null value explicite
-		if v == nil {
-			wr.WriteInt32(86401)
-			return nil
-		}
-		t, ok := v.(time.Time)
-		if !ok {
-			return fmt.Errorf("invalid argument type %T", v)
-		}
-		writeSecondtime(wr, t)
 
 	case tcDecimal:
 		b, ok := v.([]byte)
@@ -498,11 +473,7 @@ func readDate(rd *bufio.Reader) (int, time.Month, int, bool) {
 // year: set most sig bit
 // month 0 based
 func writeDate(wr *bufio.Writer, t time.Time) {
-	//store in utc
-	utc := t.In(time.UTC)
-
-	year, month, day := utc.Date()
-
+	year, month, day := t.Date()
 	wr.WriteUint16(uint16(year) | 0x8000)
 	wr.WriteInt8(int8(month) - 1)
 	wr.WriteInt8(int8(day))
@@ -519,12 +490,9 @@ func readTime(rd *bufio.Reader) (int, int, int, bool) {
 }
 
 func writeTime(wr *bufio.Writer, t time.Time) {
-	//store in utc
-	utc := t.UTC()
-
-	wr.WriteB(byte(utc.Hour()) | 0x80)
-	wr.WriteInt8(int8(utc.Minute()))
-	millisecs := utc.Second()*1000 + utc.Round(time.Millisecond).Nanosecond()/1000000
+	wr.WriteB(byte(t.Hour()) | 0x80)
+	wr.WriteInt8(int8(t.Minute()))
+	millisecs := t.Second()*1000 + t.Nanosecond()/1000000
 	wr.WriteUint16(uint16(millisecs))
 }
 
@@ -580,7 +548,6 @@ func writeSecondtime(wr *bufio.Writer, t time.Time) {
 
 // nanosecond: HDB - 7 digits precision (not 9 digits)
 func convertTimeToLongdate(t time.Time) int64 {
-	t = t.UTC()
 	return (((((((int64(convertTimeToDayDate(t))-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60)+int64(t.Second()))*10000000 + int64(t.Nanosecond()/100) + 1
 }
 
@@ -593,7 +560,6 @@ func convertLongdateToTime(longdate int64) time.Time {
 }
 
 func convertTimeToSeconddate(t time.Time) int64 {
-	t = t.UTC()
 	return (((((int64(convertTimeToDayDate(t))-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60 + int64(t.Second()) + 1
 }
 
@@ -616,7 +582,6 @@ func convertDaydateToTime(daydate int64) time.Time {
 }
 
 func convertTimeToSecondtime(t time.Time) int {
-	t = t.UTC()
 	return (t.Hour()*60+t.Minute())*60 + t.Second() + 1
 }
 
