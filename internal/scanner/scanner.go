@@ -77,7 +77,7 @@ func TokenString(tok rune) string {
 	return fmt.Sprintf("%q", string(tok))
 }
 
-var compositeOperators = map[string]struct{}{"<>": struct{}{}, "<=": struct{}{}, ">=": struct{}{}, "!=": struct{}{}}
+var compositeOperators = map[string]struct{}{"<>": {}, "<=": {}, ">=": {}, "!=": {}}
 
 func isOperator(ch rune) bool           { return strings.ContainsRune("<>=!", ch) }
 func isCompositeOperator(s string) bool { _, ok := compositeOperators[s]; return ok }

@@ -73,7 +73,7 @@ func (r *scramsha256InitialReply) setNumArg(int) {
 }
 
 func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
-	cnt := rd.ReadInt16()
+	rd.ReadInt16() // cnt
 	if err := readMethodName(rd); err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
 
 	//server challenge data
 
-	cnt = rd.ReadInt16()
+	cnt := rd.ReadInt16()
 	if cnt != 2 {
 		return fmt.Errorf("invalid server challenge data field count %d - %d expected", cnt, 2)
 	}

@@ -26,16 +26,16 @@ type testIdentifier struct {
 }
 
 var testIdentifierData = []*testIdentifier{
-	&testIdentifier{"_", "_"},
-	&testIdentifier{"_A", "_A"},
-	&testIdentifier{"A#$_", "A#$_"},
-	&testIdentifier{"1", `"1"`},
-	&testIdentifier{"a", `"a"`},
-	&testIdentifier{"$", `"$"`},
-	&testIdentifier{"日本語", `"日本語"`},
-	&testIdentifier{"testTransaction", `"testTransaction"`},
-	&testIdentifier{"a.b.c", `"a.b.c"`},
-	&testIdentifier{"AAA.BBB.CCC", `"AAA.BBB.CCC"`},
+	{"_", "_"},
+	{"_A", "_A"},
+	{"A#$_", "A#$_"},
+	{"1", `"1"`},
+	{"a", `"a"`},
+	{"$", `"$"`},
+	{"日本語", `"日本語"`},
+	{"testTransaction", `"testTransaction"`},
+	{"a.b.c", `"a.b.c"`},
+	{"AAA.BBB.CCC", `"AAA.BBB.CCC"`},
 }
 
 func TestIdentifierStringer(t *testing.T) {

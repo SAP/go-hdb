@@ -50,11 +50,13 @@ end
 	}
 
 	var out string
-	_, err = db.Exec(
+	if _, err = db.Exec(
 		fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure),
 		sql.Named("in", txt),
 		sql.Named("out", sql.Out{Dest: &out}),
-	)
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	if out != txt {
 		t.Fatalf("value %s - expected %s", out, txt)

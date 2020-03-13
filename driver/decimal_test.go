@@ -32,27 +32,27 @@ type testDigits10 struct {
 }
 
 var testDigits10Data = []*testDigits10{
-	&testDigits10{new(big.Int).SetInt64(0), 1},
-	&testDigits10{new(big.Int).SetInt64(1), 1},
-	&testDigits10{new(big.Int).SetInt64(9), 1},
-	&testDigits10{new(big.Int).SetInt64(10), 2},
-	&testDigits10{new(big.Int).SetInt64(99), 2},
-	&testDigits10{new(big.Int).SetInt64(100), 3},
-	&testDigits10{new(big.Int).SetInt64(999), 3},
-	&testDigits10{new(big.Int).SetInt64(1000), 4},
-	&testDigits10{new(big.Int).SetInt64(9999), 4},
-	&testDigits10{new(big.Int).SetInt64(10000), 5},
-	&testDigits10{new(big.Int).SetInt64(99999), 5},
-	&testDigits10{new(big.Int).SetInt64(100000), 6},
-	&testDigits10{new(big.Int).SetInt64(999999), 6},
-	&testDigits10{new(big.Int).SetInt64(1000000), 7},
-	&testDigits10{new(big.Int).SetInt64(9999999), 7},
-	&testDigits10{new(big.Int).SetInt64(10000000), 8},
-	&testDigits10{new(big.Int).SetInt64(99999999), 8},
-	&testDigits10{new(big.Int).SetInt64(100000000), 9},
-	&testDigits10{new(big.Int).SetInt64(999999999), 9},
-	&testDigits10{new(big.Int).SetInt64(1000000000), 10},
-	&testDigits10{new(big.Int).SetInt64(9999999999), 10},
+	{new(big.Int).SetInt64(0), 1},
+	{new(big.Int).SetInt64(1), 1},
+	{new(big.Int).SetInt64(9), 1},
+	{new(big.Int).SetInt64(10), 2},
+	{new(big.Int).SetInt64(99), 2},
+	{new(big.Int).SetInt64(100), 3},
+	{new(big.Int).SetInt64(999), 3},
+	{new(big.Int).SetInt64(1000), 4},
+	{new(big.Int).SetInt64(9999), 4},
+	{new(big.Int).SetInt64(10000), 5},
+	{new(big.Int).SetInt64(99999), 5},
+	{new(big.Int).SetInt64(100000), 6},
+	{new(big.Int).SetInt64(999999), 6},
+	{new(big.Int).SetInt64(1000000), 7},
+	{new(big.Int).SetInt64(9999999), 7},
+	{new(big.Int).SetInt64(10000000), 8},
+	{new(big.Int).SetInt64(99999999), 8},
+	{new(big.Int).SetInt64(100000000), 9},
+	{new(big.Int).SetInt64(999999999), 9},
+	{new(big.Int).SetInt64(1000000000), 10},
+	{new(big.Int).SetInt64(9999999999), 10},
 }
 
 func TestDigits10(t *testing.T) {
@@ -78,26 +78,26 @@ type testRat struct {
 }
 
 var testRatData = []*testRat{
-	&testRat{new(big.Rat).SetFrac64(0, 1), 3, -2, 2, new(big.Int).SetInt64(0), false, 0, 0},                              //convert 0
-	&testRat{new(big.Rat).SetFrac64(1, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 0, 0},                              //convert 1
-	&testRat{new(big.Rat).SetFrac64(1, 10), 3, -2, 2, new(big.Int).SetInt64(1), false, -1, 0},                            //convert 1/10
-	&testRat{new(big.Rat).SetFrac64(1, 99), 3, -2, 2, new(big.Int).SetInt64(1), false, -2, dfNotExact},                   //convert 1/99
-	&testRat{new(big.Rat).SetFrac64(1, 100), 3, -2, 2, new(big.Int).SetInt64(1), false, -2, 0},                           //convert 1/100
-	&testRat{new(big.Rat).SetFrac64(1, 1000), 3, -2, 2, new(big.Int).SetInt64(1), false, -3, dfUnderflow},                //convert 1/1000
-	&testRat{new(big.Rat).SetFrac64(10, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 1, 0},                             //convert 10
-	&testRat{new(big.Rat).SetFrac64(100, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 2, 0},                            //convert 100
-	&testRat{new(big.Rat).SetFrac64(1000, 1), 3, -2, 2, new(big.Int).SetInt64(10), false, 2, 0},                          //convert 1000
-	&testRat{new(big.Rat).SetFrac64(10000, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 2, 0},                        //convert 10000
-	&testRat{new(big.Rat).SetFrac64(100000, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfOverflow},              //convert 100000
-	&testRat{new(big.Rat).SetFrac64(999999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 4, dfNotExact | dfOverflow}, //convert 999999
-	&testRat{new(big.Rat).SetFrac64(99999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfNotExact | dfOverflow},  //convert 99999
-	&testRat{new(big.Rat).SetFrac64(9999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 2, dfNotExact},                //convert 9999
-	&testRat{new(big.Rat).SetFrac64(99950, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfNotExact | dfOverflow},  //convert 99950
-	&testRat{new(big.Rat).SetFrac64(99949, 1), 3, -2, 2, new(big.Int).SetInt64(999), false, 2, dfNotExact},               //convert 99949
+	{new(big.Rat).SetFrac64(0, 1), 3, -2, 2, new(big.Int).SetInt64(0), false, 0, 0},                              //convert 0
+	{new(big.Rat).SetFrac64(1, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 0, 0},                              //convert 1
+	{new(big.Rat).SetFrac64(1, 10), 3, -2, 2, new(big.Int).SetInt64(1), false, -1, 0},                            //convert 1/10
+	{new(big.Rat).SetFrac64(1, 99), 3, -2, 2, new(big.Int).SetInt64(1), false, -2, dfNotExact},                   //convert 1/99
+	{new(big.Rat).SetFrac64(1, 100), 3, -2, 2, new(big.Int).SetInt64(1), false, -2, 0},                           //convert 1/100
+	{new(big.Rat).SetFrac64(1, 1000), 3, -2, 2, new(big.Int).SetInt64(1), false, -3, dfUnderflow},                //convert 1/1000
+	{new(big.Rat).SetFrac64(10, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 1, 0},                             //convert 10
+	{new(big.Rat).SetFrac64(100, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 2, 0},                            //convert 100
+	{new(big.Rat).SetFrac64(1000, 1), 3, -2, 2, new(big.Int).SetInt64(10), false, 2, 0},                          //convert 1000
+	{new(big.Rat).SetFrac64(10000, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 2, 0},                        //convert 10000
+	{new(big.Rat).SetFrac64(100000, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfOverflow},              //convert 100000
+	{new(big.Rat).SetFrac64(999999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 4, dfNotExact | dfOverflow}, //convert 999999
+	{new(big.Rat).SetFrac64(99999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfNotExact | dfOverflow},  //convert 99999
+	{new(big.Rat).SetFrac64(9999, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 2, dfNotExact},                //convert 9999
+	{new(big.Rat).SetFrac64(99950, 1), 3, -2, 2, new(big.Int).SetInt64(100), false, 3, dfNotExact | dfOverflow},  //convert 99950
+	{new(big.Rat).SetFrac64(99949, 1), 3, -2, 2, new(big.Int).SetInt64(999), false, 2, dfNotExact},               //convert 99949
 
-	&testRat{new(big.Rat).SetFrac64(1, 3), 5, -5, 5, new(big.Int).SetInt64(33333), false, -5, dfNotExact}, //convert 1/3
-	&testRat{new(big.Rat).SetFrac64(2, 3), 5, -5, 5, new(big.Int).SetInt64(66667), false, -5, dfNotExact}, //convert 2/3
-	&testRat{new(big.Rat).SetFrac64(11, 2), 5, -5, 5, new(big.Int).SetInt64(55), false, -1, 0},            //convert 11/2
+	{new(big.Rat).SetFrac64(1, 3), 5, -5, 5, new(big.Int).SetInt64(33333), false, -5, dfNotExact}, //convert 1/3
+	{new(big.Rat).SetFrac64(2, 3), 5, -5, 5, new(big.Int).SetInt64(66667), false, -5, dfNotExact}, //convert 2/3
+	{new(big.Rat).SetFrac64(11, 2), 5, -5, 5, new(big.Int).SetInt64(55), false, -1, 0},            //convert 11/2
 
 }
 
