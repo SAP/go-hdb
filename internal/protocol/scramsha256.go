@@ -84,30 +84,16 @@ func (r *scramsha256InitialReply) String() string {
 func (r *scramsha256InitialReply) decode(dec *encoding.Decoder, ph *partHeader) error {
 	dec.Int16() // cnt
 	if err := readMethodName(dec); err != nil {
-		println("read method name error")
-
 		return err
 	}
+
 	size := dec.Byte()
-
-	//TODO check: python client gives different challenge data size
-	// disable check
-
-	// if size != serverChallengeDataSize {
-	// 	println("server challenge data size error")
-
-	// 	return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
-	// }
-
-	//server challenge data
-
+	if size != serverChallengeDataSize {
+		//TODO check: python client gives different challenge data size
+		return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
+	}
 	cnt := dec.Int16()
-
-	// println("data field count")
-	// println(cnt)
-
 	if cnt != 2 {
-		//println("invalid server challenge data field count")
 		return fmt.Errorf("invalid server challenge data field count %d - %d expected", cnt, 2)
 	}
 
@@ -213,17 +199,11 @@ func readMethodName(dec *encoding.Decoder) error {
 	methodName := make([]byte, size)
 	dec.Bytes(methodName)
 
-	// println("methodname")
-	// println(string(methodName))
-
 	//TODO - python client
 	// python client: database response with SCRAMPBKDF2SHA256
-	// --> disable check
-
-	// if string(methodName) != mnSCRAMSHA256 {
-	// 	return fmt.Errorf("invalid authentication method %s - %s expected", methodName, mnSCRAMSHA256)
-	// }
-
+	if string(methodName) != mnSCRAMSHA256 {
+		return fmt.Errorf("invalid authentication method %s - %s expected", methodName, mnSCRAMSHA256)
+	}
 	return nil
 }
 

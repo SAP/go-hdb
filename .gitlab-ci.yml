@@ -23,16 +23,10 @@ build:
 .test_template: &test_definition
   stage: test
   script:
-    - cd $CI_PROJECT_DIR/driver
-    - go test -dsn $GO_HANA_DSN -test.v
-    - cd $CI_PROJECT_DIR/internal/protocol
-    - go test -test.v
-    - cd $CI_PROJECT_DIR/internal/scanner
-    - go test -test.v
-    - cd $CI_PROJECT_DIR/internal/unicode/cesu8
-    - go test -test.v
-    - cd $CI_PROJECT_DIR/driver
-    - go test -dsn $GO_HANA_TLS_DSN -test.v
+    - export GOHDBDSN=$GO_HANA_DSN
+    - go test -v ./...
+    - export GOHDBDSN=$GO_HANA_TLS_DSN
+    - go test -v ./...
 
 golang_1_13_10:
   image: golang:1.13.8

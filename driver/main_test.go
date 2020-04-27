@@ -24,9 +24,16 @@ import (
 	"fmt"
 	"log"
 	"os"
-
-	//"strconv"
 	"testing"
+)
+
+const (
+	/*
+		support of environment variables to
+		- set e.g. DSN via env variable and
+		- e.g. execute tests via go test -v ./...
+	*/
+	envDSN = "GOHDBDSN"
 )
 
 const (
@@ -47,7 +54,12 @@ var (
 )
 
 func init() {
-	flag.StringVar(&TestDSN, "dsn", "hdb://user:password@host:port", "database dsn")
+	// check env variables
+	dsn, ok := os.LookupEnv(envDSN)
+	if !ok {
+		dsn = "hdb://user:password@host:port"
+	}
+	flag.StringVar(&TestDSN, "dsn", dsn, "database dsn")
 	flag.BoolVar(&TestDropSchema, "dropSchema", true, "drop test schema if test ran successfully")
 	flag.BoolVar(&TestDropAllSchemas, "dropAllSchemas", false, "drop all existing test schemas if test ran successfully")
 }

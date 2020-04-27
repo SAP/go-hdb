@@ -1,17 +1,17 @@
 Release Notes
 =============
 
-## Release 0.9.0
+## Release 0.9.1
 
-Dear go-hdb users, please find a description of the main features of this 0.9.0 release below. Going from 0.14.4 to 0.9.0 should indicate,
+Dear go-hdb users, please find a description of the main features of this 0.9.0 release below. Going from 0.14.4 to 0.9.1 should indicate,
 that this is a huge step into the direction of a 1.0 release. So, while most effort was spent to prepare for 1.0 features like
 
 - Support of [Named Arguments](https://golang.org/pkg/database/sql/#NamedArg)
 - Support of [Output Parameters](https://golang.org/pkg/database/sql/#Out) calling Stored Procedures
 
-release 0.9.0 brings some interesting and hopefully useful features as well:
+release 0.9.1 brings some interesting and hopefully useful features as well:
 
-#### Main Features 0.9.0
+#### Main Features 0.9.1
 
 1. Data Format Version.
 
@@ -48,7 +48,7 @@ release 0.9.0 brings some interesting and hopefully useful features as well:
    db := sql.OpenDB(connector)
    defer db.Close()
    ```
-   For a complete example please see Example_callTableOut in [](driver/example_call_test.go).
+   For a complete example please see [Example_callTableOut](driver/example_call_test.go).
 
 #### Incompatibilities to release 0.14.4
 

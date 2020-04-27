@@ -14,23 +14,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver
+package main
 
 import (
 	"database/sql"
-	"testing"
+	"log"
+	"os"
+
+	"github.com/SAP/go-hdb/driver"
 )
 
-func TestT1(t *testing.T) {
-
-	db, err := sql.Open(DriverName, TestDSN)
+func main() {
+	dsn := os.Getenv("GOHDBDSN")
+	db, err := sql.Open(driver.DriverName, dsn)
 	if err != nil {
-		t.Fatal(err)
+		log.Fatal(err)
 	}
 	defer db.Close()
 
 	_, err = db.Query("select * from T1")
 	if err != nil {
-		t.Fatal(err)
+		log.Fatal(err)
 	}
 }

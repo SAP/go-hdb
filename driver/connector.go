@@ -106,6 +106,8 @@ func (e ParseDSNError) Error() string {
 	}
 	return parseDSNErrorText
 }
+
+// Unwrap returns the nested error.
 func (e ParseDSNError) Unwrap() error { return e.err }
 
 // NewDSNConnector creates a connector from a data source name.

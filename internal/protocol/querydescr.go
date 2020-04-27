@@ -122,7 +122,7 @@ func NewQueryDescr(query string, sc *scanner.Scanner) (*QueryDescr, error) {
 
 	if strings.ToLower(query[start:end]) == bulkQuery {
 		d.isBulk = true
-		token, start, end = sc.Next()
+		_, start, end = sc.Next()
 	}
 
 	// kind
@@ -139,7 +139,7 @@ func NewQueryDescr(query string, sc *scanner.Scanner) (*QueryDescr, error) {
 
 	// result set id query
 	if d.kind == QkID {
-		token, start, end := sc.Next()
+		token, start, end = sc.Next()
 		if token != scanner.Number {
 			return nil, errInvalidCmdToken
 		}
