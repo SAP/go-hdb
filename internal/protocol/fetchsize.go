@@ -17,30 +17,17 @@ limitations under the License.
 package protocol
 
 import (
-	"github.com/SAP/go-hdb/internal/bufio"
+	"fmt"
+
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 //fetch size
 type fetchsize int32
 
-func (s fetchsize) kind() partKind {
-	return pkFetchSize
+func (s fetchsize) String() string { return fmt.Sprintf("fetchsize %d", s) }
+func (s *fetchsize) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*s = fetchsize(dec.Int32())
+	return dec.Error()
 }
-
-func (s fetchsize) size() (int, error) {
-	return 4, nil
-}
-
-func (s fetchsize) numArg() int {
-	return 1
-}
-
-func (s fetchsize) write(wr *bufio.Writer) error {
-	wr.WriteInt32(int32(s))
-
-	if trace {
-		outLogger.Printf("fetchsize: %d", s)
-	}
-
-	return nil
-}
+func (s fetchsize) encode(enc *encoding.Encoder) error { enc.Int32(int32(s)); return nil }

@@ -19,9 +19,8 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
-	"io"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 type parameterOptions int8
@@ -74,322 +73,195 @@ func (k parameterMode) String() string {
 	return fmt.Sprintf("%v", t)
 }
 
-// ParameterFieldSet contains database field metadata for parameters.
-type ParameterFieldSet struct {
-	fields        []*ParameterField
-	_inputFields  []*ParameterField
-	_outputFields []*ParameterField
-	names         fieldNames
+func newParameterFields(size int) []*parameterField {
+	return make([]*parameterField, size)
 }
 
-func newParameterFieldSet(size int) *ParameterFieldSet {
-	return &ParameterFieldSet{
-		fields:        make([]*ParameterField, size),
-		_inputFields:  make([]*ParameterField, 0, size),
-		_outputFields: make([]*ParameterField, 0, size),
-		names:         newFieldNames(),
-	}
-}
-
-// String implements the Stringer interface.
-func (f *ParameterFieldSet) String() string {
-	a := make([]string, len(f.fields))
-	for i, f := range f.fields {
-		a[i] = f.String()
-	}
-	return fmt.Sprintf("%v", a)
-}
-
-func (f *ParameterFieldSet) read(rd *bufio.Reader) {
-	// This function is likely to be called multiple times on the same prepared
-	// statement (because HANA may send PARAMETERMETADATA parts even when
-	// executing the statement), so we need to empty these slices lest they keep
-	// growing.
-	f._inputFields = f._inputFields[:0]
-	f._outputFields = f._outputFields[:0]
-	for i := 0; i < len(f.fields); i++ {
-		field := newParameterField(f.names)
-		field.read(rd)
-		f.fields[i] = field
-		if field.In() {
-			f._inputFields = append(f._inputFields, field)
-		}
-		if field.Out() {
-			f._outputFields = append(f._outputFields, field)
-		}
-	}
-
-	pos := uint32(0)
-	for _, offset := range f.names.sortOffsets() {
-		if diff := int(offset - pos); diff > 0 {
-			rd.Skip(diff)
-		}
-		b, size := readShortUtf8(rd)
-		f.names.setName(offset, string(b))
-		pos += uint32(1 + size)
-	}
-}
-
-func (f *ParameterFieldSet) inputFields() []*ParameterField {
-	return f._inputFields
-}
-
-func (f *ParameterFieldSet) outputFields() []*ParameterField {
-	return f._outputFields
-}
-
-// NumInputField returns the number of input fields in a database statement.
-func (f *ParameterFieldSet) NumInputField() int {
-	return len(f._inputFields)
-}
-
-// NumOutputField returns the number of output fields of a query or stored procedure.
-func (f *ParameterFieldSet) NumOutputField() int {
-	return len(f._outputFields)
-}
-
-// Field returns the field at index idx.
-func (f *ParameterFieldSet) Field(idx int) *ParameterField {
-	return f.fields[idx]
-}
-
-// OutputField returns the output field at index idx.
-func (f *ParameterFieldSet) OutputField(idx int) *ParameterField {
-	return f._outputFields[idx]
-}
-
-// ParameterField contains database field attributes for parameters.
-type ParameterField struct {
-	fieldNames       fieldNames
+// parameterField contains database field attributes for parameters.
+type parameterField struct {
+	name             string
 	parameterOptions parameterOptions
-	tc               TypeCode
+	tc               typeCode
 	mode             parameterMode
 	fraction         int16
 	length           int16
 	offset           uint32
-	chunkReader      lobChunkReader
-	lobLocatorID     locatorID
 }
 
-func newParameterField(fieldNames fieldNames) *ParameterField {
-	return &ParameterField{fieldNames: fieldNames}
-}
-
-// String implements the Stringer interface.
-func (f *ParameterField) String() string {
+func (f *parameterField) String() string {
 	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s fraction %d length %d name %s",
 		f.parameterOptions,
 		f.tc,
 		f.mode,
 		f.fraction,
 		f.length,
-		f.Name(),
+		f.name,
 	)
 }
 
-// TypeCode returns the type code of the field.
-func (f *ParameterField) TypeCode() TypeCode {
-	return f.tc
-}
+func (f *parameterField) Converter() Converter { return f.tc.fieldType() }
 
-// TypeLength returns the type length of the field.
+// TypeName returns the type name of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
+func (f *parameterField) TypeName() string { return f.tc.typeName() }
+
+// ScanType returns the scan type of the field.
+// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
+func (f *parameterField) ScanType() DataType { return f.tc.dataType() }
+
+// typeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *ParameterField) TypeLength() (int64, bool) {
+func (f *parameterField) TypeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
 	return 0, false
 }
 
-// TypePrecisionScale returns the type precision and scale (decimal types) of the field.
+// typePrecisionScale returns the type precision and scale (decimal types) of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *ParameterField) TypePrecisionScale() (int64, int64, bool) {
+func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
 	return 0, 0, false
 }
 
-// Nullable returns true if the field may be null, false otherwise.
+// nullable returns true if the field may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *ParameterField) Nullable() bool {
+func (f *parameterField) Nullable() bool {
 	return f.parameterOptions == poOptional
 }
 
-// In returns true if the parameter field is an input field.
-func (f *ParameterField) In() bool {
+// in returns true if the parameter field is an input field.
+func (f *parameterField) In() bool {
 	return f.mode == pmInout || f.mode == pmIn
 }
 
-// Out returns true if the parameter field is an output field.
-func (f *ParameterField) Out() bool {
+// out returns true if the parameter field is an output field.
+func (f *parameterField) Out() bool {
 	return f.mode == pmInout || f.mode == pmOut
 }
 
-// Name returns the parameter field name.
-func (f *ParameterField) Name() string {
-	return f.fieldNames.name(f.offset)
+// name returns the parameter field name.
+func (f *parameterField) Name() string {
+	return f.name
 }
 
-// SetLobReader sets the io.Reader if a Lob parameter field.
-func (f *ParameterField) SetLobReader(rd io.Reader) error {
-	f.chunkReader = newLobChunkReader(f.TypeCode().isCharBased(), rd)
-	return nil
-}
-
-//
-
-func (f *ParameterField) read(rd *bufio.Reader) {
-	f.parameterOptions = parameterOptions(rd.ReadInt8())
-	f.tc = TypeCode(rd.ReadInt8())
-	f.mode = parameterMode(rd.ReadInt8())
-	rd.Skip(1) //filler
-	f.offset = rd.ReadUint32()
-	f.fieldNames.addOffset(f.offset)
-	f.length = rd.ReadInt16()
-	f.fraction = rd.ReadInt16()
-	rd.Skip(4) //filler
+func (f *parameterField) decode(dec *encoding.Decoder) {
+	f.parameterOptions = parameterOptions(dec.Int8())
+	f.tc = typeCode(dec.Int8())
+	f.mode = parameterMode(dec.Int8())
+	dec.Skip(1) //filler
+	f.offset = dec.Uint32()
+	f.length = dec.Int16()
+	f.fraction = dec.Int16()
+	dec.Skip(4) //filler
 }
 
 // parameter metadata
 type parameterMetadata struct {
-	prmFieldSet *ParameterFieldSet
-	numArg      int
+	parameterFields []*parameterField
 }
 
 func (m *parameterMetadata) String() string {
-	return fmt.Sprintf("parameter metadata: %s", m.prmFieldSet.fields)
+	return fmt.Sprintf("parameter forlds %v", m.parameterFields)
 }
 
-func (m *parameterMetadata) kind() partKind {
-	return pkParameterMetadata
-}
+func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
+	m.parameterFields = newParameterFields(ph.numArg())
 
-func (m *parameterMetadata) setNumArg(numArg int) {
-	m.numArg = numArg
-}
+	names := fieldNames{}
 
-func (m *parameterMetadata) read(rd *bufio.Reader) error {
-
-	m.prmFieldSet.read(rd)
-
-	if trace {
-		outLogger.Printf("read %s", m)
+	for i := 0; i < len(m.parameterFields); i++ {
+		f := new(parameterField)
+		f.decode(dec)
+		m.parameterFields[i] = f
+		names.insert(f.offset)
 	}
 
-	return rd.GetError()
+	names.decode(dec)
+
+	for _, f := range m.parameterFields {
+		f.name = names.name(f.offset)
+	}
+	return dec.Error()
 }
 
 // input parameters
 type inputParameters struct {
-	inputFields []*ParameterField
+	inputFields []*parameterField
 	args        []driver.NamedValue
 }
 
-func newInputParameters(inputFields []*ParameterField, args []driver.NamedValue) *inputParameters {
+func newInputParameters(inputFields []*parameterField, args []driver.NamedValue) *inputParameters {
 	return &inputParameters{inputFields: inputFields, args: args}
 }
 
 func (p *inputParameters) String() string {
-	return fmt.Sprintf("input parameters: %v", p.args)
+	return fmt.Sprintf("fields %s len(args) %d args %v", p.inputFields, len(p.args), p.args)
 }
 
-func (p *inputParameters) kind() partKind {
-	return pkParameters
-}
-
-func (p *inputParameters) size() (int, error) {
-
+func (p *inputParameters) size() int {
 	size := len(p.args)
 	cnt := len(p.inputFields)
 
 	for i, arg := range p.args {
-
-		if arg.Value == nil { // null value
-			continue
-		}
-
 		// mass insert
-		field := p.inputFields[i%cnt]
-
-		fieldSize, err := fieldSize(field.TypeCode(), arg)
-		if err != nil {
-			return 0, err
-		}
-
-		size += fieldSize
+		f := p.inputFields[i%cnt]
+		size += prmSize(f.tc, arg)
 	}
-
-	return size, nil
+	return size
 }
 
 func (p *inputParameters) numArg() int {
 	cnt := len(p.inputFields)
-
 	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return 0
 	}
-
 	return len(p.args) / cnt
 }
 
-func (p *inputParameters) write(wr *bufio.Writer) error {
+func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
+	// TODO Sniffer
+	return fmt.Errorf("not implemented")
+}
 
+func (p *inputParameters) encode(enc *encoding.Encoder) error {
 	cnt := len(p.inputFields)
 
 	for i, arg := range p.args {
-
 		//mass insert
-		field := p.inputFields[i%cnt]
-
-		if err := writeField(wr, field.TypeCode(), arg); err != nil {
+		f := p.inputFields[i%cnt]
+		if err := encodePrm(enc, f.tc, arg); err != nil {
 			return err
 		}
 	}
-
-	if trace {
-		outLogger.Printf("input parameters: %s", p)
-	}
-
 	return nil
 }
 
 // output parameter
 type outputParameters struct {
-	numArg       int
-	s            *Session
-	outputFields []*ParameterField
-	fieldValues  *FieldValues
+	outputFields []*parameterField
+	fieldValues  []driver.Value
 }
 
 func (p *outputParameters) String() string {
-	return fmt.Sprintf("output parameters: %v", p.fieldValues)
+	return fmt.Sprintf("fields %v values %v", p.outputFields, p.fieldValues)
 }
 
-func (p *outputParameters) kind() partKind {
-	return pkOutputParameters
-}
-
-func (p *outputParameters) setNumArg(numArg int) {
-	p.numArg = numArg // should always be 1
-}
-
-func (p *outputParameters) read(rd *bufio.Reader) error {
-
+func (p *outputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
+	numArg := ph.numArg()
 	cols := len(p.outputFields)
-	p.fieldValues.resize(p.numArg, cols)
+	p.fieldValues = newFieldValues(numArg * cols)
 
-	for i := 0; i < p.numArg; i++ {
+	for i := 0; i < numArg; i++ {
 		for j, field := range p.outputFields {
 			var err error
-			if p.fieldValues.values[i*cols+j], err = readField(p.s, rd, field.TypeCode()); err != nil {
+			if p.fieldValues[i*cols+j], err = decodeRes(dec, field.tc); err != nil {
 				return err
 			}
 		}
 	}
-
-	if trace {
-		outLogger.Printf("read %s", p)
-	}
-	return rd.GetError()
+	return dec.Error()
 }

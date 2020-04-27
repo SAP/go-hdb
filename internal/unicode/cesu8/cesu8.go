@@ -142,7 +142,7 @@ func encodeRune(p []byte, r rune) int {
 		p[0] = t2 | byte(r>>6)
 		p[1] = tx | byte(r)&maskx
 		return 2
-	//case i > MaxRune, surrogateMin <= i && i <= surrogateMax: // replaced (*)
+	// case i > MaxRune, surrogateMin <= i && i <= surrogateMax: // replaced (*)
 	case i > utf8.MaxRune: // (*)
 		r = utf8.RuneError
 		fallthrough
@@ -211,8 +211,8 @@ func decodeRune(p []byte) (r rune, size int, short bool) {
 			return utf8.RuneError, 1, false
 		}
 		// do not throw error on surrogates // (*)
-		//if surrogateMin <= r && r <= surrogateMax {
-		//	return RuneError, 1, false
+		// if surrogateMin <= r && r <= surrogateMax {
+		//	 return RuneError, 1, false
 		//}
 		return r, 3, false
 	}

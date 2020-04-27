@@ -24,7 +24,7 @@ import (
 )
 
 type sqlTrace struct {
-	mu sync.RWMutex //protects field on
+	mu sync.RWMutex // protects field on
 	on bool
 	*log.Logger
 }
@@ -37,6 +37,7 @@ func newSQLTrace() *sqlTrace {
 
 var tracer = newSQLTrace()
 
+//nolint:gochecknoinits
 func init() {
 	flag.BoolVar(&tracer.on, "hdb.sqlTrace", false, "enabling hdb sql trace")
 }

@@ -24,44 +24,43 @@ import (
 	"testing"
 )
 
-func TestPing(t *testing.T) {
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
+func testConnection(db *sql.DB, t *testing.T) {
+	var dummy string
+	err := db.QueryRow("select * from dummy").Scan(&dummy)
+	switch {
+	case err == sql.ErrNoRows:
+		t.Fatal(err)
+	case err != nil:
 		t.Fatal(err)
 	}
-	defer db.Close()
+	if dummy != "X" {
+		t.Fatalf("dummy is %s - expected %s", dummy, "X")
+	}
+}
 
+func testPing(db *sql.DB, t *testing.T) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PingContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
-func TestInsertByQuery(t *testing.T) {
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func testInsertByQuery(db *sql.DB, t *testing.T) {
 	table := RandomIdentifier("insertByQuery_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
 	// insert value via Query
-	if err := db.QueryRow(fmt.Sprintf("insert into %s.%s values (?)", TestSchema, table), 42).Scan(); err != sql.ErrNoRows {
+	if err := db.QueryRow(fmt.Sprintf("insert into %s values (?)", table), 42).Scan(); err != sql.ErrNoRows {
 		t.Fatal(err)
 	}
 
 	// check value
 	var i int
-	if err := db.QueryRow(fmt.Sprintf("select * from %s.%s", TestSchema, table)).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 42 {
@@ -69,17 +68,11 @@ func TestInsertByQuery(t *testing.T) {
 	}
 }
 
-func TestHDBError(t *testing.T) {
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func testHDBError(db *sql.DB, t *testing.T) {
 	//select from not existing table with different table name length
 	//to check if padding, etc works (see hint in protocol.error.Read(...))
 	for i := 0; i < 9; i++ {
-		_, err := db.Query(fmt.Sprintf("select * from %s.%s", TestSchema, strings.Repeat("x", i+1)))
+		_, err := db.Query(fmt.Sprintf("select * from %s", strings.Repeat("x", i+1)))
 		if err == nil {
 			t.Fatal("hdb error expected")
 		}
@@ -93,49 +86,35 @@ func TestHDBError(t *testing.T) {
 	}
 }
 
-func TestHDBWarning(t *testing.T) {
+func testHDBWarning(db *sql.DB, t *testing.T) {
 	// procedure gives warning:
 	// 	SQL HdbWarning 1347 - Not recommended feature: DDL statement is used in Dynamic SQL (current dynamic_sql_ddl_error_level = 1)
-	const procOut = `create procedure %[1]s.%[2]s ()
+	const procOut = `create procedure %[1]s ()
 language SQLSCRIPT as
 begin
-	exec 'create table %[3]s(id int)';
-	exec 'drop table %[3]s';
+	exec 'create table %[2]s(id int)';
+	exec 'drop table %[2]s';
 end
 `
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
 	procedure := RandomIdentifier("proc_")
 	tableName := RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf(procOut, TestSchema, procedure, tableName)); err != nil { // Create stored procedure.
+	if _, err := db.Exec(fmt.Sprintf(procOut, procedure, tableName)); err != nil { // Create stored procedure.
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("call %s.%s", TestSchema, procedure)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("call %s", procedure)); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestQueryAttributeAlias(t *testing.T) {
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func testQueryAttributeAlias(db *sql.DB, t *testing.T) {
 	table := RandomIdentifier("queryAttributeAlias_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, j integer)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select i as x, j from %s.%s", TestSchema, table))
+	rows, err := db.Query(fmt.Sprintf("select i as x, j from %s", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,21 +134,15 @@ func TestQueryAttributeAlias(t *testing.T) {
 	}
 }
 
-func TestRowsAffected(t *testing.T) {
+func testRowsAffected(db *sql.DB, t *testing.T) {
 	const maxRows = 10
 
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
 	table := RandomIdentifier("rowsAffected_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s.%s values(?)", TestSchema, table))
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,50 +157,44 @@ func TestRowsAffected(t *testing.T) {
 	}
 
 	// update
-	result, err := db.Exec(fmt.Sprintf("update %s.%s set i = %d where i <> %d", TestSchema, table, maxRows, maxRows))
+	result, err := db.Exec(fmt.Sprintf("update %s set i = %d where i <> %d", table, maxRows, maxRows))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, maxRows)
 }
 
-func TestUpsert(t *testing.T) {
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
+func testUpsert(db *sql.DB, t *testing.T) {
 	table := RandomIdentifier("upsert_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (key int primary key, val int)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (key int primary key, val int)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := db.Exec(fmt.Sprintf("upsert %s.%s values (1, 1)", TestSchema, table))
+	result, err := db.Exec(fmt.Sprintf("upsert %s values (1, 1)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (:1, :1) where key = :2", TestSchema, table), 2, 2)
+	result, err = db.Exec(fmt.Sprintf("upsert %s values (:1, :1) where key = :2", table), 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (?, ?) where key = ?", TestSchema, table), 1, 9, 1)
+	result, err = db.Exec(fmt.Sprintf("upsert %s values (?, ?) where key = ?", table), 1, 9, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s.%s values (?, ?) with primary key", TestSchema, table), 1, 8)
+	result, err = db.Exec(fmt.Sprintf("upsert %s values (?, ?) with primary key", table), 1, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %[1]s.%[2]s select key + ?, val from %[1]s.%[2]s", TestSchema, table), 2)
+	result, err = db.Exec(fmt.Sprintf("upsert %[1]s select key + ?, val from %[1]s", table), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,5 +209,27 @@ func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
 	}
 	if rowsAffected != rowsExpected {
 		t.Fatalf("rows affected %d - expected %d", rowsAffected, rowsExpected)
+	}
+}
+
+func TestDriver(t *testing.T) {
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, t *testing.T)
+	}{
+		{"connection", testConnection},
+		{"ping", testPing},
+		{"insertByQuery", testInsertByQuery},
+		{"hdbError", testHDBError},
+		{"hdbWarning", testHDBWarning},
+		{"queryAttributeAlias", testQueryAttributeAlias},
+		{"rowsAffected", testRowsAffected},
+		{"upsert", testUpsert},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(TestDB, t)
+		})
 	}
 }

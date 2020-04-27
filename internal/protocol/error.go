@@ -19,7 +19,7 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 const (
@@ -44,7 +44,7 @@ type hdbError struct {
 
 // String implements the Stringer interface.
 func (e *hdbError) String() string {
-	return fmt.Sprintf("errorCode %d, errorPosition %d, errorTextLength % d errorLevel %s, sqlState %s stmtNo %d errorText %s",
+	return fmt.Sprintf("errorCode %d errorPosition %d errorTextLength %d errorLevel %s sqlState %s stmtNo %d errorText %s",
 		e.errorCode,
 		e.errorPosition,
 		e.errorTextLength,
@@ -65,8 +65,8 @@ func (e *hdbError) Error() string {
 
 type hdbErrors struct {
 	errors []*hdbError
-	numArg int
-	idx    int
+	//numArg int
+	idx int
 }
 
 // String implements the Stringer interface.
@@ -81,16 +81,20 @@ func (e *hdbErrors) Error() string {
 
 // NumError implements the driver.Error interface.
 func (e *hdbErrors) NumError() int {
-	return e.numArg
+	if e.errors == nil {
+		return 0
+	}
+	return len(e.errors)
 }
 
 // SetIdx implements the driver.Error interface.
 func (e *hdbErrors) SetIdx(idx int) {
+	numError := e.NumError()
 	switch {
 	case idx < 0:
 		e.idx = 0
-	case idx >= e.numArg:
-		e.idx = e.numArg - 1
+	case idx >= numError:
+		e.idx = numError - 1
 	default:
 		e.idx = idx
 	}
@@ -137,7 +141,7 @@ func (e *hdbErrors) IsFatal() bool {
 }
 
 func (e *hdbErrors) setStmtNo(idx, no int) {
-	if idx >= 0 && idx < e.numArg {
+	if idx >= 0 && idx < e.NumError() {
 		e.errors[idx].stmtNo = no
 	}
 }
@@ -151,24 +155,20 @@ func (e *hdbErrors) isWarnings() bool {
 	return true
 }
 
-func (e *hdbErrors) kind() partKind {
-	return pkError
-}
-
-func (e *hdbErrors) setNumArg(numArg int) {
-	e.numArg = numArg
-}
-
-func (e *hdbErrors) read(rd *bufio.Reader) error {
+func (e *hdbErrors) reset(numArg int) {
 	e.idx = 0 // init error index
-
-	if e.errors == nil || e.numArg > cap(e.errors) {
-		e.errors = make([]*hdbError, e.numArg)
+	if e.errors == nil || numArg > cap(e.errors) {
+		e.errors = make([]*hdbError, numArg)
 	} else {
-		e.errors = e.errors[:e.numArg]
+		e.errors = e.errors[:numArg]
 	}
+}
 
-	for i := 0; i < e.numArg; i++ {
+func (e *hdbErrors) decode(dec *encoding.Decoder, ph *partHeader) error {
+	e.reset(ph.numArg())
+
+	numArg := ph.numArg()
+	for i := 0; i < numArg; i++ {
 		_error := e.errors[i]
 		if _error == nil {
 			_error = new(hdbError)
@@ -176,11 +176,11 @@ func (e *hdbErrors) read(rd *bufio.Reader) error {
 		}
 
 		_error.stmtNo = -1
-		_error.errorCode = rd.ReadInt32()
-		_error.errorPosition = rd.ReadInt32()
-		_error.errorTextLength = rd.ReadInt32()
-		_error.errorLevel = errorLevel(rd.ReadInt8())
-		rd.ReadFull(_error.sqlState[:])
+		_error.errorCode = dec.Int32()
+		_error.errorPosition = dec.Int32()
+		_error.errorTextLength = dec.Int32()
+		_error.errorLevel = errorLevel(dec.Int8())
+		dec.Bytes(_error.sqlState[:])
 
 		// read error text as ASCII data as some errors return invalid CESU-8 characters
 		// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invaid CESU-8 characters>
@@ -188,13 +188,9 @@ func (e *hdbErrors) read(rd *bufio.Reader) error {
 		//		return err
 		//	}
 		_error.errorText = make([]byte, int(_error.errorTextLength))
-		rd.ReadFull(_error.errorText)
+		dec.Bytes(_error.errorText)
 
-		if trace {
-			outLogger.Printf("error %d: %s", i, _error)
-		}
-
-		if e.numArg == 1 {
+		if numArg == 1 {
 			// Error (protocol error?):
 			// if only one error (numArg == 1): s.ph.bufferLength is one byte greater than data to be read
 			// if more than one error: s.ph.bufferlength matches read bytes + padding
@@ -205,15 +201,14 @@ func (e *hdbErrors) read(rd *bufio.Reader) error {
 			//   but s.ph.bufferLength = 122 (standard padding would only consume 6 bytes instead of 7)
 			// driver test TestBulkInsertDuplicates
 			//   --> returns 3 errors (number of total bytes matches s.ph.bufferLength)
-			rd.Skip(1)
+			dec.Skip(1)
 			break
 		}
 
 		pad := padBytes(int(fixLength + _error.errorTextLength))
 		if pad != 0 {
-			rd.Skip(pad)
+			dec.Skip(pad)
 		}
 	}
-
-	return rd.GetError()
+	return dec.Error()
 }

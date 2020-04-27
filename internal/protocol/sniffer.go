@@ -1,5 +1,5 @@
 /*
-Copyright 2014 SAP SE
+Copyright 2020 SAP SE
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,35 +16,28 @@ limitations under the License.
 
 package protocol
 
+// TODO Sniffer
+/*
+sniffer:
+- complete for go-hdb: especially call with table parameters
+- delete caches for statement and result
+- don't ignore part read error
+  - example: read scramsha256InitialReply got silently stuck because methodname check failed
+- test with python client and handle surprises
+  - analyze for not ignoring part read errors
+*/
+
 import (
-	"log"
+	"bufio"
+	"io"
 	"net"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
-
-type dir bool
-
-const (
-	maxBinarySize = 128
-)
-
-type fragment interface {
-	read(rd *bufio.Reader) error
-	write(wr *bufio.Writer) error
-}
-
-func (d dir) String() string {
-	if d {
-		return "->"
-	}
-	return "<-"
-}
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
 type Sniffer struct {
 	conn   net.Conn
-	dbAddr string
 	dbConn net.Conn
 
 	//client
@@ -54,150 +47,230 @@ type Sniffer struct {
 	dbRd *bufio.Reader
 	dbWr *bufio.Writer
 
-	mh *messageHeader
-	sh *segmentHeader
-	ph *partHeader
-
-	buf []byte
+	// reader
+	upRd   *sniffUpReader
+	downRd *sniffDownReader
 }
 
 // NewSniffer creates a new sniffer instance. The conn parameter is the net.Conn connection, where the Sniffer
 // is listening for hdb protocol calls. The dbAddr is the hdb host port address in "host:port" format.
-func NewSniffer(conn net.Conn, dbAddr string) (*Sniffer, error) {
+func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
+
+	//TODO - review setting values here
+	trace = true
+	debug = true
+
 	s := &Sniffer{
 		conn:   conn,
-		dbAddr: dbAddr,
-		clRd:   bufio.NewReader(conn),
-		clWr:   bufio.NewWriter(conn),
-		mh:     &messageHeader{},
-		sh:     &segmentHeader{},
-		ph:     &partHeader{},
-		buf:    make([]byte, 0),
+		dbConn: dbConn,
+		// buffered write to client
+		clWr: bufio.NewWriter(conn),
+		// buffered write to db
+		dbWr: bufio.NewWriter(dbConn),
 	}
 
-	dbConn, err := net.Dial("tcp", s.dbAddr)
-	if err != nil {
-		return nil, err
-	}
+	//read from client connection and write to db buffer
+	s.clRd = bufio.NewReader(io.TeeReader(conn, s.dbWr))
+	//read from db and write to client connection buffer
+	s.dbRd = bufio.NewReader(io.TeeReader(dbConn, s.clWr))
 
-	s.dbRd = bufio.NewReader(dbConn)
-	s.dbWr = bufio.NewWriter(dbConn)
-	s.dbConn = dbConn
-	return s, nil
+	s.upRd = newSniffUpReader(s.clRd)
+	s.downRd = newSniffDownReader(s.dbRd, s.upRd)
+
+	return s
 }
 
-func (s *Sniffer) getBuffer(size int) []byte {
-	if cap(s.buf) < size {
-		s.buf = make([]byte, size)
-	}
-	return s.buf[:size]
-}
-
-// Go starts the protocol request and response logging.
-func (s *Sniffer) Go() {
+// Do starts the protocol request and response logging.
+func (s *Sniffer) Do() error {
 	defer s.dbConn.Close()
 	defer s.conn.Close()
 
-	req := newInitRequest()
-	if err := s.streamFragment(dir(true), s.clRd, s.dbWr, req); err != nil {
-		return
+	s.upRd.readInitRequest()
+	if err := s.dbWr.Flush(); err != nil {
+		return err
 	}
-
-	rep := newInitReply()
-	if err := s.streamFragment(dir(false), s.dbRd, s.clWr, rep); err != nil {
-		return
+	s.downRd.readInitReply()
+	if err := s.clWr.Flush(); err != nil {
+		return err
 	}
 
 	for {
 		//up stream
-		if err := s.stream(dir(true), s.clRd, s.dbWr); err != nil {
-			return
+		if err := s.upRd.readMsg(); err != nil {
+			return err // err == io.EOF: connection closed by client
 		}
-		//down stream
-		if err := s.stream(dir(false), s.dbRd, s.clWr); err != nil {
-			return
-		}
-	}
-}
-
-func (s *Sniffer) stream(d dir, from *bufio.Reader, to *bufio.Writer) error {
-
-	if err := s.streamFragment(d, from, to, s.mh); err != nil {
-		return err
-	}
-
-	size := int(s.mh.varPartLength)
-
-	for i := 0; i < int(s.mh.noOfSegm); i++ {
-
-		if err := s.streamFragment(d, from, to, s.sh); err != nil {
+		if err := s.dbWr.Flush(); err != nil {
 			return err
 		}
-
-		size -= int(s.sh.segmentLength)
-
-		for j := 0; j < int(s.sh.noOfParts); j++ {
-
-			if err := s.streamFragment(d, from, to, s.ph); err != nil {
-				return err
-			}
-
-			// protocol error workaraound
-			padding := (size == 0) || (j != (int(s.sh.noOfParts) - 1))
-
-			if err := s.streamPart(d, from, to, s.ph, padding); err != nil {
+		//down stream
+		if err := s.downRd.readMsg(); err != nil {
+			if _, ok := err.(*hdbErrors); !ok { //if hdbErrors continue
 				return err
 			}
 		}
-	}
-	return to.Flush()
-}
-
-func (s *Sniffer) streamPart(d dir, from *bufio.Reader, to *bufio.Writer, ph *partHeader, padding bool) error {
-
-	switch ph.partKind {
-
-	default:
-		return s.streamBinary(d, from, to, int(ph.bufferLength), padding)
+		if err := s.clWr.Flush(); err != nil {
+			return err
+		}
 	}
 }
 
-func (s *Sniffer) streamBinary(d dir, from *bufio.Reader, to *bufio.Writer, size int, padding bool) error {
-	var b []byte
+type sniffReader struct {
+	dec      *encoding.Decoder
+	tracer   traceLogger
+	msgIter  *msgIter
+	segIter  *segIter
+	partIter *partIter
 
-	//protocol error workaraound
-	if padding {
-		pad := padBytes(size)
-		b = s.getBuffer(size + pad)
+	*partCache
+
+	step int
+}
+
+func newSniffReader(upStream bool, rd *bufio.Reader) *sniffReader {
+	tracer := newTraceLogger(upStream)
+	dec := encoding.NewDecoder(rd)
+	partIter := newPartIter(dec, tracer)
+	segIter := newSegIter(partIter, dec, tracer)
+	msgIter := newMsgIter(segIter, dec, tracer)
+	return &sniffReader{
+		dec:       dec,
+		tracer:    tracer,
+		partCache: newPartCache(),
+		partIter:  partIter,
+		segIter:   segIter,
+		msgIter:   msgIter,
+	}
+}
+
+type sniffUpReader struct {
+	*sniffReader
+	mt   messageType
+	rsID uint64
+}
+
+func newSniffUpReader(rd *bufio.Reader) *sniffUpReader {
+	return &sniffUpReader{sniffReader: newSniffReader(true, rd)}
+}
+
+type sniffDownReader struct {
+	*sniffReader
+
+	upRd *sniffUpReader
+}
+
+func newSniffDownReader(rd *bufio.Reader, upRd *sniffUpReader) *sniffDownReader {
+	return &sniffDownReader{sniffReader: newSniffReader(false, rd), upRd: upRd}
+}
+
+func (r *sniffUpReader) readMsg() error {
+	if !r.msgIter.next() {
+		return r.dec.ResetError()
+	}
+	r.segIter.next()
+	if r.segIter.sh.segmentKind != skRequest {
+		panic("segment type request expected")
+	}
+
+	var resultFields []*resultField
+
+	for r.partIter.next() {
+		switch r.partIter.partKind() {
+
+		case pkResultMetadata:
+			r.read(r.resultMetadata)
+			resultFields = r.resultMetadata.resultFields
+
+		case pkResultset:
+			r.resultset.resultFields = resultFields
+
+			for _, f := range resultFields {
+				println(f.String())
+			}
+
+			r.read(r.resultset)
+
+		default:
+			r.skip()
+		}
+	}
+	return r.dec.ResetError()
+}
+
+func (r *sniffDownReader) readMsg() error {
+	if !r.msgIter.next() {
+		return r.dec.ResetError()
+	}
+	r.segIter.next()
+	fc := r.segIter.functionCode()
+	switch fc {
+	// TODO - check fc
+
+	}
+
+	var resultFields []*resultField
+
+	for r.partIter.next() {
+		switch r.partIter.partKind() {
+
+		case pkResultMetadata:
+			r.read(r.resultMetadata)
+			resultFields = r.resultMetadata.resultFields
+
+		case pkResultset:
+			r.resultset.resultFields = resultFields
+
+			for _, f := range resultFields {
+				println(f.String())
+			}
+
+			println("R E A D  R E S U L T")
+
+			r.read(r.resultset)
+
+		default:
+			r.skip()
+		}
+	}
+	return r.dec.ResetError()
+}
+
+func (r *sniffUpReader) readInitRequest() {
+	req := &initRequest{}
+	req.decode(r.dec)
+	r.tracer.Log(req)
+}
+
+func (r *sniffDownReader) readInitReply() {
+	rep := &initReply{}
+	rep.decode(r.dec)
+	r.tracer.Log(rep)
+}
+
+func (r *sniffReader) read(part partReader) {
+	r.partIter.read(part)
+}
+
+func (r *sniffReader) skip() {
+	pk := r.partIter.partKind()
+
+	skip := pk == pkWriteLobRequest ||
+		pk == pkReadLobRequest ||
+		pk == pkReadLobReply ||
+		// pkParameterMetadata ||
+		// pk == pkParameters ||
+		// pk == pkResultMetadata ||
+		// pk == pkResultset ||
+		// pk == pkOutputParameters ||
+		pk == pkStatementContext //TODO python client sends TinyInts (not supported yet)
+
+	if skip {
+		r.partIter.skip()
 	} else {
-		b = s.getBuffer(size)
+		part, ok := r.partCache.get(pk)
+		if ok {
+			r.partIter.read(part)
+		} else {
+			r.partIter.skip()
+		}
 	}
-
-	from.ReadFull(b)
-	err := from.GetError()
-	if err != nil {
-		log.Print(err)
-		return err
-	}
-
-	if size > maxBinarySize {
-		log.Printf("%s %v", d, b[:maxBinarySize])
-	} else {
-		log.Printf("%s %v", d, b[:size])
-	}
-	to.Write(b)
-	return nil
-}
-
-func (s *Sniffer) streamFragment(d dir, from *bufio.Reader, to *bufio.Writer, f fragment) error {
-	if err := f.read(from); err != nil {
-		log.Print(err)
-		return err
-	}
-	log.Printf("%s %s", d, f)
-	if err := f.write(to); err != nil {
-		log.Print(err)
-		return err
-	}
-	return nil
 }

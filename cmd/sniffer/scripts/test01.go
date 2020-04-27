@@ -1,5 +1,5 @@
 /*
-Copyright 2014 SAP SE
+Copyright 2020 SAP SE
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,22 +21,16 @@ import (
 	"testing"
 )
 
-func TestConnection(t *testing.T) {
+func TestT1(t *testing.T) {
+
 	db, err := sql.Open(DriverName, TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 
-	var dummy string
-	err = db.QueryRow("select * from dummy").Scan(&dummy)
-	switch {
-	case err == sql.ErrNoRows:
+	_, err = db.Query("select * from T1")
+	if err != nil {
 		t.Fatal(err)
-	case err != nil:
-		t.Fatal(err)
-	}
-	if dummy != "X" {
-		t.Fatalf("dummy is %s - expected %s", dummy, "X")
 	}
 }

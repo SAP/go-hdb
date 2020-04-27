@@ -21,6 +21,6 @@ package protocol
 type endianess int8
 
 const (
-	bigEndian    endianess = 0
+	bigEndian    endianess = 0 //nolint:deadcode
 	littleEndian endianess = 1
 )

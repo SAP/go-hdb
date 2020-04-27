@@ -34,10 +34,10 @@ build:
     - cd $CI_PROJECT_DIR/driver
     - go test -dsn $GO_HANA_TLS_DSN -test.v
 
-golang_1_13_8:
+golang_1_13_10:
   image: golang:1.13.8
   <<: *test_definition
   
-golang_1_14:
-  image: golang:1.14
+golang_1_14_2:
+  image: golang:1.14.2
   <<: *test_definition

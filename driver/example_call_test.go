@@ -59,14 +59,15 @@ end
 }
 
 /*
-ExampleCallTableOut creates a stored procedure with one table output parameter and executes it.
+ExampleCallTableOutLegacy creates a stored procedure with one table output parameter and executes it in legacy mode.
+Legacy mode:
 Stored procedures with table output parameters must be executed by sql.Query as sql.QueryRow will close
 the query after execution and prevent querying output table values.
 The scan type of a table output parameter is a string containing an opaque value to query table output values
 by standard sql.Query or sql.QueryRow methods.
 For variables TestDSN and TestSchema see main_test.go.
 */
-func Example_callTableOut() {
+func Example_callTableOutLegacy() {
 	const procTable = `create procedure %[1]s.%[2]s (out t %[1]s.%[3]s)
 language SQLSCRIPT as
 begin
@@ -118,6 +119,79 @@ end
 		log.Fatal(err)
 	}
 	defer tableRows.Close()
+
+	for tableRows.Next() {
+		var x string
+
+		if err := tableRows.Scan(&x); err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(x)
+	}
+	if err := tableRows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	// output: Hello, 世界
+	// SAP HANA
+	// Go driver
+}
+
+/*
+ExampleCallTableOut creates a stored procedure with one table output parameter and executes it
+making use of sql.Rows scan parameters (non-legacy mode - *please see connector.SetLegacy(false)).
+Stored procedures with table output parameters must be executed by sql.Query as sql.QueryRow will close
+the query after execution and prevent querying output table values.
+For variables TestDSN and TestSchema see main_test.go.
+*/
+func Example_callTableOut() {
+	const procTable = `create procedure %[1]s.%[2]s (out t %[1]s.%[3]s)
+language SQLSCRIPT as
+begin
+  create local temporary table #test like %[1]s.%[3]s;
+  insert into #test values('Hello, 世界');
+  insert into #test values('SAP HANA');
+  insert into #test values('Go driver');
+  t = select * from #test;
+  drop table #test;
+end
+`
+	connector, err := NewDSNConnector(TestDSN)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// *Switch to non-legacy mode.
+	connector.SetLegacy(false)
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	tableType := RandomIdentifier("TableType_")
+	procedure := RandomIdentifier("ProcTable_")
+
+	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (x nvarchar(256))", TestSchema, tableType)); err != nil { // Create table type.
+		log.Fatal(err)
+	}
+
+	if _, err := db.Exec(fmt.Sprintf(procTable, TestSchema, procedure, tableType)); err != nil { // Create stored procedure.
+		log.Fatal(err)
+	}
+
+	var tableRows sql.Rows // Scan variable of table output parameter.
+
+	// Query stored procedure.
+	rows, err := db.Query(fmt.Sprintf("call %s.%s(?)", TestSchema, procedure))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		log.Fatal(rows.Err())
+	}
+	if err := rows.Scan(&tableRows); err != nil {
+		log.Fatal(err)
+	}
 
 	for tableRows.Next() {
 		var x string

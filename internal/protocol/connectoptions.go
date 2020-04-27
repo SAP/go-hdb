@@ -19,91 +19,78 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 // data format version
 const (
-	dfvBaseline intType = 1
-	dfvDoNotUse intType = 3
-	dfvSPS06    intType = 4 //see docu
-	dfvBINTEXT  intType = 6
+	dfvBaseline optIntType = 1
+	_           optIntType = 3 // dfvDoNotUse
+	dfvSPS06    optIntType = 4 // see docu
+	dfvBINTEXT  optIntType = 6
+
+	dfvDefault = dfvSPS06
 )
 
+func checkDfv(dfv optIntType) optIntType {
+	if dfv == 0 {
+		return dfvDefault
+	}
+	if dfv <= dfvBaseline {
+		return dfvBaseline
+	}
+	if dfv <= dfvSPS06 {
+		return dfvSPS06
+	}
+	return dfvBINTEXT
+}
+
 // client distribution mode
+//nolint
 const (
-	cdmOff                 intType = 0
-	cdmConnection                  = 1
-	cdmStatement                   = 2
-	cdmConnectionStatement         = 3
+	cdmOff                 optIntType = 0
+	cdmConnection          optIntType = 1
+	cdmStatement           optIntType = 2
+	cdmConnectionStatement optIntType = 3
 )
 
 // distribution protocol version
+//nolint
 const (
 	dpvBaseline                       = 0
 	dpvClientHandlesStatementSequence = 1
 )
 
-type connectOptions struct {
-	po      plainOptions
-	_numArg int
-}
+type connectOptions plainOptions
 
-func newConnectOptions() *connectOptions {
-	return &connectOptions{
-		po: plainOptions{},
-	}
-}
-
-func (o *connectOptions) String() string {
+func (o connectOptions) String() string {
 	m := make(map[connectOption]interface{})
-	for k, v := range o.po {
+	for k, v := range o {
 		m[connectOption(k)] = v
 	}
-	return fmt.Sprintf("%s", m)
+	return fmt.Sprintf("options %s", m)
 }
 
-func (o *connectOptions) kind() partKind {
-	return pkConnectOptions
+func (o connectOptions) size() int   { return plainOptions(o).size() }
+func (o connectOptions) numArg() int { return len(o) }
+
+func (o connectOptions) set(k connectOption, v interface{}) {
+	o[int8(k)] = v
 }
 
-func (o *connectOptions) size() (int, error) {
-	return o.po.size(), nil
-}
-
-func (o *connectOptions) numArg() int {
-	return len(o.po)
-}
-
-func (o *connectOptions) setNumArg(numArg int) {
-	o._numArg = numArg
-}
-
-func (o *connectOptions) set(k connectOption, v interface{}) {
-	o.po[int8(k)] = v
-}
-
-func (o *connectOptions) get(k connectOption) (interface{}, bool) {
-	v, ok := o.po[int8(k)]
+//linter:unused
+func (o connectOptions) get(k connectOption) (interface{}, bool) {
+	v, ok := o[int8(k)]
 	return v, ok
 }
 
-func (o *connectOptions) read(rd *bufio.Reader) error {
-	o.po.read(rd, o._numArg)
-
-	if trace {
-		outLogger.Printf("connect options: %v", o)
-	}
-
-	return rd.GetError()
+func (o *connectOptions) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*o = connectOptions{} // no reuse of maps - create new one
+	plainOptions(*o).decode(dec, ph.numArg())
+	return dec.Error()
 }
 
-func (o *connectOptions) write(wr *bufio.Writer) error {
-	o.po.write(wr)
-
-	if trace {
-		outLogger.Printf("connect options: %v", o)
-	}
-
+func (o connectOptions) encode(enc *encoding.Encoder) error {
+	plainOptions(o).encode(enc)
 	return nil
 }

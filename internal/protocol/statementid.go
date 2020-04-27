@@ -17,50 +17,16 @@ limitations under the License.
 package protocol
 
 import (
-	"github.com/SAP/go-hdb/internal/bufio"
+	"fmt"
+
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-const (
-	statementIDSize = 8
-)
+type statementID uint64
 
-type statementID struct {
-	id *uint64
+func (id statementID) String() string { return fmt.Sprintf("%d", id) }
+func (id *statementID) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*id = statementID(dec.Uint64())
+	return dec.Error()
 }
-
-func (id statementID) kind() partKind {
-	return pkStatementID
-}
-
-func (id statementID) size() (int, error) {
-	return statementIDSize, nil
-}
-
-func (id statementID) numArg() int {
-	return 1
-}
-
-func (id statementID) setNumArg(int) {
-	//ignore - always 1
-}
-
-func (id *statementID) read(rd *bufio.Reader) error {
-	_id := rd.ReadUint64()
-	*id.id = _id
-
-	if trace {
-		outLogger.Printf("statement id: %d", *id.id)
-	}
-
-	return rd.GetError()
-}
-
-func (id statementID) write(wr *bufio.Writer) error {
-	wr.WriteUint64(*id.id)
-
-	if trace {
-		outLogger.Printf("statement id: %d", *id.id)
-	}
-
-	return nil
-}
+func (id statementID) encode(enc *encoding.Encoder) error { enc.Uint64(uint64(id)); return nil }

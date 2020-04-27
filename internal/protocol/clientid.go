@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 type clientID []byte
@@ -33,23 +33,11 @@ func newClientID() clientID {
 	return clientID(strconv.Itoa(os.Getpid()))
 }
 
-func (id clientID) kind() partKind {
-	return partKind(pkClientID)
+func (id clientID) String() string { return string(id) }
+func (id clientID) size() int      { return len(id) }
+func (id *clientID) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*id = sizeBuffer(*id, int(ph.bufferLength))
+	dec.Bytes(*id)
+	return dec.Error()
 }
-
-func (id clientID) size() (int, error) {
-	return len(id), nil
-}
-
-func (id clientID) numArg() int {
-	return 1
-}
-
-func (id clientID) write(wr *bufio.Writer) error {
-	wr.Write(id)
-
-	if trace {
-		outLogger.Printf("client id: %s", id)
-	}
-	return nil
-}
+func (id clientID) encode(enc *encoding.Encoder) error { enc.Bytes(id); return nil }

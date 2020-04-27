@@ -20,6 +20,7 @@ package protocol
 
 type statementContextType int8
 
+//nolint
 const (
 	scStatementSequenceInfo statementContextType = 1
 	scServerExecutionTime   statementContextType = 2

@@ -20,6 +20,7 @@ package protocol
 
 type functionCode int16
 
+//nolint
 const (
 	fcNil                       functionCode = 0
 	fcDDL                       functionCode = 1
@@ -47,14 +48,6 @@ const (
 	fcXAJoin                    functionCode = 23
 )
 
-func (k functionCode) queryType() QueryType {
-
-	switch k {
-	default:
-		return QtNone
-	case fcSelect, fcSelectForUpdate:
-		return QtSelect
-	case fcDBProcedureCall:
-		return QtProcedureCall
-	}
+func (fc functionCode) isProcedureCall() bool {
+	return fc == fcDBProcedureCall
 }

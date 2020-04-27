@@ -31,9 +31,9 @@ var (
 	// Cesu8ToUtf8Transformer implements the golang.org/x/text/transform/Transformer interface for CESU-8 to UTF-8 transformation.
 	Cesu8ToUtf8Transformer = new(cesu8ToUtf8Transformer)
 	// ErrInvalidUtf8 means that a transformer detected invalid UTF-8 data.
-	ErrInvalidUtf8 = errors.New("Invalid UTF-8")
+	ErrInvalidUtf8 = errors.New("invalid UTF-8")
 	// ErrInvalidCesu8 means that a transformer detected invalid CESU-8 data.
-	ErrInvalidCesu8 = errors.New("Invalid CESU-8")
+	ErrInvalidCesu8 = errors.New("invalid CESU-8")
 )
 
 type utf8ToCesu8Transformer struct{ transform.NopResetter }

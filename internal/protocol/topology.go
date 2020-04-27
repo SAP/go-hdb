@@ -19,67 +19,24 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-type topologyInformation struct {
-	mlo     multiLineOptions
-	_numArg int
-}
+type topologyInformation multiLineOptions
 
-func newTopologyInformation() *topologyInformation {
-	return &topologyInformation{
-		mlo: multiLineOptions{},
-	}
-}
-
-func (o *topologyInformation) String() string {
-	mlo := make([]map[topologyOption]interface{}, len(o.mlo))
-	for i, po := range o.mlo {
+func (o topologyInformation) String() string {
+	mlo := make([]map[topologyOption]interface{}, len(o))
+	for i, po := range o {
 		typedPo := make(map[topologyOption]interface{})
 		for k, v := range po {
 			typedPo[topologyOption(k)] = v
 		}
 		mlo[i] = typedPo
 	}
-	return fmt.Sprintf("%s", mlo)
+	return fmt.Sprintf("options %s", mlo)
 }
 
-func (o *topologyInformation) kind() partKind {
-	return pkTopologyInformation
-}
-
-func (o *topologyInformation) size() int {
-	return o.mlo.size()
-}
-
-func (o *topologyInformation) numArg() int {
-	return len(o.mlo)
-}
-
-func (o *topologyInformation) setNumArg(numArg int) {
-	o._numArg = numArg
-}
-
-func (o *topologyInformation) read(rd *bufio.Reader) error {
-	o.mlo.read(rd, o._numArg)
-
-	if trace {
-		outLogger.Printf("topology options: %v", o)
-	}
-
-	return rd.GetError()
-}
-
-func (o *topologyInformation) write(wr *bufio.Writer) error {
-	for _, m := range o.mlo {
-		wr.WriteInt16(int16(len(m)))
-		o.mlo.write(wr)
-	}
-
-	if trace {
-		outLogger.Printf("topology options: %v", o)
-	}
-
-	return nil
+func (o *topologyInformation) decode(dec *encoding.Decoder, ph *partHeader) error {
+	(*multiLineOptions)(o).decode(dec, ph.numArg())
+	return dec.Error()
 }

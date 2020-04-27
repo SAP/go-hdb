@@ -21,12 +21,37 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/url"
 	"strconv"
 	"sync"
+
+	p "github.com/SAP/go-hdb/internal/protocol"
 )
+
+// Connector default values.
+const (
+	DefaultTimeout      = 300  // Default value connection timeout (300 seconds = 5 minutes).
+	DefaultFetchSize    = 128  // Default value fetchSize.
+	DefaultBulkSize     = 1000 // Default value bulkSize.
+	DefaultLobChunkSize = 4096 // Default value lobChunkSize.
+	DefaultLegacy       = true // Default value legacy.
+)
+
+// Connector minimal values.
+const (
+	minTimeout      = 0   // Minimal timeout value.
+	minFetchSize    = 1   // Minimal fetchSize value.
+	minBulkSize     = 1   // Minimal bulkSize value.
+	minLobChunkSize = 128 // Minimal lobChunkSize
+	// TODO check maxLobChunkSize
+	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
+)
+
+// check if Connector implements session parameter interface.
+var _ p.SessionConfig = (*Connector)(nil)
 
 /*
 SessionVariables maps session variables to their values.
@@ -39,18 +64,25 @@ A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
-	mu                             sync.RWMutex
-	host, username, password       string
-	locale                         string
-	bufferSize, fetchSize, timeout int
-	tlsConfig                      *tls.Config
-	sessionVariables               SessionVariables
+	mu                              sync.RWMutex
+	host, username, password        string
+	locale                          string
+	bufferSize, fetchSize, bulkSize int
+	lobChunkSize                    int32
+	timeout, dfv                    int
+	tlsConfig                       *tls.Config
+	sessionVariables                SessionVariables
+	defaultSchema                   Identifier
+	legacy                          bool
 }
 
 func newConnector() *Connector {
 	return &Connector{
-		fetchSize: DefaultFetchSize,
-		timeout:   DefaultTimeout,
+		fetchSize:    DefaultFetchSize,
+		bulkSize:     DefaultBulkSize,
+		lobChunkSize: DefaultLobChunkSize,
+		timeout:      DefaultTimeout,
+		legacy:       DefaultLegacy,
 	}
 }
 
@@ -63,25 +95,38 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 	return c
 }
 
+const parseDSNErrorText = "parse dsn error"
+
+// ParseDSNError is the error returned in case DSN is invalid.
+type ParseDSNError struct{ err error }
+
+func (e ParseDSNError) Error() string {
+	if err := errors.Unwrap(e.err); err != nil {
+		return fmt.Sprintf("%s: %s", parseDSNErrorText, err.Error())
+	}
+	return parseDSNErrorText
+}
+func (e ParseDSNError) Unwrap() error { return e.err }
+
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsn string) (*Connector, error) {
 	c := newConnector()
 
-	url, err := url.Parse(dsn)
+	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, err
+		return nil, &ParseDSNError{err}
 	}
 
-	c.host = url.Host
+	c.host = u.Host
 
-	if url.User != nil {
-		c.username = url.User.Username()
-		c.password, _ = url.User.Password()
+	if u.User != nil {
+		c.username = u.User.Username()
+		c.password, _ = u.User.Password()
 	}
 
 	var certPool *x509.CertPool
 
-	for k, v := range url.Query() {
+	for k, v := range u.Query() {
 		switch k {
 
 		default:
@@ -172,44 +217,29 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 }
 
 // Host returns the host of the connector.
-func (c *Connector) Host() string {
-	return c.host
-}
+func (c *Connector) Host() string { return c.host }
 
 // Username returns the username of the connector.
-func (c *Connector) Username() string {
-	return c.username
-}
+func (c *Connector) Username() string { return c.username }
 
 // Password returns the password of the connector.
-func (c *Connector) Password() string {
-	return c.password
-}
+func (c *Connector) Password() string { return c.password }
 
 // Locale returns the locale of the connector.
-func (c *Connector) Locale() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.locale
-}
+func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.locale }
 
 /*
 SetLocale sets the locale of the connector.
 
 For more information please see DSNLocale.
 */
-func (c *Connector) SetLocale(locale string) {
-	c.mu.Lock()
-	c.locale = locale
-	c.mu.Unlock()
-}
+func (c *Connector) SetLocale(locale string) { c.mu.Lock(); c.locale = locale; c.mu.Unlock() }
+
+// BufferSize returns the bufferSize of the connector.
+func (c *Connector) BufferSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bufferSize }
 
 // FetchSize returns the fetchSize of the connector.
-func (c *Connector) FetchSize() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.fetchSize
-}
+func (c *Connector) FetchSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.fetchSize }
 
 /*
 SetFetchSize sets the fetchSize of the connector.
@@ -226,12 +256,27 @@ func (c *Connector) SetFetchSize(fetchSize int) error {
 	return nil
 }
 
-// Timeout returns the timeout of the connector.
-func (c *Connector) Timeout() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.timeout
+// BulkSize returns the bulkSize of the connector.
+func (c *Connector) BulkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bulkSize }
+
+/*
+SetBulkSize sets the bulkSize of the connector.
+*/
+func (c *Connector) SetBulkSize(bulkSize int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if bulkSize < minBulkSize {
+		bulkSize = minBulkSize
+	}
+	c.bulkSize = bulkSize
+	return nil
 }
+
+// LobChunkSize returns the lobChunkSize of the connector.
+func (c *Connector) LobChunkSize() int32 { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
+
+// Timeout returns the timeout of the connector.
+func (c *Connector) Timeout() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
 
 /*
 SetTimeout sets the timeout of the connector.
@@ -248,12 +293,20 @@ func (c *Connector) SetTimeout(timeout int) error {
 	return nil
 }
 
-// TLSConfig returns the TLS configuration of the connector.
-func (c *Connector) TLSConfig() *tls.Config {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.tlsConfig
+// Dfv returns the client data format version of the connector.
+func (c *Connector) Dfv() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.dfv }
+
+// SetDfv sets the client data format version of the connector.
+func (c *Connector) SetDfv(dfv int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// TODO check valid dfv
+	c.dfv = dfv
+	return nil
 }
+
+// TLSConfig returns the TLS configuration of the connector.
+func (c *Connector) TLSConfig() *tls.Config { c.mu.RLock(); defer c.mu.RUnlock(); return c.tlsConfig }
 
 // SetTLSConfig sets the TLS configuration of the connector.
 func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) error {
@@ -274,7 +327,40 @@ func (c *Connector) SessionVariables() SessionVariables {
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sessionVariables = sessionVariables
+	c.sessionVariables = make(SessionVariables, len(sessionVariables))
+	for k, v := range sessionVariables {
+		c.sessionVariables[k] = v
+	}
+	return nil
+}
+
+// DefaultSchema returns the database default schema of the connector.
+func (c *Connector) DefaultSchema() Identifier {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.defaultSchema
+}
+
+// SetDefaultSchema sets the database default schema of the connector.
+func (c *Connector) SetDefaultSchema(schema Identifier) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.defaultSchema = schema
+	return nil
+}
+
+// Legacy returns the connector legacy flag.
+func (c *Connector) Legacy() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.legacy
+}
+
+// SetLegacy sets the connector legacy flag.
+func (c *Connector) SetLegacy(b bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.legacy = b
 	return nil
 }
 
@@ -299,11 +385,7 @@ func (c *Connector) BasicAuthDSN() string {
 }
 
 // Connect implements the database/sql/driver/Connector interface.
-func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
-	return newConn(ctx, c)
-}
+func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) { return newConn(ctx, c) }
 
 // Driver implements the database/sql/driver/Connector interface.
-func (c *Connector) Driver() driver.Driver {
-	return drv
-}
+func (c *Connector) Driver() driver.Driver { return drv }

@@ -19,42 +19,21 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-type statementContext struct {
-	options plainOptions
-	_numArg int
-}
+type statementContext plainOptions
 
-func newStatementContext() *statementContext {
-	return &statementContext{
-		options: plainOptions{},
-	}
-}
-
-func (c *statementContext) String() string {
+func (c statementContext) String() string {
 	typedSc := make(map[statementContextType]interface{})
-	for k, v := range c.options {
+	for k, v := range c {
 		typedSc[statementContextType(k)] = v
 	}
-	return fmt.Sprintf("%s", typedSc)
+	return fmt.Sprintf("options %s", typedSc)
 }
 
-func (c *statementContext) kind() partKind {
-	return pkStatementContext
-}
-
-func (c *statementContext) setNumArg(numArg int) {
-	c._numArg = numArg
-}
-
-func (c *statementContext) read(rd *bufio.Reader) error {
-	c.options.read(rd, c._numArg)
-
-	if trace {
-		outLogger.Printf("statement context: %v", c)
-	}
-
-	return rd.GetError()
+func (c *statementContext) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*c = statementContext{} // no reuse of maps - create new one
+	plainOptions(*c).decode(dec, ph.numArg())
+	return dec.Error()
 }

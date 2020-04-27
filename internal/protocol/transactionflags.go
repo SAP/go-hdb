@@ -19,42 +19,21 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-type transactionFlags struct {
-	options plainOptions
-	_numArg int
-}
+type transactionFlags plainOptions
 
-func newTransactionFlags() *transactionFlags {
-	return &transactionFlags{
-		options: plainOptions{},
-	}
-}
-
-func (f *transactionFlags) String() string {
+func (f transactionFlags) String() string {
 	typedSc := make(map[transactionFlagType]interface{})
-	for k, v := range f.options {
+	for k, v := range f {
 		typedSc[transactionFlagType(k)] = v
 	}
-	return fmt.Sprintf("%s", typedSc)
+	return fmt.Sprintf("flags %s", typedSc)
 }
 
-func (f *transactionFlags) kind() partKind {
-	return pkTransactionFlags
-}
-
-func (f *transactionFlags) setNumArg(numArg int) {
-	f._numArg = numArg
-}
-
-func (f *transactionFlags) read(rd *bufio.Reader) error {
-	f.options.read(rd, f._numArg)
-
-	if trace {
-		outLogger.Printf("transaction flags: %v", f)
-	}
-
-	return rd.GetError()
+func (f *transactionFlags) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*f = transactionFlags{} // no reuse of maps - create new one
+	plainOptions(*f).decode(dec, ph.numArg())
+	return dec.Error()
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 SAP SE
+Copyright 2020 SAP SE
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,18 @@ limitations under the License.
 
 package protocol
 
-//go:generate stringer -type=QueryType
+func sizeBuffer(b []byte, size int) []byte {
+	if b == nil || size > cap(b) {
+		return make([]byte, size)
+	}
+	return b[:size]
+}
 
-// QueryType is the type definition for query types supported by this package.
-type QueryType byte
-
-// Query type constants.
-const (
-	QtNone QueryType = iota
-	QtSelect
-	QtProcedureCall
-)
+func resizeBuffer(b1 []byte, size int) []byte {
+	if b1 == nil || cap(b1) < size {
+		b2 := make([]byte, size)
+		copy(b2, b1) // !!! keep content
+		return b2
+	}
+	return b1[:size]
+}

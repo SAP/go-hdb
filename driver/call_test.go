@@ -23,34 +23,16 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"reflect"
 	"testing"
 )
 
-func TestCallEcho(t *testing.T) {
-	const procEcho = `create procedure %[1]s.%[2]s (in idata nvarchar(25), out odata nvarchar(25))
-language SQLSCRIPT as
-begin
-    odata := idata;
-end
-`
-
+func testCallEchoQueryRow(db *sql.DB, proc Identifier, t *testing.T) {
 	const txt = "Hello World!"
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	procedure := RandomIdentifier("procEcho_")
-
-	if _, err := db.Exec(fmt.Sprintf(procEcho, TestSchema, procedure)); err != nil {
-		t.Fatal(err)
-	}
 
 	var out string
 
-	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), txt).Scan(&out); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("call %s(?, ?)", proc), txt).Scan(&out); err != nil {
 		t.Fatal(err)
 	}
 
@@ -60,25 +42,18 @@ end
 
 }
 
-func TestCallBlobEcho(t *testing.T) {
-	const procBlobEcho = `create procedure %[1]s.%[2]s (in idata blob, out odata blob)
+func testCallBlobEcho(db *sql.DB, t *testing.T) {
+	const procBlobEcho = `create procedure %[1]s (in idata nclob, out odata nclob)
 language SQLSCRIPT as
 begin
   odata := idata;
 end
 `
+	const txt = "Hello World - 𝄞𝄞€€!"
 
-	const txt = "Hello World!"
+	proc := RandomIdentifier("procBlobEcho_")
 
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	procedure := RandomIdentifier("procBlobEcho_")
-
-	if _, err := db.Exec(fmt.Sprintf(procBlobEcho, TestSchema, procedure)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(procBlobEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +64,7 @@ end
 	outlob := new(Lob)
 	outlob.SetWriter(b)
 
-	if err := db.QueryRow(fmt.Sprintf("call %s.%s(?, ?)", TestSchema, procedure), inlob).Scan(outlob); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("call %s(?, ?)", proc), inlob).Scan(outlob); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,83 +75,36 @@ end
 	}
 }
 
-type testTableData struct {
-	i int
-	x string
-}
-
-var testTableQuery1Data = []*testTableData{
-	{0, "A"},
-	{1, "B"},
-	{2, "C"},
-	{3, "D"},
-	{4, "E"},
-}
-
-var testTableQuery2Data = []*testTableData{
-	{0, "A"},
-	{1, "B"},
-	{2, "C"},
-	{3, "D"},
-	{4, "E"},
-	{5, "F"},
-	{6, "G"},
-	{7, "H"},
-	{8, "I"},
-	{9, "J"},
-}
-
-var testTableQuery3Data = []*testTableData{
-	{0, "A"},
-	{1, "B"},
-	{2, "C"},
-	{3, "D"},
-	{4, "E"},
-	{5, "F"},
-	{6, "G"},
-	{7, "H"},
-	{8, "I"},
-	{9, "J"},
-	{10, "K"},
-	{11, "L"},
-	{12, "M"},
-	{13, "N"},
-	{14, "O"},
-}
-
-func checkTableQueryData(t *testing.T, db *sql.DB, query string, data []*testTableData) {
-
-	rows, err := db.Query(query)
-	if err != nil {
+func testCallEcho(db *sql.DB, t *testing.T) {
+	const procEcho = `create procedure %[1]s (in idata nvarchar(25), out odata nvarchar(25))
+language SQLSCRIPT as
+begin
+    odata := idata;
+end
+`
+	// create procedure
+	proc := RandomIdentifier("procEcho_")
+	if _, err := db.Exec(fmt.Sprintf(procEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
 
-	j := 0
-	for rows.Next() {
-
-		var i int
-		var x string
-
-		if err := rows.Scan(&i, &x); err != nil {
-			log.Fatal(err)
-		}
-
-		// log.Printf("i %d x %s", i, x)
-		if i != data[j].i {
-			t.Fatalf("value i %d - expected %d", i, data[j].i)
-		}
-		if x != data[j].x {
-			t.Fatalf("value x %s - expected %s", x, data[j].x)
-		}
-		j++
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, proc Identifier, t *testing.T)
+	}{
+		{"QueryRow", testCallEchoQueryRow},
+		//		{"Query", testCallEchoQuery},
+		//		{"Exec", testCallEchoExec},
 	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(TestDB, proc, t)
+		})
 	}
 }
 
-func TestCallTableOut(t *testing.T) {
+func testCallTableOut(db *sql.DB, t *testing.T) {
 	const procTableOut = `create procedure %[1]s.%[2]s (in i integer, out t1 %[1]s.%[3]s, out t2 %[1]s.%[3]s, out t3 %[1]s.%[3]s)
 language SQLSCRIPT as
 begin
@@ -202,41 +130,128 @@ begin
   drop table #test;
 end
 `
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
+	testData := [][]struct {
+		i int
+		x string
+	}{
+		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}},
+		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}},
+		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}, {10, "K"}, {11, "L"}, {12, "M"}, {13, "N"}, {14, "O"}},
 	}
-	defer db.Close()
+
+	stringType := reflect.TypeOf((*string)(nil)).Elem()
+	rowsType := reflect.TypeOf((*sql.Rows)(nil)).Elem()
+
+	createObj := func(t reflect.Type) interface{} { return reflect.New(t).Interface() }
+
+	createString := func() interface{} { return createObj(stringType) }
+	createRows := func() interface{} { return createObj(rowsType) }
+
+	testCheck := func(testSet int, rows *sql.Rows, t *testing.T) {
+		j := 0
+		for rows.Next() {
+
+			var i int
+			var x string
+
+			if err := rows.Scan(&i, &x); err != nil {
+				log.Fatal(err)
+			}
+
+			// log.Printf("i %d x %s", i, x)
+			if i != testData[testSet][j].i {
+				t.Fatalf("value i %d - expected %d", i, testData[testSet][j].i)
+			}
+			if x != testData[testSet][j].x {
+				t.Fatalf("value x %s - expected %s", x, testData[testSet][j].x)
+			}
+			j++
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	testCall := func(db *sql.DB, proc Identifier, legacy bool, targets []interface{}, t *testing.T) {
+		rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, proc), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		if !rows.Next() {
+			log.Fatal(rows.Err())
+		}
+
+		if err := rows.Scan(targets...); err != nil {
+			log.Fatal(err)
+		}
+
+		for i, target := range targets {
+			if legacy { // read table parameter by separate query
+				rows, err := db.Query(*target.(*string))
+				if err != nil {
+					t.Fatal(err)
+				}
+				testCheck(i, rows, t)
+				rows.Close()
+			} else { // use rows directly
+				testCheck(i, target.(*sql.Rows), t)
+			}
+		}
+	}
 
 	tableType := RandomIdentifier("tt2_")
-	procedure := RandomIdentifier("procTableOut_")
+	proc := RandomIdentifier("procTableOut_")
 
+	// create table type
 	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, err := db.Exec(fmt.Sprintf(procTableOut, TestSchema, procedure, tableType)); err != nil {
+	// create procedure
+	if _, err := db.Exec(fmt.Sprintf(procTableOut, TestSchema, proc, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
-	var tableQuery1, tableQuery2, tableQuery3 string
-
-	rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, procedure), 1)
+	connector, err := NewDSNConnector(TestDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	connector.SetDefaultSchema(TestSchema)
 
-	if !rows.Next() {
-		log.Fatal(rows.Err())
+	tests := []struct {
+		name    string
+		legacy  bool
+		fct     func(db *sql.DB, proc Identifier, legacy bool, targets []interface{}, t *testing.T)
+		targets []interface{}
+	}{
+		{"tableOutRef", true, testCall, []interface{}{createString(), createString(), createString()}},
+		{"tableOutRows", false, testCall, []interface{}{createRows(), createRows(), createRows()}},
 	}
-	if err := rows.Scan(&tableQuery1, &tableQuery2, &tableQuery3); err != nil {
-		log.Fatal(err)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			connector.SetLegacy(test.legacy)
+			db := sql.OpenDB(connector)
+			defer db.Close()
+			test.fct(db, proc, test.legacy, test.targets, t)
+		})
+	}
+}
+
+func TestCall(t *testing.T) {
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, t *testing.T)
+	}{
+		{"echo", testCallEcho},
+		{"blobEcho", testCallBlobEcho},
+		{"tableOut", testCallTableOut},
 	}
 
-	checkTableQueryData(t, db, tableQuery1, testTableQuery1Data)
-	checkTableQueryData(t, db, tableQuery2, testTableQuery2Data)
-	checkTableQueryData(t, db, tableQuery3, testTableQuery3Data)
-
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(TestDB, t)
+		})
+	}
 }

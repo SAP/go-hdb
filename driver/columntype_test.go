@@ -25,89 +25,68 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-type testColumnType struct {
-	sqlType string
-	length  int64
-
-	varLength   bool
-	sizeable    bool
-	decimalType bool
-
-	typeName  string
-	precision int64
-	scale     int64
-	nullable  bool
-	scanType  reflect.Type
-
-	value interface{}
-}
-
-func dataType(dt string) string {
-	if driverDataFormatVersion == 1 {
-		switch dt {
-		case "DAYDATE":
-			return "DATE"
-		case "SECONDTIME":
-			return "TIME"
-		case "LONGDATE", "SECONDDATE":
-			return "TIMESTAMP"
-		}
-	}
-	return dt
-}
-
-func TestColumnType(t *testing.T) {
-
+func testColumnType(connector *Connector, dataType func(string, int) string, dfv int, t *testing.T) {
 	var (
 		testTime    = time.Now()
 		testDecimal = (*Decimal)(big.NewRat(1, 1))
 		testString  = "HDB column type"
 		testBinary  = []byte{0x00, 0x01, 0x02}
-		testBuffer  = bytes.NewBuffer(testBinary)
-		testLob     = new(Lob)
 	)
 
-	testLob.SetReader(testBuffer)
+	testColumnTypeData := []struct {
+		sqlType string
+		length  int64
 
-	var testColumnTypeData = []testColumnType{
-		{"tinyint", 0, false, false, false, "TINYINT", 0, 0, true, scanTypeTinyint, 1},
-		{"smallint", 0, false, false, false, "SMALLINT", 0, 0, true, scanTypeSmallint, 42},
-		{"integer", 0, false, false, false, "INTEGER", 0, 0, true, scanTypeInteger, 4711},
-		{"bigint", 0, false, false, false, "BIGINT", 0, 0, true, scanTypeBigint, 68000},
-		{"decimal", 0, false, false, true, "DECIMAL", 34, 32767, true, scanTypeDecimal, testDecimal},
-		{"real", 0, false, false, false, "REAL", 0, 0, true, scanTypeReal, 1.0},
-		{"double", 0, false, false, false, "DOUBLE", 0, 0, true, scanTypeDouble, 3.14},
-		{"char", 30, true, false, false, "CHAR", 0, 0, true, scanTypeString, testString},
-		{"varchar", 30, true, false, false, "VARCHAR", 0, 0, true, scanTypeString, testString},
-		{"nchar", 20, true, false, false, "NCHAR", 0, 0, true, scanTypeString, testString},
-		{"nvarchar", 20, true, false, false, "NVARCHAR", 0, 0, true, scanTypeString, testString},
-		{"binary", 10, true, false, false, "BINARY", 0, 0, true, scanTypeBytes, testBinary},
-		{"varbinary", 10, true, false, false, "VARBINARY", 0, 0, true, scanTypeBytes, testBinary},
-		{"date", 0, false, false, false, dataType("DAYDATE"), 0, 0, true, scanTypeTime, testTime},
-		{"time", 0, false, false, false, dataType("SECONDTIME"), 0, 0, true, scanTypeTime, testTime},
-		{"timestamp", 0, false, false, false, dataType("LONGDATE"), 0, 0, true, scanTypeTime, testTime},
-		{"clob", 0, false, false, false, "CLOB", 0, 0, true, scanTypeLob, testLob},
-		{"nclob", 0, false, false, false, "NCLOB", 0, 0, true, scanTypeLob, testLob},
-		{"blob", 0, false, false, false, "BLOB", 0, 0, true, scanTypeLob, testLob},
-		{"boolean", 0, false, false, false, "TINYINT", 0, 0, true, scanTypeTinyint, false},                // hdb gives TINYINT back - not BOOLEAN
-		{"smalldecimal", 0, false, false, true, "DECIMAL", 16, 32767, true, scanTypeDecimal, testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
+		varLength   bool
+		decimalType bool
+
+		typeName  string
+		precision int64
+		scale     int64
+		nullable  bool
+		scanType  reflect.Type
+
+		value interface{}
+	}{
+		{"tinyint", 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), 1},
+		{"smallint", 0, false, false, "SMALLINT", 0, 0, true, p.DtSmallint.ScanType(), 42},
+		{"integer", 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
+		{"bigint", 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
+		{"decimal", 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal},
+		{"real", 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
+		{"double", 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
+		{"char", 30, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"nchar", 20, true, false, "NCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"nvarchar", 20, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"binary", 10, true, false, "BINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+		{"date", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"time", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"timestamp", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"clob", 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"nclob", 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"blob", 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"boolean", 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), false},                // hdb gives TINYINT back - not BOOLEAN
+		{"smalldecimal", 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
 		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},             // hdb gives NCLOB back - not TEXT
-		//{"shorttext", 15, true, false, "NVARCHAR", 0, 0, true, testString},  // hdb gives NVARCHAR back - not SHORTTEXT
-		//{"alphanum", 15, true, false, "NVARCHAR", 0, 0, true, testString},   // hdb gives NVARCHAR back - not ALPHANUM
-		{"longdate", 0, false, false, false, dataType("LONGDATE"), 0, 0, true, scanTypeTime, testTime},
-		{"seconddate", 0, false, false, false, dataType("SECONDDATE"), 0, 0, true, scanTypeTime, testTime},
-		{"daydate", 0, false, false, false, dataType("DAYDATE"), 0, 0, true, scanTypeTime, testTime},
-		{"secondtime", 0, false, false, false, dataType("SECONDTIME"), 0, 0, true, scanTypeTime, testTime},
+		{"shorttext", 15, true, false, dataType("SHORTTEXT", dfv), 0, 0, true, p.DtString.ScanType(), testString},
+		{"alphanum", 15, true, false, dataType("ALPHANUM", dfv), 0, 0, true, p.DtString.ScanType(), testString},
+		{"longdate", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"seconddate", 0, false, false, dataType("SECONDDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"daydate", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"secondtime", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
 
 		// not nullable
-		{"tinyint", 0, false, false, false, "TINYINT", 0, 0, false, scanTypeTinyint, 42},
-		{"nvarchar", 25, true, false, false, "NVARCHAR", 0, 0, false, scanTypeString, testString},
+		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, p.DtTinyint.ScanType(), 42},
+		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, p.DtString.ScanType(), testString},
 	}
 
 	// text is only supported for column table
-
 	var createSQL bytes.Buffer
 	table := RandomIdentifier("testColumnType_")
 
@@ -128,10 +107,7 @@ func TestColumnType(t *testing.T) {
 	}
 	createSQL.WriteString(")")
 
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if _, err := db.Exec(createSQL.String()); err != nil {
@@ -209,5 +185,51 @@ func TestColumnType(t *testing.T) {
 		if ct.ScanType() != td.scanType {
 			t.Fatalf("index %d sql type %s scan type %v - expected %v", i, td.sqlType, ct.ScanType(), td.scanType)
 		}
+	}
+}
+
+func TestColumnType(t *testing.T) {
+
+	const (
+		dfvBaseline = 1 // baseline data format version.
+		dfvSPS06    = 4 //see docu
+		dfvBINTEXT  = 6
+		dfvDefault  = dfvSPS06
+	)
+
+	dataType := func(dt string, dfv int) string {
+		if dfv == dfvBaseline {
+			switch dt {
+			case "DAYDATE":
+				return "DATE"
+			case "SECONDTIME":
+				return "TIME"
+			case "LONGDATE", "SECONDDATE":
+				return "TIMESTAMP"
+			case "SHORTTEXT", "ALPHANUM":
+				return "NVARCHAR"
+			}
+		}
+		return dt
+	}
+
+	var testSet []int
+	if testing.Short() {
+		testSet = []int{dfvDefault}
+	} else {
+		testSet = []int{dfvBaseline, dfvSPS06, dfvBINTEXT}
+	}
+
+	connector, err := NewDSNConnector(TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dfv := range testSet {
+		name := fmt.Sprintf("dfv_%d", dfv)
+		t.Run(name, func(t *testing.T) {
+			connector.SetDfv(dfv)
+			testColumnType(connector, dataType, dfv, t)
+		})
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -32,60 +33,6 @@ import (
 	"time"
 	"unicode/utf8"
 )
-
-func TestTinyint(t *testing.T) {
-	testDatatype(t, "tinyint", 0, true,
-		uint8(minTinyint),
-		uint8(maxTinyint),
-		sql.NullInt64{Valid: false, Int64: minTinyint},
-		sql.NullInt64{Valid: true, Int64: maxTinyint},
-	)
-}
-
-func TestSmallint(t *testing.T) {
-	testDatatype(t, "smallint", 0, true,
-		int16(minSmallint),
-		int16(maxSmallint),
-		sql.NullInt64{Valid: false, Int64: minSmallint},
-		sql.NullInt64{Valid: true, Int64: maxSmallint},
-	)
-}
-
-func TestInteger(t *testing.T) {
-	testDatatype(t, "integer", 0, true,
-		int32(minInteger),
-		int32(maxInteger),
-		sql.NullInt64{Valid: false, Int64: minInteger},
-		sql.NullInt64{Valid: true, Int64: maxInteger},
-	)
-}
-
-func TestBigint(t *testing.T) {
-	testDatatype(t, "bigint", 0, true,
-		int64(minBigint),
-		int64(maxBigint),
-		sql.NullInt64{Valid: false, Int64: minBigint},
-		sql.NullInt64{Valid: true, Int64: maxBigint},
-	)
-}
-
-func TestReal(t *testing.T) {
-	testDatatype(t, "real", 0, true,
-		float32(-maxReal),
-		float32(maxReal),
-		sql.NullFloat64{Valid: false, Float64: -maxReal},
-		sql.NullFloat64{Valid: true, Float64: maxReal},
-	)
-}
-
-func TestDouble(t *testing.T) {
-	testDatatype(t, "double", 0, true,
-		float64(-maxDouble),
-		float64(maxDouble),
-		sql.NullFloat64{Valid: false, Float64: -maxDouble},
-		sql.NullFloat64{Valid: true, Float64: maxDouble},
-	)
-}
 
 var testStringDataASCII = []interface{}{
 	"Hello HDB",
@@ -108,30 +55,6 @@ var testStringData = []interface{}{
 	sql.NullString{Valid: true, String: "Hello HDB"},
 }
 
-/*
-using unicode (CESU-8) data for char HDB
-- successful insert into table
-- but query table returns
-  SQL HdbError 7 - feature not supported: invalid character encoding: ...
---> use ASCII test data only
-surprisingly: varchar works with unicode characters
-*/
-func TestChar(t *testing.T) {
-	testDatatype(t, "char", 40, true, testStringDataASCII...)
-}
-
-func TestVarchar(t *testing.T) {
-	testDatatype(t, "varchar", 40, false, testStringData...)
-}
-
-func TestNChar(t *testing.T) {
-	testDatatype(t, "nchar", 20, true, testStringData...)
-}
-
-func TestNVarchar(t *testing.T) {
-	testDatatype(t, "nvarchar", 20, false, testStringData...)
-}
-
 var testBinaryData = []interface{}{
 	[]byte("Hello HDB"),
 	[]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
@@ -140,47 +63,11 @@ var testBinaryData = []interface{}{
 	NullBytes{Valid: true, Bytes: []byte("Hello HDB")},
 }
 
-func TestBinary(t *testing.T) {
-	testDatatype(t, "binary", 20, true, testBinaryData...)
-}
-
-func TestVarbinary(t *testing.T) {
-	testDatatype(t, "varbinary", 20, false, testBinaryData...)
-}
-
 var testTimeData = []interface{}{
 	time.Now(),
 	time.Date(2000, 12, 31, 23, 59, 59, 999999999, time.UTC),
 	sql.NullTime{Valid: false, Time: time.Now()},
 	sql.NullTime{Valid: true, Time: time.Now()},
-}
-
-func TestDate(t *testing.T) {
-	testDatatype(t, "date", 0, true, testTimeData...)
-}
-
-func TestTime(t *testing.T) {
-	testDatatype(t, "time", 0, true, testTimeData...)
-}
-
-func TestTimestamp(t *testing.T) {
-	testDatatype(t, "timestamp", 0, true, testTimeData...)
-}
-
-func TestLongdate(t *testing.T) {
-	testDatatype(t, "longdate", 0, true, testTimeData...)
-}
-
-func TestSeconddate(t *testing.T) {
-	testDatatype(t, "seconddate", 0, true, testTimeData...)
-}
-
-func TestDaydate(t *testing.T) {
-	testDatatype(t, "daydate", 0, true, testTimeData...)
-}
-
-func TestSecondtime(t *testing.T) {
-	testDatatype(t, "secondtime", 0, true, testTimeData...)
 }
 
 var testDecimalData = []interface{}{
@@ -197,78 +84,17 @@ var testDecimalData = []interface{}{
 	NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
 }
 
-func TestDecimal(t *testing.T) {
-	testDatatype(t, "decimal", 0, true, testDecimalData...)
-}
-
-func TestBoolean(t *testing.T) {
-	testDatatype(t, "boolean", 0, true,
-		true,
-		false,
-		sql.NullBool{Valid: false, Bool: true},
-		sql.NullBool{Valid: true, Bool: false},
-	)
-}
-
-func TestClob(t *testing.T) {
-	testInitLobFiles(t)
-	testLobDataASCII := make([]interface{}, 0, len(testLobFiles))
-	first := true
-	for _, f := range testLobFiles {
-		if f.isASCII {
-			if first {
-				testLobDataASCII = append(testLobDataASCII, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-				testLobDataASCII = append(testLobDataASCII, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-				first = false
-			}
-			testLobDataASCII = append(testLobDataASCII, Lob{rd: bytes.NewReader(f.content)})
-		}
-	}
-	testDatatype(t, "clob", 0, true, testLobDataASCII...)
-}
-
-func TestNclob(t *testing.T) {
-	testInitLobFiles(t)
-	testLobData := make([]interface{}, 0, len(testLobFiles)+2)
-	for i, f := range testLobFiles {
-		if i == 0 {
-			testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-			testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-		}
-		testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
-	}
-	testDatatype(t, "nclob", 0, true, testLobData...)
-}
-
-func TestBlob(t *testing.T) {
-	testInitLobFiles(t)
-	testLobData := make([]interface{}, 0, len(testLobFiles)+2)
-	for i, f := range testLobFiles {
-		if i == 0 {
-			testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-			testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-		}
-		testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
-	}
-	testDatatype(t, "blob", 0, true, testLobData...)
-}
-
 //
-func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+func testDatatype(t *testing.T, db *sql.DB, tsc func(t1, t2 time.Time) bool, dataType string, dataSize int, fixedSize bool, testData ...interface{}) {
 
 	table := RandomIdentifier(fmt.Sprintf("%s_", dataType))
 
 	if dataSize == 0 {
-		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s)", TestSchema, table, dataType)); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, x %s)", table, dataType)); err != nil {
 			t.Fatal(err)
 		}
 	} else {
-		if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, x %s(%d))", TestSchema, table, dataType, dataSize)); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, x %s(%d))", table, dataType, dataSize)); err != nil {
 			t.Fatal(err)
 		}
 
@@ -281,7 +107,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s.%s values(?, ?)", TestSchema, table))
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(?, ?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +133,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 	size := len(testData)
 	var i int
 
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", TestSchema, table)).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,16 +141,11 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 		t.Fatalf("rows %d - expected %d", i, size)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s.%s order by i", TestSchema, table))
+	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
-
-	var timestampCheck = equalLongdate
-	if driverDataFormatVersion == 1 {
-		timestampCheck = equalTimestamp
-	}
 
 	i = 0
 	for rows.Next() {
@@ -388,7 +209,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			} else {
-				if bytes.Compare(*out, in.([]byte)) != 0 {
+				if !bytes.Equal(*out, in.([]byte)) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			}
@@ -408,7 +229,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "timestamp", "longdate":
-				if !timestampCheck(*out, in) {
+				if !tsc(*out, in) {
 					t.Fatalf("%d value %v - expected %v", i, *out, in)
 				}
 			case "seconddate":
@@ -501,7 +322,7 @@ func testDatatype(t *testing.T, dataType string, dataSize int, fixedSize bool, t
 						t.Fatalf("%d value %v - expected %v", i, *out, in)
 					}
 				case "timestamp", "longdate":
-					if !timestampCheck(out.Time, in.Time) {
+					if !tsc(out.Time, in.Time) {
 						t.Fatalf("%d value %v - expected %v", i, *out, in)
 					}
 				case "seconddate":
@@ -624,7 +445,7 @@ func compareStringFixSize(in, out string) bool {
 }
 
 func compareBytesFixSize(in, out []byte) bool {
-	if bytes.Compare(in, out[:len(in)]) != 0 {
+	if !bytes.Equal(in, out[:len(in)]) {
 		return false
 	}
 	for _, r := range out[len(in):] {
@@ -658,4 +479,287 @@ func equalTimestamp(t1, t2 time.Time) bool {
 func equalLongdate(t1, t2 time.Time) bool {
 	//HDB: nanosecond 7-digit precision
 	return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
+}
+
+func TestDataType(t *testing.T) {
+
+	const (
+		dfvBaseline = 1 // baseline data format version.
+		dfvSPS06    = 4 //see docu
+		dfvBINTEXT  = 6
+		dfvDefault  = dfvSPS06
+	)
+
+	const (
+		minTinyint  = 0
+		maxTinyint  = math.MaxUint8
+		minSmallint = math.MinInt16
+		maxSmallint = math.MaxInt16
+		minInteger  = math.MinInt32
+		maxInteger  = math.MaxInt32
+		minBigint   = math.MinInt64
+		maxBigint   = math.MaxInt64
+		maxReal     = math.MaxFloat32
+		maxDouble   = math.MaxFloat64
+	)
+
+	testFcts := []struct {
+		name string
+		fct  func(*sql.DB, func(t1, t2 time.Time) bool, *testing.T)
+	}{
+		{
+			"tinyInt",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "tinyint", 0, true,
+					uint8(minTinyint),
+					uint8(maxTinyint),
+					sql.NullInt64{Valid: false, Int64: minTinyint},
+					sql.NullInt64{Valid: true, Int64: maxTinyint},
+				)
+			},
+		},
+		{
+			"smallInt",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "smallint", 0, true,
+					int16(minSmallint),
+					int16(maxSmallint),
+					sql.NullInt64{Valid: false, Int64: minSmallint},
+					sql.NullInt64{Valid: true, Int64: maxSmallint},
+				)
+			},
+		},
+		{
+			"integer",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "integer", 0, true,
+					int32(minInteger),
+					int32(maxInteger),
+					sql.NullInt64{Valid: false, Int64: minInteger},
+					sql.NullInt64{Valid: true, Int64: maxInteger},
+				)
+			},
+		},
+		{
+			"bigint",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "bigint", 0, true,
+					int64(minBigint),
+					int64(maxBigint),
+					sql.NullInt64{Valid: false, Int64: minBigint},
+					sql.NullInt64{Valid: true, Int64: maxBigint},
+				)
+			},
+		},
+		{
+			"real",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "real", 0, true,
+					float32(-maxReal),
+					float32(maxReal),
+					sql.NullFloat64{Valid: false, Float64: -maxReal},
+					sql.NullFloat64{Valid: true, Float64: maxReal},
+				)
+			},
+		},
+		{
+			"double",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "double", 0, true,
+					float64(-maxDouble),
+					float64(maxDouble),
+					sql.NullFloat64{Valid: false, Float64: -maxDouble},
+					sql.NullFloat64{Valid: true, Float64: maxDouble},
+				)
+			},
+		},
+		{
+			/*
+			 using unicode (CESU-8) data for char HDB
+			 - successful insert into table
+			 - but query table returns
+			   SQL HdbError 7 - feature not supported: invalid character encoding: ...
+			 --> use ASCII test data only
+			 surprisingly: varchar works with unicode characters
+			*/
+			"char",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "char", 40, true, testStringDataASCII...)
+			},
+		},
+		{
+			"varchar",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "varchar", 40, false, testStringData...)
+			},
+		},
+		{
+			"nchar",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "nchar", 20, true, testStringData...)
+			},
+		},
+		{
+			"nvarchar",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "nvarchar", 20, false, testStringData...)
+			},
+		},
+		{
+			"binary",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "binary", 20, true, testBinaryData...)
+			},
+		},
+		{
+			"varbinary",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "varbinary", 20, false, testBinaryData...)
+			},
+		},
+		{
+			"date",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "date", 0, true, testTimeData...)
+			},
+		},
+		{
+			"time",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "time", 0, true, testTimeData...)
+			},
+		},
+		{
+			"timestamp",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "timestamp", 0, true, testTimeData...)
+			},
+		},
+		{
+			"longdate",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "longdate", 0, true, testTimeData...)
+			},
+		},
+		{
+			"seconddate",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "seconddate", 0, true, testTimeData...)
+			},
+		},
+		{
+			"daydate",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "daydate", 0, true, testTimeData...)
+			},
+		},
+		{
+			"secondtime",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "secondtime", 0, true, testTimeData...)
+			},
+		},
+		{
+			"decimal",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "decimal", 0, true, testDecimalData...)
+			},
+		},
+		{
+			"boolean",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testDatatype(t, db, tsc, "boolean", 0, true,
+					true,
+					false,
+					sql.NullBool{Valid: false, Bool: true},
+					sql.NullBool{Valid: true, Bool: false},
+				)
+			},
+		},
+		{
+			"clob",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testInitLobFiles(t)
+				testLobDataASCII := make([]interface{}, 0, len(testLobFiles))
+				first := true
+				for _, f := range testLobFiles {
+					if f.isASCII {
+						if first {
+							testLobDataASCII = append(testLobDataASCII, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+							testLobDataASCII = append(testLobDataASCII, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+							first = false
+						}
+						testLobDataASCII = append(testLobDataASCII, Lob{rd: bytes.NewReader(f.content)})
+					}
+				}
+				testDatatype(t, db, tsc, "clob", 0, true, testLobDataASCII...)
+			},
+		},
+		{
+			"nclob",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testInitLobFiles(t)
+				testLobData := make([]interface{}, 0, len(testLobFiles)+2)
+				for i, f := range testLobFiles {
+					if i == 0 {
+						testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+						testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+					}
+					testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
+				}
+				testDatatype(t, db, tsc, "nclob", 0, true, testLobData...)
+			},
+		},
+		{
+			"blob",
+			func(db *sql.DB, tsc func(t1, t2 time.Time) bool, t *testing.T) {
+				testInitLobFiles(t)
+				testLobData := make([]interface{}, 0, len(testLobFiles)+2)
+				for i, f := range testLobFiles {
+					if i == 0 {
+						testLobData = append(testLobData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+						testLobData = append(testLobData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+					}
+					testLobData = append(testLobData, Lob{rd: bytes.NewReader(f.content)})
+				}
+				testDatatype(t, db, tsc, "blob", 0, true, testLobData...)
+			},
+		},
+	}
+
+	var testSet []int
+	if testing.Short() {
+		testSet = []int{dfvDefault}
+	} else {
+		testSet = []int{dfvBaseline, dfvSPS06, dfvBINTEXT}
+	}
+
+	connector, err := NewDSNConnector(TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector.SetDefaultSchema(TestSchema)
+
+	for _, dfv := range testSet {
+		name := fmt.Sprintf("dfv %d", dfv)
+		t.Run(name, func(t *testing.T) {
+			connector.SetDfv(dfv)
+			db := sql.OpenDB(connector)
+			defer db.Close()
+
+			var tsc func(t1, t2 time.Time) bool
+
+			if dfv == dfvBaseline {
+				tsc = equalTimestamp
+			} else {
+				tsc = equalLongdate
+			}
+
+			for _, testFct := range testFcts {
+				t.Run(testFct.name, func(t *testing.T) {
+					testFct.fct(db, tsc, t)
+				})
+			}
+		})
+	}
 }

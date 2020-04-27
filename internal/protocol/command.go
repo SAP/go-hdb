@@ -17,31 +17,18 @@ limitations under the License.
 package protocol
 
 import (
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
 
 // cesu8 command
 type command []byte
 
-func (c command) kind() partKind {
-	return pkCommand
+func (c command) String() string { return string(c) }
+func (c command) size() int      { return cesu8.Size(c) }
+func (c *command) decode(dec *encoding.Decoder, ph *partHeader) error {
+	*c = sizeBuffer(*c, int(ph.bufferLength))
+	*c = dec.CESU8Bytes(len(*c))
+	return dec.Error()
 }
-
-func (c command) size() (int, error) {
-	return cesu8.Size(c), nil
-}
-
-func (c command) numArg() int {
-	return 1
-}
-
-func (c command) write(wr *bufio.Writer) error {
-	wr.WriteCesu8(c)
-
-	if trace {
-		outLogger.Printf("command: %s", c)
-	}
-
-	return nil
-}
+func (c command) encode(enc *encoding.Encoder) error { enc.CESU8Bytes(c); return nil }

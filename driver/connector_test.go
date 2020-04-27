@@ -25,18 +25,7 @@ import (
 	goHdbDriver "github.com/SAP/go-hdb/driver"
 )
 
-func TestConnector(t *testing.T) {
-	dsnConnector, err := goHdbDriver.NewDSNConnector(goHdbDriver.TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testConnector(t, dsnConnector)
-
-	basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
-	testConnector(t, basicAuthConnector)
-}
-
-func testConnector(t *testing.T, connector driver.Connector) {
+func testConnector(connector driver.Connector, t *testing.T) {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
@@ -53,19 +42,9 @@ func testConnector(t *testing.T, connector driver.Connector) {
 	}
 }
 
-func TestSessionVariables(t *testing.T) {
-	ctor, err := goHdbDriver.NewDSNConnector(goHdbDriver.TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// set session variables
-	sv := goHdbDriver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
-	if err := ctor.SetSessionVariables(sv); err != nil {
-		t.Fatal(err)
-	}
-
+func testSessionVariables(connector driver.Connector, sv goHdbDriver.SessionVariables, t *testing.T) {
 	// check session variables
-	db := sql.OpenDB(ctor)
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	var val string
@@ -81,4 +60,28 @@ func TestSessionVariables(t *testing.T) {
 			t.Fatalf("session variable value for %s is %s - expected %s", k, val, v)
 		}
 	}
+}
+
+func TestConnector(t *testing.T) {
+	dsnConnector, err := goHdbDriver.NewDSNConnector(goHdbDriver.TestDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("dsnConnector", func(t *testing.T) {
+		testConnector(dsnConnector, t)
+	})
+
+	basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
+	t.Run("basicAuthConnector", func(t *testing.T) {
+		testConnector(basicAuthConnector, t)
+	})
+
+	// set session variables
+	sv := goHdbDriver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
+	if err := dsnConnector.SetSessionVariables(sv); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("sessionVariables", func(t *testing.T) {
+		testSessionVariables(dsnConnector, sv, t)
+	})
 }

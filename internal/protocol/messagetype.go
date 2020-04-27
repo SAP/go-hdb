@@ -20,6 +20,7 @@ package protocol
 
 type messageType int8
 
+//nolint
 const (
 	mtNil             messageType = 0
 	mtExecuteDirect   messageType = 2

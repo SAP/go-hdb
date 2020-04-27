@@ -28,43 +28,11 @@ const (
 	bulkSamples = 10000
 )
 
-func TestCheckBulkInsert(t *testing.T) {
+// TestBulkFrame
+func testBulkFrame(db *sql.DB, cmd string, insertFct func(stmt *sql.Stmt), t *testing.T) {
 
-	var data = []struct {
-		bulkSQL    string
-		sql        string
-		bulkInsert bool
-	}{
-		{"bulk insert", "insert", true},
-		{"   bulk   insert  ", "insert  ", true},
-		{"BuLk iNsErT", "iNsErT", true},
-		{"   bUlK   InSeRt  ", "InSeRt  ", true},
-		{"  bulkinsert  ", "  bulkinsert  ", false},
-		{"bulk", "bulk", false},
-		{"insert", "insert", false},
-	}
-
-	for i, d := range data {
-		sql, bulkInsert := checkBulkInsert(d.bulkSQL)
-		if sql != d.sql {
-			t.Fatalf("test %d failed: bulk insert flag %t - %t expected", i, bulkInsert, d.bulkInsert)
-		}
-		if sql != d.sql {
-			t.Fatalf("test %d failed: sql %s - %s expected", i, sql, d.sql)
-		}
-	}
-}
-
-// TestBulkInsert
-func TestBulkInsert(t *testing.T) {
-
-	tmpTableName := Identifier("#tmpTable")
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	// 1. prepare
+	tmpTableName := RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
 	tx, err := db.Begin()
@@ -77,22 +45,16 @@ func TestBulkInsert(t *testing.T) {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("bulk insert into %s values (?)", tmpTableName))
+	stmt, err := tx.Prepare(fmt.Sprintf("%s %s values (?)", cmd, tmpTableName))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
 	defer stmt.Close()
 
-	for i := 0; i < bulkSamples; i++ {
-		if _, err := stmt.Exec(i); err != nil {
-			t.Fatalf("insert failed: %s", err)
-		}
-	}
-	// final flush
-	if _, err := stmt.Exec(); err != nil {
-		t.Fatalf("final insert (flush) failed: %s", err)
-	}
+	// 2. call insert function
+	insertFct(stmt)
 
+	// 3. check
 	i := 0
 	err = tx.QueryRow(fmt.Sprintf("select count(*) from %s", tmpTableName)).Scan(&i)
 	if err != nil {
@@ -130,21 +92,15 @@ func TestBulkInsert(t *testing.T) {
 }
 
 // TestBulkInsertDuplicates
-func TestBulkInsertDuplicates(t *testing.T) {
-
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+func testBulkInsertDuplicates(db *sql.DB, t *testing.T) {
 
 	table := RandomIdentifier("bulkInsertDuplicates")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (k integer primary key, v integer)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("bulk insert into %s.%s values (?,?)", TestSchema, table))
+	stmt, err := db.Prepare(fmt.Sprintf("bulk insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -186,5 +142,66 @@ func TestBulkInsertDuplicates(t *testing.T) {
 		if dbError.StmtNo() != stmtNo[i] {
 			t.Fatalf("statement number: %d - %d expected", dbError.StmtNo(), stmtNo[i])
 		}
+	}
+}
+
+func testBulk(db *sql.DB, t *testing.T) {
+	tests := []struct {
+		name      string
+		cmd       string
+		insertFct func(stmt *sql.Stmt)
+	}{
+		{
+			"bulkInsertViaCommand",
+			"bulk insert into",
+			func(stmt *sql.Stmt) {
+				for i := 0; i < bulkSamples; i++ {
+					if _, err := stmt.Exec(i); err != nil {
+						t.Fatalf("insert failed: %s", err)
+					}
+				}
+				// final flush
+				if _, err := stmt.Exec(); err != nil {
+					t.Fatalf("final insert (flush) failed: %s", err)
+				}
+			},
+		},
+		{
+			"bulkInsertViaParameter",
+			"insert into",
+			func(stmt *sql.Stmt) {
+				prm := NoFlush
+				for i := 0; i < bulkSamples; i++ {
+					if i == (bulkSamples - 1) {
+						prm = Flush
+					}
+					if _, err := stmt.Exec(i, prm); err != nil {
+						t.Fatalf("insert failed: %s", err)
+					}
+				}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testBulkFrame(db, test.cmd, test.insertFct, t)
+		})
+	}
+}
+
+func TestBulk(t *testing.T) {
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, t *testing.T)
+	}{
+		{"testBulk", testBulk},
+		{"testBulkInsertDuplicates", testBulkInsertDuplicates},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(TestDB, t)
+		})
 	}
 }

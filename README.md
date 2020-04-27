@@ -52,4 +52,4 @@ go test -dsn hdb://user:password@host:port
 
 ## Todo
 
-* Additional Authentication Methods (actually only basic authentication is supported).
+* Additional Authentication Methods (currently only basic authentication is supported).

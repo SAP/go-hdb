@@ -28,3 +28,6 @@ _testmain.go
 *.prof
 todo*.*
 *.pdf
+*.txt
+*.debug
+recordings

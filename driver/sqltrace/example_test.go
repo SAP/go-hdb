@@ -21,6 +21,6 @@ import (
 )
 
 func Example() {
-	sqltrace.SetOn(true)  //set SQL trace output active
-	sqltrace.SetOn(false) //set SQL trace output inactive
+	sqltrace.SetOn(true)  // set SQL trace output active
+	sqltrace.SetOn(false) // set SQL trace output inactive
 }

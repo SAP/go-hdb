@@ -17,8 +17,11 @@ limitations under the License.
 package driver
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"io"
+
+	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 // A Lob is the driver representation of a database large object field.
@@ -36,11 +39,21 @@ func NewLob(rd io.Reader, wr io.Writer) *Lob {
 	return &Lob{rd: rd, wr: wr}
 }
 
+// Reader returns the io.Reader of the Lob.
+func (l Lob) Reader() io.Reader {
+	return l.rd
+}
+
 // SetReader sets the io.Reader source for a lob field to be written to database
 // and return *Lob, to enable simple call chaining.
 func (l *Lob) SetReader(rd io.Reader) *Lob {
 	l.rd = rd
 	return l
+}
+
+// Writer returns the io.Writer of the Lob.
+func (l Lob) Writer() io.Writer {
+	return l.wr
 }
 
 // SetWriter sets the io.Writer destination for a lob field to be read from database
@@ -50,18 +63,13 @@ func (l *Lob) SetWriter(wr io.Writer) *Lob {
 	return l
 }
 
-type writerSetter interface {
-	SetWriter(w io.Writer) error
-}
-
 // Scan implements the database/sql/Scanner interface.
 func (l *Lob) Scan(src interface{}) error {
-
 	if l.wr == nil {
 		return fmt.Errorf("lob error: initial reader %[1]T %[1]v", l)
 	}
 
-	ws, ok := src.(writerSetter)
+	ws, ok := src.(p.WriterSetter)
 	if !ok {
 		return fmt.Errorf("lob: invalid scan type %T", src)
 	}
@@ -78,6 +86,14 @@ func (l *Lob) Scan(src interface{}) error {
 type NullLob struct {
 	Lob   *Lob
 	Valid bool // Valid is true if Lob is not NULL
+}
+
+// Value implements the database/sql/Valuer interface.
+func (l NullLob) Value() (driver.Value, error) {
+	if !l.Valid {
+		return nil, nil
+	}
+	return l.Lob, nil
 }
 
 // Scan implements the database/sql/Scanner interface.

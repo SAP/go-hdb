@@ -14,28 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver_test
-
-import (
-	"database/sql"
-	"log"
-
-	"github.com/SAP/go-hdb/driver"
-)
-
-func ExampleError() {
-	db, err := sql.Open("hdb", "hdb://user:password@host:port")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	stmt, err := db.Query("select * from dummy")
-	if err != nil {
-		// Type assertion of database server error message.
-		if dbError, ok := err.(driver.Error); ok {
-			log.Printf("code %d text %s", dbError.Code(), dbError.Text())
-		}
-	}
-	stmt.Close()
-}
+// Package encoding implements ...
+package encoding

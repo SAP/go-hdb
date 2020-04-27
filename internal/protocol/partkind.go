@@ -20,6 +20,7 @@ package protocol
 
 type partKind int8
 
+//nolint
 const (
 	pkNil                       partKind = 0
 	pkCommand                   partKind = 3

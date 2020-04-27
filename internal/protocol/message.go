@@ -19,11 +19,11 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 const (
-	messageHeaderSize = 32
+	messageHeaderSize = 32 //nolint:varcheck
 )
 
 //message header
@@ -44,32 +44,22 @@ func (h *messageHeader) String() string {
 		h.noOfSegm)
 }
 
-func (h *messageHeader) write(wr *bufio.Writer) error {
-	wr.WriteInt64(h.sessionID)
-	wr.WriteInt32(h.packetCount)
-	wr.WriteUint32(h.varPartLength)
-	wr.WriteUint32(h.varPartSize)
-	wr.WriteInt16(h.noOfSegm)
-	wr.WriteZeroes(10) //messageHeaderSize
-
-	if trace {
-		outLogger.Printf("write message header: %s", h)
-	}
-
+func (h *messageHeader) encode(enc *encoding.Encoder) error {
+	enc.Int64(h.sessionID)
+	enc.Int32(h.packetCount)
+	enc.Uint32(h.varPartLength)
+	enc.Uint32(h.varPartSize)
+	enc.Int16(h.noOfSegm)
+	enc.Zeroes(10) //messageHeaderSize
 	return nil
 }
 
-func (h *messageHeader) read(rd *bufio.Reader) error {
-	h.sessionID = rd.ReadInt64()
-	h.packetCount = rd.ReadInt32()
-	h.varPartLength = rd.ReadUint32()
-	h.varPartSize = rd.ReadUint32()
-	h.noOfSegm = rd.ReadInt16()
-	rd.Skip(10) //messageHeaderSize
-
-	if trace {
-		outLogger.Printf("read message header: %s", h)
-	}
-
-	return rd.GetError()
+func (h *messageHeader) decode(dec *encoding.Decoder) error {
+	h.sessionID = dec.Int64()
+	h.packetCount = dec.Int32()
+	h.varPartLength = dec.Uint32()
+	h.varPartSize = dec.Uint32()
+	h.noOfSegm = dec.Int16()
+	dec.Skip(10) //messageHeaderSize
+	return dec.Error()
 }

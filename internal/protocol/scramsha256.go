@@ -24,7 +24,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/SAP/go-hdb/internal/bufio"
+	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
 const (
@@ -39,23 +39,36 @@ type scramsha256InitialRequest struct {
 	clientChallenge []byte
 }
 
-func (r *scramsha256InitialRequest) kind() partKind {
-	return pkAuthentication
+func (r *scramsha256InitialRequest) String() string {
+	return fmt.Sprintf("username %s type %s clientChallenge %v", r.username, mnSCRAMSHA256, r.clientChallenge)
 }
 
-func (r *scramsha256InitialRequest) size() (int, error) {
-	return 2 + authFieldSize(r.username) + authFieldSize([]byte(mnSCRAMSHA256)) + authFieldSize(r.clientChallenge), nil
+func (r *scramsha256InitialRequest) size() int {
+	return 2 + authFieldSize(r.username) + authFieldSize([]byte(mnSCRAMSHA256)) + authFieldSize(r.clientChallenge)
 }
 
-func (r *scramsha256InitialRequest) numArg() int {
-	return 1
+func (r *scramsha256InitialRequest) decode(dec *encoding.Decoder, ph *partHeader) error {
+	dec.Int16() // cnt
+
+	size := dec.Byte()
+	r.username = make([]byte, size)
+	dec.Bytes(r.username)
+
+	size = dec.Byte()
+	dec.Skip(int(size)) // mnSCRAMSHA256
+
+	size = dec.Byte()
+	r.clientChallenge = make([]byte, size)
+	dec.Bytes(r.clientChallenge)
+
+	return dec.Error()
 }
 
-func (r *scramsha256InitialRequest) write(wr *bufio.Writer) error {
-	wr.WriteInt16(3)
-	writeAuthField(wr, r.username)
-	writeAuthField(wr, []byte(mnSCRAMSHA256))
-	writeAuthField(wr, r.clientChallenge)
+func (r *scramsha256InitialRequest) encode(enc *encoding.Encoder) error {
+	enc.Int16(3)
+	encodeAuthField(enc, r.username)
+	encodeAuthField(enc, []byte(mnSCRAMSHA256))
+	encodeAuthField(enc, r.clientChallenge)
 	return nil
 }
 
@@ -64,50 +77,49 @@ type scramsha256InitialReply struct {
 	serverChallenge []byte
 }
 
-func (r *scramsha256InitialReply) kind() partKind {
-	return pkAuthentication
+func (r *scramsha256InitialReply) String() string {
+	return fmt.Sprintf("salt %v serverChallenge %v", r.salt, r.serverChallenge)
 }
 
-func (r *scramsha256InitialReply) setNumArg(int) {
-	//not needed
-}
+func (r *scramsha256InitialReply) decode(dec *encoding.Decoder, ph *partHeader) error {
+	dec.Int16() // cnt
+	if err := readMethodName(dec); err != nil {
+		println("read method name error")
 
-func (r *scramsha256InitialReply) read(rd *bufio.Reader) error {
-	rd.ReadInt16() // cnt
-	if err := readMethodName(rd); err != nil {
 		return err
 	}
-	size := rd.ReadB()
-	if size != serverChallengeDataSize {
-		return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
-	}
+	size := dec.Byte()
+
+	//TODO check: python client gives different challenge data size
+	// disable check
+
+	// if size != serverChallengeDataSize {
+	// 	println("server challenge data size error")
+
+	// 	return fmt.Errorf("invalid server challenge data size %d - %d expected", size, serverChallengeDataSize)
+	// }
 
 	//server challenge data
 
-	cnt := rd.ReadInt16()
+	cnt := dec.Int16()
+
+	// println("data field count")
+	// println(cnt)
+
 	if cnt != 2 {
+		//println("invalid server challenge data field count")
 		return fmt.Errorf("invalid server challenge data field count %d - %d expected", cnt, 2)
 	}
 
-	size = rd.ReadB()
-	if trace {
-		outLogger.Printf("salt size %d", size)
-	}
-
+	size = dec.Byte()
 	r.salt = make([]byte, size)
-	rd.ReadFull(r.salt)
-	if trace {
-		outLogger.Printf("salt %v", r.salt)
-	}
+	dec.Bytes(r.salt)
 
-	size = rd.ReadB()
+	size = dec.Byte()
 	r.serverChallenge = make([]byte, size)
-	rd.ReadFull(r.serverChallenge)
-	if trace {
-		outLogger.Printf("server challenge %v", r.serverChallenge)
-	}
+	dec.Bytes(r.serverChallenge)
 
-	return rd.GetError()
+	return dec.Error()
 }
 
 type scramsha256FinalRequest struct {
@@ -115,27 +127,36 @@ type scramsha256FinalRequest struct {
 	clientProof []byte
 }
 
-func newScramsha256FinalRequest() *scramsha256FinalRequest {
-	return &scramsha256FinalRequest{}
+func (r *scramsha256FinalRequest) String() string {
+	return fmt.Sprintf("username %s type %s clientProof %v", r.username, mnSCRAMSHA256, r.clientProof)
 }
 
-func (r *scramsha256FinalRequest) kind() partKind {
-	return pkAuthentication
+func (r *scramsha256FinalRequest) size() int {
+	return 2 + authFieldSize(r.username) + authFieldSize([]byte(mnSCRAMSHA256)) + authFieldSize(r.clientProof)
 }
 
-func (r *scramsha256FinalRequest) size() (int, error) {
-	return 2 + authFieldSize(r.username) + authFieldSize([]byte(mnSCRAMSHA256)) + authFieldSize(r.clientProof), nil
+func (r *scramsha256FinalRequest) decode(dec *encoding.Decoder, ph *partHeader) error {
+	dec.Int16() // cnt
+
+	size := dec.Byte()
+	r.username = make([]byte, size)
+	dec.Bytes(r.username)
+
+	size = dec.Byte()
+	dec.Skip(int(size)) // mnSCRAMSHA256
+
+	size = dec.Byte()
+	r.clientProof = make([]byte, size)
+	dec.Bytes(r.clientProof)
+
+	return nil
 }
 
-func (r *scramsha256FinalRequest) numArg() int {
-	return 1
-}
-
-func (r *scramsha256FinalRequest) write(wr *bufio.Writer) error {
-	wr.WriteInt16(3)
-	writeAuthField(wr, r.username)
-	writeAuthField(wr, []byte(mnSCRAMSHA256))
-	writeAuthField(wr, r.clientProof)
+func (r *scramsha256FinalRequest) encode(enc *encoding.Encoder) error {
+	enc.Int16(3)
+	encodeAuthField(enc, r.username)
+	encodeAuthField(enc, []byte(mnSCRAMSHA256))
+	encodeAuthField(enc, r.clientProof)
 	return nil
 }
 
@@ -143,34 +164,25 @@ type scramsha256FinalReply struct {
 	serverProof []byte
 }
 
-func newScramsha256FinalReply() *scramsha256FinalReply {
-	return &scramsha256FinalReply{}
+func (r *scramsha256FinalReply) String() string {
+	return fmt.Sprintf("serverProof %v", r.serverProof)
 }
 
-func (r *scramsha256FinalReply) kind() partKind {
-	return pkAuthentication
-}
-
-func (r *scramsha256FinalReply) setNumArg(int) {
-	//not needed
-}
-
-func (r *scramsha256FinalReply) read(rd *bufio.Reader) error {
-	cnt := rd.ReadInt16()
+func (r *scramsha256FinalReply) decode(dec *encoding.Decoder, ph *partHeader) error {
+	cnt := dec.Int16()
 	if cnt != 2 {
 		return fmt.Errorf("invalid final reply field count %d - %d expected", cnt, 2)
 	}
-	if err := readMethodName(rd); err != nil {
+	if err := readMethodName(dec); err != nil {
 		return err
 	}
 
 	//serverProof
-	size := rd.ReadB()
-
+	size := dec.Byte()
 	serverProof := make([]byte, size)
-	rd.ReadFull(serverProof)
+	dec.Bytes(serverProof)
 
-	return rd.GetError()
+	return dec.Error()
 }
 
 //helper
@@ -184,7 +196,7 @@ func authFieldSize(f []byte) int {
 	return size + 1 //length indicator size := 1
 }
 
-func writeAuthField(wr *bufio.Writer, f []byte) {
+func encodeAuthField(enc *encoding.Encoder, f []byte) {
 	size := len(f)
 	if size >= 250 {
 		// - different indicators compared to db field handling
@@ -192,24 +204,33 @@ func writeAuthField(wr *bufio.Writer, f []byte) {
 		panic("not implemented error")
 	}
 
-	wr.WriteB(byte(size))
-	wr.Write(f)
+	enc.Byte(byte(size))
+	enc.Bytes(f)
 }
 
-func readMethodName(rd *bufio.Reader) error {
-	size := rd.ReadB()
+func readMethodName(dec *encoding.Decoder) error {
+	size := dec.Byte()
 	methodName := make([]byte, size)
-	rd.ReadFull(methodName)
-	if string(methodName) != mnSCRAMSHA256 {
-		return fmt.Errorf("invalid authentication method %s - %s expected", methodName, mnSCRAMSHA256)
-	}
+	dec.Bytes(methodName)
+
+	// println("methodname")
+	// println(string(methodName))
+
+	//TODO - python client
+	// python client: database response with SCRAMPBKDF2SHA256
+	// --> disable check
+
+	// if string(methodName) != mnSCRAMSHA256 {
+	// 	return fmt.Errorf("invalid authentication method %s - %s expected", methodName, mnSCRAMSHA256)
+	// }
+
 	return nil
 }
 
 func clientChallenge() []byte {
 	r := make([]byte, clientChallengeSize)
 	if _, err := rand.Read(r); err != nil {
-		outLogger.Fatal("client challenge fatal error")
+		plog.Fatalf("client challenge fatal error")
 	}
 	return r
 }
@@ -239,9 +260,6 @@ func _sha256(p []byte) []byte {
 	hash := sha256.New()
 	hash.Write(p)
 	s := hash.Sum(nil)
-	if trace {
-		outLogger.Printf("sha length %d value %v", len(s), s)
-	}
 	return s
 }
 
@@ -249,9 +267,6 @@ func _hmac(key, p []byte) []byte {
 	hash := hmac.New(sha256.New, key)
 	hash.Write(p)
 	s := hash.Sum(nil)
-	if trace {
-		outLogger.Printf("hmac length %d value %v", len(s), s)
-	}
 	return s
 }
 

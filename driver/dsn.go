@@ -34,18 +34,6 @@ const (
 	DSNTLSInsecureSkipVerify = "TLSInsecureSkipVerify" // Controls whether a client verifies the server's certificate chain and host name.
 )
 
-// DSN default values.
-const (
-	DefaultTimeout   = 300 // Default value connection timeout (300 seconds = 5 minutes).
-	DefaultFetchSize = 128 // Default value fetchSize.
-)
-
-// DSN minimal values.
-const (
-	minTimeout   = 0 // Minimal timeout value.
-	minFetchSize = 1 // Minimal fetchSize value.
-)
-
 /*
 DSN is here for the purposes of documentation only. A DSN string is an URL string with the following format
 

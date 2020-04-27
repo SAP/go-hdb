@@ -48,7 +48,7 @@ func TestCP(t *testing.T) {
 	b := make([]byte, CESUMax)
 	for _, d := range testCPData {
 		n1 := EncodeRune(b, d.cp)
-		if bytes.Compare(b[:n1], d.utf8) != 0 {
+		if !bytes.Equal(b[:n1], d.utf8) {
 			t.Logf("encode code point %x char %c cesu-8 %x - expected %x", d.cp, d.cp, b[:n1], d.utf8)
 		} else {
 			t.Logf("encode code point %x char %c cesu-8 %x", d.cp, d.cp, b[:n1])

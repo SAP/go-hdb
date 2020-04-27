@@ -20,6 +20,7 @@ package protocol
 
 type connectOption int8
 
+//nolint
 const (
 	coConnectionID                connectOption = 1
 	coCompleteArrayExecution      connectOption = 2
