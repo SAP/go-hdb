@@ -18,6 +18,7 @@ package protocol
 
 import (
 	"bytes"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -35,7 +36,8 @@ func assertEqualInt(t *testing.T, tc typeCode, v interface{}, r int64) {
 
 func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
 	_, err := tc.fieldType().Convert(v)
-	if err != ErrIntegerOutOfRange {
+
+	if !errors.Is(err, ErrIntegerOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
 	}
 }
@@ -64,6 +66,8 @@ func testConvertInteger(t *testing.T) {
 	assertEqualIntOutOfRangeError(t, tcInteger, minInteger-1)
 	assertEqualIntOutOfRangeError(t, tcInteger, maxInteger+1)
 
+	// integer as string
+	assertEqualInt(t, tcInteger, "42", 42)
 }
 
 func assertEqualFloat(t *testing.T, tc typeCode, v interface{}, r float64) {
@@ -79,7 +83,7 @@ func assertEqualFloat(t *testing.T, tc typeCode, v interface{}, r float64) {
 func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
 	_, err := tc.fieldType().Convert(v)
 
-	if err != ErrFloatOutOfRange {
+	if !errors.Is(err, ErrFloatOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
 	}
 }
@@ -89,6 +93,7 @@ func testConvertFloat(t *testing.T) {
 
 	realValue := float32(42.42)
 	doubleValue := float64(42.42)
+	stringDoubleValue := "42.42"
 
 	// float data types
 	assertEqualFloat(t, tcReal, realValue, float64(realValue))
@@ -104,6 +109,8 @@ func testConvertFloat(t *testing.T) {
 	assertEqualFloatOutOfRangeError(t, tcReal, math.Nextafter(maxReal, maxDouble))
 	assertEqualFloatOutOfRangeError(t, tcReal, math.Nextafter(maxReal, maxDouble)*-1)
 
+	// float as string
+	assertEqualFloat(t, tcDouble, stringDoubleValue, doubleValue)
 }
 
 func assertEqualTime(t *testing.T, v interface{}, r time.Time) {

@@ -23,6 +23,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -48,14 +49,18 @@ const (
 
 type locatorID uint64 // byte[locatorIdSize]
 
+// ErrUint64OutOfRange means that a uint64 exceeds the size of a int64.
+var ErrUint64OutOfRange = errors.New("uint64 values with high bit set are not supported")
+
 // ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
 var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
 // ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
 
-var typeOfTime = reflect.TypeOf((*time.Time)(nil)).Elem()
-var typeOfBytes = reflect.TypeOf((*[]byte)(nil)).Elem()
+var timeReflectType = reflect.TypeOf((*time.Time)(nil)).Elem()
+var bytesReflectType = reflect.TypeOf((*[]byte)(nil)).Elem()
+var stringReflectType = reflect.TypeOf((*string)(nil)).Elem()
 
 var zeroTime = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 
@@ -244,16 +249,19 @@ var (
 
 // A ConvertError is returned by conversion methods if a go datatype to hdb datatype conversion fails.
 type ConvertError struct {
-	ft fieldType
-	v  interface{}
+	err error
+	ft  fieldType
+	v   interface{}
 }
 
 func (e *ConvertError) Error() string {
 	return fmt.Sprintf("unsupported %[1]s conversion: %[2]T %[2]v", e.ft, e.v)
 }
 
-func newConvertError(ft fieldType, v interface{}) *ConvertError {
-	return &ConvertError{ft: ft, v: v}
+// Unwrap returns the nested error.
+func (e *ConvertError) Unwrap() error { return e.err }
+func newConvertError(ft fieldType, v interface{}, err error) *ConvertError {
+	return &ConvertError{ft: ft, v: v, err: err}
 }
 
 func (_tinyintType) String() string    { return "tinyintType" }
@@ -293,33 +301,53 @@ func convertInteger(ft fieldType, v interface{}, min, max int64) (driver.Value, 
 	if v == nil {
 		return v, nil
 	}
+	i64, err := convertToInt64(ft, v)
+	if err != nil {
+		return nil, err
+	}
+	if i64 > max || i64 < min {
+		return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
+	}
+	return i64, nil
+}
 
+func convertToInt64(ft fieldType, v interface{}) (int64, error) {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 
 	// bool is represented in HDB as tinyint
 	case reflect.Bool:
-		return rv.Bool(), nil
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		i64 := rv.Int()
-		if i64 > max || i64 < min {
-			return nil, ErrIntegerOutOfRange
+		if rv.Bool() {
+			return 1, nil
 		}
-		return i64, nil
+		return 0, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int(), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u64 := rv.Uint()
-		if u64 > uint64(max) {
-			return nil, ErrIntegerOutOfRange
+		if u64 >= 1<<63 {
+			return 0, newConvertError(ft, v, ErrUint64OutOfRange)
 		}
 		return int64(u64), nil
+	case reflect.String:
+		i64, err := strconv.ParseInt(rv.String(), 10, 64)
+		if err != nil {
+			return 0, newConvertError(ft, v, nil)
+		}
+		return i64, nil
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
-			return nil, nil
+			return 0, nil
 		}
-		return convertInteger(ft, rv.Elem().Interface(), min, max)
+		return convertToInt64(ft, rv.Elem().Interface())
 	}
-	return nil, newConvertError(ft, v)
+
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertToInt64(ft, rv.Convert(stringReflectType).Interface())
+	}
+
+	return 0, newConvertError(ft, v, nil)
 }
 
 func (ft _realType) Convert(v interface{}) (interface{}, error) { return convertFloat(ft, v, maxReal) }
@@ -332,24 +360,41 @@ func convertFloat(ft fieldType, v interface{}, max float64) (driver.Value, error
 	if v == nil {
 		return v, nil
 	}
+	f64, err := convertToFloat64(ft, v)
+	if err != nil {
+		return nil, err
+	}
+	if math.Abs(f64) > max {
+		return nil, newConvertError(ft, v, ErrFloatOutOfRange)
+	}
+	return f64, nil
+}
 
+func convertToFloat64(ft fieldType, v interface{}) (float64, error) {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 
 	case reflect.Float32, reflect.Float64:
-		f64 := rv.Float()
-		if math.Abs(f64) > max {
-			return nil, ErrFloatOutOfRange
+		return rv.Float(), nil
+	case reflect.String:
+		f64, err := strconv.ParseFloat(rv.String(), 64)
+		if err != nil {
+			return 0, newConvertError(ft, v, nil)
 		}
 		return f64, nil
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
-			return nil, nil
+			return 0, nil
 		}
-		return convertFloat(ft, rv.Elem().Interface(), max)
+		return convertToFloat64(ft, rv.Elem().Interface())
 	}
-	return nil, newConvertError(ft, v)
+
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertToFloat64(ft, rv.Convert(stringReflectType).Interface())
+	}
+
+	return 0, newConvertError(ft, v, nil)
 }
 
 func (ft _dateType) Convert(v interface{}) (interface{}, error)       { return convertTime(ft, v) }
@@ -384,11 +429,11 @@ func convertTime(ft fieldType, v interface{}) (driver.Value, error) {
 		return convertTime(ft, rv.Elem().Interface())
 	}
 
-	if rv.Type().ConvertibleTo(typeOfTime) {
-		tv := rv.Convert(typeOfTime)
+	if rv.Type().ConvertibleTo(timeReflectType) {
+		tv := rv.Convert(timeReflectType)
 		return tv.Interface().(time.Time), nil
 	}
-	return nil, newConvertError(ft, v)
+	return nil, newConvertError(ft, v, nil)
 }
 
 func (ft _decimalType) Convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
@@ -401,7 +446,7 @@ func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
 	if v, ok := v.([]byte); ok {
 		return v, nil
 	}
-	return nil, newConvertError(ft, v)
+	return nil, newConvertError(ft, v, nil)
 }
 
 func (ft _varType) Convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
@@ -427,7 +472,7 @@ func convertBytes(ft fieldType, v interface{}) (driver.Value, error) {
 		return rv.String(), nil
 
 	case reflect.Slice:
-		if rv.Type() == typeOfBytes {
+		if rv.Type() == bytesReflectType {
 			return rv.Bytes(), nil
 		}
 
@@ -439,11 +484,11 @@ func convertBytes(ft fieldType, v interface{}) (driver.Value, error) {
 		return convertBytes(ft, rv.Elem().Interface())
 	}
 
-	if rv.Type().ConvertibleTo(typeOfBytes) {
-		bv := rv.Convert(typeOfBytes)
+	if rv.Type().ConvertibleTo(bytesReflectType) {
+		bv := rv.Convert(bytesReflectType)
 		return bv.Interface().([]byte), nil
 	}
-	return nil, newConvertError(ft, v)
+	return nil, newConvertError(ft, v, nil)
 }
 
 func (ft _lobVarType) Convert(v interface{}) (interface{}, error)   { return convertLob(false, ft, v) }
@@ -466,7 +511,7 @@ func convertLob(isCharBased bool, ft fieldType, v interface{}) (driver.Value, er
 	case ReadProvider:
 		return v.Reader(), nil
 	default:
-		return nil, newConvertError(ft, v)
+		return nil, newConvertError(ft, v, nil)
 	}
 }
 
@@ -557,7 +602,7 @@ func (ft _bigintType) encodePrm(e *encoding.Encoder, v interface{}) error {
 func asInt64(ft fieldType, v interface{}) (int64, error) {
 	switch v := v.(type) {
 	default:
-		return 0, newConvertError(ft, v)
+		return 0, newConvertError(ft, v, nil)
 	case bool:
 		if v {
 			return 1, nil
@@ -574,7 +619,7 @@ func (ft _realType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		e.Float32(float32(v))
 		return nil
 	default:
-		return newConvertError(ft, v)
+		return newConvertError(ft, v, nil)
 	}
 }
 func (ft _doubleType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -583,7 +628,7 @@ func (ft _doubleType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		e.Float64(v)
 		return nil
 	default:
-		return newConvertError(ft, v)
+		return newConvertError(ft, v, nil)
 	}
 }
 
@@ -669,7 +714,7 @@ func (ft _secondtimeType) encodePrm(e *encoding.Encoder, v interface{}) error {
 func asTime(ft fieldType, v interface{}) (time.Time, error) {
 	t, ok := v.(time.Time)
 	if !ok {
-		return zeroTime, newConvertError(ft, v)
+		return zeroTime, newConvertError(ft, v, nil)
 	}
 	//store in utc
 	return t.UTC(), nil
@@ -678,7 +723,7 @@ func asTime(ft fieldType, v interface{}) (time.Time, error) {
 func (ft _decimalType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	p, ok := v.([]byte)
 	if !ok {
-		return newConvertError(ft, v)
+		return newConvertError(ft, v, nil)
 	}
 	if len(p) != decimalFieldSize {
 		return fmt.Errorf("invalid argument length %d - expected %d", len(p), decimalFieldSize)
@@ -694,7 +739,7 @@ func (ft _varType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	case string:
 		return encodeVarString(e, v)
 	default:
-		return newConvertError(ft, v)
+		return newConvertError(ft, v, nil)
 	}
 }
 
@@ -737,7 +782,7 @@ func (ft _cesu8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 	case string:
 		return encodeCESU8String(e, v)
 	default:
-		return newConvertError(ft, v)
+		return newConvertError(ft, v, nil)
 	}
 }
 

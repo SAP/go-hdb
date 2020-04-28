@@ -1,17 +1,27 @@
 Release Notes
 =============
 
-## Release 0.99.0
+## Release 0.99
 
-Dear go-hdb users, please find a description of the main features of this 0.99.0 release below. Going from 0.14.4 to 0.99.0 should indicate,
+
+#### Minor revisions
+
+Release 0.99.1
+- Additional conversions for query parameters
+  - now strings can be used for integer and float types
+
+
+#### Release Notes
+
+Dear go-hdb users, please find a description of the main features of this release below. Going from 0.14.4 to 0.99 should indicate,
 that this is a huge step into the direction of a 1.0 release. So, while most effort was spent to prepare for 1.0 features like
 
 - Support of [Named Arguments](https://golang.org/pkg/database/sql/#NamedArg)
 - Support of [Output Parameters](https://golang.org/pkg/database/sql/#Out) calling Stored Procedures
 
-release 0.99.0 brings some interesting and hopefully useful features as well:
+this release brings some interesting and hopefully useful features as well:
 
-#### Main Features 0.99.0
+#### Main Features
 
 1. Data Format Version.
 
@@ -30,7 +40,7 @@ release 0.99.0 brings some interesting and hopefully useful features as well:
    Until now, table output parameter content was retrieved via a separate query call. As the Go sql package does now
    support sql.Rows in [Rows.Scan](https://golang.org/pkg/database/sql/#Rows.Scan), the workaround via a separate
    query call is obsolete. Nonetheless, like this change is incompatible compared to the former releases, the feature
-   needs to be opted in. To support a smooth transition, release 0.99.0 works per default like in the past (legacy mode).
+   needs to be opted in. To support a smooth transition, procedure calls works per default like in the past (legacy mode).
    Anyway, the use of 'separate queries' is deprecated and the default is going to be changed within the next releases.
    Release 1.0 will only support the new version of retrieving table output parameter content, so new projects based
    on (go-hdb)[https://github.com/SAP/go-hdb] should opt in the feature already now:
@@ -50,6 +60,6 @@ release 0.99.0 brings some interesting and hopefully useful features as well:
    ```
    For a complete example please see [Example_callTableOut](driver/example_call_test.go).
 
-#### Incompatibilities to release 0.14.4
+#### Incompatibilities
 
 - no known incompatibilities
