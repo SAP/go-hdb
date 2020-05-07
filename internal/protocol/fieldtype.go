@@ -25,12 +25,8 @@ import (
 	"reflect"
 	"strconv"
 	"time"
-	"unicode/utf8"
-
-	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
 
@@ -202,6 +198,7 @@ var (
 	secondtimeType = _secondtimeType{}
 	decimalType    = _decimalType{}
 	varType        = _varType{}
+	alphaType      = _alphaType{}
 	cesu8Type      = _cesu8Type{}
 	lobVarType     = _lobVarType{}
 	lobCESU8Type   = _lobCESU8Type{}
@@ -222,6 +219,7 @@ type _daydateType struct{}
 type _secondtimeType struct{}
 type _decimalType struct{}
 type _varType struct{}
+type _alphaType struct{}
 type _cesu8Type struct{}
 type _lobVarType struct{}
 type _lobCESU8Type struct{}
@@ -242,6 +240,7 @@ var (
 	_ fieldType = (*_secondtimeType)(nil)
 	_ fieldType = (*_decimalType)(nil)
 	_ fieldType = (*_varType)(nil)
+	_ fieldType = (*_alphaType)(nil)
 	_ fieldType = (*_cesu8Type)(nil)
 	_ fieldType = (*_lobVarType)(nil)
 	_ fieldType = (*_lobCESU8Type)(nil)
@@ -279,6 +278,7 @@ func (_daydateType) String() string    { return "daydateType" }
 func (_secondtimeType) String() string { return "secondtimeType" }
 func (_decimalType) String() string    { return "decimalType" }
 func (_varType) String() string        { return "varType" }
+func (_alphaType) String() string      { return "alphaType" }
 func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
@@ -450,6 +450,7 @@ func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
 }
 
 func (ft _varType) Convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
+func (ft _alphaType) Convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 func (ft _cesu8Type) Convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 
 // bytes
@@ -541,6 +542,9 @@ func (ft _varType) prmSize(v interface{}) int {
 	default:
 		return -1
 	}
+}
+func (ft _alphaType) prmSize(v interface{}) int {
+	return varType.prmSize(v)
 }
 func (ft _cesu8Type) prmSize(v interface{}) int {
 	switch v := v.(type) {
@@ -742,7 +746,9 @@ func (ft _varType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		return newConvertError(ft, v, nil)
 	}
 }
-
+func (ft _alphaType) encodePrm(e *encoding.Encoder, v interface{}) error {
+	return varType.encodePrm(e, v)
+}
 func encodeVarBytesSize(e *encoding.Encoder, size int) error {
 	switch {
 	default:
@@ -804,19 +810,34 @@ func encodeCESU8String(e *encoding.Encoder, s string) error {
 	return nil
 }
 
-func (_lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	// TODO: first write: add content? - currently no data transferred
-	e.Byte(0)
-	e.Int32(0)
-	e.Int32(0)
-	return nil
+func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
+	switch v := v.(type) {
+	case *lobInDescr:
+		return encodeLobPrm(e, v)
+	case io.Reader: //TODO check if keep
+		descr := &lobInDescr{}
+		return encodeLobPrm(e, descr)
+	default:
+		return newConvertError(ft, v, nil)
+	}
 }
 
-func (_lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	// TODO: first write: add content? - currently no data transferred
-	e.Byte(0)
-	e.Int32(0)
-	e.Int32(0)
+func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
+	switch v := v.(type) {
+	case *lobInDescr:
+		return encodeLobPrm(e, v)
+	case io.Reader: //TODO check if keep
+		descr := &lobInDescr{}
+		return encodeLobPrm(e, descr)
+	default:
+		return newConvertError(ft, v, nil)
+	}
+}
+
+func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
+	e.Byte(byte(descr.opt))
+	e.Int32(descr.size)
+	e.Int32(descr.pos)
 	return nil
 }
 
@@ -961,6 +982,29 @@ func (_varType) decode(d *encoding.Decoder) (interface{}, error) {
 	d.Bytes(b)
 	return b, nil
 }
+func (_alphaType) decode(d *encoding.Decoder) (interface{}, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	switch d.Dfv() {
+	case dfvBaseline: // like _varType
+		b := make([]byte, size)
+		d.Bytes(b)
+		return b, nil
+	default:
+		/*
+			byte:
+			- high bit set -> numeric
+			- high bit unset -> alpha
+			- bits 0-6: field size
+		*/
+		d.Byte() // ignore for the moment
+		b := make([]byte, size-1)
+		d.Bytes(b)
+		return b, nil
+	}
+}
 func (_cesu8Type) decode(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {
@@ -985,269 +1029,34 @@ func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {
 	}
 }
 
-func (_lobVarType) decodePrm(d *encoding.Decoder) (interface{}, error) {
-	// TODO used for Sniffer - check encodePrm
-	d.Byte()
-	d.Int32()
-	d.Int32()
+func decodeLobPrm(d *encoding.Decoder) (interface{}, error) {
+	descr := &lobInDescr{}
+	descr.opt = lobOptions(d.Byte())
+	descr.size = d.Int32()
+	descr.pos = d.Int32()
 	return nil, nil
 }
 
-func (_lobCESU8Type) decodePrm(d *encoding.Decoder) (interface{}, error) {
-	// TODO used for Sniffer - check encodePrm
-	d.Byte()
-	d.Int32()
-	d.Int32()
-	return nil, nil
-}
+// sniffer
+func (_lobVarType) decodePrm(d *encoding.Decoder) (interface{}, error)   { return decodeLobPrm(d) }
+func (_lobCESU8Type) decodePrm(d *encoding.Decoder) (interface{}, error) { return decodeLobPrm(d) }
 
 func decodeLobRes(d *encoding.Decoder, isCharBased bool) (interface{}, error) {
-	d.Int8() // type code (is int here)
-	opt := d.Int8()
-	null := (lobOptions(opt) & loNullindicator) != 0
-	if null {
+	descr := &lobOutDescr{isCharBased: isCharBased}
+	descr.ltc = lobTypecode(d.Int8())
+	descr.opt = lobOptions(d.Int8())
+	if descr.opt.isNull() {
 		return nil, nil
 	}
-	eof := (lobOptions(opt) & loLastdata) != 0
 	d.Skip(2)
-
-	charLen := d.Int64()
-	byteLen := d.Int64()
-	id := d.Uint64()
-	chunkLen := d.Int32()
-
-	// TODO set session and chunksize ????
-	lcw := newChunkWriter(isCharBased, nil, locatorID(id), 4096, charLen, byteLen)
-	if err := lcw.write(d, int(chunkLen), eof); err != nil {
-		return lcw, err
-	}
-	return lcw, nil
+	descr.numChar = d.Int64()
+	descr.numByte = d.Int64()
+	descr.id = locatorID(d.Uint64())
+	size := int(d.Int32())
+	descr.b = make([]byte, size)
+	d.Bytes(descr.b)
+	return descr, nil
 }
 
-func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	return decodeLobRes(d, false)
-}
-
-func (_lobCESU8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	return decodeLobRes(d, true)
-}
-
-// chunkReader reads in chunks for writing to db.
-type chunkReader interface {
-	locatorID() locatorID
-	next() int
-	bytes() ([]byte, error)
-	eof() bool
-}
-
-func newChunkReader(isCharBased bool, id locatorID, chunkSize int, rd io.Reader) chunkReader {
-	if isCharBased {
-		rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
-	}
-	return &_chunkReader{id: id, chunkSize: chunkSize, rd: rd}
-}
-
-type _chunkReader struct {
-	id        locatorID
-	chunkSize int
-	rd        io.Reader
-	b         []byte
-	err       error
-}
-
-func (r *_chunkReader) locatorID() locatorID { return r.id }
-func (r *_chunkReader) eof() bool            { return r.err == io.EOF }
-func (r *_chunkReader) bytes() ([]byte, error) {
-	if r.err == io.EOF {
-		return r.b, nil
-	}
-	return r.b, r.err
-}
-
-func (r *_chunkReader) next() int {
-	if r.err != nil {
-		return 0
-	}
-	r.b = sizeBuffer(r.b, r.chunkSize)
-	size, err := r.rd.Read(r.b)
-	r.b = r.b[:size]
-	r.err = err
-	return size
-}
-
-// WriterSetter is the interface wrapping the SetWriter method (Lob handling).
-type WriterSetter interface {
-	SetWriter(w io.Writer) error
-}
-
-// TODO eliminate
-type sessionSetter interface {
-	setSession(s *Session)
-}
-
-// lobChunkWriter reads db lob chunks and writes them into lob field io.Writer.
-type chunkWriter interface {
-	sessionSetter
-	WriterSetter
-
-	id() locatorID
-	write(dec *encoding.Decoder, size int, eof bool) error
-	readOfsLen() (int64, int32)
-	eof() bool
-}
-
-func newChunkWriter(isCharBased bool, s *Session, id locatorID, chunkSize int32, charLen, byteLen int64) chunkWriter {
-	if isCharBased {
-		return &charChunkWriter{s: s, _id: id, chunkSize: chunkSize, charLen: charLen, byteLen: byteLen}
-	}
-	return &binaryChunkWriter{s: s, _id: id, chunkSize: chunkSize, charLen: charLen, byteLen: byteLen}
-}
-
-// binaryChunkWriter (byte based lobs).
-type binaryChunkWriter struct {
-	s *Session
-
-	_id       locatorID
-	chunkSize int32
-	charLen   int64
-	byteLen   int64
-
-	readOfs int64
-	_eof    bool
-
-	ofs int
-
-	wr io.Writer
-
-	b []byte
-}
-
-func (l *binaryChunkWriter) setSession(s *Session) { l.s = s }
-func (l *binaryChunkWriter) SetWriter(wr io.Writer) error {
-	l.wr = wr
-	if err := l.flush(); err != nil {
-		return err
-	}
-	return l.s.decodeLobs(l)
-}
-
-func (l *binaryChunkWriter) id() locatorID { return l._id }
-func (l *binaryChunkWriter) eof() bool     { return l._eof }
-
-func (l *binaryChunkWriter) write(dec *encoding.Decoder, size int, eof bool) error {
-	l._eof = eof // store eof
-
-	if size == 0 {
-		return nil
-	}
-
-	l.b = resizeBuffer(l.b, size+l.ofs)
-	dec.Bytes(l.b[l.ofs:])
-	if l.wr != nil {
-		return l.flush()
-	}
-	return nil
-}
-
-func (l *binaryChunkWriter) readOfsLen() (int64, int32) {
-	readLen := l.charLen - l.readOfs
-	if readLen > int64(math.MaxInt32) || readLen > int64(l.chunkSize) {
-		return l.readOfs, l.chunkSize
-	}
-	return l.readOfs, int32(readLen)
-}
-
-func (l *binaryChunkWriter) flush() error {
-	if _, err := l.wr.Write(l.b); err != nil {
-		return err
-	}
-	l.readOfs += int64(len(l.b))
-	return nil
-}
-
-type charChunkWriter struct {
-	s *Session
-
-	_id       locatorID
-	chunkSize int32
-	charLen   int64
-	byteLen   int64
-
-	readOfs int64
-	_eof    bool
-
-	ofs int
-
-	wr io.Writer
-
-	b []byte
-}
-
-func (l *charChunkWriter) setSession(s *Session) { l.s = s }
-func (l *charChunkWriter) SetWriter(wr io.Writer) error {
-	l.wr = wr
-	if err := l.flush(); err != nil {
-		return err
-	}
-	return l.s.decodeLobs(l)
-}
-
-func (l *charChunkWriter) id() locatorID { return l._id }
-func (l *charChunkWriter) eof() bool     { return l._eof }
-
-func (l *charChunkWriter) write(dec *encoding.Decoder, size int, eof bool) error {
-	l._eof = eof // store eof
-
-	if size == 0 {
-		return nil
-	}
-
-	l.b = resizeBuffer(l.b, size+l.ofs)
-	dec.Bytes(l.b[l.ofs:])
-	if l.wr != nil {
-		return l.flush()
-	}
-	return nil
-}
-
-func (l *charChunkWriter) readOfsLen() (int64, int32) {
-	readLen := l.charLen - l.readOfs
-	if readLen > int64(math.MaxInt32) || readLen > int64(l.chunkSize) {
-		return l.readOfs, l.chunkSize
-	}
-	return l.readOfs, int32(readLen)
-}
-
-func (l *charChunkWriter) flush() error {
-	nDst, nSrc, err := unicode.Cesu8ToUtf8Transformer.Transform(l.b, l.b, true) // inline cesu8 to utf8 transformation
-	if err != nil && err != transform.ErrShortSrc {
-		return err
-	}
-	if _, err := l.wr.Write(l.b[:nDst]); err != nil {
-		return err
-	}
-	l.ofs = len(l.b) - nSrc
-	if l.ofs != 0 && l.ofs != cesu8.CESUMax/2 { // assert remaining bytes
-		return unicode.ErrInvalidCesu8
-	}
-	l.readOfs += int64(l.runeCount(l.b[:nDst]))
-	if l.ofs != 0 {
-		l.readOfs++                   // add half encoding
-		copy(l.b, l.b[nSrc:len(l.b)]) // move half encoding to buffer begin
-	}
-	return nil
-}
-
-// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
-func (l *charChunkWriter) runeCount(b []byte) int {
-	numChars := 0
-	for len(b) > 0 {
-		_, size := utf8.DecodeRune(b)
-		b = b[size:]
-		numChars++
-		if size == utf8.UTFMax {
-			numChars++
-		}
-	}
-	return numChars
-}
+func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error)   { return decodeLobRes(d, false) }
+func (_lobCESU8Type) decodeRes(d *encoding.Decoder) (interface{}, error) { return decodeLobRes(d, true) }

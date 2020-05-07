@@ -224,7 +224,8 @@ func (p *inputParameters) numArg() int {
 
 func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 	// TODO Sniffer
-	return fmt.Errorf("not implemented")
+	//return fmt.Errorf("not implemented")
+	return nil
 }
 
 func (p *inputParameters) encode(enc *encoding.Encoder) error {

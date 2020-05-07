@@ -34,6 +34,7 @@ type Decoder struct {
 	b   [readScratchSize]byte // scratch buffer
 	tr  transform.Transformer
 	cnt int
+	dfv int
 }
 
 // NewDecoder creates a new Decoder instance based on an io.Reader.
@@ -42,6 +43,16 @@ func NewDecoder(rd io.Reader) *Decoder {
 		rd: rd,
 		tr: unicode.Cesu8ToUtf8Transformer,
 	}
+}
+
+// Dfv returns the data format version.
+func (d *Decoder) Dfv() int {
+	return d.dfv
+}
+
+// SetDfv sets the data format version.
+func (d *Decoder) SetDfv(dfv int) {
+	d.dfv = dfv
 }
 
 // ResetCnt resets the byte read counter.

@@ -28,87 +28,6 @@ import (
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-type partCache struct {
-	clientID            *clientID
-	command             *command
-	connectOptions      *connectOptions
-	topologyInformation *topologyInformation
-	rowsAffected        *rowsAffected
-	transactionFlags    *transactionFlags
-	statementContext    *statementContext
-	statementID         *statementID
-	parameterMetadata   *parameterMetadata
-	inputParameters     *inputParameters
-	outputParameters    *outputParameters
-	resultMetadata      *resultMetadata
-	resultsetID         *resultsetID
-	fetchSize           *fetchsize
-	resultset           *resultset
-	readLobRequest      *readLobRequest
-	writeLobRequest     *writeLobRequest
-	readLobReply        *readLobReply
-	writeLobReply       *writeLobReply
-	hdbErrors           *hdbErrors
-
-	parts map[partKind]partReader
-}
-
-func newPartCache() *partCache {
-	c := &partCache{
-		clientID:            &clientID{},
-		command:             &command{},
-		connectOptions:      &connectOptions{},
-		topologyInformation: &topologyInformation{},
-		rowsAffected:        &rowsAffected{},
-		transactionFlags:    &transactionFlags{},
-		statementContext:    &statementContext{},
-		statementID:         new(statementID),
-		parameterMetadata:   &parameterMetadata{},
-		inputParameters:     &inputParameters{},
-		outputParameters:    &outputParameters{},
-		resultMetadata:      &resultMetadata{},
-		resultsetID:         new(resultsetID),
-		fetchSize:           new(fetchsize),
-		resultset:           &resultset{},
-		readLobRequest:      &readLobRequest{},
-		writeLobRequest:     &writeLobRequest{},
-		readLobReply:        &readLobReply{},
-		writeLobReply:       &writeLobReply{},
-		hdbErrors:           &hdbErrors{},
-	}
-
-	parts := map[partKind]partReader{
-		pkClientID:            c.clientID,
-		pkCommand:             c.command,
-		pkConnectOptions:      c.connectOptions,
-		pkTopologyInformation: c.topologyInformation,
-		pkRowsAffected:        c.rowsAffected,
-		pkTransactionFlags:    c.transactionFlags,
-		pkStatementContext:    c.statementContext,
-		pkStatementID:         c.statementID,
-		pkParameterMetadata:   c.parameterMetadata,
-		pkParameters:          c.inputParameters,
-		pkOutputParameters:    c.outputParameters,
-		pkResultMetadata:      c.resultMetadata,
-		pkResultsetID:         c.resultsetID,
-		pkFetchSize:           c.fetchSize,
-		pkResultset:           c.resultset,
-		pkReadLobRequest:      c.readLobRequest,
-		pkWriteLobRequest:     c.writeLobRequest,
-		pkReadLobReply:        c.readLobReply,
-		pkWriteLobReply:       c.writeLobReply,
-		pkError:               c.hdbErrors,
-	}
-
-	c.parts = parts
-	return c
-}
-
-func (c *partCache) get(pk partKind) (partReader, bool) {
-	part, ok := c.parts[pk]
-	return part, ok
-}
-
 // rowsResult represents the row resultset of a query or stored procedure (output parameters, call table results).
 type rowsResult interface {
 	rsID() uint64                         // RsID returns the resultset id.
@@ -318,15 +237,25 @@ func (cr *callResult) appendTableRowsFields(s *Session) {
 }
 
 type protocolReader struct {
-	dec              *encoding.Decoder
-	tracer           traceLogger
-	msgIter          *msgIter
-	segIter          *segIter
-	partIter         *partIter
-	errorFlag        bool
-	rowsAffectedFlag bool
+	upStream bool
+	step     int // authentication
 
-	*partCache
+	dec    *encoding.Decoder
+	tracer traceLogger
+
+	mh *messageHeader
+	sh *segmentHeader
+	ph *partHeader
+
+	msgSize  int64
+	numPart  int
+	cntPart  int
+	partRead bool
+
+	partReaderCache map[partKind]partReader
+
+	lastErrors       *hdbErrors
+	lastRowsAffected *rowsAffected
 
 	// partReader read errors could be
 	// - read buffer errors -> buffer Error() and ResetError()
@@ -334,23 +263,36 @@ type protocolReader struct {
 	err error
 }
 
-func newProtocolReader(rd io.Reader) *protocolReader {
-	tracer := newTraceLogger(false)
-	dec := encoding.NewDecoder(rd)
-	partIter := newPartIter(dec, tracer)
-	segIter := newSegIter(partIter, dec, tracer)
-	msgIter := newMsgIter(segIter, dec, tracer)
+func newProtocolReader(upStream bool, rd io.Reader) *protocolReader {
 	return &protocolReader{
-		dec:       dec,
-		tracer:    tracer,
-		partCache: newPartCache(),
-		partIter:  partIter,
-		segIter:   segIter,
-		msgIter:   msgIter,
+		upStream:        upStream,
+		dec:             encoding.NewDecoder(rd),
+		tracer:          newTraceLogger(upStream),
+		partReaderCache: map[partKind]partReader{},
+		mh:              &messageHeader{},
+		sh:              &segmentHeader{},
+		ph:              &partHeader{},
 	}
 }
 
-func (r *protocolReader) readProlog() error {
+func (r *protocolReader) setDfv(dfv int) {
+	r.dec.SetDfv(dfv)
+}
+
+func (r *protocolReader) readSkip() error            { return r.iterateParts(nil) }
+func (r *protocolReader) sessionID() int64           { return r.mh.sessionID }
+func (r *protocolReader) functionCode() functionCode { return r.sh.functionCode }
+
+func (r *protocolReader) readInitRequest() error {
+	req := &initRequest{}
+	if err := req.decode(r.dec); err != nil {
+		return err
+	}
+	r.tracer.Log(req)
+	return nil
+}
+
+func (r *protocolReader) readInitReply() error {
 	rep := &initReply{}
 	if err := rep.decode(r.dec); err != nil {
 		return err
@@ -359,10 +301,17 @@ func (r *protocolReader) readProlog() error {
 	return nil
 }
 
+func (r *protocolReader) readProlog() error {
+	if r.upStream {
+		return r.readInitRequest()
+	}
+	return r.readInitReply()
+}
+
 func (r *protocolReader) checkError() error {
 	defer func() { // init readFlags
-		r.errorFlag = false
-		r.rowsAffectedFlag = false
+		r.lastErrors = nil
+		r.lastRowsAffected = nil
 		r.err = nil
 		r.dec.ResetError()
 	}()
@@ -375,28 +324,28 @@ func (r *protocolReader) checkError() error {
 		return err
 	}
 
-	if !r.errorFlag {
+	if r.lastErrors == nil {
 		return nil
 	}
 
-	if r.rowsAffectedFlag { // link statement to error
+	if r.lastRowsAffected != nil { // link statement to error
 		j := 0
-		for i, rows := range *r.rowsAffected {
+		for i, rows := range *r.lastRowsAffected {
 			if rows == raExecutionFailed {
-				r.hdbErrors.setStmtNo(j, i)
+				r.lastErrors.setStmtNo(j, i)
 				j++
 			}
 		}
 	}
 
-	if r.hdbErrors.isWarnings() {
-		for _, e := range r.hdbErrors.errors {
+	if r.lastErrors.isWarnings() {
+		for _, e := range r.lastErrors.errors {
 			sqltrace.Traceln(e)
 		}
 		return nil
 	}
 
-	return r.hdbErrors
+	return r.lastErrors
 }
 
 func (r *protocolReader) canSkip(pk partKind) bool {
@@ -410,352 +359,65 @@ func (r *protocolReader) canSkip(pk partKind) bool {
 	return true
 }
 
-func (r *protocolReader) read(part partReader) {
-	pk := r.partIter.partKind()
-	switch pk {
-	case pkError:
-		r.errorFlag = true
-	case pkRowsAffected:
-		r.rowsAffectedFlag = true
+func (r *protocolReader) read(part partReader) error {
+	r.partRead = true
+
+	err := r.readPart(part)
+	if err != nil {
+		r.err = err
 	}
-	r.err = r.partIter.read(part)
+
+	switch part := part.(type) {
+	case *hdbErrors:
+		r.lastErrors = part
+	case *rowsAffected:
+		r.lastRowsAffected = part
+	}
+	return err
 }
 
-func (r *protocolReader) skip() {
-	pk := r.partIter.partKind()
+func (r *protocolReader) authPart() partReader {
+	defer func() { r.step++ }()
+
+	switch {
+	case r.upStream && r.step == 0:
+		return &scramsha256InitialRequest{}
+	case r.upStream:
+		return &scramsha256FinalRequest{}
+	case !r.upStream && r.step == 0:
+		return &scramsha256InitialReply{}
+	default:
+		return &scramsha256FinalReply{}
+	}
+}
+
+func (r *protocolReader) defaultPart(pk partKind) partReader {
+	part, ok := r.partReaderCache[pk]
+	if !ok {
+		part = newPartReader(pk)
+		r.partReaderCache[pk] = part
+	}
+	return part
+}
+
+func (r *protocolReader) skip() error {
+	pk := r.ph.partKind
 	if r.canSkip(pk) {
-		r.partIter.skip()
+		return r.skipPart()
+	}
+
+	var part partReader
+	if pk == pkAuthentication {
+		part = r.authPart()
 	} else {
-		switch pk {
-		case pkError:
-			r.errorFlag = true
-		case pkRowsAffected:
-			r.rowsAffectedFlag = true
-		}
-		part, ok := r.partCache.get(pk)
-		if !ok {
-			plog.Fatalf("part cache entry missing: %s", pk)
-		}
-		r.err = r.partIter.read(part)
+		part = r.defaultPart(pk)
 	}
+	return r.read(part)
 }
 
-func (r *protocolReader) readSkip() error {
-	r.msgIter.next()
-	r.segIter.next()
-	for r.partIter.next() {
-		r.skip()
-	}
-	return r.checkError()
-}
-
-func (r *protocolReader) readScramsha256InitialReply() (*scramsha256InitialReply, error) {
-	var scramsha256InitialReply = &scramsha256InitialReply{}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkAuthentication:
-			r.read(scramsha256InitialReply)
-		default:
-			r.skip()
-		}
-	}
-	return scramsha256InitialReply, r.checkError()
-}
-
-func (r *protocolReader) readScramsha256FinalReply() (*scramsha256FinalReply, int64, error) {
-	var scramsha256FinalReply = &scramsha256FinalReply{}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkAuthentication:
-			r.read(scramsha256FinalReply)
-		default:
-			r.skip()
-		}
-	}
-	return scramsha256FinalReply, r.msgIter.mh.sessionID, r.checkError()
-}
-
-func (r *protocolReader) readExecDirect() (functionCode, int64, error) {
-	var fc functionCode
-	var rows int64
-
-	r.msgIter.next()
-	r.segIter.next()
-	fc = r.segIter.functionCode()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkRowsAffected:
-			r.read(r.rowsAffected)
-			rows = r.rowsAffected.total()
-		default:
-			r.skip()
-		}
-	}
-	return fc, rows, r.checkError()
-}
-
-func (r *protocolReader) readQueryDirect() (*queryResult, error) {
-	qr := &queryResult{}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkResultMetadata:
-			r.read(r.resultMetadata)
-			qr.fields = r.resultMetadata.resultFields
-		case pkResultsetID:
-			r.read(r.resultsetID)
-			qr._rsID = uint64(*r.resultsetID)
-		case pkResultset:
-			r.resultset.resultFields = qr.fields
-			r.read(r.resultset)
-			qr.fieldValues = r.resultset.fieldValues
-			qr.attributes = r.partIter.ph.partAttributes
-		default:
-			r.skip()
-		}
-	}
-	return qr, r.checkError()
-}
-
-func (r *protocolReader) readQuery(pr *PrepareResult) (*queryResult, error) {
-	qr := &queryResult{fields: pr.resultFields}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkResultsetID:
-			r.read(r.resultsetID)
-			qr._rsID = uint64(*r.resultsetID)
-		case pkResultset:
-			r.resultset.resultFields = qr.fields
-			r.read(r.resultset)
-			qr.fieldValues = r.resultset.fieldValues
-			qr.attributes = r.partIter.ph.partAttributes
-		default:
-			r.skip()
-		}
-	}
-	return qr, r.checkError()
-}
-
-func (r *protocolReader) readFetchNext(qr *queryResult) error {
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkResultset:
-			r.resultset.resultFields = qr.fields
-			r.read(r.resultset)
-			qr.fieldValues = r.resultset.fieldValues
-			qr.attributes = r.partIter.ph.partAttributes
-		default:
-			r.skip()
-		}
-	}
-	return r.checkError()
-}
-
-func (r *protocolReader) readPrepare() (*PrepareResult, error) {
-	pr := &PrepareResult{}
-
-	r.msgIter.next()
-	r.segIter.next()
-	pr.fc = r.segIter.functionCode()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkStatementID:
-			r.read(r.statementID)
-			pr.stmtID = uint64(*r.statementID)
-		case pkResultMetadata:
-			r.read(r.resultMetadata)
-			pr.resultFields = r.resultMetadata.resultFields
-		case pkParameterMetadata:
-			r.read(r.parameterMetadata)
-			pr.prmFields = r.parameterMetadata.parameterFields
-		default:
-			r.skip()
-		}
-	}
-
-	return pr, r.checkError()
-}
-
-func (r *protocolReader) readExec() (fc functionCode, rows int64, ids []locatorID, err error) {
-
-	r.msgIter.next()
-	r.segIter.next()
-	fc = r.segIter.functionCode()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkRowsAffected:
-			r.read(r.rowsAffected)
-			rows = r.rowsAffected.total()
-		case pkWriteLobReply:
-			r.read(r.writeLobReply)
-			ids = r.writeLobReply.ids
-		default:
-			r.skip()
-		}
-	}
-	return fc, rows, ids, r.checkError()
-}
-
-func (r *protocolReader) readCall(outputFields []*parameterField) (*callResult, []locatorID, error) {
-
-	cr := &callResult{outputFields: outputFields}
-
-	//var qrs []*QueryResult
-	var qr *queryResult
-	var ids []locatorID
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkOutputParameters:
-			r.outputParameters.outputFields = cr.outputFields
-			r.read(r.outputParameters)
-			cr.fieldValues = r.outputParameters.fieldValues
-		case pkResultMetadata:
-			/*
-				procedure call with table parameters does return metadata for each table
-				sequence: metadata, resultsetID, resultset
-				but:
-				- resultset might not be provided for all tables
-				- so, 'additional' query result is detected by new metadata part
-			*/
-			qr = &queryResult{}
-			cr.qrs = append(cr.qrs, qr)
-			r.read(r.resultMetadata)
-			qr.fields = r.resultMetadata.resultFields
-		case pkResultset:
-			r.resultset.resultFields = qr.fields
-			r.read(r.resultset)
-			qr.fieldValues = r.resultset.fieldValues
-			qr.attributes = r.partIter.ph.partAttributes
-		case pkResultsetID:
-			r.read(r.resultsetID)
-			qr._rsID = uint64(*r.resultsetID)
-		case pkWriteLobReply:
-			r.read(r.writeLobReply)
-			ids = r.writeLobReply.ids
-		default:
-			r.skip()
-		}
-	}
-
-	// init fieldValues
-	if cr.fieldValues == nil {
-		cr.fieldValues = newFieldValues(0)
-	}
-	for _, qr := range cr.qrs {
-		if qr.fieldValues == nil {
-			qr.fieldValues = newFieldValues(0)
-		}
-	}
-	return cr, ids, r.checkError()
-}
-
-func (r *protocolReader) readReadLobReply(writer chunkWriter) error {
-	var readLobReply = &readLobReply{writer: writer}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkReadLobReply:
-			r.read(readLobReply)
-		default:
-			r.skip()
-		}
-	}
-	return r.checkError()
-}
-
-func (r *protocolReader) readWriteLobReply(cr *callResult) ([]locatorID, error) {
-	var writeLobReply = &writeLobReply{}
-
-	r.msgIter.next()
-	r.segIter.next()
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-		case pkOutputParameters:
-			r.outputParameters.outputFields = cr.outputFields
-			r.read(r.outputParameters)
-			cr.fieldValues = r.outputParameters.fieldValues
-		case pkWriteLobReply:
-			r.read(writeLobReply)
-		default:
-			r.skip()
-		}
-	}
-	return writeLobReply.ids, r.checkError()
-}
-
-//
-
-type partIter struct {
-	dec     *encoding.Decoder
-	tracer  traceLogger
-	msgSize int64
-	numPart int
-	cnt     int
-	ph      *partHeader
-}
-
-func newPartIter(dec *encoding.Decoder, tracer traceLogger) *partIter {
-	return &partIter{
-		dec:    dec,
-		tracer: tracer,
-		ph:     &partHeader{},
-	}
-}
-
-func (p *partIter) partKind() partKind {
-	return p.ph.partKind
-}
-
-func (p *partIter) reset(msgSize int64, numPart int) {
-	p.msgSize = msgSize
-	p.numPart = numPart
-	p.cnt = 0
-}
-
-func (p *partIter) next() bool {
-	if p.cnt >= p.numPart {
-		return false
-	}
-	p.cnt++
-	if err := p.ph.decode(p.dec); err != nil {
-		return false
-	}
-	p.tracer.Log(p.ph)
-	return true
-}
-
-func (p *partIter) skip() {
-	p.dec.Skip(int(p.ph.bufferLength))
-	p.tracer.Log("*skipped")
+func (r *protocolReader) skipPart() error {
+	r.dec.Skip(int(r.ph.bufferLength))
+	r.tracer.Log("*skipped")
 
 	/*
 		hdb protocol
@@ -765,21 +427,22 @@ func (p *partIter) skip() {
 		    - msgSize == 0: mh.varPartLength == sh.segmentLength
 			- msgSize < 0 : mh.varPartLength < sh.segmentLength
 	*/
-	if p.cnt != p.numPart || p.msgSize == 0 {
-		p.dec.Skip(padBytes(int(p.ph.bufferLength)))
+	if r.cntPart != r.numPart || r.msgSize == 0 {
+		r.dec.Skip(padBytes(int(r.ph.bufferLength)))
 	}
+	return nil
 }
 
-func (p *partIter) read(part partReader) error {
+func (r *protocolReader) readPart(part partReader) error {
 
-	p.dec.ResetCnt()
-	if err := part.decode(p.dec, p.ph); err != nil {
+	r.dec.ResetCnt()
+	if err := part.decode(r.dec, r.ph); err != nil {
 		return err // do not ignore partReader errros
 	}
-	cnt := p.dec.Cnt()
-	p.tracer.Log(part)
+	cnt := r.dec.Cnt()
+	r.tracer.Log(part)
 
-	bufferLen := int(p.ph.bufferLength)
+	bufferLen := int(r.ph.bufferLength)
 	switch {
 	case cnt < bufferLen: // protocol buffer length > read bytes -> skip the unread bytes
 
@@ -789,7 +452,7 @@ func (p *partIter) read(part partReader) error {
 		// println(fmt.Sprintf("%x", b))
 		// println(string(b))
 
-		p.dec.Skip(bufferLen - cnt)
+		r.dec.Skip(bufferLen - cnt)
 
 	case cnt > bufferLen: // read bytes > protocol buffer length -> should never happen
 		panic(fmt.Errorf("protocol error: read bytes %d > buffer length %d", cnt, bufferLen))
@@ -803,78 +466,53 @@ func (p *partIter) read(part partReader) error {
 		    - msgSize == 0: mh.varPartLength == sh.segmentLength
 			- msgSize < 0 : mh.varPartLength < sh.segmentLength
 	*/
-	if p.cnt != p.numPart || p.msgSize == 0 {
-		p.dec.Skip(padBytes(int(p.ph.bufferLength)))
+	if r.cntPart != r.numPart || r.msgSize == 0 {
+		r.dec.Skip(padBytes(int(r.ph.bufferLength)))
 	}
 	return nil
 }
 
-type segIter struct {
-	partIter *partIter
-	dec      *encoding.Decoder
-	tracer   traceLogger
-	msgSize  int64
-	numSeg   int
-	cnt      int
-	sh       *segmentHeader
-}
-
-func newSegIter(partIter *partIter, dec *encoding.Decoder, tracer traceLogger) *segIter {
-	return &segIter{
-		partIter: partIter,
-		dec:      dec,
-		tracer:   tracer,
-		sh:       &segmentHeader{},
+func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
+	if err := r.mh.decode(r.dec); err != nil {
+		return err
 	}
-}
+	r.tracer.Log(r.mh)
 
-func (s *segIter) functionCode() functionCode {
-	return s.sh.functionCode
-}
+	r.msgSize = int64(r.mh.varPartLength)
 
-func (s *segIter) reset(msgSize int64, numSeg int) {
-	s.msgSize = msgSize
-	s.numSeg = numSeg
-	s.cnt = 0
-}
+	for i := 0; i < int(r.mh.noOfSegm); i++ {
 
-func (s *segIter) next() bool {
-	if s.cnt >= s.numSeg {
-		return false
+		if err := r.sh.decode(r.dec); err != nil {
+			return err
+		}
+		r.tracer.Log(r.sh)
+
+		r.msgSize -= int64(r.sh.segmentLength)
+		r.numPart = int(r.sh.noOfParts)
+		r.cntPart = 0
+
+		for j := 0; j < int(r.sh.noOfParts); j++ {
+
+			if err := r.ph.decode(r.dec); err != nil {
+				return err
+			}
+			r.tracer.Log(r.ph)
+
+			r.cntPart++
+
+			r.partRead = false
+			if partCb != nil {
+				partCb(r.ph)
+			}
+			if !r.partRead {
+				r.skip()
+			}
+			if r.err != nil {
+				return r.err
+			}
+		}
 	}
-	s.cnt++
-	if err := s.sh.decode(s.dec); err != nil {
-		return false
-	}
-	s.tracer.Log(s.sh)
-	s.msgSize -= int64(s.sh.segmentLength)
-	s.partIter.reset(s.msgSize, int(s.sh.noOfParts))
-	return true
-}
-
-type msgIter struct {
-	segIter *segIter
-	dec     *encoding.Decoder
-	tracer  traceLogger
-	mh      *messageHeader
-}
-
-func newMsgIter(segIter *segIter, dec *encoding.Decoder, tracer traceLogger) *msgIter {
-	return &msgIter{
-		segIter: segIter,
-		dec:     dec,
-		tracer:  tracer,
-		mh:      &messageHeader{},
-	}
-}
-
-func (m *msgIter) next() bool {
-	if err := m.mh.decode(m.dec); err != nil {
-		return false
-	}
-	m.tracer.Log(m.mh)
-	m.segIter.reset(int64(m.mh.varPartLength), int(m.mh.noOfSegm))
-	return true
+	return r.checkError()
 }
 
 // protocol writer

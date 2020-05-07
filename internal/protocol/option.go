@@ -29,12 +29,12 @@ type optDoubleType float64
 type optStringType []byte
 type optBinaryStringType []byte
 
-func (t optBooleanType) String() string      { return fmt.Sprintf("%t", t) }
-func (t optIntType) String() string          { return fmt.Sprintf("%d", t) }
-func (t optBigintType) String() string       { return fmt.Sprintf("%d", t) }
-func (t optDoubleType) String() string       { return fmt.Sprintf("%g", t) }
-func (t optStringType) String() string       { return string([]byte(t)) }
-func (t optBinaryStringType) String() string { return string([]byte(t)) }
+func (t optBooleanType) String() string      { return fmt.Sprintf("%t", bool(t)) }
+func (t optIntType) String() string          { return fmt.Sprintf("%d", int(t)) }
+func (t optBigintType) String() string       { return fmt.Sprintf("%d", int64(t)) }
+func (t optDoubleType) String() string       { return fmt.Sprintf("%g", float64(t)) }
+func (t optStringType) String() string       { return fmt.Sprintf("%s", string(t)) }
+func (t optBinaryStringType) String() string { return fmt.Sprintf("%v", []byte(t)) }
 
 type multiLineOptions []plainOptions
 
@@ -71,7 +71,7 @@ func (o multiLineOptions) encode(enc *encoding.Encoder) {
 	}
 }
 
-type plainOptions map[int8]interface{}
+type plainOptions map[connectOption]interface{}
 
 func (o plainOptions) size() int {
 	size := 2 * len(o) //option + type
@@ -100,7 +100,7 @@ func (o plainOptions) decode(dec *encoding.Decoder, cnt int) {
 
 	for i := 0; i < cnt; i++ {
 
-		k := dec.Int8()
+		k := connectOption(dec.Int8())
 		tc := dec.Byte()
 
 		switch typeCode(tc) {
@@ -139,7 +139,7 @@ func (o plainOptions) encode(enc *encoding.Encoder) {
 
 	for k, v := range o {
 
-		enc.Int8(k)
+		enc.Int8(int8(k))
 
 		switch v := v.(type) {
 

@@ -12,6 +12,7 @@ const (
 	_typeCode_name_4 = "tcArraytcTexttcShorttext"
 	_typeCode_name_5 = "tcAlphanum"
 	_typeCode_name_6 = "tcLongdatetcSeconddatetcDaydatetcSecondtime"
+	_typeCode_name_7 = "tcTableReftcTableRows"
 )
 
 var (
@@ -20,6 +21,7 @@ var (
 	_typeCode_index_2 = [...]uint8{0, 10, 20, 31, 43}
 	_typeCode_index_4 = [...]uint8{0, 7, 13, 24}
 	_typeCode_index_6 = [...]uint8{0, 10, 22, 31, 43}
+	_typeCode_index_7 = [...]uint8{0, 10, 21}
 )
 
 func (i typeCode) String() string {
@@ -42,6 +44,9 @@ func (i typeCode) String() string {
 	case 61 <= i && i <= 64:
 		i -= 61
 		return _typeCode_name_6[_typeCode_index_6[i]:_typeCode_index_6[i+1]]
+	case 126 <= i && i <= 127:
+		i -= 126
+		return _typeCode_name_7[_typeCode_index_7[i]:_typeCode_index_7[i+1]]
 	default:
 		return "typeCode(" + strconv.FormatInt(int64(i), 10) + ")"
 	}

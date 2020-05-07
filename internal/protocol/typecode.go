@@ -198,7 +198,7 @@ var tcFieldTypeMap = map[typeCode]fieldType{
 	tcChar:       varType,
 	tcVarchar:    varType,
 	tcString:     varType,
-	tcAlphanum:   varType,
+	tcAlphanum:   alphaType,
 	tcNchar:      cesu8Type,
 	tcNvarchar:   cesu8Type,
 	tcNstring:    cesu8Type,

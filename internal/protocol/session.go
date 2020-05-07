@@ -27,6 +27,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/text/transform"
+
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -228,7 +230,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	pr := newProtocolReader(bufRd) // read downstream
+	pr := newProtocolReader(false, bufRd) // read downstream
 	if err := pr.readProlog(); err != nil {
 		return nil, err
 	}
@@ -326,8 +328,12 @@ func (s *Session) authenticateScramsha256() error {
 		return err
 	}
 
-	initialReply, err := s.pr.readScramsha256InitialReply()
-	if err != nil {
+	initialReply := &scramsha256InitialReply{}
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		if ph.partKind == pkAuthentication {
+			s.pr.read(initialReply)
+		}
+	}); err != nil {
 		return err
 	}
 
@@ -358,12 +364,21 @@ func (s *Session) authenticateScramsha256() error {
 		return err
 	}
 
-	_, sessionID, err := s.pr.readScramsha256FinalReply()
-	if err != nil {
+	finalReply := &scramsha256FinalReply{}
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkAuthentication:
+			s.pr.read(finalReply)
+		case pkConnectOptions:
+			s.pr.read(&co)
+			// set data format version
+			// TODO generalize for sniffer
+			s.pr.setDfv(int(co[coDataFormatVersion2].(optIntType)))
+		}
+	}); err != nil {
 		return err
 	}
-	s.sessionID = sessionID
-
+	s.sessionID = s.pr.sessionID()
 	return nil
 }
 
@@ -377,8 +392,24 @@ func (s *Session) QueryDirect(query string) (driver.Rows, error) {
 		return nil, err
 	}
 
-	qr, err := s.pr.readQueryDirect()
-	if err != nil {
+	qr := &queryResult{}
+	meta := &resultMetadata{}
+	resSet := &resultset{}
+
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkResultMetadata:
+			s.pr.read(meta)
+			qr.fields = meta.resultFields
+		case pkResultsetID:
+			s.pr.read((*resultsetID)(&qr._rsID))
+		case pkResultset:
+			resSet.resultFields = qr.fields
+			s.pr.read(resSet)
+			qr.fieldValues = resSet.fieldValues
+			qr.attributes = ph.partAttributes
+		}
+	}); err != nil {
 		return nil, err
 	}
 	if qr._rsID == 0 { // non select query
@@ -396,14 +427,20 @@ func (s *Session) ExecDirect(query string) (driver.Result, error) {
 		return nil, err
 	}
 
-	fc, rows, err := s.pr.readExecDirect()
-	if err != nil {
+	rows := &rowsAffected{}
+	var numRow int64
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		if ph.partKind == pkRowsAffected {
+			s.pr.read(rows)
+			numRow = rows.total()
+		}
+	}); err != nil {
 		return nil, err
 	}
-	if fc == fcDDL {
+	if s.pr.functionCode() == fcDDL {
 		return driver.ResultNoRows, nil
 	}
-	return driver.RowsAffected(rows), nil
+	return driver.RowsAffected(numRow), nil
 }
 
 // Prepare prepares a sql statement.
@@ -415,10 +452,25 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 		return nil, err
 	}
 
-	pr, err := s.pr.readPrepare()
-	if err != nil {
+	pr := &PrepareResult{}
+	resMeta := &resultMetadata{}
+	prmMeta := &parameterMetadata{}
+
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkStatementID:
+			s.pr.read((*statementID)(&pr.stmtID))
+		case pkResultMetadata:
+			s.pr.read(resMeta)
+			pr.resultFields = resMeta.resultFields
+		case pkParameterMetadata:
+			s.pr.read(prmMeta)
+			pr.prmFields = prmMeta.parameterFields
+		}
+	}); err != nil {
 		return nil, err
 	}
+	pr.fc = s.pr.functionCode()
 	return pr, nil
 }
 
@@ -431,10 +483,24 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Resu
 		return nil, err
 	}
 
-	fc, rows, ids, err := s.pr.readExec()
-	if err != nil {
+	rows := &rowsAffected{}
+	var ids []locatorID
+	lobReply := &writeLobReply{}
+	var numRow int64
+
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkRowsAffected:
+			s.pr.read(rows)
+			numRow = rows.total()
+		case pkWriteLobReply:
+			s.pr.read(lobReply)
+			ids = lobReply.ids
+		}
+	}); err != nil {
 		return nil, err
 	}
+	fc := s.pr.functionCode()
 
 	if len(ids) != 0 {
 		/*
@@ -450,7 +516,7 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Resu
 	if fc == fcDDL {
 		return driver.ResultNoRows, nil
 	}
-	return driver.RowsAffected(rows), nil
+	return driver.RowsAffected(numRow), nil
 }
 
 // QueryCall executes a stored procecure (by Query).
@@ -483,7 +549,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, ids, err := s.pr.readCall(outPrmFields)
+	cr, ids, err := s.readCall(outPrmFields)
 	if err != nil {
 		return nil, err
 	}
@@ -545,7 +611,7 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, ids, err := s.pr.readCall(outPrmFields)
+	cr, ids, err := s.readCall(outPrmFields)
 	if err != nil {
 		return nil, err
 	}
@@ -566,6 +632,62 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 	//return driver.ResultNoRows, nil
 }
 
+func (s *Session) readCall(outputFields []*parameterField) (*callResult, []locatorID, error) {
+	cr := &callResult{outputFields: outputFields}
+
+	//var qrs []*QueryResult
+	var qr *queryResult
+	var ids []locatorID
+	outPrms := &outputParameters{}
+	meta := &resultMetadata{}
+	resSet := &resultset{}
+	lobReply := &writeLobReply{}
+
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkOutputParameters:
+			outPrms.outputFields = cr.outputFields
+			s.pr.read(outPrms)
+			cr.fieldValues = outPrms.fieldValues
+		case pkResultMetadata:
+			/*
+				procedure call with table parameters does return metadata for each table
+				sequence: metadata, resultsetID, resultset
+				but:
+				- resultset might not be provided for all tables
+				- so, 'additional' query result is detected by new metadata part
+			*/
+			qr = &queryResult{}
+			cr.qrs = append(cr.qrs, qr)
+			s.pr.read(meta)
+			qr.fields = meta.resultFields
+		case pkResultset:
+			resSet.resultFields = qr.fields
+			s.pr.read(resSet)
+			qr.fieldValues = resSet.fieldValues
+			qr.attributes = ph.partAttributes
+		case pkResultsetID:
+			s.pr.read((*resultsetID)(&qr._rsID))
+		case pkWriteLobReply:
+			s.pr.read(lobReply)
+			ids = lobReply.ids
+		}
+	}); err != nil {
+		return nil, nil, err
+	}
+
+	// init fieldValues
+	if cr.fieldValues == nil {
+		cr.fieldValues = newFieldValues(0)
+	}
+	for _, qr := range cr.qrs {
+		if qr.fieldValues == nil {
+			qr.fieldValues = newFieldValues(0)
+		}
+	}
+	return cr, ids, nil
+}
+
 // Query executes a query.
 func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
 	s.mu.Lock()
@@ -576,8 +698,20 @@ func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Row
 		return nil, err
 	}
 
-	qr, err := s.pr.readQuery(pr)
-	if err != nil {
+	qr := &queryResult{fields: pr.resultFields}
+	resSet := &resultset{}
+
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkResultsetID:
+			s.pr.read((*resultsetID)(&qr._rsID))
+		case pkResultset:
+			resSet.resultFields = qr.fields
+			s.pr.read(resSet)
+			qr.fieldValues = resSet.fieldValues
+			qr.attributes = ph.partAttributes
+		}
+	}); err != nil {
 		return nil, err
 	}
 	if qr._rsID == 0 { // non select query
@@ -598,7 +732,17 @@ func (s *Session) fetchNext(rr rowsResult) error {
 	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr._rsID), fetchsize(s.cfg.FetchSize())); err != nil {
 		return err
 	}
-	return s.pr.readFetchNext(qr)
+
+	resSet := &resultset{}
+
+	return s.pr.iterateParts(func(ph *partHeader) {
+		if ph.partKind == pkResultset {
+			resSet.resultFields = qr.fields
+			s.pr.read(resSet)
+			qr.fieldValues = resSet.fieldValues
+			qr.attributes = ph.partAttributes
+		}
+	})
 }
 
 // DropStatementID releases the hdb statement handle.
@@ -650,16 +794,101 @@ func (s *Session) Rollback() error {
 }
 
 // decodeLobs decodes (reads from db) output lob or result lob parameters.
-func (s *Session) decodeLobs(writer chunkWriter) error {
-	readLobRequest := &readLobRequest{writer: writer}
 
-	for !writer.eof() {
-		if err := s.pw.write(s.sessionID, mtWriteLob, false, readLobRequest); err != nil {
+// read lob reply
+// - seems like readLobreply returns only a result for one lob - even if more then one is requested
+// --> read single lobs
+
+func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
+	lobChunkSize := int64(s.cfg.LobChunkSize())
+
+	chunkSize := func(numChar, ofs int64) int32 {
+		chunkSize := numChar - ofs
+		if chunkSize > lobChunkSize {
+			return int32(lobChunkSize)
+		}
+		return int32(chunkSize)
+	}
+
+	var countChars func(b []byte) (int64, error)
+	var wrcl io.WriteCloser
+
+	if descr.isCharBased {
+		wrcl = transform.NewWriter(wr, unicode.Cesu8ToUtf8Transformer) // CESU8 transformer
+		wr = wrcl
+		countChars = func(b []byte) (int64, error) {
+			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
+			numChars := int64(0)
+			for len(b) > 0 {
+				if !cesu8.FullRune(b) { //
+					return 0, fmt.Errorf("lob chunk consists of incomplete CESU-8 runes")
+				}
+				_, size := cesu8.DecodeRune(b)
+				b = b[size:]
+				numChars++
+				if size == cesu8.CESUMax {
+					numChars++
+				}
+			}
+			return numChars, nil
+		}
+	} else {
+		countChars = func(b []byte) (int64, error) {
+			return int64(len(b)), nil
+		}
+	}
+
+	if _, err := wr.Write(descr.b); err != nil {
+		return err
+	}
+
+	lobRequest := &readLobRequest{}
+	lobRequest.id = descr.id
+
+	lobReply := &readLobReply{}
+
+	eof := descr.opt.isLastData()
+
+	ofs, err := countChars(descr.b)
+	if err != nil {
+		return err
+	}
+
+	for !eof {
+
+		lobRequest.ofs += ofs
+		lobRequest.chunkSize = chunkSize(descr.numChar, ofs)
+
+		if err := s.pw.write(s.sessionID, mtWriteLob, false, lobRequest); err != nil {
 			return err
 		}
-		if err := s.pr.readReadLobReply(writer); err != nil {
+
+		if err := s.pr.iterateParts(func(ph *partHeader) {
+			if ph.partKind == pkReadLobReply {
+				s.pr.read(lobReply)
+			}
+		}); err != nil {
 			return err
 		}
+
+		if lobReply.id != lobRequest.id {
+			return fmt.Errorf("internal error: invalid lob locator %d - expected %d", lobReply.id, lobRequest.id)
+		}
+
+		if _, err := wr.Write(lobReply.b); err != nil {
+			return err
+		}
+
+		ofs, err = countChars(lobReply.b)
+		if err != nil {
+			return err
+		}
+		eof = lobReply.opt.isLastData()
+
+	}
+
+	if wrcl != nil {
+		return wrcl.Close()
 	}
 	return nil
 }
@@ -667,7 +896,10 @@ func (s *Session) decodeLobs(writer chunkWriter) error {
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*parameterField, args []driver.NamedValue) error {
 
-	chunkReaders := make([]chunkReader, 0, len(ids))
+	chunkSize := int(s.cfg.LobChunkSize())
+
+	readers := make([]io.Reader, 0, len(ids))
+	descrs := make([]*writeLobDescr, 0, len(ids))
 
 	j := 0
 	for i, f := range inPrmFields {
@@ -676,49 +908,80 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*par
 			if !ok {
 				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", args[i].Value)
 			}
+			if f.tc.isCharBased() {
+				rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
+			}
 			if j >= len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			chRd := newChunkReader(f.tc.isCharBased(), ids[j], int(s.cfg.LobChunkSize()), rd)
-			chunkReaders = append(chunkReaders, chRd)
+			readers = append(readers, rd)
+			descrs = append(descrs, &writeLobDescr{id: ids[j]})
 			j++
 		}
 	}
 
-	writeLobRequest := &writeLobRequest{chunkReaders: chunkReaders}
+	writeLobRequest := &writeLobRequest{}
 
-	if len(chunkReaders) != len(ids) {
-		return fmt.Errorf("protocol error: invalid number of lob parameter ids %d - expected %d", len(chunkReaders), len(ids))
-	}
+	for len(descrs) != 0 {
 
-	for len(chunkReaders) != 0 {
+		if len(descrs) != len(ids) {
+			return fmt.Errorf("protocol error: invalid number of lob parameter ids %d - expected %d", len(descrs), len(ids))
+		}
+		for i, descr := range descrs { // check if ids and descrs are in sync
+			if descr.id != ids[i] {
+				return fmt.Errorf("protocol error: lob parameter id mismatch %d - expected %d", descr.id, ids[i])
+			}
+		}
+
+		// TODO check total size limit
+		for i, descr := range descrs {
+			descr.b = make([]byte, chunkSize)
+			size, err := readers[i].Read(descr.b)
+			descr.b = descr.b[:size]
+			if err != nil && err != io.EOF {
+				return err
+			}
+			descr.ofs = -1 //offset (-1 := append)
+			descr.opt = loDataincluded
+			if err == io.EOF {
+				descr.opt |= loLastdata
+			}
+		}
+
+		writeLobRequest.descrs = descrs
 
 		if err := s.pw.write(s.sessionID, mtReadLob, false, writeLobRequest); err != nil {
 			return err
 		}
-		ids, err := s.pr.readWriteLobReply(cr)
-		if err != nil {
+
+		lobReply := &writeLobReply{}
+		outPrms := &outputParameters{}
+
+		if err := s.pr.iterateParts(func(ph *partHeader) {
+			switch ph.partKind {
+			case pkOutputParameters:
+				outPrms.outputFields = cr.outputFields
+				s.pr.read(outPrms)
+				cr.fieldValues = outPrms.fieldValues
+			case pkWriteLobReply:
+				s.pr.read(lobReply)
+				ids = lobReply.ids
+			}
+		}); err != nil {
 			return err
 		}
 
-		// remove done chunkReaders
-		i := 0
-		for _, chunkReader := range chunkReaders {
-			if !chunkReader.eof() {
-				chunkReaders[i] = chunkReader
-				i++
+		// remove done descr and readers
+		j := 0
+		for i, descr := range descrs {
+			if !descr.opt.isLastData() {
+				descrs[j] = descr
+				readers[j] = readers[i]
+				j++
 			}
 		}
-		chunkReaders = chunkReaders[:i]
-		// check ids, chunkReaders consistency
-		if len(chunkReaders) != len(ids) {
-			return fmt.Errorf("protocol error: invalid number of lob parameter ids %d - expected %d", len(chunkReaders), len(ids))
-		}
-		for i, id := range ids {
-			if id != chunkReaders[i].locatorID() {
-				return fmt.Errorf("protocol error: lob parameter id mismatch %d - expected %d", chunkReaders[i].locatorID(), id)
-			}
-		}
+		descrs = descrs[:j]
+		readers = readers[:j]
 	}
 	return nil
 }

@@ -17,67 +17,213 @@ limitations under the License.
 package protocol
 
 import (
-	"database/sql/driver"
 	"fmt"
+	"reflect"
 
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
+type part interface {
+	kind() partKind
+}
+
 // part kind methods
-func (*inPrmEnc) kind() partKind { return pkParameters }
+func (*hdbErrors) kind() partKind                 { return pkError }
+func (*scramsha256InitialRequest) kind() partKind { return pkAuthentication }
+func (*scramsha256InitialReply) kind() partKind   { return pkAuthentication }
+func (*scramsha256FinalRequest) kind() partKind   { return pkAuthentication }
+func (*scramsha256FinalReply) kind() partKind     { return pkAuthentication }
+func (clientID) kind() partKind                   { return pkClientID }
+func (connectOptions) kind() partKind             { return pkConnectOptions }
+func (*topologyInformation) kind() partKind       { return pkTopologyInformation }
+func (command) kind() partKind                    { return pkCommand }
+func (*rowsAffected) kind() partKind              { return pkRowsAffected }
+func (transactionFlags) kind() partKind           { return pkTransactionFlags }
+func (statementContext) kind() partKind           { return pkStatementContext }
+func (statementID) kind() partKind                { return pkStatementID }
+func (*parameterMetadata) kind() partKind         { return pkParameterMetadata }
+func (*inputParameters) kind() partKind           { return pkParameters }
+func (*outputParameters) kind() partKind          { return pkOutputParameters }
+func (*resultMetadata) kind() partKind            { return pkResultMetadata }
+func (resultsetID) kind() partKind                { return pkResultsetID }
+func (*resultset) kind() partKind                 { return pkResultset }
+func (fetchsize) kind() partKind                  { return pkFetchSize }
+func (*readLobRequest) kind() partKind            { return pkReadLobRequest }
+func (*readLobReply) kind() partKind              { return pkReadLobReply }
+func (*writeLobRequest) kind() partKind           { return pkWriteLobRequest }
+func (*writeLobReply) kind() partKind             { return pkWriteLobReply }
+
+// func (lobFlags) kind() partKind                   { return pkLobFlags }
+
+// check if part types implement part interface
+var (
+	_ part = (*hdbErrors)(nil)
+	_ part = (*scramsha256InitialRequest)(nil)
+	_ part = (*scramsha256InitialReply)(nil)
+	_ part = (*scramsha256FinalRequest)(nil)
+	_ part = (*scramsha256FinalReply)(nil)
+	_ part = (*clientID)(nil)
+	_ part = (*connectOptions)(nil)
+	_ part = (*topologyInformation)(nil)
+	_ part = (*command)(nil)
+	_ part = (*rowsAffected)(nil)
+	_ part = (*transactionFlags)(nil)
+	_ part = (*statementContext)(nil)
+	_ part = (*statementID)(nil)
+	_ part = (*parameterMetadata)(nil)
+	_ part = (*inputParameters)(nil)
+	_ part = (*outputParameters)(nil)
+	_ part = (*resultMetadata)(nil)
+	_ part = (*resultsetID)(nil)
+	_ part = (*resultset)(nil)
+	_ part = (*fetchsize)(nil)
+	_ part = (*readLobRequest)(nil)
+	_ part = (*readLobReply)(nil)
+	_ part = (*writeLobRequest)(nil)
+	_ part = (*writeLobReply)(nil)
+
+//	_ part = (*lobFlags)(nil)
+)
+
+type partWriter interface {
+	part
+	size() int
+	numArg() int
+	encode(*encoding.Encoder) error
+}
+
+// numArg methods (result == 1)
+func (*scramsha256InitialRequest) numArg() int { return 1 }
+func (*scramsha256FinalRequest) numArg() int   { return 1 }
+func (clientID) numArg() int                   { return 1 }
+func (command) numArg() int                    { return 1 }
+func (statementID) numArg() int                { return 1 }
+func (resultsetID) numArg() int                { return 1 }
+func (fetchsize) numArg() int                  { return 1 }
+func (*readLobRequest) numArg() int            { return 1 }
+
+// func (lobFlags) numArg() int                   { return 1 }
+
+// size methods (fixed size)
+const (
+	statementIDSize    = 8
+	resultsetIDSize    = 8
+	fetchsizeSize      = 4
+	readLobRequestSize = 24
+)
+
+func (statementID) size() int    { return statementIDSize }
+func (resultsetID) size() int    { return resultsetIDSize }
+func (fetchsize) size() int      { return fetchsizeSize }
+func (readLobRequest) size() int { return readLobRequestSize }
+
+// func (lobFlags) size() int       { return tinyintFieldSize }
 
 // check if part types implement partWriter interface
 var (
-	_ partWriter = (*inPrmEnc)(nil)
+	_ partWriter = (*scramsha256InitialRequest)(nil)
+	_ partWriter = (*scramsha256FinalRequest)(nil)
+	_ partWriter = (*clientID)(nil)
+	_ partWriter = (*connectOptions)(nil)
+	_ partWriter = (*command)(nil)
+	_ partWriter = (*statementID)(nil)
+	_ partWriter = (*inputParameters)(nil)
+	_ partWriter = (*resultsetID)(nil)
+	_ partWriter = (*fetchsize)(nil)
+	_ partReader = (*readLobRequest)(nil)
+	_ partReader = (*writeLobRequest)(nil)
+
+//	_ partWriter = (*lobFlags)(nil)
 )
 
-func (s *Session) newInPrmEnc(pr *PrepareResult, args []driver.NamedValue) *inPrmEnc {
-
-	e := &inPrmEnc{}
-
-	numField := len(pr.prmFields)
-	for _, f := range pr.prmFields {
-		if f.In() {
-			e._fields = append(e._fields, f)
-		}
-	}
-	e._size = 0
-	for i, arg := range args {
-		f := pr.prmFields[i%numField]
-		if f.In() {
-			e._args = append(e._args, arg)
-			e._size += prmSize(f.tc, arg)
-		}
-	}
-	e._size += len(e._args)
-	if len(e._fields) != 0 {
-		e._numArg = len(e._args) / len(e._fields)
-	}
-	return e
+type partReader interface {
+	part
+	decode(*encoding.Decoder, *partHeader) error
 }
 
-// encoder input parameters
-type inPrmEnc struct {
-	_fields        []*parameterField
-	_args          []driver.NamedValue
-	_size, _numArg int
+// check if part types implement partReader interface
+var (
+	_ partReader = (*hdbErrors)(nil)
+	_ partReader = (*scramsha256InitialRequest)(nil)
+	_ partReader = (*scramsha256InitialReply)(nil)
+	_ partReader = (*scramsha256FinalRequest)(nil)
+	_ partReader = (*scramsha256FinalReply)(nil)
+	_ partReader = (*clientID)(nil)
+	_ partReader = (*connectOptions)(nil)
+	_ partReader = (*topologyInformation)(nil)
+	_ partReader = (*command)(nil)
+	_ partReader = (*rowsAffected)(nil)
+	_ partReader = (*transactionFlags)(nil)
+	_ partReader = (*statementContext)(nil)
+	_ partReader = (*statementID)(nil)
+	_ partReader = (*parameterMetadata)(nil)
+	_ partReader = (*inputParameters)(nil)
+	_ partReader = (*outputParameters)(nil)
+	_ partReader = (*resultMetadata)(nil)
+	_ partReader = (*resultsetID)(nil)
+	_ partReader = (*resultset)(nil)
+	_ partReader = (*fetchsize)(nil)
+	_ partReader = (*readLobRequest)(nil)
+	_ partReader = (*writeLobRequest)(nil)
+	_ partReader = (*readLobReply)(nil)
+	_ partReader = (*writeLobReply)(nil)
+)
+
+// some partReader needs additional parameter set before reading
+type prmPartReader interface {
+	partReader
+	prm() // marker interface
 }
 
-func (e *inPrmEnc) String() string {
-	return fmt.Sprintf("fields %s len(args) %d args %v", e._fields, len(e._args), e._args)
+// prm marker methods
+func (*inputParameters) prm()  {}
+func (*outputParameters) prm() {}
+func (*resultset) prm()        {}
+
+var (
+	_ prmPartReader = (*inputParameters)(nil)
+	_ prmPartReader = (*outputParameters)(nil)
+	_ prmPartReader = (*resultset)(nil)
+)
+
+var partTypeMap = map[partKind]reflect.Type{
+	pkError:               reflect.TypeOf((*hdbErrors)(nil)).Elem(),
+	pkClientID:            reflect.TypeOf((*clientID)(nil)).Elem(),
+	pkConnectOptions:      reflect.TypeOf((*connectOptions)(nil)).Elem(),
+	pkTopologyInformation: reflect.TypeOf((*topologyInformation)(nil)).Elem(),
+	pkCommand:             reflect.TypeOf((*command)(nil)).Elem(),
+	pkRowsAffected:        reflect.TypeOf((*rowsAffected)(nil)).Elem(),
+	pkTransactionFlags:    reflect.TypeOf((*transactionFlags)(nil)).Elem(),
+	pkStatementContext:    reflect.TypeOf((*statementContext)(nil)).Elem(),
+	pkStatementID:         reflect.TypeOf((*statementID)(nil)).Elem(),
+	pkParameterMetadata:   reflect.TypeOf((*parameterMetadata)(nil)).Elem(),
+	pkParameters:          reflect.TypeOf((*inputParameters)(nil)).Elem(),
+	pkOutputParameters:    reflect.TypeOf((*outputParameters)(nil)).Elem(),
+	pkResultMetadata:      reflect.TypeOf((*resultMetadata)(nil)).Elem(),
+	pkResultsetID:         reflect.TypeOf((*resultsetID)(nil)).Elem(),
+	pkResultset:           reflect.TypeOf((*resultset)(nil)).Elem(),
+	pkFetchSize:           reflect.TypeOf((*fetchsize)(nil)).Elem(),
+	pkReadLobRequest:      reflect.TypeOf((*readLobRequest)(nil)).Elem(),
+	pkReadLobReply:        reflect.TypeOf((*readLobReply)(nil)).Elem(),
+	pkWriteLobReply:       reflect.TypeOf((*writeLobReply)(nil)).Elem(),
+	pkWriteLobRequest:     reflect.TypeOf((*writeLobRequest)(nil)).Elem(),
 }
 
-func (e *inPrmEnc) size() int   { return e._size }
-func (e *inPrmEnc) numArg() int { return e._numArg }
+var partReaderType = reflect.TypeOf((*partReader)(nil)).Elem()
+var prmPartReaderType = reflect.TypeOf((*prmPartReader)(nil)).Elem()
 
-func (e *inPrmEnc) encode(enc *encoding.Encoder) error {
-	numField := len(e._fields)
-
-	for i, arg := range e._args {
-		f := e._fields[i%numField]
-		if err := encodePrm(enc, f.tc, arg); err != nil {
-			return err
-		}
+func newPartReader(pk partKind) partReader {
+	pt, ok := partTypeMap[pk]
+	if !ok {
+		panic(fmt.Sprintf("part type map - part kind %s not found", pk))
 	}
-	return nil
+	part := reflect.New(pt).Interface()
+	if _, ok := part.(prmPartReader); ok {
+		panic(fmt.Sprintf("part kind %s does implement parameter part reader interface", pk))
+	}
+	partReader, ok := part.(partReader)
+	if !ok {
+		panic(fmt.Sprintf("part kind %s does not implement part reader interface", pk))
+	}
+	return partReader
 }

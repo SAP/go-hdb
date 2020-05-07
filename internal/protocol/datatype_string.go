@@ -4,9 +4,9 @@ package protocol
 
 import "strconv"
 
-const _DataType_name = "DtUnknownDtTinyintDtSmallintDtIntegerDtBigintDtRealDtDoubleDtDecimalDtTimeDtStringDtBytesDtLob"
+const _DataType_name = "DtUnknownDtTinyintDtSmallintDtIntegerDtBigintDtRealDtDoubleDtDecimalDtTimeDtStringDtBytesDtLobDtRows"
 
-var _DataType_index = [...]uint8{0, 9, 18, 28, 37, 45, 51, 59, 68, 74, 82, 89, 94}
+var _DataType_index = [...]uint8{0, 9, 18, 28, 37, 45, 51, 59, 68, 74, 82, 89, 94, 100}
 
 func (i DataType) String() string {
 	if i >= DataType(len(_DataType_index)-1) {

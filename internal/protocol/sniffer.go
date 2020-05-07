@@ -31,8 +31,7 @@ import (
 	"bufio"
 	"io"
 	"net"
-
-	"github.com/SAP/go-hdb/internal/protocol/encoding"
+	"sync"
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
@@ -85,11 +84,15 @@ func (s *Sniffer) Do() error {
 	defer s.dbConn.Close()
 	defer s.conn.Close()
 
-	s.upRd.readInitRequest()
+	if err := s.upRd.pr.readProlog(); err != nil {
+		return err
+	}
 	if err := s.dbWr.Flush(); err != nil {
 		return err
 	}
-	s.downRd.readInitReply()
+	if err := s.downRd.pr.readProlog(); err != nil {
+		return err
+	}
 	if err := s.clWr.Flush(); err != nil {
 		return err
 	}
@@ -115,162 +118,119 @@ func (s *Sniffer) Do() error {
 }
 
 type sniffReader struct {
-	dec      *encoding.Decoder
-	tracer   traceLogger
-	msgIter  *msgIter
-	segIter  *segIter
-	partIter *partIter
-
-	*partCache
-
-	step int
+	pr *protocolReader
 }
 
 func newSniffReader(upStream bool, rd *bufio.Reader) *sniffReader {
-	tracer := newTraceLogger(upStream)
-	dec := encoding.NewDecoder(rd)
-	partIter := newPartIter(dec, tracer)
-	segIter := newSegIter(partIter, dec, tracer)
-	msgIter := newMsgIter(segIter, dec, tracer)
-	return &sniffReader{
-		dec:       dec,
-		tracer:    tracer,
-		partCache: newPartCache(),
-		partIter:  partIter,
-		segIter:   segIter,
-		msgIter:   msgIter,
-	}
+	return &sniffReader{pr: newProtocolReader(upStream, rd)}
 }
 
-type sniffUpReader struct {
-	*sniffReader
-	mt   messageType
-	rsID uint64
-}
+type sniffUpReader struct{ *sniffReader }
 
 func newSniffUpReader(rd *bufio.Reader) *sniffUpReader {
 	return &sniffUpReader{sniffReader: newSniffReader(true, rd)}
 }
 
+type resMetaCache struct {
+	mu    sync.RWMutex
+	cache map[uint64]*resultMetadata
+}
+
+func newResMetaCache() *resMetaCache {
+	return &resMetaCache{cache: make(map[uint64]*resultMetadata)}
+}
+
+func (c *resMetaCache) put(stmtID uint64, resMeta *resultMetadata) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[stmtID] = resMeta
+}
+
+type prmMetaCache struct {
+	mu    sync.RWMutex
+	cache map[uint64]*parameterMetadata
+}
+
+func newPrmMetaCache() *prmMetaCache {
+	return &prmMetaCache{cache: make(map[uint64]*parameterMetadata)}
+}
+
+func (c *prmMetaCache) put(stmtID uint64, prmMeta *parameterMetadata) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cache[stmtID] = prmMeta
+}
+
+func (c *prmMetaCache) get(stmtID uint64) *parameterMetadata {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cache[stmtID]
+}
+
+var _resMetaCache = newResMetaCache()
+var _prmMetaCache = newPrmMetaCache()
+
+func (r *sniffUpReader) readMsg() error {
+	var stmtID uint64
+
+	return r.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkStatementID:
+			r.pr.read((*statementID)(&stmtID))
+		// case pkResultMetadata:
+		// 	r.pr.read(resMeta)
+		case pkParameters:
+			prmMeta := _prmMetaCache.get(stmtID)
+			prms := &inputParameters{inputFields: prmMeta.parameterFields} // TODO only input parameters
+			r.pr.read(prms)
+		}
+	})
+}
+
 type sniffDownReader struct {
 	*sniffReader
-
-	upRd *sniffUpReader
+	resMeta *resultMetadata
+	prmMeta *parameterMetadata
 }
 
 func newSniffDownReader(rd *bufio.Reader, upRd *sniffUpReader) *sniffDownReader {
-	return &sniffDownReader{sniffReader: newSniffReader(false, rd), upRd: upRd}
-}
-
-func (r *sniffUpReader) readMsg() error {
-	if !r.msgIter.next() {
-		return r.dec.ResetError()
+	return &sniffDownReader{
+		sniffReader: newSniffReader(false, rd),
+		resMeta:     &resultMetadata{},
+		prmMeta:     &parameterMetadata{},
 	}
-	r.segIter.next()
-	if r.segIter.sh.segmentKind != skRequest {
-		panic("segment type request expected")
-	}
-
-	var resultFields []*resultField
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-
-		case pkResultMetadata:
-			r.read(r.resultMetadata)
-			resultFields = r.resultMetadata.resultFields
-
-		case pkResultset:
-			r.resultset.resultFields = resultFields
-
-			for _, f := range resultFields {
-				println(f.String())
-			}
-
-			r.read(r.resultset)
-
-		default:
-			r.skip()
-		}
-	}
-	return r.dec.ResetError()
 }
 
 func (r *sniffDownReader) readMsg() error {
-	if !r.msgIter.next() {
-		return r.dec.ResetError()
-	}
-	r.segIter.next()
-	fc := r.segIter.functionCode()
-	switch fc {
-	// TODO - check fc
+	var stmtID uint64
+	//resMeta := &resultMetadata{}
+	//prmMeta := &parameterMetadata{}
 
-	}
-
-	var resultFields []*resultField
-
-	for r.partIter.next() {
-		switch r.partIter.partKind() {
-
+	if err := r.pr.iterateParts(func(ph *partHeader) {
+		switch ph.partKind {
+		case pkStatementID:
+			r.pr.read((*statementID)(&stmtID))
 		case pkResultMetadata:
-			r.read(r.resultMetadata)
-			resultFields = r.resultMetadata.resultFields
-
-		case pkResultset:
-			r.resultset.resultFields = resultFields
-
-			for _, f := range resultFields {
-				println(f.String())
+			r.pr.read(r.resMeta)
+		case pkParameterMetadata:
+			r.pr.read(r.prmMeta)
+		case pkOutputParameters:
+			outFields := []*parameterField{}
+			for _, f := range r.prmMeta.parameterFields {
+				if f.Out() {
+					outFields = append(outFields, f)
+				}
 			}
-
-			println("R E A D  R E S U L T")
-
-			r.read(r.resultset)
-
-		default:
-			r.skip()
+			outPrms := &outputParameters{outputFields: outFields}
+			r.pr.read(outPrms)
+		case pkResultset:
+			resSet := &resultset{resultFields: r.resMeta.resultFields}
+			r.pr.read(resSet)
 		}
+	}); err != nil {
+		return err
 	}
-	return r.dec.ResetError()
-}
-
-func (r *sniffUpReader) readInitRequest() {
-	req := &initRequest{}
-	req.decode(r.dec)
-	r.tracer.Log(req)
-}
-
-func (r *sniffDownReader) readInitReply() {
-	rep := &initReply{}
-	rep.decode(r.dec)
-	r.tracer.Log(rep)
-}
-
-func (r *sniffReader) read(part partReader) {
-	r.partIter.read(part)
-}
-
-func (r *sniffReader) skip() {
-	pk := r.partIter.partKind()
-
-	skip := pk == pkWriteLobRequest ||
-		pk == pkReadLobRequest ||
-		pk == pkReadLobReply ||
-		// pkParameterMetadata ||
-		// pk == pkParameters ||
-		// pk == pkResultMetadata ||
-		// pk == pkResultset ||
-		// pk == pkOutputParameters ||
-		pk == pkStatementContext //TODO python client sends TinyInts (not supported yet)
-
-	if skip {
-		r.partIter.skip()
-	} else {
-		part, ok := r.partCache.get(pk)
-		if ok {
-			r.partIter.read(part)
-		} else {
-			r.partIter.skip()
-		}
-	}
+	_resMetaCache.put(stmtID, r.resMeta)
+	_prmMetaCache.put(stmtID, r.prmMeta)
+	return nil
 }

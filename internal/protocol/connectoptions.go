@@ -24,12 +24,11 @@ import (
 
 // data format version
 const (
-	dfvBaseline optIntType = 1
-	_           optIntType = 3 // dfvDoNotUse
-	dfvSPS06    optIntType = 4 // see docu
-	dfvBINTEXT  optIntType = 6
-
-	dfvDefault = dfvSPS06
+	dfvBaseline = 1
+	_           = 3 // dfvDoNotUse
+	dfvSPS06    = 4 // see docu
+	dfvBINTEXT  = 6
+	dfvDefault  = dfvSPS06
 )
 
 func checkDfv(dfv optIntType) optIntType {
@@ -75,12 +74,12 @@ func (o connectOptions) size() int   { return plainOptions(o).size() }
 func (o connectOptions) numArg() int { return len(o) }
 
 func (o connectOptions) set(k connectOption, v interface{}) {
-	o[int8(k)] = v
+	o[k] = v
 }
 
 //linter:unused
 func (o connectOptions) get(k connectOption) (interface{}, bool) {
-	v, ok := o[int8(k)]
+	v, ok := o[k]
 	return v, ok
 }
 
