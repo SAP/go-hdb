@@ -22,28 +22,6 @@ import (
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-// data format version
-const (
-	dfvBaseline = 1
-	_           = 3 // dfvDoNotUse
-	dfvSPS06    = 4 // see docu
-	dfvBINTEXT  = 6
-	dfvDefault  = dfvSPS06
-)
-
-func checkDfv(dfv optIntType) optIntType {
-	if dfv == 0 {
-		return dfvDefault
-	}
-	if dfv <= dfvBaseline {
-		return dfvBaseline
-	}
-	if dfv <= dfvSPS06 {
-		return dfvSPS06
-	}
-	return dfvBINTEXT
-}
-
 // client distribution mode
 //nolint
 const (

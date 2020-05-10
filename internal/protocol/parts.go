@@ -1,5 +1,5 @@
 /*
-Copyright 2014 SAP SE
+Copyright 2020 SAP SE
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,45 +23,65 @@ import (
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
+type partEncoder interface {
+	size() int
+	encode(*encoding.Encoder) error
+}
+
+type partDecoder interface {
+	decode(*encoding.Decoder, *partHeader) error
+}
+
+type partDecodeEncoder interface {
+	partDecoder
+	partEncoder
+}
+
+type partReadWriter interface {
+	partReader
+	partWriter
+}
+
 type part interface {
+	String() string // should support Stringer interface
 	kind() partKind
 }
 
 // part kind methods
-func (*hdbErrors) kind() partKind                 { return pkError }
-func (*scramsha256InitialRequest) kind() partKind { return pkAuthentication }
-func (*scramsha256InitialReply) kind() partKind   { return pkAuthentication }
-func (*scramsha256FinalRequest) kind() partKind   { return pkAuthentication }
-func (*scramsha256FinalReply) kind() partKind     { return pkAuthentication }
-func (clientID) kind() partKind                   { return pkClientID }
-func (connectOptions) kind() partKind             { return pkConnectOptions }
-func (*topologyInformation) kind() partKind       { return pkTopologyInformation }
-func (command) kind() partKind                    { return pkCommand }
-func (*rowsAffected) kind() partKind              { return pkRowsAffected }
-func (transactionFlags) kind() partKind           { return pkTransactionFlags }
-func (statementContext) kind() partKind           { return pkStatementContext }
-func (statementID) kind() partKind                { return pkStatementID }
-func (*parameterMetadata) kind() partKind         { return pkParameterMetadata }
-func (*inputParameters) kind() partKind           { return pkParameters }
-func (*outputParameters) kind() partKind          { return pkOutputParameters }
-func (*resultMetadata) kind() partKind            { return pkResultMetadata }
-func (resultsetID) kind() partKind                { return pkResultsetID }
-func (*resultset) kind() partKind                 { return pkResultset }
-func (fetchsize) kind() partKind                  { return pkFetchSize }
-func (*readLobRequest) kind() partKind            { return pkReadLobRequest }
-func (*readLobReply) kind() partKind              { return pkReadLobReply }
-func (*writeLobRequest) kind() partKind           { return pkWriteLobRequest }
-func (*writeLobReply) kind() partKind             { return pkWriteLobReply }
+func (*hdbErrors) kind() partKind           { return pkError }
+func (*authInitReq) kind() partKind         { return pkAuthentication }
+func (*authInitRep) kind() partKind         { return pkAuthentication }
+func (*authFinalReq) kind() partKind        { return pkAuthentication }
+func (*authFinalRep) kind() partKind        { return pkAuthentication }
+func (clientID) kind() partKind             { return pkClientID }
+func (connectOptions) kind() partKind       { return pkConnectOptions }
+func (*topologyInformation) kind() partKind { return pkTopologyInformation }
+func (command) kind() partKind              { return pkCommand }
+func (*rowsAffected) kind() partKind        { return pkRowsAffected }
+func (transactionFlags) kind() partKind     { return pkTransactionFlags }
+func (statementContext) kind() partKind     { return pkStatementContext }
+func (statementID) kind() partKind          { return pkStatementID }
+func (*parameterMetadata) kind() partKind   { return pkParameterMetadata }
+func (*inputParameters) kind() partKind     { return pkParameters }
+func (*outputParameters) kind() partKind    { return pkOutputParameters }
+func (*resultMetadata) kind() partKind      { return pkResultMetadata }
+func (resultsetID) kind() partKind          { return pkResultsetID }
+func (*resultset) kind() partKind           { return pkResultset }
+func (fetchsize) kind() partKind            { return pkFetchSize }
+func (*readLobRequest) kind() partKind      { return pkReadLobRequest }
+func (*readLobReply) kind() partKind        { return pkReadLobReply }
+func (*writeLobRequest) kind() partKind     { return pkWriteLobRequest }
+func (*writeLobReply) kind() partKind       { return pkWriteLobReply }
 
 // func (lobFlags) kind() partKind                   { return pkLobFlags }
 
 // check if part types implement part interface
 var (
 	_ part = (*hdbErrors)(nil)
-	_ part = (*scramsha256InitialRequest)(nil)
-	_ part = (*scramsha256InitialReply)(nil)
-	_ part = (*scramsha256FinalRequest)(nil)
-	_ part = (*scramsha256FinalReply)(nil)
+	_ part = (*authInitReq)(nil)
+	_ part = (*authInitRep)(nil)
+	_ part = (*authFinalReq)(nil)
+	_ part = (*authFinalRep)(nil)
 	_ part = (*clientID)(nil)
 	_ part = (*connectOptions)(nil)
 	_ part = (*topologyInformation)(nil)
@@ -87,20 +107,21 @@ var (
 
 type partWriter interface {
 	part
-	size() int
 	numArg() int
-	encode(*encoding.Encoder) error
+	partEncoder
 }
 
 // numArg methods (result == 1)
-func (*scramsha256InitialRequest) numArg() int { return 1 }
-func (*scramsha256FinalRequest) numArg() int   { return 1 }
-func (clientID) numArg() int                   { return 1 }
-func (command) numArg() int                    { return 1 }
-func (statementID) numArg() int                { return 1 }
-func (resultsetID) numArg() int                { return 1 }
-func (fetchsize) numArg() int                  { return 1 }
-func (*readLobRequest) numArg() int            { return 1 }
+func (*authInitReq) numArg() int    { return 1 }
+func (*authInitRep) numArg() int    { return 1 }
+func (*authFinalReq) numArg() int   { return 1 }
+func (*authFinalRep) numArg() int   { return 1 }
+func (clientID) numArg() int        { return 1 }
+func (command) numArg() int         { return 1 }
+func (statementID) numArg() int     { return 1 }
+func (resultsetID) numArg() int     { return 1 }
+func (fetchsize) numArg() int       { return 1 }
+func (*readLobRequest) numArg() int { return 1 }
 
 // func (lobFlags) numArg() int                   { return 1 }
 
@@ -121,8 +142,8 @@ func (readLobRequest) size() int { return readLobRequestSize }
 
 // check if part types implement partWriter interface
 var (
-	_ partWriter = (*scramsha256InitialRequest)(nil)
-	_ partWriter = (*scramsha256FinalRequest)(nil)
+	_ partWriter = (*authInitReq)(nil)
+	_ partWriter = (*authFinalReq)(nil)
 	_ partWriter = (*clientID)(nil)
 	_ partWriter = (*connectOptions)(nil)
 	_ partWriter = (*command)(nil)
@@ -138,16 +159,16 @@ var (
 
 type partReader interface {
 	part
-	decode(*encoding.Decoder, *partHeader) error
+	partDecoder
 }
 
 // check if part types implement partReader interface
 var (
 	_ partReader = (*hdbErrors)(nil)
-	_ partReader = (*scramsha256InitialRequest)(nil)
-	_ partReader = (*scramsha256InitialReply)(nil)
-	_ partReader = (*scramsha256FinalRequest)(nil)
-	_ partReader = (*scramsha256FinalReply)(nil)
+	_ partReader = (*authInitReq)(nil)
+	_ partReader = (*authInitRep)(nil)
+	_ partReader = (*authFinalReq)(nil)
+	_ partReader = (*authFinalRep)(nil)
 	_ partReader = (*clientID)(nil)
 	_ partReader = (*connectOptions)(nil)
 	_ partReader = (*topologyInformation)(nil)
@@ -212,18 +233,18 @@ var partTypeMap = map[partKind]reflect.Type{
 var partReaderType = reflect.TypeOf((*partReader)(nil)).Elem()
 var prmPartReaderType = reflect.TypeOf((*prmPartReader)(nil)).Elem()
 
-func newPartReader(pk partKind) partReader {
+func newPartReader(pk partKind) (partReader, error) {
 	pt, ok := partTypeMap[pk]
 	if !ok {
-		panic(fmt.Sprintf("part type map - part kind %s not found", pk))
+		return nil, fmt.Errorf("part type map - part kind %s not found", pk)
 	}
 	part := reflect.New(pt).Interface()
 	if _, ok := part.(prmPartReader); ok {
-		panic(fmt.Sprintf("part kind %s does implement parameter part reader interface", pk))
+		return nil, fmt.Errorf("part kind %s does implement parameter part reader interface", pk)
 	}
 	partReader, ok := part.(partReader)
 	if !ok {
-		panic(fmt.Sprintf("part kind %s does not implement part reader interface", pk))
+		return nil, fmt.Errorf("part kind %s does not implement part reader interface", pk)
 	}
-	return partReader
+	return partReader, nil
 }

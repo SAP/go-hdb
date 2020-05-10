@@ -170,13 +170,6 @@ func TestDataType(t *testing.T) {
 	}
 
 	const (
-		dfvBaseline = 1 // baseline data format version.
-		dfvSPS06    = 4 //see docu
-		dfvBINTEXT  = 6
-		dfvDefault  = dfvSPS06
-	)
-
-	const (
 		minTinyint  = 0
 		maxTinyint  = math.MaxUint8
 		minSmallint = math.MinInt16
@@ -584,11 +577,11 @@ func TestDataType(t *testing.T) {
 		{"blob", 0, checkLob, lobTestData(false)},
 	}
 
-	var testSet []int
+	var testSet map[int]bool
 	if testing.Short() {
-		testSet = []int{dfvDefault}
+		testSet = map[int]bool{DefaultDfv: true}
 	} else {
-		testSet = []int{dfvBaseline, dfvSPS06, dfvBINTEXT}
+		testSet = supportedDfvs
 	}
 
 	connector, err := NewDSNConnector(TestDSN)
@@ -597,7 +590,7 @@ func TestDataType(t *testing.T) {
 	}
 	connector.SetDefaultSchema(TestSchema)
 
-	for _, dfv := range testSet {
+	for dfv := range testSet {
 		name := fmt.Sprintf("dfv %d", dfv)
 		t.Run(name, func(t *testing.T) {
 			connector.SetDfv(dfv)
@@ -612,7 +605,7 @@ func TestDataType(t *testing.T) {
 			}
 
 			switch dfv {
-			case dfvBaseline:
+			case DfvLevel1:
 				for _, test := range baselineTests {
 					t.Run(test.dataType, func(t *testing.T) {
 						testDataType(db, test.dataType, test.fieldSize, test.check, test.testData, t)

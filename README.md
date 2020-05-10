@@ -45,11 +45,9 @@ go test -dsn hdb://user:password@host:port
 * Support of TLS TCP connections.
 * Support of little-endian (e.g. amd64) and big-endian architectures (e.g. s390x).
 * Support of [driver connector](https://golang.org/pkg/database/sql/driver/#Connector).
+* Support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default and standard user / password as fallback.
 
 ## Dependencies
 
-* <http://golang.org/x/text/transform>
-
-## Todo
-
-* Additional Authentication Methods (currently only basic authentication is supported).
+* <https://godoc.org/golang.org/x/text/transform>
+* <https://godoc.org/golang.org/x/crypto/pbkdf2>

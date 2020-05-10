@@ -988,7 +988,7 @@ func (_alphaType) decode(d *encoding.Decoder) (interface{}, error) {
 		return nil, nil
 	}
 	switch d.Dfv() {
-	case dfvBaseline: // like _varType
+	case dfvLevel1: // like _varType
 		b := make([]byte, size)
 		d.Bytes(b)
 		return b, nil

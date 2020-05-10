@@ -238,7 +238,10 @@ func (cr *callResult) appendTableRowsFields(s *Session) {
 
 type protocolReader struct {
 	upStream bool
-	step     int // authentication
+
+	// authentication
+	step   int
+	method string
 
 	dec    *encoding.Decoder
 	tracer traceLogger
@@ -381,23 +384,29 @@ func (r *protocolReader) authPart() partReader {
 
 	switch {
 	case r.upStream && r.step == 0:
-		return &scramsha256InitialRequest{}
+		return &authInitReq{}
 	case r.upStream:
-		return &scramsha256FinalRequest{}
+		return &authFinalReq{}
 	case !r.upStream && r.step == 0:
-		return &scramsha256InitialReply{}
+		return &authInitRep{}
+	case !r.upStream:
+		return &authFinalRep{}
 	default:
-		return &scramsha256FinalReply{}
+		panic(fmt.Errorf("invalid auth step in protocol reader %d", r.step))
 	}
 }
 
-func (r *protocolReader) defaultPart(pk partKind) partReader {
+func (r *protocolReader) defaultPart(pk partKind) (partReader, error) {
 	part, ok := r.partReaderCache[pk]
 	if !ok {
-		part = newPartReader(pk)
+		var err error
+		part, err = newPartReader(pk)
+		if err != nil {
+			return nil, err
+		}
 		r.partReaderCache[pk] = part
 	}
-	return part
+	return part, nil
 }
 
 func (r *protocolReader) skip() error {
@@ -407,10 +416,14 @@ func (r *protocolReader) skip() error {
 	}
 
 	var part partReader
+	var err error
 	if pk == pkAuthentication {
 		part = r.authPart()
 	} else {
-		part = r.defaultPart(pk)
+		part, err = r.defaultPart(pk)
+	}
+	if err != nil {
+		return r.skipPart()
 	}
 	return r.read(part)
 }

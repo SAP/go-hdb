@@ -33,12 +33,6 @@ import (
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
 
-const (
-	mnSCRAMSHA256 = "SCRAMSHA256"
-	mnGSS         = "GSS"
-	mnSAML        = "SAML"
-)
-
 //padding
 const padding = 8
 
@@ -181,6 +175,8 @@ type SessionConfig interface {
 	Legacy() bool
 }
 
+const dfvLevel1 = 1
+
 const defaultSessionID = -1
 
 // Session represents a HDB session.
@@ -283,92 +279,69 @@ func (s *Session) MaxBulkNum() int {
 }
 
 func (s *Session) authenticate() error {
-	authentication := mnSCRAMSHA256
-
-	switch authentication {
-	default:
-		return fmt.Errorf("invalid authentication %s", authentication)
-
-	case mnSCRAMSHA256:
-		if err := s.authenticateScramsha256(); err != nil {
-			return err
-		}
-	case mnGSS:
-		panic("not implemented error")
-	case mnSAML:
-		panic("not implemented error")
+	authStepper := newAuth(s.cfg.Username(), s.cfg.Password())
+	if err := s.authenticateMethod(authStepper); err != nil {
+		return err
 	}
-
 	if s.sessionID <= 0 {
 		return fmt.Errorf("invalid session id %d", s.sessionID)
 	}
-
 	return nil
 }
 
-func (s *Session) authenticateScramsha256() error {
-	tr := unicode.Utf8ToCesu8Transformer
-	tr.Reset()
-
-	username := make([]byte, cesu8.StringSize(s.cfg.Username()))
-	if _, _, err := tr.Transform(username, []byte(s.cfg.Username()), true); err != nil {
-		return err // should never happen
-	}
-
-	password := make([]byte, cesu8.StringSize(s.cfg.Password()))
-	if _, _, err := tr.Transform(password, []byte(s.cfg.Password()), true); err != nil {
-		return err //should never happen
-	}
-
-	clientChallenge := clientChallenge()
-
-	//initial request
-	initialRequest := &scramsha256InitialRequest{username: username, clientChallenge: clientChallenge}
-	if err := s.pw.write(s.sessionID, mtAuthenticate, false, initialRequest); err != nil {
-		return err
-	}
-
-	initialReply := &scramsha256InitialReply{}
-	if err := s.pr.iterateParts(func(ph *partHeader) {
-		if ph.partKind == pkAuthentication {
-			s.pr.read(initialReply)
-		}
-	}); err != nil {
-		return err
-	}
-
-	// final request
-	finalRequest := &scramsha256FinalRequest{
-		username:    username,
-		clientProof: clientProof(initialReply.salt, initialReply.serverChallenge, clientChallenge, password),
-	}
-
-	id := newClientID()
-
+func (s *Session) connectOptions() connectOptions {
 	co := connectOptions{}
 	co.set(coDistributionProtocolVersion, optBooleanType(false))
 	co.set(coSelectForUpdateSupported, optBooleanType(false))
 	co.set(coSplitBatchCommands, optBooleanType(true))
-
-	dfv := checkDfv(optIntType(s.cfg.Dfv()))
-	co.set(coDataFormatVersion2, dfv)
-
+	co.set(coDataFormatVersion2, optIntType(s.cfg.Dfv()))
 	co.set(coCompleteArrayExecution, optBooleanType(true))
 	if s.cfg.Locale() != "" {
 		co.set(coClientLocale, optStringType(s.cfg.Locale()))
 	}
 	co.set(coClientDistributionMode, cdmOff)
 	// co.set(coImplicitLobStreaming, optBooleanType(true))
+	return co
+}
 
-	if err := s.pw.write(s.sessionID, mtConnect, false, finalRequest, id, co); err != nil {
+func (s *Session) authenticateMethod(stepper authStepper) error {
+	var auth partReadWriter
+	var err error
+
+	if auth, err = stepper.next(); err != nil {
+		return err
+	}
+	if err := s.pw.write(s.sessionID, mtAuthenticate, false, auth); err != nil {
 		return err
 	}
 
-	finalReply := &scramsha256FinalReply{}
+	if auth, err = stepper.next(); err != nil {
+		return err
+	}
+	if err := s.pr.iterateParts(func(ph *partHeader) {
+		if ph.partKind == pkAuthentication {
+			s.pr.read(auth)
+		}
+	}); err != nil {
+		return err
+	}
+
+	if auth, err = stepper.next(); err != nil {
+		return err
+	}
+	id := newClientID()
+	co := s.connectOptions()
+	if err := s.pw.write(s.sessionID, mtConnect, false, auth, id, co); err != nil {
+		return err
+	}
+
+	if auth, err = stepper.next(); err != nil {
+		return err
+	}
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
 		case pkAuthentication:
-			s.pr.read(finalReply)
+			s.pr.read(auth)
 		case pkConnectOptions:
 			s.pr.read(&co)
 			// set data format version

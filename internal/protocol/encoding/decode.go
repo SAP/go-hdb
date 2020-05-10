@@ -188,6 +188,20 @@ func (d *Decoder) Uint32() uint32 {
 	return binary.LittleEndian.Uint32(d.b[:4])
 }
 
+// Uint32ByteOrder reads and returns an uint32 in given byte order.
+func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
+	if d.err != nil {
+		return 0
+	}
+	var n int
+	n, d.err = io.ReadFull(d.rd, d.b[:4])
+	d.cnt += n
+	if d.err != nil {
+		return 0
+	}
+	return byteOrder.Uint32(d.b[:4])
+}
+
 // Int64 reads and returns an int64.
 func (d *Decoder) Int64() int64 {
 	if d.err != nil {
@@ -265,9 +279,25 @@ func (d *Decoder) CESU8Bytes(size int) []byte {
 	return p[:n]
 }
 
-// ShortCESU8Bytes reads a CESU-8 encoded byte sequence and returns an UTF-8 byte slice.
-// Size is encoded in one byte.
-func (d *Decoder) ShortCESU8Bytes() ([]byte, int) {
-	size := d.Byte()
-	return d.CESU8Bytes(int(size)), int(size)
-}
+// // ShortCESU8Bytes reads a CESU-8 encoded byte sequence and returns an UTF-8 byte slice.
+// // Size is encoded in one byte.
+// func (d *Decoder) ShortCESU8Bytes() ([]byte, int) {
+// 	size := d.Byte()
+// 	return d.CESU8Bytes(int(size)), int(size)
+// }
+
+// // ShortCESU8String reads a CESU-8 encoded byte sequence and returns an UTF-8 string.
+// // Size is encoded in one byte.
+// func (d *Decoder) ShortCESU8Bytes() (string, int) {
+// 	b, n := d.ShortCESU8Bytes()
+// 	return b, n
+// }
+
+// // ShortBytes reads a byte sequence and returns a byte slice.
+// // Size is encoded in one byte.
+// func (d *Decoder) ShortBytes() ([]byte, int) {
+// 	size := d.Byte()
+// 	b := make([]byte, size)
+// 	d.Bytes(b)
+// 	return b
+// }
