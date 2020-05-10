@@ -71,7 +71,7 @@ const (
 	coImplicitXASessionSupported          connectOption = 47 //!< S2PC routing control - implicit XA join support after prepare and before execute in MessageType_Prepare, MessageType_Execute and MessageType_PrepareAndExecute
 	coClientSideColumnEncryptionVersion   connectOption = 48 //!< Version of client-side column encryption
 	coCompressionLevelAndFlags            connectOption = 49 //!< Network compression level and flags (added to hana2sp02)
-	coClientSideReExecutionSupported      connectOption = 50 //!< support client-side re-exection for client-side encryption (added to hana2sp03)
+	coClientSideReExecutionSupported      connectOption = 50 //!< support client-side re-execution for client-side encryption (added to hana2sp03)
 	coClientReconnectWaitTimeout          connectOption = 51 //!< client reconnection wait timeout for transparent session recovery
 	coOriginalAnchorConnectionID          connectOption = 52 //!< original anchor connectionID to notify client's RECONNECT
 	coFlagSet1                            connectOption = 53 //!< flags for aggregating several options

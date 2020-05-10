@@ -841,10 +841,12 @@ func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
 	return nil
 }
 
-func (_tinyintType) decodePrm(d *encoding.Decoder) (interface{}, error)  { return int64(d.Byte()), nil }
-func (_smallintType) decodePrm(d *encoding.Decoder) (interface{}, error) { return int64(d.Int16()), nil }
-func (_integerType) decodePrm(d *encoding.Decoder) (interface{}, error)  { return int64(d.Int32()), nil }
-func (_bigintType) decodePrm(d *encoding.Decoder) (interface{}, error)   { return d.Int64(), nil }
+func (_tinyintType) decodePrm(d *encoding.Decoder) (interface{}, error) { return int64(d.Byte()), nil }
+func (_smallintType) decodePrm(d *encoding.Decoder) (interface{}, error) {
+	return int64(d.Int16()), nil
+}
+func (_integerType) decodePrm(d *encoding.Decoder) (interface{}, error) { return int64(d.Int32()), nil }
+func (_bigintType) decodePrm(d *encoding.Decoder) (interface{}, error)  { return d.Int64(), nil }
 
 func (ft _tinyintType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
@@ -1058,5 +1060,7 @@ func decodeLobRes(d *encoding.Decoder, isCharBased bool) (interface{}, error) {
 	return descr, nil
 }
 
-func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error)   { return decodeLobRes(d, false) }
-func (_lobCESU8Type) decodeRes(d *encoding.Decoder) (interface{}, error) { return decodeLobRes(d, true) }
+func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error) { return decodeLobRes(d, false) }
+func (_lobCESU8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	return decodeLobRes(d, true)
+}

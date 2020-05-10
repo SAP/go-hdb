@@ -177,7 +177,9 @@ type authInitRep struct {
 	prms   partDecoder
 }
 
-func (r *authInitRep) String() string                     { return fmt.Sprintf("method %s parameters %v", r.method, r.prms) }
+func (r *authInitRep) String() string {
+	return fmt.Sprintf("method %s parameters %v", r.method, r.prms)
+}
 func (r *authInitRep) size() int                          { panic("not implemented") }
 func (r *authInitRep) encode(enc *encoding.Encoder) error { panic("not implemented") }
 
@@ -188,7 +190,7 @@ func (r *authInitRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 	}
 	r.method = string(decodeShortBytes(dec))
 
-	dec.Byte() // sub parameter lenght
+	dec.Byte() // sub parameter length
 
 	switch r.method {
 	case mnSCRAMSHA256:
@@ -301,7 +303,9 @@ type authFinalRep struct {
 	prms   partDecoder
 }
 
-func (r *authFinalRep) String() string                     { return fmt.Sprintf("method %s parameter %v", r.method, r.prms) }
+func (r *authFinalRep) String() string {
+	return fmt.Sprintf("method %s parameter %v", r.method, r.prms)
+}
 func (r *authFinalRep) size() int                          { panic("not implemented") }
 func (r *authFinalRep) encode(enc *encoding.Encoder) error { panic("not implemented") }
 
@@ -328,8 +332,8 @@ func newAuth(username, password string) *auth {
 		username: username,
 		password: password,
 		methods: []*authMethod{
-			&authMethod{method: mnSCRAMPBKDF2SHA256, clientChallenge: clientChallenge()},
-			&authMethod{method: mnSCRAMSHA256, clientChallenge: clientChallenge()},
+			{method: mnSCRAMPBKDF2SHA256, clientChallenge: clientChallenge()},
+			{method: mnSCRAMSHA256, clientChallenge: clientChallenge()},
 		},
 		initRep: &authInitRep{},
 	}
@@ -458,7 +462,7 @@ func decodeShortCESU8String(dec *encoding.Decoder) string {
 func encodeShortCESU8String(enc *encoding.Encoder, s string) error {
 	size := cesu8.StringSize(s)
 	if size > math.MaxUint8 {
-		return fmt.Errorf("invalid auth parameter lenght %d", size)
+		return fmt.Errorf("invalid auth parameter length %d", size)
 	}
 	enc.Byte(byte(size))
 	enc.CESU8String(s)
@@ -475,7 +479,7 @@ func decodeShortBytes(dec *encoding.Decoder) []byte {
 func encodeShortBytes(enc *encoding.Encoder, b []byte) error {
 	size := len(b)
 	if size > math.MaxUint8 {
-		return fmt.Errorf("invalid auth parameter lenght %d", size)
+		return fmt.Errorf("invalid auth parameter length %d", size)
 	}
 	enc.Byte(byte(size))
 	enc.Bytes(b)
