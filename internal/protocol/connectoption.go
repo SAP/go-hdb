@@ -27,7 +27,7 @@ const (
 	coClientLocale                        connectOption = 3  //!< Client locale information.
 	coSupportsLargeBulkOperations         connectOption = 4  //!< Bulk operations >32K are supported.
 	coDistributionEnabled                 connectOption = 5  //!< @deprecated Distribution (topology & call routing) enabled
-	coPrimaryConnectionId                 connectOption = 6  //!< @deprecated Id of primary connection (unused).
+	coPrimaryConnectionID                 connectOption = 6  //!< @deprecated Id of primary connection (unused).
 	coPrimaryConnectionHost               connectOption = 7  //!< @deprecated Primary connection host name (unused).
 	coPrimaryConnectionPort               connectOption = 8  //!< @deprecated Primary connection port (unused).
 	coCompleteDatatypeSupport             connectOption = 9  //!< @deprecated All data types supported (always on).

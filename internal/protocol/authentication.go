@@ -69,17 +69,17 @@ func (m *authMethod) size() int {
 	return size
 }
 
-func (r *authMethod) decode(dec *encoding.Decoder, ph *partHeader) error {
-	r.method = string(decodeShortBytes(dec))
-	r.clientChallenge = decodeShortBytes(dec)
+func (m *authMethod) decode(dec *encoding.Decoder, ph *partHeader) error {
+	m.method = string(decodeShortBytes(dec))
+	m.clientChallenge = decodeShortBytes(dec)
 	return nil
 }
 
-func (r *authMethod) encode(enc *encoding.Encoder) error {
-	if err := encodeShortBytes(enc, []byte(r.method)); err != nil {
+func (m *authMethod) encode(enc *encoding.Encoder) error {
+	if err := encodeShortBytes(enc, []byte(m.method)); err != nil {
 		return err
 	}
-	if err := encodeShortBytes(enc, r.clientChallenge); err != nil {
+	if err := encodeShortBytes(enc, m.clientChallenge); err != nil {
 		return err
 	}
 	return nil
