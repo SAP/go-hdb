@@ -25,7 +25,7 @@ func TestAuthentication(t *testing.T) {
 		method          string
 		salt            []byte
 		serverChallenge []byte
-		rounds          uint32
+		rounds          int
 		clientChallenge []byte
 		password        []byte
 		clientProof     []byte
@@ -52,16 +52,16 @@ func TestAuthentication(t *testing.T) {
 	}
 
 	for _, r := range testData {
-		var clientProof []byte
+		var key []byte
 		switch r.method {
 		case mnSCRAMSHA256:
-			clientProof = clientProofSCRAMSHA256(r.salt, r.serverChallenge, r.clientChallenge, r.password)
+			key = scramsha256Key(r.password, r.salt)
 		case mnSCRAMPBKDF2SHA256:
-			clientProof = clientProofSCRAMPBKDF2SHA256(r.salt, r.serverChallenge, r.rounds, r.clientChallenge, r.password)
+			key = scrampbkdf2sha256Key(r.password, r.salt, r.rounds)
 		default:
 			t.Fatalf("unknown authentication method %s", r.method)
 		}
-
+		clientProof := clientProof(key, r.password, r.salt, r.serverChallenge, r.clientChallenge)
 		for i, v := range clientProof {
 			if v != r.clientProof[i] {
 				t.Fatalf("diff index % d - got %v - expected %v", i, clientProof, r.clientProof)

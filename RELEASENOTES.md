@@ -1,6 +1,23 @@
 Release Notes
 =============
 
+
+## Release 0.100
+
+
+#### Minor revisions
+
+Release 0.100.1 - 0.100.3
+- minor optimizations
+- linter fixes
+
+#### Release Notes
+
+- Added support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication.
+
+PBKDF2 authentification is now used as default. Standard user / password authentication is used as fallback solution.
+
+
 ## Release 0.99
 
 

@@ -53,6 +53,44 @@ type authStepper interface {
 	next() (partReadWriter, error)
 }
 
+type _authShortCESU8String struct{}
+type _authShortBytes struct{}
+
+var authShortCESU8String = _authShortCESU8String{}
+var authShortBytes = _authShortBytes{}
+
+func (_authShortCESU8String) decode(dec *encoding.Decoder) string {
+	size := dec.Byte()
+	return string(dec.CESU8Bytes(int(size)))
+}
+
+func (_authShortCESU8String) encode(enc *encoding.Encoder, s string) error {
+	size := cesu8.StringSize(s)
+	if size > math.MaxUint8 {
+		return fmt.Errorf("invalid auth parameter length %d", size)
+	}
+	enc.Byte(byte(size))
+	enc.CESU8String(s)
+	return nil
+}
+
+func (_authShortBytes) decode(dec *encoding.Decoder) []byte {
+	size := dec.Byte()
+	b := make([]byte, size)
+	dec.Bytes(b)
+	return b
+}
+
+func (_authShortBytes) encode(enc *encoding.Encoder, b []byte) error {
+	size := len(b)
+	if size > math.MaxUint8 {
+		return fmt.Errorf("invalid auth parameter length %d", size)
+	}
+	enc.Byte(byte(size))
+	enc.Bytes(b)
+	return nil
+}
+
 type authMethod struct {
 	method          string
 	clientChallenge []byte
@@ -70,16 +108,16 @@ func (m *authMethod) size() int {
 }
 
 func (m *authMethod) decode(dec *encoding.Decoder, ph *partHeader) error {
-	m.method = string(decodeShortBytes(dec))
-	m.clientChallenge = decodeShortBytes(dec)
+	m.method = string(authShortBytes.decode(dec))
+	m.clientChallenge = authShortBytes.decode(dec)
 	return nil
 }
 
 func (m *authMethod) encode(enc *encoding.Encoder) error {
-	if err := encodeShortBytes(enc, []byte(m.method)); err != nil {
+	if err := authShortBytes.encode(enc, []byte(m.method)); err != nil {
 		return err
 	}
-	if err := encodeShortBytes(enc, m.clientChallenge); err != nil {
+	if err := authShortBytes.encode(enc, m.clientChallenge); err != nil {
 		return err
 	}
 	return nil
@@ -106,7 +144,7 @@ func (r *authInitReq) size() int {
 
 func (r *authInitReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numPrm := int(dec.Int16())
-	r.username = decodeShortCESU8String(dec)
+	r.username = authShortCESU8String.decode(dec)
 	numMethod := (numPrm - 1) / 2
 	r.methods = make([]*authMethod, numMethod)
 	for i := 0; i < len(r.methods); i++ {
@@ -121,7 +159,7 @@ func (r *authInitReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 
 func (r *authInitReq) encode(enc *encoding.Encoder) error {
 	enc.Int16(int16(1 + len(r.methods)*2)) // username + methods á each two fields
-	if err := encodeShortCESU8String(enc, r.username); err != nil {
+	if err := authShortCESU8String.encode(enc, r.username); err != nil {
 		return err
 	}
 	for _, m := range r.methods {
@@ -143,8 +181,8 @@ func (r *authInitSCRAMSHA256Rep) decode(dec *encoding.Decoder, ph *partHeader) e
 	if numPrm != 2 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 2)
 	}
-	r.salt = decodeShortBytes(dec)
-	r.serverChallenge = decodeShortBytes(dec)
+	r.salt = authShortBytes.decode(dec)
+	r.serverChallenge = authShortBytes.decode(dec)
 	return nil
 }
 
@@ -162,8 +200,8 @@ func (r *authInitSCRAMPBKDF2SHA256Rep) decode(dec *encoding.Decoder, ph *partHea
 	if numPrm != 3 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 3)
 	}
-	r.salt = decodeShortBytes(dec)
-	r.serverChallenge = decodeShortBytes(dec)
+	r.salt = authShortBytes.decode(dec)
+	r.serverChallenge = authShortBytes.decode(dec)
 	size := dec.Byte()
 	if size != uint32Size {
 		return fmt.Errorf("invalid auth uint32 size %d - expected %d", size, uint32Size)
@@ -188,7 +226,7 @@ func (r *authInitRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 	if numPrm != 2 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 2)
 	}
-	r.method = string(decodeShortBytes(dec))
+	r.method = string(authShortBytes.decode(dec))
 
 	dec.Byte() // sub parameter length
 
@@ -221,13 +259,13 @@ func (r *authClientProofReq) decode(dec *encoding.Decoder, ph *partHeader) error
 	if numPrm != 1 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 1)
 	}
-	r.clientProof = decodeShortBytes(dec)
+	r.clientProof = authShortBytes.decode(dec)
 	return nil
 }
 
 func (r *authClientProofReq) encode(enc *encoding.Encoder) error {
 	enc.Int16(1)
-	if err := encodeShortBytes(enc, r.clientProof); err != nil {
+	if err := authShortBytes.encode(enc, r.clientProof); err != nil {
 		return err
 	}
 	return nil
@@ -256,8 +294,8 @@ func (r *authFinalReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 	if numPrm != 3 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 3)
 	}
-	r.username = decodeShortCESU8String(dec)
-	r.method = string(decodeShortBytes(dec))
+	r.username = authShortCESU8String.decode(dec)
+	r.method = string(authShortBytes.decode(dec))
 	dec.Byte() // sub parameters
 	r.prms = &authClientProofReq{}
 	return r.prms.decode(dec, ph)
@@ -265,10 +303,10 @@ func (r *authFinalReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 
 func (r *authFinalReq) encode(enc *encoding.Encoder) error {
 	enc.Int16(3)
-	if err := encodeShortCESU8String(enc, r.username); err != nil {
+	if err := authShortCESU8String.encode(enc, r.username); err != nil {
 		return err
 	}
-	if err := encodeShortBytes(enc, []byte(r.method)); err != nil {
+	if err := authShortBytes.encode(enc, []byte(r.method)); err != nil {
 		return err
 	}
 	enc.Byte(byte(r.prms.size()))
@@ -286,13 +324,13 @@ func (r *authServerProofRep) decode(dec *encoding.Decoder, ph *partHeader) error
 	if numPrm != 1 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 1)
 	}
-	r.serverProof = decodeShortBytes(dec)
+	r.serverProof = authShortBytes.decode(dec)
 	return nil
 }
 
 func (r *authServerProofRep) encode(enc *encoding.Encoder) error {
 	enc.Int16(1)
-	if err := encodeShortBytes(enc, r.serverProof); err != nil {
+	if err := authShortBytes.encode(enc, r.serverProof); err != nil {
 		return err
 	}
 	return nil
@@ -314,7 +352,7 @@ func (r *authFinalRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 	if numPrm != 2 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 2)
 	}
-	r.method = string(decodeShortBytes(dec))
+	r.method = string(authShortBytes.decode(dec))
 	dec.Byte() // sub parameters
 	r.prms = &authServerProofRep{}
 	return r.prms.decode(dec, ph)
@@ -362,30 +400,27 @@ func (a *auth) next() (partReadWriter, error) {
 	case 1:
 		return a.initRep, nil
 	case 2:
-		var clientProof []byte
+		var salt, serverChallenge, key []byte
 
 		switch a.initRep.method {
 		case mnSCRAMSHA256:
 			prms := a.initRep.prms.(*authInitSCRAMSHA256Rep)
-			if len(prms.salt) != saltSize {
-				return nil, fmt.Errorf("invalid salt size %d - expected %d", len(prms.salt), saltSize)
-			}
-			if len(prms.serverChallenge) != serverChallengeSize {
-				return nil, fmt.Errorf("invalid server challenge size %d - expected %d", len(prms.serverChallenge), serverChallengeSize)
-			}
-			clientProof = clientProofSCRAMSHA256(prms.salt, prms.serverChallenge, a.clientChallenge(a.initRep.method), []byte(a.password))
+			salt, serverChallenge = prms.salt, prms.serverChallenge
+			key = scramsha256Key([]byte(a.password), prms.salt)
 		case mnSCRAMPBKDF2SHA256:
 			prms := a.initRep.prms.(*authInitSCRAMPBKDF2SHA256Rep)
-			if len(prms.salt) != saltSize {
-				return nil, fmt.Errorf("invalid salt size %d - expected %d", len(prms.salt), saltSize)
-			}
-			if len(prms.serverChallenge) != serverChallengeSize {
-				return nil, fmt.Errorf("invalid server challenge size %d - expected %d", len(prms.serverChallenge), serverChallengeSize)
-			}
-			clientProof = clientProofSCRAMPBKDF2SHA256(prms.salt, prms.serverChallenge, prms.rounds, a.clientChallenge(a.initRep.method), []byte(a.password))
+			salt, serverChallenge = prms.salt, prms.serverChallenge
+			key = scrampbkdf2sha256Key([]byte(a.password), prms.salt, int(prms.rounds))
 		default:
 			panic("should never happen")
 		}
+		if len(salt) != saltSize {
+			return nil, fmt.Errorf("invalid salt size %d - expected %d", len(salt), saltSize)
+		}
+		if len(serverChallenge) != serverChallengeSize {
+			return nil, fmt.Errorf("invalid server challenge size %d - expected %d", len(serverChallenge), serverChallengeSize)
+		}
+		clientProof := clientProof(key, []byte(a.password), salt, serverChallenge, a.clientChallenge(a.initRep.method))
 		if len(clientProof) != clientProofSize {
 			return nil, fmt.Errorf("invalid client proof size %d - expected %d", len(clientProof), clientProofSize)
 		}
@@ -404,28 +439,16 @@ func clientChallenge() []byte {
 	return r
 }
 
-func clientProofSCRAMSHA256(salt, serverChallenge, clientChallenge, password []byte) []byte {
-	buf := make([]byte, 0, len(salt)+len(serverChallenge)+len(clientChallenge))
-	buf = append(buf, salt...)
-	buf = append(buf, serverChallenge...)
-	buf = append(buf, clientChallenge...)
-
-	key := _sha256(_hmac(password, salt))
-	sig := _hmac(_sha256(key), buf)
-
-	proof := xor(sig, key)
-	return proof
+func scramsha256Key(password, salt []byte) []byte {
+	return _sha256(_hmac(password, salt))
 }
 
-func clientProofSCRAMPBKDF2SHA256(salt, serverChallenge []byte, rounds uint32, clientChallenge, password []byte) []byte {
-	buf := make([]byte, 0, len(salt)+len(serverChallenge)+len(clientChallenge))
-	buf = append(buf, salt...)
-	buf = append(buf, serverChallenge...)
-	buf = append(buf, clientChallenge...)
+func scrampbkdf2sha256Key(password, salt []byte, rounds int) []byte {
+	return _sha256(pbkdf2.Key(password, salt, int(rounds), clientProofSize, sha256.New))
+}
 
-	key := _sha256(pbkdf2.Key(password, salt, int(rounds), clientProofSize, sha256.New))
-	sig := _hmac(_sha256(key), buf)
-
+func clientProof(key, password, salt, serverChallenge, clientChallenge []byte) []byte {
+	sig := _hmac(_sha256(key), salt, serverChallenge, clientChallenge)
 	proof := xor(sig, key)
 	return proof
 }
@@ -437,9 +460,11 @@ func _sha256(p []byte) []byte {
 	return s
 }
 
-func _hmac(key, p []byte) []byte {
+func _hmac(key []byte, prms ...[]byte) []byte {
 	hash := hmac.New(sha256.New, key)
-	hash.Write(p)
+	for _, p := range prms {
+		hash.Write(p)
+	}
 	s := hash.Sum(nil)
 	return s
 }
@@ -451,37 +476,4 @@ func xor(sig, key []byte) []byte {
 		r[i] = v ^ key[i]
 	}
 	return r
-}
-
-// helper decode / encode
-func decodeShortCESU8String(dec *encoding.Decoder) string {
-	size := dec.Byte()
-	return string(dec.CESU8Bytes(int(size)))
-}
-
-func encodeShortCESU8String(enc *encoding.Encoder, s string) error {
-	size := cesu8.StringSize(s)
-	if size > math.MaxUint8 {
-		return fmt.Errorf("invalid auth parameter length %d", size)
-	}
-	enc.Byte(byte(size))
-	enc.CESU8String(s)
-	return nil
-}
-
-func decodeShortBytes(dec *encoding.Decoder) []byte {
-	size := dec.Byte()
-	b := make([]byte, size)
-	dec.Bytes(b)
-	return b
-}
-
-func encodeShortBytes(enc *encoding.Encoder, b []byte) error {
-	size := len(b)
-	if size > math.MaxUint8 {
-		return fmt.Errorf("invalid auth parameter length %d", size)
-	}
-	enc.Byte(byte(size))
-	enc.Bytes(b)
-	return nil
 }
