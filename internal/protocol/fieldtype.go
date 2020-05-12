@@ -133,11 +133,12 @@ func prmSize(tc typeCode, arg driver.NamedValue) int {
 // encode parameter
 func encodePrm(e *encoding.Encoder, tc typeCode, arg driver.NamedValue) error {
 	v := arg.Value
+	encTc := tc.encTc()
 	if v == nil && tc != tcSecondtime { // secondTime exception (see (*1))
-		e.Byte(byte(tc) | 0x80) // type code null value: set high bit
+		e.Byte(byte(encTc) | 0x80) // type code null value: set high bit
 		return nil
 	}
-	e.Byte(byte(tc)) // type code
+	e.Byte(byte(encTc)) // type code
 	return tc.fieldType().encodePrm(e, v)
 }
 

@@ -17,10 +17,14 @@ limitations under the License.
 package driver_test
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
+	"fmt"
+	"io"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/SAP/go-hdb/driver"
 )
@@ -86,4 +90,109 @@ func ExampleLob_write() {
 	if err := tx.Commit(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+/*
+ExampleLobPipe:
+- inserts data read from a file into a database large object field
+- and retrieves the data afterwards
+An io.Pipe is used to insert and retrieve Lob data in chunks.
+*/
+func ExampleLob_pipe() {
+	// Open test file.
+	file, err := os.Open("example_lob_test.go") // Open file.
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Use sync.WaitGroup to wait for go-routines to be ended.
+	wg := new(sync.WaitGroup)
+	wg.Add(2) // Exec and select sql statements.
+
+	// Open Test database.
+	connector, err := driver.NewDSNConnector(driver.TestDSN)
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Create table.
+	table := driver.RandomIdentifier("fileLob")
+	if _, err := tx.Exec(fmt.Sprintf("create table %s (file nclob)", table)); err != nil {
+		log.Fatalf("create table failed: %s", err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	lob := &driver.Lob{} // Lob field.
+
+	pipeReader, pipeWriter := io.Pipe() // Create pipe for writing Lob.
+	lob.SetReader(pipeReader)           // Use PipeReader as reader for Lob.
+
+	// Start sql insert in own go-routine.
+	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
+	go func() { // Start sql insert in own go-routine.
+		if _, err := stmt.Exec(lob); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("exec finalized")
+		wg.Done()
+	}()
+
+	// Read file line by line and write data to pipe.
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		pipeWriter.Write(scanner.Bytes())
+		pipeWriter.Write([]byte{'\n'}) // Write nl which was stripped off by scanner.
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+	// Close pipeWriter (end insert into db).
+	pipeWriter.Close()
+
+	stmt.Close()
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal(err)
+	}
+
+	pipeReader, pipeWriter = io.Pipe() // Create pipe for reading Lob.
+	lob.SetWriter(pipeWriter)          // Use PipeWriter as writer for Lob.
+
+	// Start sql select in own go-routine.
+	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
+	go func() {
+		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("scan finalized")
+		wg.Done()
+	}()
+
+	// Read Lob line by line via bufio.Scanner.
+	scanner = bufio.NewScanner(pipeReader)
+	for scanner.Scan() {
+		// Do something with scan result.
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+	pipeReader.Close()
+
+	// Wait until both go-routines are ended.
+	wg.Wait()
+
+	// output: exec finalized
+	// scan finalized
 }

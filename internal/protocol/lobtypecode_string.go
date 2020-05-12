@@ -4,6 +4,16 @@ package protocol
 
 import "strconv"
 
+func _() {
+	// An "invalid array index" compiler error signifies that the constant values have changed.
+	// Re-run the stringer command to generate them again.
+	var x [1]struct{}
+	_ = x[ltcUndefined-0]
+	_ = x[ltcBlob-1]
+	_ = x[ltcClob-2]
+	_ = x[ltcNclob-3]
+}
+
 const _lobTypecode_name = "ltcUndefinedltcBlobltcClobltcNclob"
 
 var _lobTypecode_index = [...]uint8{0, 12, 19, 26, 34}

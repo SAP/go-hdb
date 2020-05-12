@@ -17,8 +17,13 @@ limitations under the License.
 package driver
 
 import (
+	//"bytes"
+	"bytes"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"io"
+	"sync"
 	"testing"
 )
 
@@ -38,12 +43,94 @@ func testLobInsert(db *sql.DB, t *testing.T) {
 
 }
 
+type randReader struct{}
+
+func (randReader) Read(b []byte) (n int, err error) {
+	return rand.Read(b)
+}
+
+func testLobPipe(db *sql.DB, t *testing.T) {
+	const lobSize = 10000
+
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
+
+	table := RandomIdentifier("lobPipe")
+
+	lrd := io.LimitReader(randReader{}, lobSize)
+
+	wrBuf := &bytes.Buffer{}
+	wrBuf.ReadFrom(lrd)
+
+	cmpBuf := &bytes.Buffer{}
+
+	// use trancactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := tx.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lob := &Lob{}
+
+	rd, wr := io.Pipe()
+	lob.SetReader(rd)
+
+	go func() {
+		if _, err := stmt.Exec(lob); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("exec finalized")
+		wg.Done()
+	}()
+
+	mwr := io.MultiWriter(wr, cmpBuf)
+
+	wrBuf.WriteTo(mwr)
+	wr.Close()
+
+	stmt.Close()
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	rd, wr = io.Pipe()
+	lob.SetWriter(wr)
+
+	go func() {
+		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("scan finalized")
+		wg.Done()
+	}()
+
+	rdBuf := &bytes.Buffer{}
+	rdBuf.ReadFrom(rd)
+
+	if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
+		t.Fatalf("read buffer is not equal to write buffer")
+	}
+
+	wg.Wait()
+}
+
 func TestLob(t *testing.T) {
 	tests := []struct {
 		name string
 		fct  func(db *sql.DB, t *testing.T)
 	}{
 		{"insert", testLobInsert},
+		{"pipe", testLobPipe},
 	}
 
 	for _, test := range tests {

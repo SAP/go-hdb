@@ -30,94 +30,80 @@ type typeCode byte
 
 //nolint
 const (
-	tcNull      typeCode = 0
-	tcTinyint   typeCode = 1
-	tcSmallint  typeCode = 2
-	tcInteger   typeCode = 3
-	tcBigint    typeCode = 4
-	tcDecimal   typeCode = 5
-	tcReal      typeCode = 6
-	tcDouble    typeCode = 7
-	tcChar      typeCode = 8
-	tcVarchar   typeCode = 9
-	tcNchar     typeCode = 10
-	tcNvarchar  typeCode = 11
-	tcBinary    typeCode = 12
-	tcVarbinary typeCode = 13
-	// deprecated with 3 (doku) - but table 'date' field uses it
-	tcDate typeCode = 14
-	// deprecated with 3 (doku) - but table 'time' field uses it
-	tcTime typeCode = 15
-	// deprecated with 3 (doku) - but table 'timestamp' field uses it
-	tcTimestamp typeCode = 16
-	//tcTimetz            typeCode = 17 // reserved: do not use
-	//tcTimeltz           typeCode = 18 // reserved: do not use
-	//tcTimestamptz       typeCode = 19 // reserved: do not use
-	//tcTimestampltz      typeCode = 20 // reserved: do not use
-	//tcInvervalym        typeCode = 21 // reserved: do not use
-	//tcInvervalds        typeCode = 22 // reserved: do not use
-	//tcRowid             typeCode = 23 // reserved: do not use
-	//tcUrowid            typeCode = 24 // reserved: do not use
-	tcClob     typeCode = 25
-	tcNclob    typeCode = 26
-	tcBlob     typeCode = 27
-	tcBoolean  typeCode = 28
-	tcString   typeCode = 29
-	tcNstring  typeCode = 30
-	tcBlocator typeCode = 31
-	tcNlocator typeCode = 32
-	tcBstring  typeCode = 33
-	//tcDecimaldigitarray typeCode = 34 // reserved: do not use
-	tcVarchar2   typeCode = 35
-	tcVarchar3   typeCode = 36
-	tcNvarchar3  typeCode = 37
-	tcVarbinary3 typeCode = 38
-	//tcVargroup          typeCode = 39 // reserved: do not use
-	//tcTinyintnotnull    typeCode = 40 // reserved: do not use
-	//tcSmallintnotnull   typeCode = 41 // reserved: do not use
-	//tcIntnotnull        typeCode = 42 // reserved: do not use
-	//tcBigintnotnull     typeCode = 43 // reserved: do not use
-	//tcArgument          typeCode = 44 // reserved: do not use
-	//tcTable             typeCode = 45 // reserved: do not use
-	//tcCursor            typeCode = 46 // reserved: do not use
-	tcSmalldecimal typeCode = 47
-	//tcAbapitab          typeCode = 48 // not supported by GO hdb driver
-	//tcAbapstruct        typeCode = 49 // not supported by GO hdb driver
-	tcArray     typeCode = 50
-	tcText      typeCode = 51
-	tcShorttext typeCode = 52
-	//tcFixedString       typeCode = 53 // reserved: do not use
-	//tcFixedpointdecimal typeCode = 54 // reserved: do not use
-	tcAlphanum typeCode = 55
-	//tcTlocator    typeCode = 56 // reserved: do not use
-	tcLongdate   typeCode = 61
-	tcSeconddate typeCode = 62
-	tcDaydate    typeCode = 63
-	tcSecondtime typeCode = 64
-	//tcCte         typeCode = 65 // reserved: do not use
-	//tcCstimesda   typeCode = 66 // reserved: do not use
-	//tcBlobdisk    typeCode = 71 // reserved: do not use
-	//tcClobdisk    typeCode = 72 // reserved: do not use
-	//tcNclobdisk   typeCode = 73 // reserved: do not use
-	//tcGeometry    typeCode = 74 // reserved: do not use
-	//tcPoint       typeCode = 75 // reserved: do not use
-	//tcFixed16     typeCode = 76 // reserved: do not use
-	//tcBlobhybrid  typeCode = 77 // reserved: do not use
-	//tcClobhybrid  typeCode = 78 // reserved: do not use
-	//tcNclobhybrid typeCode = 79 // reserved: do not use
-	//tcPointz      typeCode = 80 // reserved: do not use
+	tcNullL             typeCode = 0x00
+	tcTinyint           typeCode = 0x01
+	tcSmallint          typeCode = 0x02
+	tcInteger           typeCode = 0x03
+	tcBigint            typeCode = 0x04
+	tcDecimal           typeCode = 0x05
+	tcReal              typeCode = 0x06
+	tcDouble            typeCode = 0x07
+	tcChar              typeCode = 0x08
+	tcVarchar           typeCode = 0x09 // changed from tcVarchar1 to tcVarchar (ref hdbclient)
+	tcNchar             typeCode = 0x0A
+	tcNvarchar          typeCode = 0x0B
+	tcBinary            typeCode = 0x0C
+	tcVarbinary         typeCode = 0x0D
+	tcDate              typeCode = 0x0E
+	tcTime              typeCode = 0x0F
+	tcTimestamp         typeCode = 0x10
+	tcTimetz            typeCode = 0x11
+	tcTimeltz           typeCode = 0x12
+	tcTimestampTz       typeCode = 0x13
+	tcTimestampLtz      typeCode = 0x14
+	tcIntervalYm        typeCode = 0x15
+	tcIntervalDs        typeCode = 0x16
+	tcRowid             typeCode = 0x17
+	tcUrowid            typeCode = 0x18
+	tcClob              typeCode = 0x19
+	tcNclob             typeCode = 0x1A
+	tcBlob              typeCode = 0x1B
+	tcBoolean           typeCode = 0x1C
+	tcString            typeCode = 0x1D
+	tcNstring           typeCode = 0x1E
+	tcLocator           typeCode = 0x1F
+	tcNlocator          typeCode = 0x20
+	tcBstring           typeCode = 0x21
+	tcDecimalDigitArray typeCode = 0x22
+	tcVarchar2          typeCode = 0x23
+	tcTable             typeCode = 0x2D
+	tcSmalldecimal      typeCode = 0x2f // inserted (not existent in hdbclient)
+	tcAbapstream        typeCode = 0x30
+	tcAbapstruct        typeCode = 0x31
+	tcAarray            typeCode = 0x32
+	tcText              typeCode = 0x33
+	tcShorttext         typeCode = 0x34
+	tcBintext           typeCode = 0x35
+	tcAlphanum          typeCode = 0x37
+	tcLongdate          typeCode = 0x3D
+	tcSeconddate        typeCode = 0x3E
+	tcDaydate           typeCode = 0x3F
+	tcSecondtime        typeCode = 0x40
+	tcClocator          typeCode = 0x46
+	tcBlobDiskReserved  typeCode = 0x47
+	tcClobDiskReserved  typeCode = 0x48
+	tcNclobDiskReserved typeCode = 0x49
+	tcStGeometry        typeCode = 0x4A
+	tcStPoint           typeCode = 0x4B
+	tcFixed16           typeCode = 0x4C
+	tcAbapItab          typeCode = 0x4D
+	tcRecordRowStore    typeCode = 0x4E
+	tcRecordColumnStore typeCode = 0x4F
+	tcFixed8            typeCode = 0x51
+	tcFixed12           typeCode = 0x52
+	tcCiphertext        typeCode = 0x5A
 
 	// additional internal typecodes
-	tcTableRef  typeCode = 126
-	tcTableRows typeCode = 127
+	tcTableRef  typeCode = 0x7e // 126
+	tcTableRows typeCode = 0x7f // 127
 )
 
 func (tc typeCode) isLob() bool {
-	return tc == tcClob || tc == tcNclob || tc == tcBlob
+	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext
 }
 
 func (tc typeCode) isCharBased() bool {
-	return tc == tcNvarchar || tc == tcNstring || tc == tcNclob
+	return tc == tcNvarchar || tc == tcNstring || tc == tcNclob || tc == tcText || tc == tcBintext
 }
 
 func (tc typeCode) isVariableLength() bool {
@@ -130,6 +116,16 @@ func (tc typeCode) isIntegerType() bool {
 
 func (tc typeCode) isDecimalType() bool {
 	return tc == tcSmalldecimal || tc == tcDecimal
+}
+
+// see hdbclient
+func (tc typeCode) encTc() typeCode {
+	switch tc {
+	default:
+		return tc
+	case tcText, tcBintext:
+		return tcNclob
+	}
 }
 
 var dataTypeMap = map[typeCode]DataType{
@@ -160,7 +156,8 @@ var dataTypeMap = map[typeCode]DataType{
 	tcBlob:       DtLob,
 	tcClob:       DtLob,
 	tcNclob:      DtLob,
-	tcText:       DtLob, // TODO - check with python client
+	tcText:       DtLob,
+	tcBintext:    DtLob,
 	tcTableRef:   DtString,
 	tcTableRows:  DtRows,
 }

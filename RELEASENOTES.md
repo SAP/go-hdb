@@ -7,9 +7,11 @@ Release Notes
 
 #### Minor revisions
 
-Release 0.100.1 - 0.100.3
+Release 0.100.1 - 0.100.4
 - minor optimizations
+- bug fixes
 - linter fixes
+- additional lob example (read / write lob in chunks via pipe)
 
 #### Release Notes
 

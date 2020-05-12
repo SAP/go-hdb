@@ -66,7 +66,7 @@ func (l *Lob) SetWriter(wr io.Writer) *Lob {
 // Scan implements the database/sql/Scanner interface.
 func (l *Lob) Scan(src interface{}) error {
 	if l.wr == nil {
-		return fmt.Errorf("lob error: initial reader %[1]T %[1]v", l)
+		return fmt.Errorf("lob error: initial writer %[1]T %[1]v", l)
 	}
 
 	ws, ok := src.(p.WriterSetter)

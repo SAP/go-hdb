@@ -49,7 +49,7 @@ var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: tr
 
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel4 // Default data version format level.
+	DefaultDfv          = DfvLevel6 // Default data version format level.
 	DefaultTimeout      = 300       // Default value connection timeout (300 seconds = 5 minutes).
 	DefaultFetchSize    = 128       // Default value fetchSize.
 	DefaultBulkSize     = 1000      // Default value bulkSize.

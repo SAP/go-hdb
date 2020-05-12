@@ -771,25 +771,12 @@ func (s *Session) Rollback() error {
 // read lob reply
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
-
 func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
-	lobChunkSize := int64(s.cfg.LobChunkSize())
-
-	chunkSize := func(numChar, ofs int64) int32 {
-		chunkSize := numChar - ofs
-		if chunkSize > lobChunkSize {
-			return int32(lobChunkSize)
-		}
-		return int32(chunkSize)
-	}
-
-	var countChars func(b []byte) (int64, error)
-	var wrcl io.WriteCloser
+	var err error
 
 	if descr.isCharBased {
-		wrcl = transform.NewWriter(wr, unicode.Cesu8ToUtf8Transformer) // CESU8 transformer
-		wr = wrcl
-		countChars = func(b []byte) (int64, error) {
+		wrcl := transform.NewWriter(wr, unicode.Cesu8ToUtf8Transformer) // CESU8 transformer
+		err = s._decodeLobs(descr, wrcl, func(b []byte) (int64, error) {
 			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
 			numChars := int64(0)
 			for len(b) > 0 {
@@ -804,11 +791,30 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 				}
 			}
 			return numChars, nil
-		}
+		})
 	} else {
-		countChars = func(b []byte) (int64, error) {
-			return int64(len(b)), nil
+		err = s._decodeLobs(descr, wr, func(b []byte) (int64, error) { return int64(len(b)), nil })
+	}
+
+	if pw, ok := wr.(*io.PipeWriter); ok { // if the writer is a pipe-end -> close at the end
+		if err != nil {
+			pw.CloseWithError(err)
+		} else {
+			pw.Close()
 		}
+	}
+	return err
+}
+
+func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
+	lobChunkSize := int64(s.cfg.LobChunkSize())
+
+	chunkSize := func(numChar, ofs int64) int32 {
+		chunkSize := numChar - ofs
+		if chunkSize > lobChunkSize {
+			return int32(lobChunkSize)
+		}
+		return int32(chunkSize)
 	}
 
 	if _, err := wr.Write(descr.b); err != nil {
@@ -857,11 +863,6 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 			return err
 		}
 		eof = lobReply.opt.isLastData()
-
-	}
-
-	if wrcl != nil {
-		return wrcl.Close()
 	}
 	return nil
 }
