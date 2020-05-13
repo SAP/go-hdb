@@ -100,15 +100,11 @@ An io.Pipe is used to insert and retrieve Lob data in chunks.
 */
 func ExampleLob_pipe() {
 	// Open test file.
-	file, err := os.Open("example_lob_test.go") // Open file.
+	file, err := os.Open("example_lob_test.go")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-
-	// Use sync.WaitGroup to wait for go-routines to be ended.
-	wg := new(sync.WaitGroup)
-	wg.Add(2) // Exec and select sql statements.
 
 	// Open Test database.
 	connector, err := driver.NewDSNConnector(driver.TestDSN)
@@ -139,9 +135,13 @@ func ExampleLob_pipe() {
 	pipeReader, pipeWriter := io.Pipe() // Create pipe for writing Lob.
 	lob.SetReader(pipeReader)           // Use PipeReader as reader for Lob.
 
+	// Use sync.WaitGroup to wait for go-routines to be ended.
+	wg := new(sync.WaitGroup)
+	wg.Add(1) // Select statement.
+
 	// Start sql insert in own go-routine.
 	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
-	go func() { // Start sql insert in own go-routine.
+	go func() {
 		if _, err := stmt.Exec(lob); err != nil {
 			log.Fatal(err)
 		}
@@ -161,6 +161,8 @@ func ExampleLob_pipe() {
 	// Close pipeWriter (end insert into db).
 	pipeWriter.Close()
 
+	// Wait until exec go-routine is ended.
+	wg.Wait()
 	stmt.Close()
 
 	if err := tx.Commit(); err != nil {
@@ -169,6 +171,8 @@ func ExampleLob_pipe() {
 
 	pipeReader, pipeWriter = io.Pipe() // Create pipe for reading Lob.
 	lob.SetWriter(pipeWriter)          // Use PipeWriter as writer for Lob.
+
+	wg.Add(1) // Exec statement.
 
 	// Start sql select in own go-routine.
 	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
@@ -190,7 +194,7 @@ func ExampleLob_pipe() {
 	}
 	pipeReader.Close()
 
-	// Wait until both go-routines are ended.
+	// Wait until select go-routine is ended.
 	wg.Wait()
 
 	// output: exec finalized

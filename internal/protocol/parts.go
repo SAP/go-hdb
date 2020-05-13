@@ -37,10 +37,11 @@ type partDecodeEncoder interface {
 	partEncoder
 }
 
-type partReadWriter interface {
-	partReader
-	partWriter
-}
+// TODO: uncomment after go1.13 compatibility is dropped.
+// type partReadWriter interface {
+// 	partReader
+// 	partWriter
+// }
 
 type part interface {
 	String() string // should support Stringer interface

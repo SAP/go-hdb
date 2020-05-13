@@ -7,6 +7,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.5
+
+- go 1.13 compatibility
+
 Release 0.100.1 - 0.100.4
 - minor optimizations
 - bug fixes

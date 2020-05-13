@@ -52,9 +52,6 @@ func (randReader) Read(b []byte) (n int, err error) {
 func testLobPipe(db *sql.DB, t *testing.T) {
 	const lobSize = 10000
 
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
-
 	table := RandomIdentifier("lobPipe")
 
 	lrd := io.LimitReader(randReader{}, lobSize)
@@ -85,6 +82,9 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	rd, wr := io.Pipe()
 	lob.SetReader(rd)
 
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+
 	go func() {
 		if _, err := stmt.Exec(lob); err != nil {
 			t.Fatal(err)
@@ -97,6 +97,7 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 
 	wrBuf.WriteTo(mwr)
 	wr.Close()
+	wg.Wait()
 
 	stmt.Close()
 	if err := tx.Commit(); err != nil {
@@ -105,6 +106,8 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 
 	rd, wr = io.Pipe()
 	lob.SetWriter(wr)
+
+	wg.Add(1)
 
 	go func() {
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
