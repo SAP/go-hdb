@@ -7,6 +7,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.6
+
+- added alpha version of Bintext support
+
 Release 0.100.5
 
 - go 1.13 compatibility

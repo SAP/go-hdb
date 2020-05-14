@@ -123,10 +123,16 @@ func (tc typeCode) encTc() typeCode {
 	switch tc {
 	default:
 		return tc
-	case tcText, tcBintext:
+	case tcText, tcBintext, tcLocator:
 		return tcNclob
 	}
 }
+
+/*
+tcBintext:
+- protocol returns tcLocator for tcBintext
+- see dataTypeMap and encTc
+*/
 
 var dataTypeMap = map[typeCode]DataType{
 	tcTinyint:    DtTinyint,
@@ -205,7 +211,9 @@ var tcFieldTypeMap = map[typeCode]fieldType{
 	tcBlob:       lobVarType,
 	tcClob:       lobVarType,
 	tcNclob:      lobCESU8Type,
-	tcText:       lobCESU8Type, // TODO - check with python client
+	tcText:       lobCESU8Type,
+	tcBintext:    lobCESU8Type,
+	tcLocator:    lobCESU8Type,
 }
 
 func (tc typeCode) fieldType() fieldType {
