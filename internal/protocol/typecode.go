@@ -99,7 +99,7 @@ const (
 )
 
 func (tc typeCode) isLob() bool {
-	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext
+	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext || tc == tcLocator
 }
 
 func (tc typeCode) isCharBased() bool {

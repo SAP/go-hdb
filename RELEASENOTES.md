@@ -7,7 +7,7 @@ Release Notes
 
 #### Minor revisions
 
-Release 0.100.6
+Release 0.100.6 - 0.100.7
 
 - added alpha version of Bintext support
 
