@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/SAP/go-hdb/proxy"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
@@ -91,6 +92,7 @@ type Connector struct {
 	sessionVariables                SessionVariables
 	defaultSchema                   Identifier
 	legacy                          bool
+	proxyConfig *proxy.Config
 }
 
 func newConnector() *Connector {
@@ -412,3 +414,11 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) { return n
 
 // Driver implements the database/sql/driver/Connector interface.
 func (c *Connector) Driver() driver.Driver { return drv }
+
+func (c *Connector) Proxy() *proxy.Config {
+	return c.proxyConfig
+}
+
+func (c *Connector) SetProxy(p *proxy.Config) {
+	c.proxyConfig = p
+}

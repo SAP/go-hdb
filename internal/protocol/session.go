@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"database/sql/driver"
 	"fmt"
+	"github.com/SAP/go-hdb/proxy"
 	"io"
 	"net"
 	"sync"
@@ -58,10 +59,10 @@ type sessionConn interface {
 	sessionStatus
 }
 
-func newSessionConn(ctx context.Context, addr string, timeoutSec int, config *tls.Config) (sessionConn, error) {
+func newSessionConn(ctx context.Context, addr string, timeoutSec int, tlsConfig *tls.Config, proxyConfig *proxy.Config) (sessionConn, error) {
 	// session recording
 	if wr, ok := ctx.Value(sesRecording).(io.Writer); ok {
-		conn, err := newDbConn(ctx, addr, timeoutSec, config)
+		conn, err := newDbConn(ctx, addr, timeoutSec, tlsConfig, proxyConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +83,7 @@ func newSessionConn(ctx context.Context, addr string, timeoutSec int, config *tl
 			sessionStatus: nwc,
 		}, nil
 	}
-	return newDbConn(ctx, addr, timeoutSec, config)
+	return newDbConn(ctx, addr, timeoutSec, tlsConfig, proxyConfig)
 }
 
 type nullWriterCloser struct{}
@@ -107,17 +108,30 @@ type dbConn struct {
 	lastError error // error bad connection
 }
 
-func newDbConn(ctx context.Context, addr string, timeoutSec int, config *tls.Config) (*dbConn, error) {
+func newDbConn(ctx context.Context, addr string, timeoutSec int, tlsConfig *tls.Config, proxyConfig *proxy.Config) (*dbConn, error) {
+	var conn net.Conn
+	var err error
 	timeout := time.Duration(timeoutSec) * time.Second
-	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+
+	if proxyConfig == nil {
+		conn, err = (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", addr)
+	} else {
+		d := proxy.NewDialer(proxyConfig)
+		if timeout > 0 {
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			conn, err = d.DialContext(ctx, addr)
+			cancel()
+		} else {
+			conn, err = d.DialContext(ctx, addr)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if config != nil {
-		conn = tls.Client(conn, config)
+	if tlsConfig != nil {
+		conn = tls.Client(conn, tlsConfig)
 	}
 
 	return &dbConn{addr: addr, timeout: timeout, conn: conn}, nil
@@ -173,6 +187,7 @@ type SessionConfig interface {
 	Dfv() int
 	TLSConfig() *tls.Config
 	Legacy() bool
+	Proxy() *proxy.Config
 }
 
 const dfvLevel1 = 1
@@ -204,7 +219,7 @@ type Session struct {
 func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	var conn sessionConn
 
-	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Timeout(), cfg.TLSConfig())
+	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Timeout(), cfg.TLSConfig(), cfg.Proxy())
 	if err != nil {
 		return nil, err
 	}
