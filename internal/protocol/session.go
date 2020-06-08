@@ -132,8 +132,10 @@ func (c *dbConn) Close() error {
 // Read implements the io.Reader interface.
 func (c *dbConn) Read(b []byte) (int, error) {
 	//set timeout
-	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, err
+	if c.timeout > 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+			return 0, err
+		}
 	}
 	n, err := c.conn.Read(b)
 	if err != nil {
@@ -147,8 +149,10 @@ func (c *dbConn) Read(b []byte) (int, error) {
 // Write implements the io.Writer interface.
 func (c *dbConn) Write(b []byte) (int, error) {
 	//set timeout
-	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, err
+	if c.timeout > 0 {
+		if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+			return 0, err
+		}
 	}
 	n, err := c.conn.Write(b)
 	if err != nil {
