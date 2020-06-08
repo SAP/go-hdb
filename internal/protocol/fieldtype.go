@@ -48,6 +48,10 @@ type locatorID uint64 // byte[locatorIdSize]
 // ErrUint64OutOfRange means that a uint64 exceeds the size of a int64.
 var ErrUint64OutOfRange = errors.New("uint64 values with high bit set are not supported")
 
+// ErrFloatDoesNotFitInt64 means that a floating-point number doesn't fit in an int64
+// variable, i.e. f != float64(int64(f)).
+var ErrFloatDoesNotFitInt64 = errors.New("floating-point value cannot fit in int64")
+
 // ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
 var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
@@ -330,6 +334,13 @@ func convertToInt64(ft fieldType, v interface{}) (int64, error) {
 			return 0, newConvertError(ft, v, ErrUint64OutOfRange)
 		}
 		return int64(u64), nil
+	case reflect.Float32, reflect.Float64:
+		f64 := rv.Float()
+		i64 := int64(f64)
+		if f64 != float64(i64) {
+			return 0, newConvertError(ft, v, ErrFloatDoesNotFitInt64)
+		}
+		return i64, nil
 	case reflect.String:
 		i64, err := strconv.ParseInt(rv.String(), 10, 64)
 		if err != nil {
