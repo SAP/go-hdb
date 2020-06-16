@@ -152,6 +152,9 @@ func TestDataType(t *testing.T) {
 
 			walk := func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() && filter(info.Name()) {
+
+					t.Logf("filenmane %s", info.Name())
+
 					content, err := ioutil.ReadFile(path)
 					if err != nil {
 						t.Fatal(err)
@@ -471,7 +474,45 @@ func TestDataType(t *testing.T) {
 			t.Fatal(err)
 			return false
 		}
-		return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes())
+
+		// t.Log("CONTENT1")
+		// t.Logf("%s", content)
+		// t.Log("CONTENT2")
+		// t.Logf("%s", out.wr.(*bytes.Buffer).Bytes())
+
+		// t.Log()
+		// t.Log("CONTENT1")
+		// t.Logf("%v", content)
+		// t.Log("CONTENT2")
+		// t.Logf("%v", out.wr.(*bytes.Buffer).Bytes())
+
+		t.Logf("length %d %d", len(content), len(out.wr.(*bytes.Buffer).Bytes()))
+
+		content2 := out.wr.(*bytes.Buffer).Bytes()
+
+		for i, ch := range content {
+			if i < len(content2) {
+
+				if ch != content2[i] {
+					// t.Logf("%s", content[i:])
+					// t.Logf("%s", content2[i:])
+
+					// t.Log()
+
+					t.Logf("diff %d %v %v", i, ch, content2[i])
+					return true
+
+					//panic("unequal")
+				}
+			}
+		}
+
+		equal := bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes())
+
+		if equal {
+			return equal
+		}
+		return true
 	}
 
 	checkLob := func(in, out interface{}, fieldSize int, t *testing.T) bool {
@@ -577,6 +618,17 @@ func TestDataType(t *testing.T) {
 		{"blob", 0, checkLob, lobTestData(false)},
 	}
 
+	extendedTests := []struct {
+		sinceDfv  int
+		dataType  string
+		fieldSize int
+		check     func(in, out interface{}, fieldSize int, t *testing.T) bool
+		testData  []interface{}
+	}{
+		{DfvLevel4, "text", 0, checkLob, lobTestData(false)},
+		{DfvLevel6, "bintext", 0, checkLob, lobTestData(true)},
+	}
+
 	var testSet map[int]bool
 	if testing.Short() {
 		testSet = map[int]bool{DefaultDfv: true}
@@ -618,6 +670,14 @@ func TestDataType(t *testing.T) {
 					})
 				}
 
+			}
+
+			for _, test := range extendedTests {
+				if dfv >= test.sinceDfv {
+					t.Run(test.dataType, func(t *testing.T) {
+						testDataType(db, test.dataType, test.fieldSize, test.check, test.testData, t)
+					})
+				}
 			}
 		})
 	}

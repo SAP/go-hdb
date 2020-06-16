@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"time"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
@@ -45,16 +46,18 @@ const (
 	DfvLevel8 = 8 // with FIXED8/12/16 support
 )
 
+// var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true, DfvLevel8: true}
 var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true}
 
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel6 // Default data version format level.
-	DefaultTimeout      = 300       // Default value connection timeout (300 seconds = 5 minutes).
-	DefaultFetchSize    = 128       // Default value fetchSize.
-	DefaultBulkSize     = 1000      // Default value bulkSize.
-	DefaultLobChunkSize = 4096      // Default value lobChunkSize.
-	DefaultLegacy       = true      // Default value legacy.
+	DefaultDfv          = DfvLevel6        // Default data version format level.
+	DefaultTimeout      = 300              // Default value connection timeout (300 seconds = 5 minutes).
+	DefaultTCPKeepAlive = 15 * time.Second // Default TCP keep-alive value (copied from net.dial.go)
+	DefaultFetchSize    = 128              // Default value fetchSize.
+	DefaultBulkSize     = 1000             // Default value bulkSize.
+	DefaultLobChunkSize = 4096             // Default value lobChunkSize.
+	DefaultLegacy       = true             // Default value legacy.
 )
 
 // Connector minimal values.
@@ -87,6 +90,7 @@ type Connector struct {
 	bufferSize, fetchSize, bulkSize int
 	lobChunkSize                    int32
 	timeout, dfv                    int
+	tcpKeepAlive                    time.Duration // see net.Dialer
 	tlsConfig                       *tls.Config
 	sessionVariables                SessionVariables
 	defaultSchema                   Identifier
@@ -99,6 +103,7 @@ func newConnector() *Connector {
 		bulkSize:     DefaultBulkSize,
 		lobChunkSize: DefaultLobChunkSize,
 		timeout:      DefaultTimeout,
+		tcpKeepAlive: DefaultTCPKeepAlive,
 		dfv:          DefaultDfv,
 		legacy:       DefaultLegacy,
 	}
@@ -310,6 +315,25 @@ func (c *Connector) SetTimeout(timeout int) error {
 		timeout = minTimeout
 	}
 	c.timeout = timeout
+	return nil
+}
+
+// TCPKeepAlive returns the tcp keep-alive value of the connector.
+func (c *Connector) TCPKeepAlive() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.tcpKeepAlive
+}
+
+/*
+SetTCPKeepAlive sets the tcp keep-alive value of the connector.
+
+For more information please see net.Dialer structure.
+*/
+func (c *Connector) SetTCPKeepAlive(tcpKeepAlive time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tcpKeepAlive = tcpKeepAlive
 	return nil
 }
 

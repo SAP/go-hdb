@@ -99,7 +99,7 @@ const (
 )
 
 func (tc typeCode) isLob() bool {
-	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext || tc == tcLocator
+	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext || tc == tcLocator || tc == tcNlocator
 }
 
 func (tc typeCode) isCharBased() bool {
@@ -212,8 +212,11 @@ var tcFieldTypeMap = map[typeCode]fieldType{
 	tcClob:       lobVarType,
 	tcNclob:      lobCESU8Type,
 	tcText:       lobCESU8Type,
-	tcBintext:    lobCESU8Type,
-	tcLocator:    lobCESU8Type,
+	//	tcBintext:    lobCESU8Type,
+	tcBintext: lobVarType,
+	tcLocator: lobCESU8Type,
+	//tcNlocator: lobCESU8Type,
+	tcNlocator: lobVarType,
 }
 
 func (tc typeCode) fieldType() fieldType {

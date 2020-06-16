@@ -58,10 +58,10 @@ type sessionConn interface {
 	sessionStatus
 }
 
-func newSessionConn(ctx context.Context, addr string, timeoutSec int, config *tls.Config) (sessionConn, error) {
+func newSessionConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (sessionConn, error) {
 	// session recording
 	if wr, ok := ctx.Value(sesRecording).(io.Writer); ok {
-		conn, err := newDbConn(ctx, addr, timeoutSec, config)
+		conn, err := newDbConn(ctx, addr, timeoutSec, tcpKeepAlive, tlsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +82,7 @@ func newSessionConn(ctx context.Context, addr string, timeoutSec int, config *tl
 			sessionStatus: nwc,
 		}, nil
 	}
-	return newDbConn(ctx, addr, timeoutSec, config)
+	return newDbConn(ctx, addr, timeoutSec, tcpKeepAlive, tlsConfig)
 }
 
 type nullWriterCloser struct{}
@@ -107,17 +107,17 @@ type dbConn struct {
 	lastError error // error bad connection
 }
 
-func newDbConn(ctx context.Context, addr string, timeoutSec int, config *tls.Config) (*dbConn, error) {
+func newDbConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (*dbConn, error) {
 	timeout := time.Duration(timeoutSec) * time.Second
-	dialer := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout, KeepAlive: tcpKeepAlive}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if config != nil {
-		conn = tls.Client(conn, config)
+	if tlsConfig != nil {
+		conn = tls.Client(conn, tlsConfig)
 	}
 
 	return &dbConn{addr: addr, timeout: timeout, conn: conn}, nil
@@ -170,6 +170,7 @@ type SessionConfig interface {
 	BulkSize() int
 	LobChunkSize() int32
 	Timeout() int
+	TCPKeepAlive() time.Duration
 	Dfv() int
 	TLSConfig() *tls.Config
 	Legacy() bool
@@ -204,7 +205,7 @@ type Session struct {
 func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	var conn sessionConn
 
-	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Timeout(), cfg.TLSConfig())
+	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Timeout(), cfg.TCPKeepAlive(), cfg.TLSConfig())
 	if err != nil {
 		return nil, err
 	}

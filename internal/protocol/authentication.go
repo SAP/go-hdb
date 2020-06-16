@@ -322,7 +322,7 @@ func (r *authServerProofRep) String() string { return fmt.Sprintf("serverProof %
 func (r *authServerProofRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numPrm := int(dec.Int16())
 	if numPrm != 1 {
-		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 1)
+		return fmt.Errorf("invalid number of server proof parameters %d - expected %d", numPrm, 1)
 	}
 	r.serverProof = authShortBytes.decode(dec)
 	return nil
@@ -353,7 +353,10 @@ func (r *authFinalRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 2)
 	}
 	r.method = string(authShortBytes.decode(dec))
-	dec.Byte() // sub parameters
+	if size := dec.Byte(); size == 0 { // sub parameter length
+		// mnSCRAMSHA256: server does not return server proof parameter
+		return nil
+	}
 	r.prms = &authServerProofRep{}
 	return r.prms.decode(dec, ph)
 }

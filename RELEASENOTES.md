@@ -7,6 +7,12 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.8
+
+- fixed authentication issue for DB instances not supporting PBKDF2
+- added tcp keep-alive parameter to connector
+
+
 Release 0.100.6 - 0.100.7
 
 - added alpha version of Bintext support
