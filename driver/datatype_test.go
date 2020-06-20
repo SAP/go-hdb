@@ -286,6 +286,9 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(-1, 10)),
 		(*Decimal)(big.NewRat(1, 1000)),
 		(*Decimal)(new(big.Rat).SetInt(maxDecimal)),
+		(*Decimal)(big.NewRat(15, 1)),
+		(*Decimal)(big.NewRat(4, 5)),
+		(*Decimal)(big.NewRat(34, 10)),
 		NullDecimal{Valid: false, Decimal: (*Decimal)(big.NewRat(1, 1))},
 		NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
 	}
@@ -434,11 +437,16 @@ func TestDataType(t *testing.T) {
 		return equalLongdate(in.(time.Time).UTC(), out.(time.Time))
 	}
 
+	logDecimal := func(in, out *big.Rat, t *testing.T) {
+		t.Logf("In(num %s denum %s) - Out(num %s denum %s)", in.Num().String(), in.Denom().String(), out.Num().String(), out.Denom().String())
+	}
+
 	checkDecimal := func(in, out interface{}, fieldSize int, t *testing.T) bool {
 		if out, ok := out.(NullDecimal); ok {
 			in := in.(NullDecimal)
 			return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0)
 		}
+		logDecimal((*big.Rat)(in.(*Decimal)), (*big.Rat)(out.(*Decimal)), t)
 		return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0
 	}
 

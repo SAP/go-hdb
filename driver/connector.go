@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
@@ -90,11 +91,13 @@ type Connector struct {
 	bufferSize, fetchSize, bulkSize int
 	lobChunkSize                    int32
 	timeout, dfv                    int
+	pingInterval                    time.Duration
 	tcpKeepAlive                    time.Duration // see net.Dialer
 	tlsConfig                       *tls.Config
 	sessionVariables                SessionVariables
 	defaultSchema                   Identifier
 	legacy                          bool
+	dialer                          dial.Dialer
 }
 
 func newConnector() *Connector {
@@ -106,6 +109,7 @@ func newConnector() *Connector {
 		tcpKeepAlive: DefaultTCPKeepAlive,
 		dfv:          DefaultDfv,
 		legacy:       DefaultLegacy,
+		dialer:       dial.DefaultDialer,
 	}
 }
 
@@ -300,8 +304,27 @@ func (c *Connector) SetBulkSize(bulkSize int) error {
 // LobChunkSize returns the lobChunkSize of the connector.
 func (c *Connector) LobChunkSize() int32 { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
 
+// Dialer returns the dialer object of the connector.
+func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c.dialer }
+
+// SetDialer sets the dialer object of the connector.
+func (c *Connector) SetDialer(dialer dial.Dialer) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if dialer == nil {
+		dialer = dial.DefaultDialer
+	}
+	c.dialer = dialer
+	return nil
+}
+
 // Timeout returns the timeout of the connector.
 func (c *Connector) Timeout() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
+
+// TimeoutDuration returns the timeout of the connector as a time.Duration value.
+func (c *Connector) TimeoutDuration() time.Duration {
+	return time.Duration(c.Timeout()) * time.Second
+}
 
 /*
 SetTimeout sets the timeout of the connector.
@@ -315,6 +338,27 @@ func (c *Connector) SetTimeout(timeout int) error {
 		timeout = minTimeout
 	}
 	c.timeout = timeout
+	return nil
+}
+
+// PingInterval returns the connection ping interval of the connector.
+func (c *Connector) PingInterval() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pingInterval
+}
+
+/*
+SetPingInterval sets the connection ping interval value of the connector.
+
+If the ping interval is greater than zero, the driver pings all open
+connections (active or idle in connection pool) periodically.
+Parameter d defines the time between the pings.
+*/
+func (c *Connector) SetPingInterval(d time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pingInterval = d
 	return nil
 }
 

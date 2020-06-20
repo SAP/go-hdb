@@ -19,6 +19,7 @@ package driver
 import (
 	//"bytes"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
@@ -86,11 +87,11 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	wg.Add(1)
 
 	go func() {
+		defer wg.Done()
 		if _, err := stmt.Exec(lob); err != nil {
 			t.Fatal(err)
 		}
 		t.Log("exec finalized")
-		wg.Done()
 	}()
 
 	mwr := io.MultiWriter(wr, cmpBuf)
@@ -110,21 +111,84 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	wg.Add(1)
 
 	go func() {
+		defer wg.Done()
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			t.Fatal(err)
 		}
 		t.Log("scan finalized")
-		wg.Done()
 	}()
 
 	rdBuf := &bytes.Buffer{}
 	rdBuf.ReadFrom(rd)
 
+	wg.Wait()
+
 	if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
 		t.Fatalf("read buffer is not equal to write buffer")
 	}
 
-	wg.Wait()
+}
+
+func testLobDelayedScan(db *sql.DB, t *testing.T) {
+	const lobSize = 10000
+
+	table := RandomIdentifier("lobPipe")
+
+	rd := io.LimitReader(randReader{}, lobSize)
+
+	// use trancactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := tx.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lob := &Lob{}
+	lob.SetReader(rd)
+
+	if _, err := stmt.Exec(lob); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt.Close()
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	wr := &bytes.Buffer{}
+	lob.SetWriter(wr)
+
+	ctx := context.Background()
+
+	conn, err := db.Conn(ctx) // guarantee that same connection is used
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	row := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table))
+
+	err = conn.PingContext(ctx)
+	if err != ErrNestedQuery {
+		t.Fatalf("got error %s - expected %s", err, ErrNestedQuery)
+	}
+
+	if err := row.Scan(lob); err != nil {
+		t.Fatal(err)
+	}
+
+	// if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
+	// 	t.Fatalf("read buffer is not equal to write buffer")
+	// }
+
 }
 
 func TestLob(t *testing.T) {
@@ -134,6 +198,7 @@ func TestLob(t *testing.T) {
 	}{
 		{"insert", testLobInsert},
 		{"pipe", testLobPipe},
+		{"delayedScan", testLobDelayedScan},
 	}
 
 	for _, test := range tests {

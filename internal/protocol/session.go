@@ -29,6 +29,7 @@ import (
 
 	"golang.org/x/text/transform"
 
+	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -58,10 +59,10 @@ type sessionConn interface {
 	sessionStatus
 }
 
-func newSessionConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (sessionConn, error) {
+func newSessionConn(ctx context.Context, address string, dialer dial.Dialer, timeout, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (sessionConn, error) {
 	// session recording
 	if wr, ok := ctx.Value(sesRecording).(io.Writer); ok {
-		conn, err := newDbConn(ctx, addr, timeoutSec, tcpKeepAlive, tlsConfig)
+		conn, err := newDbConn(ctx, address, dialer, timeout, tcpKeepAlive, tlsConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +83,7 @@ func newSessionConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAli
 			sessionStatus: nwc,
 		}, nil
 	}
-	return newDbConn(ctx, addr, timeoutSec, tcpKeepAlive, tlsConfig)
+	return newDbConn(ctx, address, dialer, timeout, tcpKeepAlive, tlsConfig)
 }
 
 type nullWriterCloser struct{}
@@ -101,16 +102,14 @@ type proxyConn struct {
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
-	addr      string
+	address   string
 	timeout   time.Duration
 	conn      net.Conn
 	lastError error // error bad connection
 }
 
-func newDbConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (*dbConn, error) {
-	timeout := time.Duration(timeoutSec) * time.Second
-	dialer := net.Dialer{Timeout: timeout, KeepAlive: tcpKeepAlive}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+func newDbConn(ctx context.Context, address string, dialer dial.Dialer, timeout, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (*dbConn, error) {
+	conn, err := dialer.DialContext(ctx, address, dial.DialerOptions{Timeout: timeout, TCPKeepAlive: tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
@@ -120,43 +119,52 @@ func newDbConn(ctx context.Context, addr string, timeoutSec int, tcpKeepAlive ti
 		conn = tls.Client(conn, tlsConfig)
 	}
 
-	return &dbConn{addr: addr, timeout: timeout, conn: conn}, nil
+	return &dbConn{address: address, timeout: timeout, conn: conn}, nil
 }
 
 func (c *dbConn) isBad() bool { return c.lastError != nil }
+
+func (c *dbConn) deadline() (deadline time.Time) {
+	if c.timeout == 0 {
+		return
+	}
+	return time.Now().Add(c.timeout)
+}
 
 func (c *dbConn) Close() error {
 	return c.conn.Close()
 }
 
 // Read implements the io.Reader interface.
-func (c *dbConn) Read(b []byte) (int, error) {
+func (c *dbConn) Read(b []byte) (n int, err error) {
 	//set timeout
-	if err := c.conn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, err
+	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
+		goto retError
 	}
-	n, err := c.conn.Read(b)
-	if err != nil {
-		plog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-		c.lastError = err
-		return n, driver.ErrBadConn
+	if n, err = c.conn.Read(b); err != nil {
+		goto retError
 	}
-	return n, nil
+	return
+retError:
+	plog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
 }
 
 // Write implements the io.Writer interface.
-func (c *dbConn) Write(b []byte) (int, error) {
+func (c *dbConn) Write(b []byte) (n int, err error) {
 	//set timeout
-	if err := c.conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, err
+	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
+		goto retError
 	}
-	n, err := c.conn.Write(b)
-	if err != nil {
-		plog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-		c.lastError = err
-		return n, driver.ErrBadConn
+	if n, err = c.conn.Write(b); err != nil {
+		goto retError
 	}
-	return n, nil
+	return
+retError:
+	plog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
 }
 
 // SessionConfig represents the session relevant driver connector options.
@@ -169,7 +177,8 @@ type SessionConfig interface {
 	FetchSize() int
 	BulkSize() int
 	LobChunkSize() int32
-	Timeout() int
+	Dialer() dial.Dialer
+	TimeoutDuration() time.Duration
 	TCPKeepAlive() time.Duration
 	Dfv() int
 	TLSConfig() *tls.Config
@@ -195,17 +204,27 @@ type Session struct {
 
 	//serialize write request - read reply
 	//supports calling session methods in go routines (driver methods with context cancellation)
-	mu sync.Mutex
+	mu       sync.Mutex
+	isLocked bool
 
 	inTx bool // in transaction
-
+	/*
+		As long as a session is in query mode no other sql statement must be executed.
+		Example:
+		- pinger is active
+		- select with blob fields is executed
+		- scan is hitting the database again (blob streaming)
+		- if in between a ping gets executed (ping selects db) hdb raises error
+		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
+	*/
+	inQuery bool // in query
 }
 
 // NewSession creates a new database session.
 func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	var conn sessionConn
 
-	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Timeout(), cfg.TCPKeepAlive(), cfg.TLSConfig())
+	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Dialer(), cfg.TimeoutDuration(), cfg.TCPKeepAlive(), cfg.TLSConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -244,31 +263,46 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	return s, s.authenticate()
 }
 
-// Reset resets the session.
-func (s *Session) Reset() {
-	QrsCache.cleanup(s)
+// Lock session.
+func (s *Session) Lock() { s.mu.Lock(); s.isLocked = true }
+
+// Unlock session.
+func (s *Session) Unlock() { s.isLocked = false; s.mu.Unlock() }
+
+// checkLock checks if the session is locked
+func (s *Session) checkLock() {
+	if !s.isLocked {
+		panic("Session is not locked")
+	}
 }
+
+// Kill session.
+func (s *Session) Kill() {
+	s.checkLock()
+	plog.Printf("Kill session %d", s.sessionID)
+	s.conn.Close()
+}
+
+// Reset resets the session.
+func (s *Session) Reset() { s.checkLock(); s.SetInQuery(false); QrsCache.cleanup(s) }
 
 // Close closes the session.
-func (s *Session) Close() error {
-	QrsCache.cleanup(s)
-	return s.conn.Close()
-}
+func (s *Session) Close() error { s.checkLock(); QrsCache.cleanup(s); return s.conn.Close() }
 
-// InTx indicates, if the session is in transaction mode.
-func (s *Session) InTx() bool {
-	return s.inTx
-}
+// InTx indicates, that the session is in transaction mode.
+func (s *Session) InTx() bool { s.checkLock(); return s.inTx }
 
-// SetInTx sets session in transaction mode.
-func (s *Session) SetInTx(v bool) {
-	s.inTx = v
-}
+// SetInTx sets the session transaction mode.
+func (s *Session) SetInTx(v bool) { s.checkLock(); s.inTx = v }
+
+// InQuery indicates, that the session is in query mode.
+func (s *Session) InQuery() bool { s.checkLock(); return s.inQuery }
+
+// SetInQuery sets the session query mode.
+func (s *Session) SetInQuery(v bool) { s.checkLock(); s.inQuery = v }
 
 // IsBad indicates, that the session is in bad state.
-func (s *Session) IsBad() bool {
-	return s.conn.isBad()
-}
+func (s *Session) IsBad() bool { s.checkLock(); return s.conn.isBad() }
 
 // MaxBulkNum returns the maximal number of bulk calls before auto flush.
 func (s *Session) MaxBulkNum() int {
@@ -358,8 +392,8 @@ func (s *Session) authenticateMethod(stepper authStepper) error {
 
 // QueryDirect executes a query without query parameters.
 func (s *Session) QueryDirect(query string) (driver.Rows, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(true)
 
 	// allow e.g inserts as query -> handle commit like in ExecDirect
 	if err := s.pw.write(s.sessionID, mtExecuteDirect, !s.inTx, command(query)); err != nil {
@@ -394,8 +428,7 @@ func (s *Session) QueryDirect(query string) (driver.Rows, error) {
 
 // ExecDirect executes a sql statement without statement parameters.
 func (s *Session) ExecDirect(query string) (driver.Result, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
 
 	if err := s.pw.write(s.sessionID, mtExecuteDirect, !s.inTx, command(query)); err != nil {
 		return nil, err
@@ -419,8 +452,7 @@ func (s *Session) ExecDirect(query string) (driver.Result, error) {
 
 // Prepare prepares a sql statement.
 func (s *Session) Prepare(query string) (*PrepareResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
 
 	if err := s.pw.write(s.sessionID, mtPrepare, false, command(query)); err != nil {
 		return nil, err
@@ -450,8 +482,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 
 // Exec executes a sql statement.
 func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
 
 	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.prmFields, args)); err != nil {
 		return nil, err
@@ -495,8 +526,8 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Resu
 
 // QueryCall executes a stored procecure (by Query).
 func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(true)
 
 	/*
 		only in args
@@ -554,8 +585,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 
 // ExecCall executes a stored procecure (by Exec).
 func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
 
 	/*
 		in,- and output args
@@ -664,8 +694,8 @@ func (s *Session) readCall(outputFields []*parameterField) (*callResult, []locat
 
 // Query executes a query.
 func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(true)
 
 	// allow e.g inserts as query -> handle commit like in exec
 	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.prmFields, args)); err != nil {
@@ -696,8 +726,7 @@ func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Row
 
 // FetchNext fetches next chunk in query result set.
 func (s *Session) fetchNext(rr rowsResult) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
 
 	qr, err := rr.queryResult()
 	if err != nil {
@@ -721,8 +750,8 @@ func (s *Session) fetchNext(rr rowsResult) error {
 
 // DropStatementID releases the hdb statement handle.
 func (s *Session) DropStatementID(id uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtDropStatementID, false, statementID(id)); err != nil {
 		return err
 	}
@@ -731,8 +760,8 @@ func (s *Session) DropStatementID(id uint64) error {
 
 // CloseResultsetID releases the hdb resultset handle.
 func (s *Session) CloseResultsetID(id uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCloseResultset, false, resultsetID(id)); err != nil {
 		return err
 	}
@@ -741,8 +770,8 @@ func (s *Session) CloseResultsetID(id uint64) error {
 
 // Commit executes a database commit.
 func (s *Session) Commit() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCommit, false); err != nil {
 		return err
 	}
@@ -755,8 +784,8 @@ func (s *Session) Commit() error {
 
 // Rollback executes a database rollback.
 func (s *Session) Rollback() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.checkLock()
+	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtRollback, false); err != nil {
 		return err
 	}
@@ -773,6 +802,9 @@ func (s *Session) Rollback() error {
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
 func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
+	s.Lock()
+	defer s.Unlock()
+
 	var err error
 
 	if descr.isCharBased {

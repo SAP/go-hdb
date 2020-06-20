@@ -60,7 +60,7 @@ var (
 )
 
 type queryResultSet struct {
-	s       *Session
+	session *Session
 	rrs     []rowsResult
 	rr      rowsResult
 	idx     int // current result set
@@ -68,11 +68,11 @@ type queryResultSet struct {
 	lastErr error
 }
 
-func newQueryResultSet(s *Session, rrs ...rowsResult) *queryResultSet {
+func newQueryResultSet(session *Session, rrs ...rowsResult) *queryResultSet {
 	if len(rrs) == 0 {
 		panic("query result set is empty")
 	}
-	return &queryResultSet{s: s, rrs: rrs, rr: rrs[0]}
+	return &queryResultSet{session: session, rrs: rrs, rr: rrs[0]}
 }
 
 func (r *queryResultSet) Columns() []string {
@@ -80,19 +80,26 @@ func (r *queryResultSet) Columns() []string {
 }
 
 func (r *queryResultSet) Close() error {
+	r.session.Lock()
+	defer r.session.Unlock()
+	defer r.session.SetInQuery(false)
+
 	// if lastError is set, attrs are nil
 	if r.lastErr != nil {
 		return r.lastErr
 	}
 
 	if !r.rr.closed() {
-		return r.s.CloseResultsetID(r.rr.rsID())
+		return r.session.CloseResultsetID(r.rr.rsID())
 	}
 	return nil
 }
 
 func (r *queryResultSet) Next(dest []driver.Value) error {
-	if r.s.IsBad() {
+	r.session.Lock()
+	defer r.session.Unlock()
+
+	if r.session.IsBad() {
 		return driver.ErrBadConn
 	}
 
@@ -100,7 +107,7 @@ func (r *queryResultSet) Next(dest []driver.Value) error {
 		if r.rr.lastPacket() {
 			return io.EOF
 		}
-		if err := r.s.fetchNext(r.rr); err != nil {
+		if err := r.session.fetchNext(r.rr); err != nil {
 			r.lastErr = err //fieldValues and attrs are nil
 			return err
 		}
@@ -116,7 +123,7 @@ func (r *queryResultSet) Next(dest []driver.Value) error {
 	// TODO eliminate
 	for _, v := range dest {
 		if v, ok := v.(sessionSetter); ok {
-			v.setSession(r.s)
+			v.setSession(r.session)
 		}
 	}
 	return nil
@@ -185,11 +192,11 @@ func (c *queryResultSetCache) Get(id uint64) (*queryResultSet, bool) {
 	return qrs, ok
 }
 
-func (c *queryResultSetCache) cleanup(s *Session) {
+func (c *queryResultSetCache) cleanup(session *Session) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for id, qrs := range c.cache {
-		if qrs.s == s {
+		if qrs.session == session {
 			delete(c.cache, id)
 		}
 	}

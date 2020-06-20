@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	p "github.com/SAP/go-hdb/internal/protocol"
@@ -61,6 +62,10 @@ var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 
 // ErrNestedTransaction is the error raised if a tranasction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("nested transactions are not supported")
+
+// ErrNestedQuery is the error raised if a sql statement is executed before an "active" statement is closed.
+// Example: execute sql statement before rows of privious select statement are closed.
+var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries
 const (
@@ -110,6 +115,7 @@ var (
 type conn struct {
 	session *p.Session
 	scanner *scanner.Scanner
+	closed  chan struct{}
 }
 
 func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
@@ -117,9 +123,13 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &conn{session: session, scanner: &scanner.Scanner{}}
+	c := &conn{session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
 	if err := c.init(ctx, ctr); err != nil {
 		return nil, err
+	}
+	d := ctr.PingInterval()
+	if d != 0 {
+		go c.pinger(d, c.closed)
 	}
 	return c, nil
 }
@@ -140,7 +150,54 @@ func (c *conn) init(ctx context.Context, ctr *Connector) error {
 	return nil
 }
 
+func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
+	ticker := time.NewTicker(d)
+	defer ticker.Stop()
+
+	ctx := context.Background()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			c.Ping(ctx)
+		}
+	}
+}
+
+func (c *conn) Ping(ctx context.Context) (err error) {
+	c.session.Lock()
+	defer c.session.Unlock()
+
+	if c.session.IsBad() {
+		return driver.ErrBadConn
+	}
+	if c.session.InQuery() {
+		return ErrNestedQuery
+	}
+
+	// caution!!!
+	defer c.session.SetInQuery(false)
+
+	done := make(chan struct{})
+	go func() {
+		_, err = c.session.QueryDirect(pingQuery)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.session.Kill()
+		return ctx.Err()
+	case <-done:
+		return err
+	}
+}
+
 func (c *conn) ResetSession(ctx context.Context) error {
+	c.session.Lock()
+	defer c.session.Unlock()
+
 	c.session.Reset()
 	if c.session.IsBad() {
 		return driver.ErrBadConn
@@ -149,8 +206,14 @@ func (c *conn) ResetSession(ctx context.Context) error {
 }
 
 func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
+	c.session.Lock()
+	defer c.session.Unlock()
+
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
+	}
+	if c.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	done := make(chan struct{})
@@ -185,6 +248,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 	select {
 	case <-ctx.Done():
+		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return stmt, err
@@ -192,15 +256,25 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 }
 
 func (c *conn) Close() error {
+	c.session.Lock()
+	defer c.session.Unlock()
+
+	close(c.closed) // signal connection close
 	return c.session.Close()
 }
 
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
+	c.session.Lock()
+	defer c.session.Unlock()
+
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
 	}
 	if c.session.InTx() {
 		return nil, ErrNestedTransaction
+	}
+	if c.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	level, ok := isolationLevel[opts.Isolation]
@@ -211,11 +285,11 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	done := make(chan struct{})
 	go func() {
 		// set isolation level
-		if _, err = c.ExecContext(ctx, fmt.Sprintf(isolationLevelStmt, level), nil); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(isolationLevelStmt, level)); err != nil {
 			goto done
 		}
 		// set access mode
-		if _, err = c.ExecContext(ctx, fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly]), nil); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly])); err != nil {
 			goto done
 		}
 		c.session.SetInTx(true)
@@ -226,6 +300,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 	select {
 	case <-ctx.Done():
+		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return tx, err
@@ -233,8 +308,14 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 }
 
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
+	c.session.Lock()
+	defer c.session.Unlock()
+
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
+	}
+	if c.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	if len(args) != 0 {
@@ -265,20 +346,12 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	done := make(chan struct{})
 	go func() {
 		rows, err = c.session.QueryDirect(query)
-		if err != nil {
-			goto done
-		}
-		select {
-		default:
-		case <-ctx.Done():
-			return
-		}
-	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
+		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, err
@@ -286,8 +359,14 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
+	c.session.Lock()
+	defer c.session.Unlock()
+
 	if c.session.IsBad() {
 		return nil, driver.ErrBadConn
+	}
+	if c.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	if len(args) != 0 {
@@ -310,28 +389,10 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	select {
 	case <-ctx.Done():
+		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
-	}
-}
-
-func (c *conn) Ping(ctx context.Context) (err error) {
-	if c.session.IsBad() {
-		return driver.ErrBadConn
-	}
-
-	done := make(chan struct{})
-	go func() {
-		_, err = c.QueryContext(ctx, pingQuery, nil)
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-done:
-		return err
 	}
 }
 
@@ -363,6 +424,9 @@ func newTx(session *p.Session) *tx {
 }
 
 func (t *tx) Commit() error {
+	t.session.Lock()
+	defer t.session.Unlock()
+
 	if t.session.IsBad() {
 		return driver.ErrBadConn
 	}
@@ -371,6 +435,9 @@ func (t *tx) Commit() error {
 }
 
 func (t *tx) Rollback() error {
+	t.session.Lock()
+	defer t.session.Unlock()
+
 	if t.session.IsBad() {
 		return driver.ErrBadConn
 	}
@@ -402,6 +469,9 @@ func newStmt(session *p.Session, query string, bulk bool, pr *p.PrepareResult) (
 }
 
 func (s *stmt) Close() error {
+	s.session.Lock()
+	defer s.session.Unlock()
+
 	if len(s.args) != 0 {
 		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.NumInput())
 	}
@@ -420,8 +490,14 @@ func (s *stmt) NumInput() int {
 }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
+	s.session.Lock()
+	defer s.session.Unlock()
+
 	if s.session.IsBad() {
 		return nil, driver.ErrBadConn
+	}
+	if s.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	sqltrace.Tracef("%s %v", s.query, args)
@@ -449,6 +525,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 
 	select {
 	case <-ctx.Done():
+		s.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, err
@@ -456,8 +533,14 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+	s.session.Lock()
+	defer s.session.Unlock()
+
 	if s.session.IsBad() {
 		return nil, driver.ErrBadConn
+	}
+	if s.session.InQuery() {
+		return nil, ErrNestedQuery
 	}
 
 	sqltrace.Tracef("%s %v", s.query, args)
@@ -507,6 +590,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 
 	select {
 	case <-ctx.Done():
+		s.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err

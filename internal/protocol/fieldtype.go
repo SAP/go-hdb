@@ -330,6 +330,13 @@ func convertToInt64(ft fieldType, v interface{}) (int64, error) {
 			return 0, newConvertError(ft, v, ErrUint64OutOfRange)
 		}
 		return int64(u64), nil
+	case reflect.Float32, reflect.Float64:
+		f64 := rv.Float()
+		i64 := int64(f64)
+		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
+			return 0, newConvertError(ft, v, nil)
+		}
+		return i64, nil
 	case reflect.String:
 		i64, err := strconv.ParseInt(rv.String(), 10, 64)
 		if err != nil {

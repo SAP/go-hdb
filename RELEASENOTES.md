@@ -7,6 +7,13 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.9
+
+- added custom dialers for driver - database connections
+- added float to integer conversion in case the float value can be represented as integer
+- added no-timeout option for db reads and writes (timeout == 0)
+- added connection ping interval to database connector object
+
 Release 0.100.8
 
 - fixed authentication issue for DB instances not supporting PBKDF2

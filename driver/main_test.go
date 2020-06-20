@@ -25,6 +25,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 const (
@@ -51,6 +52,9 @@ var (
 	// TestDropAllSchema will drop all schemas with GoHDBTestSchemaPrefix prefix to clean-up all not yet deleted
 	// test schemas created by go-hdb unit tests.
 	TestDropAllSchemas bool
+	// TestPingConn sets the connection ping interval in milliseconds.
+	// If zero, the connection ping is deactivated.
+	TestPingConn int64
 )
 
 func init() {
@@ -62,6 +66,7 @@ func init() {
 	flag.StringVar(&TestDSN, "dsn", dsn, "database dsn")
 	flag.BoolVar(&TestDropSchema, "dropSchema", true, "drop test schema if test ran successfully")
 	flag.BoolVar(&TestDropAllSchemas, "dropAllSchemas", false, "drop all existing test schemas if test ran successfully")
+	flag.Int64Var(&TestPingConn, "pingConn", 0, "sets the connection ping interval (if zero, the connection ping is deactivated)")
 }
 
 // globals
@@ -115,7 +120,9 @@ func testSetup() *sql.Conn {
 	if err != nil {
 		testExit(err)
 	}
+	connector.SetPingInterval(time.Duration(TestPingConn) * time.Millisecond)
 	TestDB = sql.OpenDB(connector)
+	//TestDB.SetMaxIdleConns(0)
 
 	ctx := context.Background()
 
