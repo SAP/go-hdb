@@ -7,6 +7,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.10
+
+- rename master to main branch
+
 Release 0.100.9
 
 - added custom dialers for driver - database connections
