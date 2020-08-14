@@ -7,6 +7,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.11 - 0.100.12
+
+- FSF license compliancy
+
 Release 0.100.10
 
 - rename master to main branch
