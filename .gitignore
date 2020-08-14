@@ -29,5 +29,7 @@ _testmain.go
 todo*.*
 *.pdf
 *.txt
+!LICENSES/*.txt
+.reuse/
 *.debug
 recordings
