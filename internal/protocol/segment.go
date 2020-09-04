@@ -17,7 +17,7 @@ const (
 type commandOptions int8
 
 const (
-	coNil                    commandOptions = 0x00 //nolint:deadcode
+	coNil                    commandOptions = 0x00
 	coSelfetchOff            commandOptions = 0x01
 	coScrollableCursorOn     commandOptions = 0x02
 	coNoResultsetCloseNeeded commandOptions = 0x04

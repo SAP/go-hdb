@@ -18,6 +18,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/driver/dial"
+	"github.com/SAP/go-hdb/internal/container/varmap"
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -98,21 +99,7 @@ type dbConn struct {
 
 func newDbConn(ctx context.Context, address string, dialer dial.Dialer, timeout, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (*dbConn, error) {
 	conn, err := dialer.DialContext(ctx, address, dial.DialerOptions{Timeout: timeout, TCPKeepAlive: tcpKeepAlive})
-	if err != nil { /*
-			Copyright 2014 SAP SE
-
-			Licensed under the Apache License, Version 2.0 (the "License");
-			you may not use this file except in compliance with the License.
-			You may obtain a copy of the License at
-
-			    http://www.apache.org/licenses/LICENSE-2.0
-
-			Unless required by applicable law or agreed to in writing, software
-			distributed under the License is distributed on an "AS IS" BASIS,
-			WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-			See the License for the specific language governing permissions and
-			limitations under the License.
-		*/
+	if err != nil {
 		return nil, err
 	}
 
@@ -175,6 +162,9 @@ type SessionConfig interface {
 	Username() string
 	Password() string
 	Locale() string
+	DriverVersion() string
+	DriverName() string
+	ApplicationName() string
 	BufferSize() int
 	FetchSize() int
 	BulkSize() int
@@ -183,6 +173,7 @@ type SessionConfig interface {
 	TimeoutDuration() time.Duration
 	TCPKeepAlive() time.Duration
 	Dfv() int
+	SessionVariablesVarMap() *varmap.VarMap
 	TLSConfig() *tls.Config
 	Legacy() bool
 }
@@ -243,7 +234,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		bufWr = bufio.NewWriter(conn)
 	}
 
-	pw := newProtocolWriter(bufWr) // write upstream
+	pw := newProtocolWriter(bufWr, cfg.SessionVariablesVarMap()) // write upstream
 	if err := pw.writeProlog(); err != nil {
 		return nil, err
 	}
@@ -345,10 +336,17 @@ func (s *Session) authenticateMethod(stepper authStepper) error {
 	var auth partReadWriter
 	var err error
 
+	// client context
+	clientContext := clientContext(plainOptions{
+		int8(ccoClientVersion):            optStringType(s.cfg.DriverVersion()),
+		int8(ccoClientType):               optStringType(s.cfg.DriverName()),
+		int8(ccoClientApplicationProgram): optStringType(s.cfg.ApplicationName()),
+	})
+
 	if auth, err = stepper.next(); err != nil {
 		return err
 	}
-	if err := s.pw.write(s.sessionID, mtAuthenticate, false, auth); err != nil {
+	if err := s.pw.write(s.sessionID, mtAuthenticate, false, clientContext, auth); err != nil {
 		return err
 	}
 
@@ -383,7 +381,7 @@ func (s *Session) authenticateMethod(stepper authStepper) error {
 			s.pr.read(&co)
 			// set data format version
 			// TODO generalize for sniffer
-			s.pr.setDfv(int(co[coDataFormatVersion2].(optIntType)))
+			s.pr.setDfv(int(co[int8(coDataFormatVersion2)].(optIntType)))
 		}
 	}); err != nil {
 		return err
@@ -904,18 +902,20 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*parameterField, args []driver.NamedValue) error {
-
 	chunkSize := int(s.cfg.LobChunkSize())
 
 	readers := make([]io.Reader, 0, len(ids))
 	descrs := make([]*writeLobDescr, 0, len(ids))
 
+	numInPrmField := len(inPrmFields)
+
 	j := 0
-	for i, f := range inPrmFields {
+	for i, arg := range args { // range over args (mass / bulk operation)
+		f := inPrmFields[i%numInPrmField]
 		if f.tc.isLob() {
-			rd, ok := args[i].Value.(io.Reader)
+			rd, ok := arg.Value.(io.Reader)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", args[i].Value)
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", arg.Value)
 			}
 			if f.tc.isCharBased() {
 				rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer

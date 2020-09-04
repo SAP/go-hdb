@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
+	"github.com/SAP/go-hdb/internal/container/varmap"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
@@ -76,13 +77,14 @@ type Connector struct {
 	mu                              sync.RWMutex
 	host, username, password        string
 	locale                          string
+	applicationName                 string
 	bufferSize, fetchSize, bulkSize int
 	lobChunkSize                    int32
 	timeout, dfv                    int
 	pingInterval                    time.Duration
 	tcpKeepAlive                    time.Duration // see net.Dialer
 	tlsConfig                       *tls.Config
-	sessionVariables                SessionVariables
+	sessionVariables                *varmap.VarMap
 	defaultSchema                   Identifier
 	legacy                          bool
 	dialer                          dial.Dialer
@@ -90,14 +92,16 @@ type Connector struct {
 
 func newConnector() *Connector {
 	return &Connector{
-		fetchSize:    DefaultFetchSize,
-		bulkSize:     DefaultBulkSize,
-		lobChunkSize: DefaultLobChunkSize,
-		timeout:      DefaultTimeout,
-		tcpKeepAlive: DefaultTCPKeepAlive,
-		dfv:          DefaultDfv,
-		legacy:       DefaultLegacy,
-		dialer:       dial.DefaultDialer,
+		applicationName:  defaultApplicationName,
+		fetchSize:        DefaultFetchSize,
+		bulkSize:         DefaultBulkSize,
+		lobChunkSize:     DefaultLobChunkSize,
+		timeout:          DefaultTimeout,
+		dfv:              DefaultDfv,
+		tcpKeepAlive:     DefaultTCPKeepAlive,
+		sessionVariables: varmap.NewVarMap(),
+		legacy:           DefaultLegacy,
+		dialer:           dial.DefaultDialer,
 	}
 }
 
@@ -252,6 +256,27 @@ For more information please see DSNLocale.
 */
 func (c *Connector) SetLocale(locale string) { c.mu.Lock(); c.locale = locale; c.mu.Unlock() }
 
+// DriverVersion returns the driver version of the connector.
+func (c *Connector) DriverVersion() string { return DriverVersion }
+
+// DriverName returns the driver name of the connector.
+func (c *Connector) DriverName() string { return DriverName }
+
+// ApplicationName returns the locale of the connector.
+func (c *Connector) ApplicationName() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.applicationName
+}
+
+// SetApplicationName sets the application name of the connector.
+func (c *Connector) SetApplicationName(name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.applicationName = name
+	return nil
+}
+
 // BufferSize returns the bufferSize of the connector.
 func (c *Connector) BufferSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bufferSize }
 
@@ -395,21 +420,19 @@ func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) error {
 	return nil
 }
 
+// SessionVariablesVarMap returns the session variables VarMap stored in connector (for internal use only).
+func (c *Connector) SessionVariablesVarMap() *varmap.VarMap {
+	return c.sessionVariables
+}
+
 // SessionVariables returns the session variables stored in connector.
 func (c *Connector) SessionVariables() SessionVariables {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.sessionVariables
+	return SessionVariables(c.sessionVariables.LoadMap())
 }
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.sessionVariables = make(SessionVariables, len(sessionVariables))
-	for k, v := range sessionVariables {
-		c.sessionVariables[k] = v
-	}
+	c.sessionVariables.StoreMap((map[string]string)(sessionVariables))
 	return nil
 }
 

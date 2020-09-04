@@ -13,6 +13,7 @@ import (
 	"math"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
+	"github.com/SAP/go-hdb/internal/container/varmap"
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
@@ -519,6 +520,7 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 // protocol writer
 type protocolWriter struct {
 	wr  *bufio.Writer
+	sv  *varmap.VarMap // session variables
 	enc *encoding.Encoder
 
 	tracer traceLogger
@@ -529,9 +531,10 @@ type protocolWriter struct {
 	ph *partHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer) *protocolWriter {
+func newProtocolWriter(wr *bufio.Writer, sv *varmap.VarMap) *protocolWriter {
 	return &protocolWriter{
 		wr:     wr,
+		sv:     sv,
 		enc:    encoding.NewEncoder(wr),
 		tracer: newTraceLogger(true),
 		mh:     new(messageHeader),
@@ -563,6 +566,16 @@ func (w *protocolWriter) writeProlog() error {
 }
 
 func (w *protocolWriter) write(sessionID int64, messageType messageType, commit bool, writers ...partWriter) error {
+	// check on session variables to be send as ClientInfo
+	if messageType.clientInfoSupported() && w.sv.HasUpdates() {
+		upd, del := w.sv.Delta()
+		// TODO: how to delete session variables via clientInfo
+		// ...for the time being we set the value to <space>...
+		for k := range del {
+			upd[k] = ""
+		}
+		writers = append([]partWriter{clientInfo(upd)}, writers...)
+	}
 
 	numWriters := len(writers)
 	partSize := make([]int, numWriters)

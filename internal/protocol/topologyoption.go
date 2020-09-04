@@ -8,7 +8,6 @@ package protocol
 
 type topologyOption int8
 
-//nolint
 const (
 	toHostName         topologyOption = 1
 	toHostPortnumber   topologyOption = 2

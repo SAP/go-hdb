@@ -25,7 +25,6 @@ func newSQLTrace() *sqlTrace {
 
 var tracer = newSQLTrace()
 
-//nolint:gochecknoinits
 func init() {
 	flag.BoolVar(&tracer.on, "hdb.sqlTrace", false, "enabling hdb sql trace")
 }

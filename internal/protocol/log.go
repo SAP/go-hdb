@@ -20,7 +20,6 @@ var (
 	trace bool
 )
 
-//nolint:gochecknoinits
 func init() {
 	flag.BoolVar(&debug, fmt.Sprintf("%s.debug", pPrefix), false, "enabling hdb protocol debugging mode")
 	flag.BoolVar(&trace, fmt.Sprintf("%s.trace", pPrefix), false, "enabling hdb protocol trace")

@@ -8,7 +8,6 @@ package protocol
 
 type messageType int8
 
-//nolint
 const (
 	mtNil             messageType = 0
 	mtExecuteDirect   messageType = 2
@@ -36,3 +35,7 @@ const (
 	mtFetchNextITab   messageType = 79
 	mtInsertNextITab  messageType = 80
 )
+
+func (mt messageType) clientInfoSupported() bool {
+	return mt == mtConnect || mt == mtPrepare || mt == mtExecuteDirect || mt == mtExecute
+}

@@ -16,7 +16,6 @@ type typeCode byte
 
 // null value indicator is high bit
 
-//nolint
 const (
 	tcNullL             typeCode = 0x00
 	tcTinyint           typeCode = 0x01

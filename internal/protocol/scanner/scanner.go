@@ -63,7 +63,7 @@ func (t Token) String() string {
 	if s, ok := tokenString[t]; ok {
 		return s
 	}
-	return fmt.Sprintf("%s", string(t))
+	return fmt.Sprintf("%d", t)
 }
 
 var compositeOperators = map[string]struct{}{"<>": {}, "<=": {}, ">=": {}, "!=": {}}

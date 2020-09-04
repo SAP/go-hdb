@@ -8,18 +8,22 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"os"
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.100.12"
+const DriverVersion = "0.100.13"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
 
+// default application name.
+var defaultApplicationName string
+
 var drv = &hdbDrv{}
 
-//nolint:gochecknoinits
 func init() {
+	defaultApplicationName, _ = os.Executable()
 	sql.Register(DriverName, drv)
 }
 

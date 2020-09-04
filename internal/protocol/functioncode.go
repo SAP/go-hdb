@@ -8,7 +8,6 @@ package protocol
 
 type functionCode int16
 
-//nolint
 const (
 	fcNil                       functionCode = 0
 	fcDDL                       functionCode = 1

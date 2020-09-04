@@ -11,6 +11,7 @@ import (
 )
 
 type optBooleanType bool
+type optTinyintType int8
 type optIntType int32
 type optBigintType int64
 type optDoubleType float64
@@ -18,6 +19,7 @@ type optStringType []byte
 type optBinaryStringType []byte
 
 func (t optBooleanType) String() string      { return fmt.Sprintf("%t", bool(t)) }
+func (t optTinyintType) String() string      { return fmt.Sprintf("%d", int8(t)) }
 func (t optIntType) String() string          { return fmt.Sprintf("%d", int(t)) }
 func (t optBigintType) String() string       { return fmt.Sprintf("%d", int64(t)) }
 func (t optDoubleType) String() string       { return fmt.Sprintf("%g", float64(t)) }
@@ -59,7 +61,7 @@ func (o multiLineOptions) encode(enc *encoding.Encoder) {
 	}
 }
 
-type plainOptions map[connectOption]interface{}
+type plainOptions map[int8]interface{}
 
 func (o plainOptions) size() int {
 	size := 2 * len(o) //option + type
@@ -68,6 +70,8 @@ func (o plainOptions) size() int {
 		default:
 			plog.Fatalf("type %T not implemented", v)
 		case optBooleanType:
+			size++
+		case optTinyintType:
 			size++
 		case optIntType:
 			size += 4
@@ -88,7 +92,7 @@ func (o plainOptions) decode(dec *encoding.Decoder, cnt int) {
 
 	for i := 0; i < cnt; i++ {
 
-		k := connectOption(dec.Int8())
+		k := dec.Int8()
 		tc := dec.Byte()
 
 		switch typeCode(tc) {
@@ -98,6 +102,9 @@ func (o plainOptions) decode(dec *encoding.Decoder, cnt int) {
 
 		case tcBoolean:
 			o[k] = optBooleanType(dec.Bool())
+
+		case tcTinyint:
+			o[k] = optTinyintType(dec.Int8())
 
 		case tcInteger:
 			o[k] = optIntType(dec.Int32())
@@ -137,6 +144,10 @@ func (o plainOptions) encode(enc *encoding.Encoder) {
 		case optBooleanType:
 			enc.Int8(int8(tcBoolean))
 			enc.Bool(bool(v))
+
+		case optTinyintType:
+			enc.Int8(int8(tcTinyint))
+			enc.Int8(int8(v))
 
 		case optIntType:
 			enc.Int8(int8(tcInteger))

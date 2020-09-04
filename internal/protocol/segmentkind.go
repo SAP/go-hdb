@@ -8,7 +8,6 @@ package protocol
 
 type segmentKind int8
 
-//nolint
 const (
 	skInvalid segmentKind = 0
 	skRequest segmentKind = 1

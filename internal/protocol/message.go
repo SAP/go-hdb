@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	messageHeaderSize = 32 //nolint:varcheck
+	messageHeaderSize = 32
 )
 
 //message header

@@ -11,7 +11,6 @@ import (
 )
 
 // client distribution mode
-//nolint
 const (
 	cdmOff                 optIntType = 0
 	cdmConnection          optIntType = 1
@@ -20,7 +19,6 @@ const (
 )
 
 // distribution protocol version
-//nolint
 const (
 	dpvBaseline                       = 0
 	dpvClientHandlesStatementSequence = 1
@@ -40,12 +38,11 @@ func (o connectOptions) size() int   { return plainOptions(o).size() }
 func (o connectOptions) numArg() int { return len(o) }
 
 func (o connectOptions) set(k connectOption, v interface{}) {
-	o[k] = v
+	o[int8(k)] = v
 }
 
-//linter:unused
 func (o connectOptions) get(k connectOption) (interface{}, bool) {
-	v, ok := o[k]
+	v, ok := o[int8(k)]
 	return v, ok
 }
 

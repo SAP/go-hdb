@@ -60,7 +60,6 @@ const (
 	pingQuery          = "select 1 from dummy"
 	isolationLevelStmt = "set transaction isolation level %s"
 	accessModeStmt     = "set transaction %s"
-	sessionVariable    = "set %s=%s"
 	defaultSchema      = "set schema %s"
 )
 
@@ -123,13 +122,6 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 }
 
 func (c *conn) init(ctx context.Context, ctr *Connector) error {
-	if ctr.sessionVariables != nil {
-		for k, v := range ctr.sessionVariables {
-			if _, err := c.ExecContext(ctx, fmt.Sprintf(sessionVariable, fmt.Sprintf("'%s'", k), fmt.Sprintf("'%s'", v)), nil); err != nil {
-				return err
-			}
-		}
-	}
 	if ctr.defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, fmt.Sprintf(defaultSchema, ctr.defaultSchema), nil); err != nil {
 			return err

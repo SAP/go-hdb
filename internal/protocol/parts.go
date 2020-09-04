@@ -25,11 +25,10 @@ type partDecodeEncoder interface {
 	partEncoder
 }
 
-// TODO: uncomment after go1.13 compatibility is dropped.
-// type partReadWriter interface {
-// 	partReader
-// 	partWriter
-// }
+type partReadWriter interface {
+	partReader
+	partWriter
+}
 
 type part interface {
 	String() string // should support Stringer interface
@@ -42,7 +41,9 @@ func (*authInitReq) kind() partKind         { return pkAuthentication }
 func (*authInitRep) kind() partKind         { return pkAuthentication }
 func (*authFinalReq) kind() partKind        { return pkAuthentication }
 func (*authFinalRep) kind() partKind        { return pkAuthentication }
+func (clientContext) kind() partKind        { return pkClientContext }
 func (clientID) kind() partKind             { return pkClientID }
+func (clientInfo) kind() partKind           { return pkClientInfo }
 func (connectOptions) kind() partKind       { return pkConnectOptions }
 func (*topologyInformation) kind() partKind { return pkTopologyInformation }
 func (command) kind() partKind              { return pkCommand }
@@ -71,7 +72,9 @@ var (
 	_ part = (*authInitRep)(nil)
 	_ part = (*authFinalReq)(nil)
 	_ part = (*authFinalRep)(nil)
+	_ part = (*clientContext)(nil)
 	_ part = (*clientID)(nil)
+	_ part = (*clientInfo)(nil)
 	_ part = (*connectOptions)(nil)
 	_ part = (*topologyInformation)(nil)
 	_ part = (*command)(nil)
@@ -133,7 +136,9 @@ func (readLobRequest) size() int { return readLobRequestSize }
 var (
 	_ partWriter = (*authInitReq)(nil)
 	_ partWriter = (*authFinalReq)(nil)
+	_ partWriter = (*clientContext)(nil)
 	_ partWriter = (*clientID)(nil)
+	_ partWriter = (*clientInfo)(nil)
 	_ partWriter = (*connectOptions)(nil)
 	_ partWriter = (*command)(nil)
 	_ partWriter = (*statementID)(nil)
@@ -158,7 +163,9 @@ var (
 	_ partReader = (*authInitRep)(nil)
 	_ partReader = (*authFinalReq)(nil)
 	_ partReader = (*authFinalRep)(nil)
+	_ partReader = (*clientContext)(nil)
 	_ partReader = (*clientID)(nil)
+	_ partReader = (*clientInfo)(nil)
 	_ partReader = (*connectOptions)(nil)
 	_ partReader = (*topologyInformation)(nil)
 	_ partReader = (*command)(nil)
@@ -198,7 +205,9 @@ var (
 
 var partTypeMap = map[partKind]reflect.Type{
 	pkError:               reflect.TypeOf((*hdbErrors)(nil)).Elem(),
+	pkClientContext:       reflect.TypeOf((*clientContext)(nil)).Elem(),
 	pkClientID:            reflect.TypeOf((*clientID)(nil)).Elem(),
+	pkClientInfo:          reflect.TypeOf((*clientInfo)(nil)).Elem(),
 	pkConnectOptions:      reflect.TypeOf((*connectOptions)(nil)).Elem(),
 	pkTopologyInformation: reflect.TypeOf((*topologyInformation)(nil)).Elem(),
 	pkCommand:             reflect.TypeOf((*command)(nil)).Elem(),

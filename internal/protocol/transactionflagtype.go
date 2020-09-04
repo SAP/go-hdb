@@ -9,7 +9,6 @@ package protocol
 //transaction flags
 type transactionFlagType int8
 
-//nolint
 const (
 	tfRolledback                     transactionFlagType = 0
 	tfCommited                       transactionFlagType = 1

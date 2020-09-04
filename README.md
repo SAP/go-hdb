@@ -19,7 +19,7 @@ go get github.com/SAP/go-hdb/driver
 
 ## Building
 
-To build go-hdb you need to have a working Go environment with [version 1.14 or higher installed](https://golang.org/dl/).
+To build go-hdb you need to have a working Go environment with [version 1.15 or higher installed](https://golang.org/dl/).
 
 ## Documentation
 
@@ -50,5 +50,4 @@ go test -dsn hdb://user:password@host:port
 
 ## Dependencies
 
-* <https://godoc.org/golang.org/x/text/transform>
-* <https://godoc.org/golang.org/x/crypto/pbkdf2>
+* Please see [go.mod](https://github.com/SAP/go-hdb/blob/main/go.mod).

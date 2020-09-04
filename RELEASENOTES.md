@@ -7,9 +7,17 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.13
+
+- added support of Go 1.5
+- dropped support of Go language versions < Go 1.4.7
+- added clientContext protocol support (new Connector attribute: ApplicationName)
+- set session variables via clientInfo instead of sql set
+- fixed issue with lob fields in bulk statements
+
 Release 0.100.11 - 0.100.12
 
-- FSF license compliancy
+- added FSF license compliancy
 
 Release 0.100.10
 
