@@ -7,6 +7,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.100.14
+
+- added support of Go 1.3 again
+
 Release 0.100.13
 
 - added support of Go 1.5
