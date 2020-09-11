@@ -17,7 +17,7 @@ import (
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-func testColumnType(connector *Connector, dataType func(string, int) string, dfv int, t *testing.T) {
+func testColumnType(connector *Connector, dataType func(string, int) string, scanType func(reflect.Type, int) reflect.Type, dfv int, t *testing.T) {
 	var (
 		testTime    = time.Now()
 		testDecimal = (*Decimal)(big.NewRat(1, 1))
@@ -59,7 +59,7 @@ func testColumnType(connector *Connector, dataType func(string, int) string, dfv
 		{"clob", 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 		{"nclob", 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 		{"blob", 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"boolean", 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), false},                // hdb gives TINYINT back - not BOOLEAN
+		{"boolean", 0, false, false, dataType("BOOLEAN", dfv), 0, 0, true, scanType(p.DtBoolean.ScanType(), dfv), false},
 		{"smalldecimal", 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
 		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},             // hdb gives NCLOB back - not TEXT
 		{"shorttext", 15, true, false, dataType("SHORTTEXT", dfv), 0, 0, true, p.DtString.ScanType(), testString},
@@ -177,16 +177,9 @@ func testColumnType(connector *Connector, dataType func(string, int) string, dfv
 }
 
 func TestColumnType(t *testing.T) {
-
-	const (
-		dfvBaseline = 1 // baseline data format version.
-		dfvSPS06    = 4 //see docu
-		dfvBINTEXT  = 6
-		dfvDefault  = dfvSPS06
-	)
-
 	dataType := func(dt string, dfv int) string {
-		if dfv == dfvBaseline {
+		switch {
+		case dfv < DfvLevel3:
 			switch dt {
 			case "DAYDATE":
 				return "DATE"
@@ -197,15 +190,34 @@ func TestColumnType(t *testing.T) {
 			case "SHORTTEXT", "ALPHANUM":
 				return "NVARCHAR"
 			}
+			fallthrough
+		case dfv < DfvLevel7:
+			switch dt {
+			case "BOOLEAN":
+				return "TINYINT"
+			}
+			// fallthrough
 		}
 		return dt
 	}
 
-	var testSet []int
+	scanType := func(rt reflect.Type, dfv int) reflect.Type {
+		switch {
+		case dfv < DfvLevel7:
+			switch rt {
+			case p.DtBoolean.ScanType():
+				return p.DtTinyint.ScanType()
+			}
+			// fallthrough
+		}
+		return rt
+	}
+
+	var testSet map[int]bool
 	if testing.Short() {
-		testSet = []int{dfvDefault}
+		testSet = map[int]bool{DefaultDfv: true}
 	} else {
-		testSet = []int{dfvBaseline, dfvSPS06, dfvBINTEXT}
+		testSet = supportedDfvs
 	}
 
 	connector, err := NewDSNConnector(TestDSN)
@@ -213,11 +225,11 @@ func TestColumnType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, dfv := range testSet {
+	for dfv := range testSet {
 		name := fmt.Sprintf("dfv_%d", dfv)
 		t.Run(name, func(t *testing.T) {
 			connector.SetDfv(dfv)
-			testColumnType(connector, dataType, dfv, t)
+			testColumnType(connector, dataType, scanType, dfv, t)
 		})
 	}
 }

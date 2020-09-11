@@ -22,6 +22,9 @@ const (
 )
 
 const (
+	booleanFalseValue   byte  = 0
+	booleanNullValue    byte  = 1
+	booleanTrueValue    byte  = 2
 	longdateNullValue   int64 = 3155380704000000001
 	seconddateNullValue int64 = 315538070401
 	daydateNullValue    int32 = 3652062

@@ -19,6 +19,7 @@ type DataType byte
 // Data type constants.
 const (
 	DtUnknown DataType = iota // unknown data type
+	DtBoolean
 	DtTinyint
 	DtSmallint
 	DtInteger
@@ -40,6 +41,7 @@ func RegisterScanType(dt DataType, scanType reflect.Type) {
 
 var scanTypeMap = map[DataType]reflect.Type{
 	DtUnknown:  reflect.TypeOf((*interface{})(nil)).Elem(),
+	DtBoolean:  reflect.TypeOf((*bool)(nil)).Elem(),
 	DtTinyint:  reflect.TypeOf((*uint8)(nil)).Elem(),
 	DtSmallint: reflect.TypeOf((*int16)(nil)).Elem(),
 	DtInteger:  reflect.TypeOf((*int32)(nil)).Elem(),

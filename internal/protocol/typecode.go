@@ -105,6 +105,24 @@ func (tc typeCode) isDecimalType() bool {
 	return tc == tcSmalldecimal || tc == tcDecimal
 }
 
+//
+func (tc typeCode) supportNullValue() bool {
+	/*
+		(*1)
+		HDB bug: secondtime null value cannot be set by setting high bit
+		- trying so, gives:
+		  SQL HdbError 1033 - error while parsing protocol: no such data type: type_code=192, index=2
+
+		Traffic analysis of python client (https://pypi.org/project/hdbcli) resulted in:
+		- set null value constant directly instead of using high bit
+
+		(*2)
+		boolean: use false =:= 0; null =:= 1; true =:= 2
+
+	*/
+	return !(tc == tcBoolean || tc == tcSecondtime)
+}
+
 // see hdbclient
 func (tc typeCode) encTc() typeCode {
 	switch tc {
@@ -122,6 +140,7 @@ tcBintext:
 */
 
 var dataTypeMap = map[typeCode]DataType{
+	tcBoolean:    DtBoolean,
 	tcTinyint:    DtTinyint,
 	tcSmallint:   DtSmallint,
 	tcInteger:    DtInteger,
@@ -171,6 +190,7 @@ func (tc typeCode) typeName() string {
 }
 
 var tcFieldTypeMap = map[typeCode]fieldType{
+	tcBoolean:    booleanType,
 	tcTinyint:    tinyintType,
 	tcSmallint:   smallintType,
 	tcInteger:    integerType,

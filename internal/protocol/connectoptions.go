@@ -37,13 +37,15 @@ func (o connectOptions) String() string {
 func (o connectOptions) size() int   { return plainOptions(o).size() }
 func (o connectOptions) numArg() int { return len(o) }
 
-func (o connectOptions) set(k connectOption, v interface{}) {
-	o[int8(k)] = v
-}
-
-func (o connectOptions) get(k connectOption) (interface{}, bool) {
-	v, ok := o[int8(k)]
-	return v, ok
+func (o connectOptions) fullVersionString() (version string) {
+	v, ok := o[int8(coFullVersionString)]
+	if !ok {
+		return
+	}
+	if s, ok := v.(optStringType); ok {
+		return string(s)
+	}
+	return
 }
 
 func (o *connectOptions) decode(dec *encoding.Decoder, ph *partHeader) error {

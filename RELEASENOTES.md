@@ -1,6 +1,12 @@
 Release Notes
 =============
 
+## Release 0.101
+
+#### Release Notes
+
+- The default Data Format Version is now '8' which does support boolean values on protocol level.
+- Dropped support of HANA server versions < 2.00.042
 
 ## Release 0.100
 
@@ -9,50 +15,50 @@ Release Notes
 
 Release 0.100.14
 
-- added support of Go 1.3 again
+- Added support of Go 1.3 again
 
 Release 0.100.13
 
-- added support of Go 1.5
-- dropped support of Go language versions < Go 1.4.7
-- added clientContext protocol support (new Connector attribute: ApplicationName)
-- set session variables via clientInfo instead of sql set
-- fixed issue with lob fields in bulk statements
+- Added support of Go 1.5
+- Dropped support of Go language versions < Go 1.4.7
+- Added clientContext protocol support (new Connector attribute: ApplicationName)
+- Set session variables via clientInfo instead of sql set
+- Fixed issue with lob fields in bulk statements
 
 Release 0.100.11 - 0.100.12
 
-- added FSF license compliancy
+- Added FSF license compliancy
 
 Release 0.100.10
 
-- rename master to main branch
+- Rename master to main branch
 
 Release 0.100.9
 
-- added custom dialers for driver - database connections
-- added float to integer conversion in case the float value can be represented as integer
-- added no-timeout option for db reads and writes (timeout == 0)
-- added connection ping interval to database connector object
+- Added custom dialers for driver - database connections
+- Added float to integer conversion in case the float value can be represented as integer
+- Added no-timeout option for db reads and writes (timeout == 0)
+- Added connection ping interval to database connector object
 
 Release 0.100.8
 
-- fixed authentication issue for DB instances not supporting PBKDF2
-- added tcp keep-alive parameter to connector
+- Fixed authentication issue for DB instances not supporting PBKDF2
+- Added tcp keep-alive parameter to connector
 
 
 Release 0.100.6 - 0.100.7
 
-- added alpha version of Bintext support
+- Added alpha version of Bintext support
 
 Release 0.100.5
 
-- go 1.13 compatibility
+- Go 1.13 compatibility
 
 Release 0.100.1 - 0.100.4
-- minor optimizations
-- bug fixes
-- linter fixes
-- additional lob example (read / write lob in chunks via pipe)
+- Minor optimizations
+- Bug fixes
+- Linter fixes
+- Additional lob example (read / write lob in chunks via pipe)
 
 #### Release Notes
 

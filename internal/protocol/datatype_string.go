@@ -9,23 +9,24 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[DtUnknown-0]
-	_ = x[DtTinyint-1]
-	_ = x[DtSmallint-2]
-	_ = x[DtInteger-3]
-	_ = x[DtBigint-4]
-	_ = x[DtReal-5]
-	_ = x[DtDouble-6]
-	_ = x[DtDecimal-7]
-	_ = x[DtTime-8]
-	_ = x[DtString-9]
-	_ = x[DtBytes-10]
-	_ = x[DtLob-11]
-	_ = x[DtRows-12]
+	_ = x[DtBoolean-1]
+	_ = x[DtTinyint-2]
+	_ = x[DtSmallint-3]
+	_ = x[DtInteger-4]
+	_ = x[DtBigint-5]
+	_ = x[DtReal-6]
+	_ = x[DtDouble-7]
+	_ = x[DtDecimal-8]
+	_ = x[DtTime-9]
+	_ = x[DtString-10]
+	_ = x[DtBytes-11]
+	_ = x[DtLob-12]
+	_ = x[DtRows-13]
 }
 
-const _DataType_name = "DtUnknownDtTinyintDtSmallintDtIntegerDtBigintDtRealDtDoubleDtDecimalDtTimeDtStringDtBytesDtLobDtRows"
+const _DataType_name = "DtUnknownDtBooleanDtTinyintDtSmallintDtIntegerDtBigintDtRealDtDoubleDtDecimalDtTimeDtStringDtBytesDtLobDtRows"
 
-var _DataType_index = [...]uint8{0, 9, 18, 28, 37, 45, 51, 59, 68, 74, 82, 89, 94, 100}
+var _DataType_index = [...]uint8{0, 9, 18, 27, 37, 46, 54, 60, 68, 77, 83, 91, 98, 103, 109}
 
 func (i DataType) String() string {
 	if i >= DataType(len(_DataType_index)-1) {

@@ -49,6 +49,7 @@ var stringReflectType = reflect.TypeOf((*string)(nil)).Elem()
 var zeroTime = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 const (
+	booleanFieldSize    = 1
 	tinyintFieldSize    = 1
 	smallintFieldSize   = 2
 	integerFieldSize    = 4
@@ -94,25 +95,10 @@ type resDecoder interface {
 	decodeRes(*encoding.Decoder) (interface{}, error)
 }
 
-/*
-(*1)
-HDB bug: secondtime null value cannot be set by setting high bit
-- trying so, gives:
-  SQL HdbError 1033 - error while parsing protocol: no such data type: type_code=192, index=2
-
-Traffic analysis of python client (https://pypi.org/project/hdbcli) resulted in:
-- set null value constant directly instead of using high bit
-
-Please see handling of this special case in:
-- fieldSize()
-- writeParameterField()
-
-*/
-
 // parameter size
 func prmSize(tc typeCode, arg driver.NamedValue) int {
 	v := arg.Value
-	if v == nil && tc != tcSecondtime { // secondTime exception (see (*1))
+	if v == nil && tc.supportNullValue() {
 		return 0
 	}
 	return tc.fieldType().prmSize(v)
@@ -122,7 +108,7 @@ func prmSize(tc typeCode, arg driver.NamedValue) int {
 func encodePrm(e *encoding.Encoder, tc typeCode, arg driver.NamedValue) error {
 	v := arg.Value
 	encTc := tc.encTc()
-	if v == nil && tc != tcSecondtime { // secondTime exception (see (*1))
+	if v == nil && tc.supportNullValue() {
 		e.Byte(byte(encTc) | 0x80) // type code null value: set high bit
 		return nil
 	}
@@ -172,6 +158,7 @@ func decodeRes(d *encoding.Decoder, tc typeCode) (interface{}, error) {
 }
 
 var (
+	booleanType    = _booleanType{}
 	tinyintType    = _tinyintType{}
 	smallintType   = _smallintType{}
 	integerType    = _integerType{}
@@ -193,6 +180,7 @@ var (
 	lobCESU8Type   = _lobCESU8Type{}
 )
 
+type _booleanType struct{}
 type _tinyintType struct{}
 type _smallintType struct{}
 type _integerType struct{}
@@ -214,6 +202,7 @@ type _lobVarType struct{}
 type _lobCESU8Type struct{}
 
 var (
+	_ fieldType = (*_booleanType)(nil)
 	_ fieldType = (*_tinyintType)(nil)
 	_ fieldType = (*_smallintType)(nil)
 	_ fieldType = (*_integerType)(nil)
@@ -252,6 +241,7 @@ func newConvertError(ft fieldType, v interface{}, err error) *ConvertError {
 	return &ConvertError{ft: ft, v: v, err: err}
 }
 
+func (_booleanType) String() string    { return "booleanType" }
 func (_tinyintType) String() string    { return "tinyintType" }
 func (_smallintType) String() string   { return "smallintType" }
 func (_integerType) String() string    { return "integerType" }
@@ -271,6 +261,46 @@ func (_alphaType) String() string      { return "alphaType" }
 func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
+
+func (ft _booleanType) Convert(v interface{}) (interface{}, error) {
+	if v == nil {
+		return v, nil
+	}
+	return convertToBool(ft, v)
+}
+
+func convertToBool(ft fieldType, v interface{}) (bool, error) {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+
+	case reflect.Bool:
+		return rv.Bool(), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int() != 0, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return rv.Uint() != 0, nil
+	case reflect.Float32, reflect.Float64:
+		return rv.Float() != 0, nil
+	case reflect.String:
+		b, err := strconv.ParseBool(rv.String())
+		if err != nil {
+			return false, newConvertError(ft, v, nil)
+		}
+		return b, nil
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return false, nil
+		}
+		return convertToBool(ft, rv.Elem().Interface())
+	}
+
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertToBool(ft, rv.Convert(stringReflectType).Interface())
+	}
+
+	return false, newConvertError(ft, v, nil)
+}
 
 func (ft _tinyintType) Convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minTinyint, maxTinyint)
@@ -512,6 +542,7 @@ func convertLob(isCharBased bool, ft fieldType, v interface{}) (driver.Value, er
 	}
 }
 
+func (_booleanType) prmSize(interface{}) int    { return booleanFieldSize }
 func (_tinyintType) prmSize(interface{}) int    { return tinyintFieldSize }
 func (_smallintType) prmSize(interface{}) int   { return smallintFieldSize }
 func (_integerType) prmSize(interface{}) int    { return integerFieldSize }
@@ -564,6 +595,24 @@ func varBytesSize(ft fieldType, size int) int {
 	case size <= math.MaxInt32:
 		return size + 5
 	}
+}
+
+func (ft _booleanType) encodePrm(e *encoding.Encoder, v interface{}) error {
+	if v == nil {
+		e.Byte(booleanNullValue)
+		return nil
+	}
+	switch v := v.(type) {
+	default:
+		return newConvertError(ft, v, nil)
+	case bool:
+		if v {
+			e.Byte(booleanTrueValue)
+		} else {
+			e.Byte(booleanFalseValue)
+		}
+	}
+	return nil
 }
 
 func (ft _tinyintType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -835,6 +884,18 @@ func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
 	e.Int32(descr.size)
 	e.Int32(descr.pos)
 	return nil
+}
+
+func (_booleanType) decode(d *encoding.Decoder) (interface{}, error) {
+	b := d.Byte()
+	switch b {
+	case booleanNullValue:
+		return nil, nil
+	case booleanFalseValue:
+		return false, nil
+	default:
+		return true, nil
+	}
 }
 
 func (_tinyintType) decodePrm(d *encoding.Decoder) (interface{}, error) { return int64(d.Byte()), nil }

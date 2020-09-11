@@ -23,15 +23,6 @@ func (c clientContext) String() string {
 func (c clientContext) size() int   { return plainOptions(c).size() }
 func (c clientContext) numArg() int { return len(c) }
 
-func (c clientContext) set(k clientContextOption, v interface{}) {
-	c[int8(k)] = v
-}
-
-func (c clientContext) get(k clientContextOption) (interface{}, bool) {
-	v, ok := c[int8(k)]
-	return v, ok
-}
-
 func (c *clientContext) decode(dec *encoding.Decoder, ph *partHeader) error {
 	*c = clientContext{} // no reuse of maps - create new one
 	plainOptions(*c).decode(dec, ph.numArg())

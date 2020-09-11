@@ -186,7 +186,9 @@ const defaultSessionID = -1
 type Session struct {
 	cfg SessionConfig
 
-	sessionID int64
+	sessionID     int64
+	serverOptions connectOptions
+	serverVersion hdbVersion
 
 	conn sessionConn
 	rd   *bufio.Reader
@@ -253,7 +255,25 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		pr:        pr,
 		pw:        pw,
 	}
-	return s, s.authenticate()
+
+	authStepper := newAuth(cfg.Username(), cfg.Password())
+	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
+		return nil, err
+	}
+
+	if s.sessionID <= 0 {
+		return nil, fmt.Errorf("invalid session id %d", s.sessionID)
+	}
+
+	s.serverVersion = parseHDBVersion(s.serverOptions.fullVersionString())
+	/*
+		hdb version < 2.00.042
+		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
+	*/
+	if s.serverVersion.compare(parseHDBVersion("2.00.042")) == -1 {
+		return nil, fmt.Errorf("server version %s is not supported", s.serverVersion)
+	}
+	return s, nil
 }
 
 // Lock session.
@@ -306,33 +326,23 @@ func (s *Session) MaxBulkNum() int {
 	return maxBulkNum
 }
 
-func (s *Session) authenticate() error {
-	authStepper := newAuth(s.cfg.Username(), s.cfg.Password())
-	if err := s.authenticateMethod(authStepper); err != nil {
-		return err
+func (s *Session) defaultClientOptions() connectOptions {
+	co := connectOptions{
+		int8(coDistributionProtocolVersion): optBooleanType(false),
+		int8(coSelectForUpdateSupported):    optBooleanType(false),
+		int8(coSplitBatchCommands):          optBooleanType(true),
+		int8(coDataFormatVersion2):          optIntType(s.cfg.Dfv()),
+		int8(coCompleteArrayExecution):      optBooleanType(true),
+		int8(coClientDistributionMode):      cdmOff,
+		// int8(coImplicitLobStreaming):        optBooleanType(true),
 	}
-	if s.sessionID <= 0 {
-		return fmt.Errorf("invalid session id %d", s.sessionID)
-	}
-	return nil
-}
-
-func (s *Session) connectOptions() connectOptions {
-	co := connectOptions{}
-	co.set(coDistributionProtocolVersion, optBooleanType(false))
-	co.set(coSelectForUpdateSupported, optBooleanType(false))
-	co.set(coSplitBatchCommands, optBooleanType(true))
-	co.set(coDataFormatVersion2, optIntType(s.cfg.Dfv()))
-	co.set(coCompleteArrayExecution, optBooleanType(true))
 	if s.cfg.Locale() != "" {
-		co.set(coClientLocale, optStringType(s.cfg.Locale()))
+		co[int8(coClientLocale)] = optStringType(s.cfg.Locale())
 	}
-	co.set(coClientDistributionMode, cdmOff)
-	// co.set(coImplicitLobStreaming, optBooleanType(true))
 	return co
 }
 
-func (s *Session) authenticateMethod(stepper authStepper) error {
+func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, error) {
 	var auth partReadWriter
 	var err error
 
@@ -344,34 +354,34 @@ func (s *Session) authenticateMethod(stepper authStepper) error {
 	})
 
 	if auth, err = stepper.next(); err != nil {
-		return err
+		return 0, nil, err
 	}
 	if err := s.pw.write(s.sessionID, mtAuthenticate, false, clientContext, auth); err != nil {
-		return err
+		return 0, nil, err
 	}
 
 	if auth, err = stepper.next(); err != nil {
-		return err
+		return 0, nil, err
 	}
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		if ph.partKind == pkAuthentication {
 			s.pr.read(auth)
 		}
 	}); err != nil {
-		return err
+		return 0, nil, err
 	}
 
 	if auth, err = stepper.next(); err != nil {
-		return err
+		return 0, nil, err
 	}
 	id := newClientID()
-	co := s.connectOptions()
+	co := s.defaultClientOptions()
 	if err := s.pw.write(s.sessionID, mtConnect, false, auth, id, co); err != nil {
-		return err
+		return 0, nil, err
 	}
 
 	if auth, err = stepper.next(); err != nil {
-		return err
+		return 0, nil, err
 	}
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
@@ -384,10 +394,10 @@ func (s *Session) authenticateMethod(stepper authStepper) error {
 			s.pr.setDfv(int(co[int8(coDataFormatVersion2)].(optIntType)))
 		}
 	}); err != nil {
-		return err
+		return 0, nil, err
 	}
-	s.sessionID = s.pr.sessionID()
-	return nil
+
+	return s.pr.sessionID(), co, nil
 }
 
 // QueryDirect executes a query without query parameters.
