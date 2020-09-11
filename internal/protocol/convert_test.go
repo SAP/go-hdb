@@ -51,8 +51,8 @@ func testConvertInteger(t *testing.T) {
 	assertEqualIntOutOfRangeError(t, tcTinyint, maxTinyint+1)
 	assertEqualIntOutOfRangeError(t, tcSmallint, minSmallint-1)
 	assertEqualIntOutOfRangeError(t, tcSmallint, maxSmallint+1)
-	assertEqualIntOutOfRangeError(t, tcInteger, minInteger-1)
-	assertEqualIntOutOfRangeError(t, tcInteger, maxInteger+1)
+	assertEqualIntOutOfRangeError(t, tcInteger, int64(minInteger)-1) // cast to int64 to avoid overflow in 32-bit systems
+	assertEqualIntOutOfRangeError(t, tcInteger, int64(maxInteger)+1) // cast to int64 to avoid overflow in 32-bit systems
 
 	// integer as string
 	assertEqualInt(t, tcInteger, "42", 42)

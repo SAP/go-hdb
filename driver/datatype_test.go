@@ -141,7 +141,7 @@ func TestDataType(t *testing.T) {
 			walk := func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() && filter(info.Name()) {
 
-					t.Logf("filenmane %s", info.Name())
+					// t.Logf("filenmane %s", info.Name())
 
 					content, err := ioutil.ReadFile(path)
 					if err != nil {
@@ -425,16 +425,16 @@ func TestDataType(t *testing.T) {
 		return equalLongdate(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	logDecimal := func(in, out *big.Rat, t *testing.T) {
-		t.Logf("In(num %s denum %s) - Out(num %s denum %s)", in.Num().String(), in.Denom().String(), out.Num().String(), out.Denom().String())
-	}
+	// logDecimal := func(in, out *big.Rat, t *testing.T) {
+	// 	t.Logf("In(num %s denum %s) - Out(num %s denum %s)", in.Num().String(), in.Denom().String(), out.Num().String(), out.Denom().String())
+	// }
 
 	checkDecimal := func(in, out interface{}, fieldSize int, t *testing.T) bool {
 		if out, ok := out.(NullDecimal); ok {
 			in := in.(NullDecimal)
 			return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0)
 		}
-		logDecimal((*big.Rat)(in.(*Decimal)), (*big.Rat)(out.(*Decimal)), t)
+		// logDecimal((*big.Rat)(in.(*Decimal)), (*big.Rat)(out.(*Decimal)), t)
 		return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0
 	}
 
@@ -482,7 +482,7 @@ func TestDataType(t *testing.T) {
 		// t.Log("CONTENT2")
 		// t.Logf("%v", out.wr.(*bytes.Buffer).Bytes())
 
-		t.Logf("length %d %d", len(content), len(out.wr.(*bytes.Buffer).Bytes()))
+		// t.Logf("length %d %d", len(content), len(out.wr.(*bytes.Buffer).Bytes()))
 
 		content2 := out.wr.(*bytes.Buffer).Bytes()
 
@@ -495,7 +495,7 @@ func TestDataType(t *testing.T) {
 
 					// t.Log()
 
-					t.Logf("diff %d %v %v", i, ch, content2[i])
+					// t.Logf("diff %d %v %v", i, ch, content2[i])
 					return true
 
 					//panic("unequal")

@@ -719,8 +719,8 @@ func encodeDate(e *encoding.Encoder, t time.Time) {
 func encodeTime(e *encoding.Encoder, t time.Time) {
 	e.Byte(byte(t.Hour()) | 0x80)
 	e.Int8(int8(t.Minute()))
-	millisecs := t.Second()*1000 + t.Nanosecond()/1000000
-	e.Uint16(uint16(millisecs))
+	msec := t.Second()*1000 + t.Nanosecond()/1000000
+	e.Uint16(uint16(msec))
 }
 
 func (ft _longdateType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -954,19 +954,19 @@ func (_dateType) decode(d *encoding.Decoder) (interface{}, error) {
 }
 func (_timeType) decode(d *encoding.Decoder) (interface{}, error) {
 	// time read gives only seconds (cut), no milliseconds
-	hour, minute, nanosecs, null := decodeTime(d)
+	hour, min, sec, nsec, null := decodeTime(d)
 	if null {
 		return nil, nil
 	}
-	return time.Date(1, 1, 1, hour, minute, 0, nanosecs, time.UTC), nil
+	return time.Date(1, 1, 1, hour, min, sec, nsec, time.UTC), nil
 }
 func (_timestampType) decode(d *encoding.Decoder) (interface{}, error) {
 	year, month, day, dateNull := decodeDate(d)
-	hour, minute, nanosecs, timeNull := decodeTime(d)
+	hour, min, sec, nsec, timeNull := decodeTime(d)
 	if dateNull || timeNull {
 		return nil, nil
 	}
-	return time.Date(year, month, day, hour, minute, 0, nanosecs, time.UTC), nil
+	return time.Date(year, month, day, hour, min, sec, nsec, time.UTC), nil
 }
 
 // null values: most sig bit unset
@@ -984,14 +984,18 @@ func decodeDate(d *encoding.Decoder) (int, time.Month, int, bool) {
 	return int(year), time.Month(month), int(day), null
 }
 
-func decodeTime(d *encoding.Decoder) (int, int, int, bool) {
+func decodeTime(d *encoding.Decoder) (int, int, int, int, bool) {
 	hour := d.Byte()
 	null := (hour & 0x80) == 0 //null value
 	hour &= 0x7f
-	minute := d.Int8()
-	millisecs := d.Uint16()
-	nanosecs := int(millisecs) * 1000000
-	return int(hour), int(minute), nanosecs, null
+	min := d.Int8()
+	msec := d.Uint16()
+
+	sec := msec / 1000
+	msec %= 1000
+	nsec := int(msec) * 1000000
+
+	return int(hour), int(min), int(sec), nsec, null
 }
 
 func (_longdateType) decode(d *encoding.Decoder) (interface{}, error) {

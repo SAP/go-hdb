@@ -10,16 +10,11 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
 	"sync"
 )
 
-//bigint word size (*--> src/pkg/math/big/arith.go)
-const (
-	// Compute the size _S of a Word in bytes.
-	_m    = ^big.Word(0)
-	_logS = _m>>8&1 + _m>>16&1 + _m>>32&1
-	_S    = 1 << _logS
-)
+const _S = bits.UintSize / 8 // word size in bytes
 
 const (
 	// http://en.wikipedia.org/wiki/Decimal128_floating-point_format
@@ -319,7 +314,7 @@ func encodeDecimal(m *big.Int, neg bool, exp int) (driver.Value, error) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
-		for i := 0; i < 8; i++ {
+		for i := 0; i < _S; i++ {
 			b[j] = byte(d)
 			d >>= 8
 			j++

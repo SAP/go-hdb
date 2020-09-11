@@ -3,13 +3,18 @@ Release Notes
 
 ## Release 0.101
 
+#### Minor revisions
+
+Release 0.101.1
+
+- Added linux/arm 32-bit support
+
 #### Release Notes
 
-- The default Data Format Version is now '8' which does support boolean values on protocol level.
+- The default Data Format Version is now '8' which does support boolean values on protocol level
 - Dropped support of HANA server versions < 2.00.042
 
 ## Release 0.100
-
 
 #### Minor revisions
 
@@ -68,7 +73,6 @@ PBKDF2 authentification is now used as default. Standard user / password authent
 
 
 ## Release 0.99
-
 
 #### Minor revisions
 
