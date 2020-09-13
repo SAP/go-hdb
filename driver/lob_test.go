@@ -1,3 +1,5 @@
+// +build !unit
+
 // SPDX-FileCopyrightText: 2014-2020 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -180,6 +182,10 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 }
 
 func TestLob(t *testing.T) {
+	if TestDB == nil {
+		return
+	}
+
 	tests := []struct {
 		name string
 		fct  func(db *sql.DB, t *testing.T)

@@ -1,3 +1,5 @@
+// +build !unit
+
 // SPDX-FileCopyrightText: 2014-2020 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -46,12 +48,8 @@ var (
 )
 
 func init() {
-	// check env variables
-	dsn, ok := os.LookupEnv(envDSN)
-	if !ok {
-		dsn = "hdb://user:password@host:port"
-	}
-	flag.StringVar(&TestDSN, "dsn", dsn, "database dsn")
+	// dsn example "hdb://user:password@host:port"
+	flag.StringVar(&TestDSN, "dsn", os.Getenv(envDSN), "database dsn")
 	flag.BoolVar(&TestDropSchema, "dropSchema", true, "drop test schema if test ran successfully")
 	flag.BoolVar(&TestDropAllSchemas, "dropAllSchemas", false, "drop all existing test schemas if test ran successfully")
 	flag.Int64Var(&TestPingConn, "pingConn", 0, "sets the connection ping interval (if zero, the connection ping is deactivated)")

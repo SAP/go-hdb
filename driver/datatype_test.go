@@ -1,3 +1,5 @@
+// +build !unit
+
 // SPDX-FileCopyrightText: 2014-2020 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -107,7 +109,6 @@ func testDataType(db *sql.DB, dataType string, fieldSize int, check func(in, out
 }
 
 func TestDataType(t *testing.T) {
-
 	type testLobFile struct {
 		content []byte
 		isASCII bool

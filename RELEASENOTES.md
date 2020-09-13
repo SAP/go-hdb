@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.101.2
+
+- Added multi platform build to Github workflow
+
 Release 0.101.1
 
 - Added linux/arm 32-bit support

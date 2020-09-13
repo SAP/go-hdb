@@ -27,10 +27,28 @@ API documentation and documented examples can be found at <https://godoc.org/git
 
 ## Tests
 
-To run the driver tests a HANA Database server is required. The test user must have privileges to create database schemas.
+To run the driver integration tests a HANA Database server is required. The test user must have privileges to create database schemas.
+
+Provide dsn via parameter:
 
 ```
 go test -dsn hdb://user:password@host:port
+```
+
+or
+
+set environment variable GOHDBDSN:
+
+```
+#linux example
+export GOHDBDSN="hdb://user:password@host:port"
+go test
+```
+
+Using the Go build tag 'unit' only the driver unit tests will be executed (no HANA Database server required):
+
+```
+go test --tags unit
 ```
 
 ## Features

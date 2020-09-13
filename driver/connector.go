@@ -130,6 +130,10 @@ func (e ParseDSNError) Unwrap() error { return e.err }
 
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsn string) (*Connector, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("invalid DSN parameter error - DSN is empty")
+	}
+
 	c := newConnector()
 
 	u, err := url.Parse(dsn)
