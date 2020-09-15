@@ -182,6 +182,8 @@ const dfvLevel1 = 1
 
 const defaultSessionID = -1
 
+var minimalServerVersion = parseHDBVersion("2.00.042")
+
 // Session represents a HDB session.
 type Session struct {
 	cfg SessionConfig
@@ -270,8 +272,11 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		hdb version < 2.00.042
 		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
 	*/
-	if s.serverVersion.compare(parseHDBVersion("2.00.042")) == -1 {
-		return nil, fmt.Errorf("server version %s is not supported", s.serverVersion)
+	switch {
+	case s.serverVersion.isEmpty(): // hdb version 1 does not report fullVersionString
+		return nil, fmt.Errorf("server version 1.00 is not supported - minimal server version: %s", minimalServerVersion)
+	case s.serverVersion.compare(minimalServerVersion) == -1:
+		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", s.serverVersion, minimalServerVersion)
 	}
 	return s, nil
 }

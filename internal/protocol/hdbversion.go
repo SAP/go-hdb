@@ -61,6 +61,15 @@ func (v hdbVersion) String() string {
 	return s
 }
 
+func (v hdbVersion) isEmpty() bool {
+	for _, e := range v {
+		if e != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (v hdbVersion) major() uint64    { return v[versionMajor] }
 func (v hdbVersion) minor() uint64    { return v[versionMinor] }
 func (v hdbVersion) sps() uint64      { return v[versionRevision] / 10 }
