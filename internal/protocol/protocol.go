@@ -115,7 +115,7 @@ func (qr *queryResult) field(idx int) Field {
 
 // NumRow implements the RowsResult interface.
 func (qr *queryResult) numRow() int {
-	if qr.fieldValues == nil {
+	if qr.fieldValues == nil || qr.fields == nil || len(qr.fields) == 0 {
 		return 0
 	}
 	return len(qr.fieldValues) / len(qr.fields)
@@ -173,7 +173,7 @@ func (cr *callResult) field(idx int) Field {
 
 // NumRow implements the RowsResult interface.
 func (cr *callResult) numRow() int {
-	if cr.fieldValues == nil {
+	if cr.fieldValues == nil || cr.outputFields == nil || len(cr.outputFields) == 0 {
 		return 0
 	}
 	return len(cr.fieldValues) / len(cr.outputFields)

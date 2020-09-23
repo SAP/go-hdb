@@ -227,6 +227,42 @@ end
 	}
 }
 
+func testCallNoOutQueryRow(db *sql.DB, proc Identifier, t *testing.T) {
+	var out string
+	// as the procedure does not have out parameters a try to scan any value should return the right sql error: sql.ErrNoRows.
+	if err := db.QueryRow(fmt.Sprintf("call %s", proc)).Scan(&out); err != sql.ErrNoRows {
+		t.Fatalf("error %s - expected %s", err, sql.ErrNoRows)
+	}
+}
+
+func testCallNoOut(db *sql.DB, t *testing.T) {
+	const procNoOut = `create procedure %[1]s
+language SQLSCRIPT as
+begin
+end
+`
+	// create procedure
+	proc := RandomIdentifier("procNoOut_")
+	if _, err := db.Exec(fmt.Sprintf(procNoOut, proc)); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, proc Identifier, t *testing.T)
+	}{
+		{"QueryRow", testCallNoOutQueryRow},
+		//		{"Query", testCallEchoQuery},
+		//		{"Exec", testCallEchoExec},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(TestDB, proc, t)
+		})
+	}
+}
+
 func TestCall(t *testing.T) {
 	tests := []struct {
 		name string
@@ -235,6 +271,7 @@ func TestCall(t *testing.T) {
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
 		{"tableOut", testCallTableOut},
+		{"noOut", testCallNoOut},
 	}
 
 	for _, test := range tests {
