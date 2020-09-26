@@ -11,6 +11,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -268,6 +269,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	}
 
 	s.serverVersion = parseHDBVersion(s.serverOptions.fullVersionString())
+	log.Printf("version %s", s.serverVersion)
 	/*
 		hdb version < 2.00.042
 		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
