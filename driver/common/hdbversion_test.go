@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package protocol
+package common
 
 import (
 	"testing"
@@ -11,14 +11,14 @@ import (
 func testParseHDBVersion(t *testing.T) {
 	var tests = []struct {
 		s string
-		v hdbVersion
+		v HDBVersion
 	}{
-		{"2.00.048.00", hdbVersion{2, 0, 48, 0, 0}},
-		{"2.00.045.00.15756393121", hdbVersion{2, 0, 45, 0, 15756393121}},
+		{"2.00.048.00", HDBVersion{2, 0, 48, 0, 0}},
+		{"2.00.045.00.15756393121", HDBVersion{2, 0, 45, 0, 15756393121}},
 	}
 
 	for i, test := range tests {
-		v := parseHDBVersion(test.s)
+		v := ParseHDBVersion(test.s)
 		if v.String() != test.s {
 			t.Fatalf("line: %d got: %s expected: %s", i, v, test.s)
 		}
@@ -35,9 +35,9 @@ func testCompareHDBVersion(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		v1 := parseHDBVersion(test.s1)
-		v2 := parseHDBVersion(test.s2)
-		if v1.compare(v2) != test.r {
+		v1 := ParseHDBVersion(test.s1)
+		v2 := ParseHDBVersion(test.s2)
+		if v1.Compare(v2) != test.r {
 			t.Fatalf("line: %d expected: compare(%s,%s) = %d", i, v1, v2, test.r)
 		}
 	}

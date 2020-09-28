@@ -11,13 +11,13 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
 
 	"golang.org/x/text/transform"
 
+	"github.com/SAP/go-hdb/driver/common"
 	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/internal/container/varmap"
 	"github.com/SAP/go-hdb/internal/unicode"
@@ -179,11 +179,10 @@ type SessionConfig interface {
 	Legacy() bool
 }
 
-const dfvLevel1 = 1
-
-const defaultSessionID = -1
-
-var minimalServerVersion = parseHDBVersion("2.00.042")
+const (
+	dfvLevel1        = 1
+	defaultSessionID = -1
+)
 
 // Session represents a HDB session.
 type Session struct {
@@ -191,7 +190,7 @@ type Session struct {
 
 	sessionID     int64
 	serverOptions connectOptions
-	serverVersion hdbVersion
+	serverVersion common.HDBVersion
 
 	conn sessionConn
 	rd   *bufio.Reader
@@ -268,18 +267,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		return nil, fmt.Errorf("invalid session id %d", s.sessionID)
 	}
 
-	s.serverVersion = parseHDBVersion(s.serverOptions.fullVersionString())
-	log.Printf("version %s", s.serverVersion)
-	/*
-		hdb version < 2.00.042
-		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
-	*/
-	switch {
-	case s.serverVersion.isEmpty(): // hdb version 1 does not report fullVersionString
-		return nil, fmt.Errorf("server version 1.00 is not supported - minimal server version: %s", minimalServerVersion)
-	case s.serverVersion.compare(minimalServerVersion) == -1:
-		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", s.serverVersion, minimalServerVersion)
-	}
+	s.serverVersion = common.ParseHDBVersion(s.serverOptions.fullVersionString())
 	return s, nil
 }
 
@@ -323,6 +311,11 @@ func (s *Session) SetInQuery(v bool) { s.checkLock(); s.inQuery = v }
 
 // IsBad indicates, that the session is in bad state.
 func (s *Session) IsBad() bool { s.checkLock(); return s.conn.isBad() }
+
+// ServerVersion returns the version reported by the hdb server.
+func (s *Session) ServerVersion() common.HDBVersion {
+	return s.serverVersion
+}
 
 // MaxBulkNum returns the maximal number of bulk calls before auto flush.
 func (s *Session) MaxBulkNum() int {
@@ -1010,4 +1003,11 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*par
 		readers = readers[:j]
 	}
 	return nil
+}
+
+// ServerInfo returnsinformation reported by hdb server.
+func (s *Session) ServerInfo() *common.ServerInfo {
+	return &common.ServerInfo{
+		HDBVersion: s.serverVersion,
+	}
 }

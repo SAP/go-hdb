@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/common"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	p "github.com/SAP/go-hdb/internal/protocol"
 	"github.com/SAP/go-hdb/internal/protocol/scanner"
@@ -63,6 +64,8 @@ const (
 	defaultSchema      = "set schema %s"
 )
 
+var minimalServerVersion = common.ParseHDBVersion("2.00.042")
+
 // bulk statement
 const (
 	bulk = "b$"
@@ -87,19 +90,20 @@ func init() {
 
 //  check if conn implements all required interfaces
 var (
-	_ driver.Conn               = (*conn)(nil)
-	_ driver.ConnPrepareContext = (*conn)(nil)
-	_ driver.Pinger             = (*conn)(nil)
-	_ driver.ConnBeginTx        = (*conn)(nil)
-	_ driver.ExecerContext      = (*conn)(nil)
-	_ driver.Execer             = (*conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
-	_ driver.QueryerContext     = (*conn)(nil)
-	_ driver.Queryer            = (*conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
-	_ driver.NamedValueChecker  = (*conn)(nil)
-	_ driver.SessionResetter    = (*conn)(nil)
+	_ driver.Conn               = (*Conn)(nil)
+	_ driver.ConnPrepareContext = (*Conn)(nil)
+	_ driver.Pinger             = (*Conn)(nil)
+	_ driver.ConnBeginTx        = (*Conn)(nil)
+	_ driver.ExecerContext      = (*Conn)(nil)
+	_ driver.Execer             = (*Conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
+	_ driver.QueryerContext     = (*Conn)(nil)
+	_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
+	_ driver.NamedValueChecker  = (*Conn)(nil)
+	_ driver.SessionResetter    = (*Conn)(nil)
 )
 
-type conn struct {
+// Conn is the implementation of the database/sql/driver Conn interface.
+type Conn struct {
 	session *p.Session
 	scanner *scanner.Scanner
 	closed  chan struct{}
@@ -110,7 +114,20 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &conn{session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+
+	sv := session.ServerVersion()
+	/*
+		hdb version < 2.00.042
+		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
+	*/
+	switch {
+	case sv.IsEmpty(): // hdb version 1 does not report fullVersionString
+		return nil, fmt.Errorf("server version 1.00 is not supported - minimal server version: %s", minimalServerVersion)
+	case sv.Compare(minimalServerVersion) == -1:
+		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", sv, minimalServerVersion)
+	}
+
+	c := &Conn{session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
 	if err := c.init(ctx, ctr); err != nil {
 		return nil, err
 	}
@@ -121,7 +138,7 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	return c, nil
 }
 
-func (c *conn) init(ctx context.Context, ctr *Connector) error {
+func (c *Conn) init(ctx context.Context, ctr *Connector) error {
 	if ctr.defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, fmt.Sprintf(defaultSchema, ctr.defaultSchema), nil); err != nil {
 			return err
@@ -130,7 +147,7 @@ func (c *conn) init(ctx context.Context, ctr *Connector) error {
 	return nil
 }
 
-func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
+func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
@@ -145,7 +162,8 @@ func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
 	}
 }
 
-func (c *conn) Ping(ctx context.Context) (err error) {
+// Ping implements the driver.Pinger interface.
+func (c *Conn) Ping(ctx context.Context) (err error) {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -174,7 +192,8 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 	}
 }
 
-func (c *conn) ResetSession(ctx context.Context) error {
+// ResetSession implements the driver.SessionResetter interface.
+func (c *Conn) ResetSession(ctx context.Context) error {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -185,7 +204,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
+// PrepareContext implements the driver.ConnPrepareContext interface.
+func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -235,7 +255,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 	}
 }
 
-func (c *conn) Close() error {
+// Close implements the driver.Conn interface.
+func (c *Conn) Close() error {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -243,7 +264,8 @@ func (c *conn) Close() error {
 	return c.session.Close()
 }
 
-func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
+// BeginTx implements the driver.ConnBeginTx interface.
+func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -287,7 +309,8 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	}
 }
 
-func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
+// QueryContext implements the driver.QueryerContext interface.
+func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -338,7 +361,8 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 }
 
-func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
+// ExecContext implements the driver.ExecerContext interface.
+func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
 	c.session.Lock()
 	defer c.session.Unlock()
 
@@ -376,14 +400,21 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 }
 
-// CheckNamedValue implements NamedValueChecker interface.
-// - called by sql driver for ExecContext and QueryContext
-// - no check needs to be performed as ExecContext and QueryContext provided
-//   with parameters will force the 'prepare way' (driver.ErrSkip)
-// - Anyway, CheckNamedValue must be implemented to avoid default sql driver checks
-//   which would fail for custom arg types like Lob
-func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
+// CheckNamedValue implements the NamedValueChecker interface.
+func (c *Conn) CheckNamedValue(nv *driver.NamedValue) error {
+	// - called by sql driver for ExecContext and QueryContext
+	// - no check needs to be performed as ExecContext and QueryContext provided
+	//   with parameters will force the 'prepare way' (driver.ErrSkip)
+	// - Anyway, CheckNamedValue must be implemented to avoid default sql driver checks
+	//   which would fail for custom arg types like Lob
 	return nil
+}
+
+// Conn Raw access methods
+
+// ServerInfo returns parameters reported by hdb server.
+func (c *Conn) ServerInfo() *common.ServerInfo {
+	return c.session.ServerInfo()
 }
 
 //transaction
