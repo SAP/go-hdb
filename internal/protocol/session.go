@@ -317,6 +317,13 @@ func (s *Session) ServerVersion() common.HDBVersion {
 	return s.serverVersion
 }
 
+// ServerInfo returnsinformation reported by hdb server.
+func (s *Session) ServerInfo() *common.ServerInfo {
+	return &common.ServerInfo{
+		Version: s.serverVersion,
+	}
+}
+
 // MaxBulkNum returns the maximal number of bulk calls before auto flush.
 func (s *Session) MaxBulkNum() int {
 	maxBulkNum := s.cfg.BulkSize()
@@ -1003,11 +1010,4 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*par
 		readers = readers[:j]
 	}
 	return nil
-}
-
-// ServerInfo returnsinformation reported by hdb server.
-func (s *Session) ServerInfo() *common.ServerInfo {
-	return &common.ServerInfo{
-		HDBVersion: s.serverVersion,
-	}
 }

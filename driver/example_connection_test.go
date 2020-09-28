@@ -32,7 +32,7 @@ func ExampleConn_raw() {
 			log.Fatal("connection does not implement *driver.Conn")
 		}
 		// Access driver.Conn methods.
-		log.Printf("hdb version: %s", conn.ServerInfo().HDBVersion)
+		log.Printf("hdb version: %s", conn.ServerInfo().Version)
 		return nil
 	}); err != nil {
 		log.Fatal(err)

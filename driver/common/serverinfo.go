@@ -6,5 +6,5 @@ package common
 
 // ServerInfo contains hdb server information.
 type ServerInfo struct {
-	HDBVersion HDBVersion
+	Version HDBVersion
 }
