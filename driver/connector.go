@@ -23,7 +23,7 @@ import (
 )
 
 // Data Format Version values.
-// Driver does currently support DfvLevel1, DfvLevel4 and DfvLevel6.
+// Driver does currently support DfvLevel1, DfvLevel4, DfvLevel6 and DfvLevel8.
 const (
 	DfvLevel0 = 0 // base data format
 	DfvLevel1 = 1 // eval types support all data types
