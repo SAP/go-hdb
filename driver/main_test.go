@@ -167,7 +167,7 @@ func dropAllSchemas(ctx context.Context, conn *sql.Conn) {
 
 		// cannot delete schemas in select loop (SQL Error 150 - statement cancelled or snapshot timestamp already invalidated)
 		// --> collect them and delete outside of select
-		schemas = append(schemas, schema) // cannot drop schemas in loop (
+		schemas = append(schemas, schema)
 	}
 	if err := rows.Err(); err != nil {
 		testExit(err)
