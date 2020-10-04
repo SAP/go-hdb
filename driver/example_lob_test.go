@@ -97,11 +97,7 @@ func ExampleLob_pipe() {
 	defer file.Close()
 
 	// Open Test database.
-	connector, err := driver.NewDSNConnector(driver.TestDSN)
-	if err != nil {
-		log.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.

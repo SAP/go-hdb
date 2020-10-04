@@ -92,10 +92,8 @@ func testSessionVariables(connector *goHdbDriver.Connector, t *testing.T) {
 }
 
 func TestConnector(t *testing.T) {
-	dsnConnector, err := goHdbDriver.NewDSNConnector(goHdbDriver.TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dsnConnector := goHdbDriver.DefaultTestConnector
+
 	t.Run("dsnConnector", func(t *testing.T) {
 		testConnector(dsnConnector, t)
 	})

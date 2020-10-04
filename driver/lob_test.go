@@ -182,10 +182,6 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 }
 
 func TestLob(t *testing.T) {
-	if TestDB == nil {
-		return
-	}
-
 	tests := []struct {
 		name string
 		fct  func(db *sql.DB, t *testing.T)
@@ -195,9 +191,12 @@ func TestLob(t *testing.T) {
 		{"delayedScan", testLobDelayedScan},
 	}
 
+	db := sql.OpenDB(DefaultTestConnector)
+	defer db.Close()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, t)
+			test.fct(db, t)
 		})
 	}
 }

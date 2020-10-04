@@ -22,28 +22,25 @@ For variables TestDSN and TestSchema see main_test.go.
 */
 func ExampleDecimal() {
 
-	db, err := sql.Open(driver.DriverName, driver.TestDSN)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (x decimal)", driver.TestSchema, tableName)); err != nil { // Create table with decimal attribute.
+	if _, err := db.Exec(fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil { // Create table with decimal attribute.
 		log.Fatal(err)
 	}
 
 	// Decimal values are represented in Go as big.Rat.
 	in := (*driver.Decimal)(big.NewRat(1, 1)) // Create *big.Rat and cast to Decimal.
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s.%s values(?)", driver.TestSchema, tableName), in); err != nil { // Insert record.
+	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil { // Insert record.
 		log.Fatal(err)
 	}
 
 	var out driver.Decimal // Declare scan variable.
 
-	if err := db.QueryRow(fmt.Sprintf("select * from %s.%s", driver.TestSchema, tableName)).Scan(&out); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
 		log.Fatal(err)
 	}
 

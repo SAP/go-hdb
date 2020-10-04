@@ -20,10 +20,7 @@ const (
 )
 
 func ExampleError() {
-	db, err := sql.Open(driver.DriverName, driver.TestDSN)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()
 
 	invalidTableName := driver.RandomIdentifier("table_")

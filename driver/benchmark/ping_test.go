@@ -8,13 +8,10 @@ package benchmark
 
 import (
 	"database/sql"
-	"os"
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
 )
-
-const envDSN = "GOHDBDSN"
 
 func benchmarkPing(c *driver.Connector, b *testing.B) {
 	db := sql.OpenDB(c)
@@ -37,10 +34,7 @@ func benchmarkPingPar(c *driver.Connector, pb *testing.PB, b *testing.B) {
 }
 
 func BenchmarkPing(b *testing.B) {
-	c, err := driver.NewDSNConnector(os.Getenv(envDSN))
-	if err != nil {
-		b.Fatal(err)
-	}
+	c := DefaultTestConnector
 
 	b.Run("Ping sequentially", func(b *testing.B) {
 		benchmarkPingSeq(c, b)

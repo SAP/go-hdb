@@ -316,7 +316,7 @@ func (ft _bigintType) Convert(v interface{}) (interface{}, error) {
 }
 
 // integer types
-func convertInteger(ft fieldType, v interface{}, min, max int64) (driver.Value, error) {
+func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}

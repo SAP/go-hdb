@@ -12,31 +12,23 @@ import (
 	"log"
 )
 
-/*
-ExampleCallSimpleOut creates a stored procedure with one output parameter and executes it.
-Stored procedures with output parameters must be executed by sql.Query or sql.QueryRow.
-For variables TestDSN and TestSchema see main_test.go.
-*/
-
+// TODO
 // ExampleQuery: tbd
 func Example_query() {
-	db, err := sql.Open(DriverName, TestDSN)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := sql.OpenDB(DefaultTestConnector)
 	defer db.Close()
 
 	table := RandomIdentifier("testNamedArg_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s.%s (i integer, j integer)", TestSchema, table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		log.Fatal(err)
 	}
 
 	var i = 0
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s where i = :1 and j = :1", TestSchema, table), 1).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = :1 and j = :1", table), 1).Scan(&i); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s where i = ? and j = :3", TestSchema, table), 1, "soso", 2).Scan(&i); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = ? and j = :3", table), 1, "soso", 2).Scan(&i); err != nil {
 		log.Fatal(err)
 	}
 

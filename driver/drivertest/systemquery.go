@@ -7,6 +7,7 @@ package drivertest
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 )
 
 // ConnectionID returns the hdb connection id.
@@ -86,4 +87,52 @@ func SessionVariables(db *sql.DB) (map[string]string, error) {
 		sv[v.key] = v.value
 	}
 	return sv, nil
+}
+
+func CreateSchema(db *sql.DB, schema string) error {
+	_, err := db.Exec(fmt.Sprintf("create schema %s", strconv.Quote(schema)))
+	return err
+}
+
+func DropSchema(db *sql.DB, schema string) error {
+	_, err := db.Exec(fmt.Sprintf("drop schema %s cascade", strconv.Quote(schema)))
+	return err
+}
+
+func NumTablesInSchema(db *sql.DB, schema string) (int, error) {
+	numTables := 0
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.tables where schema_name = '%s'", schema)).Scan(&numTables); err != nil {
+		return 0, err
+	}
+	return numTables, nil
+}
+
+func NumProcsInSchema(db *sql.DB, schema string) (int, error) {
+	numProcs := 0
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.procedures where schema_name = '%s'", schema)).Scan(&numProcs); err != nil {
+		return 0, err
+	}
+	return numProcs, nil
+}
+
+func QuerySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
+	schemas := make([]string, 0)
+
+	rows, err := db.Query(fmt.Sprintf("select schema_name from sys.schemas where schema_name like '%s_%%'", prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schema string
+	for rows.Next() {
+		if err := rows.Scan(&schema); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, schema)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return schemas, nil
 }

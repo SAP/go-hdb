@@ -87,16 +87,16 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, proc, t)
+			test.fct(db, proc, t)
 		})
 	}
 }
 
 func testCallTableOut(db *sql.DB, t *testing.T) {
-	const procTableOut = `create procedure %[1]s.%[2]s (in i integer, out t1 %[1]s.%[3]s, out t2 %[1]s.%[3]s, out t3 %[1]s.%[3]s)
+	const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
 language SQLSCRIPT as
 begin
-  create local temporary table #test like %[1]s.%[3]s;
+  create local temporary table #test like %[2]s;
   insert into #test values(0, 'A');
   insert into #test values(1, 'B');
   insert into #test values(2, 'C');
@@ -161,7 +161,7 @@ end
 	}
 
 	testCall := func(db *sql.DB, proc Identifier, legacy bool, targets []interface{}, t *testing.T) {
-		rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, proc), 1)
+		rows, err := db.Query(fmt.Sprintf("call %s(?, ?, ?, ?)", proc), 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,19 +193,15 @@ end
 	proc := RandomIdentifier("procTableOut_")
 
 	// create table type
-	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
 		t.Fatal(err)
 	}
 	// create procedure
-	if _, err := db.Exec(fmt.Sprintf(procTableOut, TestSchema, proc, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
-	connector, err := NewDSNConnector(TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	connector.SetDefaultSchema(TestSchema)
+	connector := NewTestConnector()
 
 	tests := []struct {
 		name    string
@@ -258,7 +254,7 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, proc, t)
+			test.fct(db, proc, t)
 		})
 	}
 }
@@ -274,9 +270,12 @@ func TestCall(t *testing.T) {
 		{"noOut", testCallNoOut},
 	}
 
+	db := sql.OpenDB(DefaultTestConnector)
+	defer db.Close()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, t)
+			test.fct(db, t)
 		})
 	}
 }

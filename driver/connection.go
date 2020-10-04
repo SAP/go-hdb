@@ -344,7 +344,9 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return qrs, nil
 	}
 
-	sqltrace.Traceln(query)
+	if sqltrace.On() {
+		sqltrace.Traceln(query)
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -377,7 +379,9 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
-	sqltrace.Traceln(query)
+	if sqltrace.On() {
+		sqltrace.Traceln(query)
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -472,18 +476,19 @@ type stmt struct {
 	query               string
 	bulk, flush         bool
 	maxBulkNum, bulkNum int
+	trace               bool // store flag for performance reasons (especially bulk inserts)
 	args                []driver.NamedValue
 }
 
 func newStmt(session *p.Session, query string, bulk bool, pr *p.PrepareResult) (*stmt, error) {
-	return &stmt{session: session, query: query, pr: pr, bulk: bulk, maxBulkNum: session.MaxBulkNum()}, nil
+	return &stmt{session: session, query: query, pr: pr, bulk: bulk, maxBulkNum: session.MaxBulkNum(), trace: sqltrace.On()}, nil
 }
 
 func (s *stmt) Close() error {
 	s.session.Lock()
 	defer s.session.Unlock()
 
-	if len(s.args) != 0 {
+	if len(s.args) != 0 && s.trace {
 		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.NumInput())
 	}
 	return s.session.DropStatementID(s.pr.StmtID())
@@ -510,8 +515,9 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	if s.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
-
-	sqltrace.Tracef("%s %v", s.query, args)
+	if s.trace {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
 
 	numArg := len(args)
 	var numExpected int
@@ -544,6 +550,41 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+	if s.trace {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
+
+	flush := s.flush // store s.flush
+	s.flush = false  // reset s.flush
+
+	numArg := len(args)
+	numExpected := 0
+	if s.bulk && numArg == 0 { // bulk flush
+		flush = true
+	} else {
+		numExpected = s.pr.NumField()
+	}
+	if numArg != numExpected {
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
+	}
+
+	// handle bulk insert
+	if s.bulk {
+		if numArg != 0 { // add to argument buffer
+			if s.args == nil {
+				s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
+			}
+			s.args = append(s.args, args...)
+			s.bulkNum++
+			if s.bulkNum == s.maxBulkNum {
+				flush = true
+			}
+		}
+		if !flush || s.bulkNum == 0 { // done: no flush
+			return driver.ResultNoRows, nil
+		}
+	}
+
 	s.session.Lock()
 	defer s.session.Unlock()
 
@@ -554,45 +595,15 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 		return nil, ErrNestedQuery
 	}
 
-	sqltrace.Tracef("%s %v", s.query, args)
-
-	numArg := len(args)
-	var numExpected int
-	if s.bulk && numArg == 0 { // ok - bulk control
-		numExpected = 0
-	} else {
-		numExpected = s.pr.NumField()
-	}
-	if numArg != numExpected {
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
-	}
-
-	if numArg == 0 { // flush
-		s.flush = true
-	}
-	defer func() { s.flush = false }()
-
 	done := make(chan struct{})
 	go func() {
 		switch {
 		case s.pr.IsProcedureCall():
 			r, err = s.session.ExecCall(s.pr, args)
-		case s.bulk:
-			r, err = driver.ResultNoRows, nil
-
-			if numArg != 0 { // add to argument buffer
-				if s.args == nil {
-					s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
-				}
-				s.args = append(s.args, args...)
-				s.bulkNum++
-			}
-
-			if s.bulkNum != 0 && (s.flush || s.bulkNum == s.maxBulkNum) { // flush
-				r, err = s.session.Exec(s.pr, s.args)
-				s.args = s.args[:0]
-				s.bulkNum = 0
-			}
+		case s.bulk: // flush case only
+			r, err = s.session.Exec(s.pr, s.args)
+			s.args = s.args[:0]
+			s.bulkNum = 0
 		default:
 			r, err = s.session.Exec(s.pr, args)
 		}

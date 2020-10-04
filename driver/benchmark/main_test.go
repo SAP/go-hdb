@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package benchmark
 
 import (
 	"database/sql"
@@ -13,31 +13,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // globals
 var (
-	DefaultTestConnector *Connector
-	NewTestConnector     func() *Connector
+	DefaultTestConnector *driver.Connector
+	NewTestConnector     func() *driver.Connector
 )
 
 func TestMain(m *testing.M) {
 	dbTest := drivertest.NewDBTest()
 
-	NewTestConnector = func() *Connector {
-		connector, err := NewDSNConnector(dbTest.DSN())
+	NewTestConnector = func() *driver.Connector {
+		connector, err := driver.NewDSNConnector(dbTest.DSN())
 		if err != nil {
 			log.Fatal(err)
 		}
-		connector.SetDefaultSchema(Identifier(dbTest.Schema()))
+		connector.SetDefaultSchema(driver.Identifier(dbTest.Schema()))
 		connector.SetPingInterval(time.Duration(dbTest.PingInt()) * time.Millisecond)
 		return connector
 	}
 
 	DefaultTestConnector = NewTestConnector()
 
-	connector, err := NewDSNConnector(dbTest.DSN())
+	connector, err := driver.NewDSNConnector(dbTest.DSN())
 	if err != nil {
 		log.Fatal(err)
 	}

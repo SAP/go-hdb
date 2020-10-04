@@ -633,11 +633,7 @@ func TestDataType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := NewDSNConnector(TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	connector.SetDefaultSchema(TestSchema)
+	connector := NewTestConnector()
 
 	for dfv := range testSet {
 		name := fmt.Sprintf("dfv %d", dfv)

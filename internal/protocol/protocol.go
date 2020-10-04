@@ -331,8 +331,10 @@ func (r *protocolReader) checkError() error {
 	}
 
 	if r.lastErrors.isWarnings() {
-		for _, e := range r.lastErrors.errors {
-			sqltrace.Traceln(e)
+		if sqltrace.On() {
+			for _, e := range r.lastErrors.errors {
+				sqltrace.Traceln(e)
+			}
 		}
 		return nil
 	}

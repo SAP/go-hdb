@@ -17,14 +17,14 @@ import (
 
 // ExampleConnector shows how to open a database with the help of a connector.
 func ExampleConn_raw() {
-	db, err := sql.Open(driver.DriverName, driver.TestDSN)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()
 
 	// Grab connection.
 	conn, err := db.Conn(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if err := conn.Raw(func(driverConn interface{}) error {
 		conn, ok := driverConn.(*driver.Conn)

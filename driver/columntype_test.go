@@ -80,7 +80,7 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 	var createSQL bytes.Buffer
 	table := RandomIdentifier("testColumnType_")
 
-	createSQL.WriteString(fmt.Sprintf("create column table %s.%s (", TestSchema, table)) // some data types are only valid for column tables
+	createSQL.WriteString(fmt.Sprintf("create column table %s (", table)) // some data types are only valid for column tables
 	for i, td := range testColumnTypeData {
 
 		if i != 0 {
@@ -118,7 +118,7 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 		t.Fatal(err)
 	}
 
-	if _, err := tx.Exec(fmt.Sprintf("insert into %s.%s values (%s)", TestSchema, table, prms), args...); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf("insert into %s values (%s)", table, prms), args...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,7 +126,7 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s.%s", TestSchema, table))
+	rows, err := db.Query(fmt.Sprintf("select * from %s", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,10 +222,7 @@ func TestColumnType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := NewDSNConnector(TestDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
+	connector := NewTestConnector()
 
 	for dfv := range testSet {
 		name := fmt.Sprintf("dfv_%d", dfv)

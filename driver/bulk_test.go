@@ -131,7 +131,7 @@ func testBulkInsertDuplicates(db *sql.DB, t *testing.T) {
 }
 
 func testBulk(db *sql.DB, t *testing.T) {
-	const samples = 10000
+	const samples = 1000
 
 	tests := []struct {
 		name      string
@@ -271,9 +271,12 @@ func TestBulk(t *testing.T) {
 		{"testBulkBlob", testBulkBlob},
 	}
 
+	db := sql.OpenDB(DefaultTestConnector)
+	defer db.Close()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, t)
+			test.fct(db, t)
 		})
 	}
 }

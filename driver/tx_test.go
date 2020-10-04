@@ -120,9 +120,12 @@ func TestTransaction(t *testing.T) {
 		{"transactionRollback", testTransactionRollback},
 	}
 
+	db := sql.OpenDB(DefaultTestConnector)
+	defer db.Close()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, t)
+			test.fct(db, t)
 		})
 	}
 }
