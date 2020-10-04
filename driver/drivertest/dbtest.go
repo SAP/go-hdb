@@ -54,10 +54,12 @@ func newDBFlags() *dbFlags {
 	return f
 }
 
+// DBTest provides setup and teardown methods for unit tests using the database.
 type DBTest struct {
 	flags *dbFlags
 }
 
+// NewDBTest creates a new database test object.
 func NewDBTest() *DBTest {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	flags := newDBFlags()
@@ -67,21 +69,24 @@ func NewDBTest() *DBTest {
 	return &DBTest{flags: flags}
 }
 
-func (t *DBTest) DSN() string    { return t.flags.dsn }
-func (t *DBTest) Schema() string { return t.flags.schema }
-func (t *DBTest) PingInt() int   { return t.flags.pingInt }
+// DSN returns the dsn parameter.
+func (t *DBTest) DSN() string { return t.flags.dsn }
 
+// Schema returns the database schema.
+func (t *DBTest) Schema() string { return t.flags.schema }
+
+// PingInt returns the ping interval.
+func (t *DBTest) PingInt() int { return t.flags.pingInt }
+
+// Setup creates the database schema.
 func (t *DBTest) Setup(db *sql.DB) {
 	if err := CreateSchema(db, t.flags.schema); err != nil {
-
-		log.Println("create schema")
-
 		t.exit(err)
-		log.Println("create schema successful")
 	}
 	log.Printf("created schema %s", t.flags.schema)
 }
 
+// Teardown deletes the database schema(s).
 func (t *DBTest) Teardown(db *sql.DB, drop bool) {
 	schema := t.flags.schema
 

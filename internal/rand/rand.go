@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package varmap implements a key value map like used in session variables.
+// Package rand implements random value functions.
 package rand
 
 import (

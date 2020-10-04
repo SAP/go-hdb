@@ -89,16 +89,19 @@ func SessionVariables(db *sql.DB) (map[string]string, error) {
 	return sv, nil
 }
 
+// CreateSchema creates a schema on the database.
 func CreateSchema(db *sql.DB, schema string) error {
 	_, err := db.Exec(fmt.Sprintf("create schema %s", strconv.Quote(schema)))
 	return err
 }
 
+// DropSchema drops a schema from the database.
 func DropSchema(db *sql.DB, schema string) error {
 	_, err := db.Exec(fmt.Sprintf("drop schema %s cascade", strconv.Quote(schema)))
 	return err
 }
 
+// NumTablesInSchema returns the number of tables in a database schema.
 func NumTablesInSchema(db *sql.DB, schema string) (int, error) {
 	numTables := 0
 	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.tables where schema_name = '%s'", schema)).Scan(&numTables); err != nil {
@@ -107,6 +110,7 @@ func NumTablesInSchema(db *sql.DB, schema string) (int, error) {
 	return numTables, nil
 }
 
+// NumProcsInSchema returns the number of stored procedures in a database schema.
 func NumProcsInSchema(db *sql.DB, schema string) (int, error) {
 	numProcs := 0
 	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.procedures where schema_name = '%s'", schema)).Scan(&numProcs); err != nil {
@@ -115,6 +119,7 @@ func NumProcsInSchema(db *sql.DB, schema string) (int, error) {
 	return numProcs, nil
 }
 
+// QuerySchemasPrefix returns all schemas of a databasebase starting with prefix in name.
 func QuerySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	schemas := make([]string, 0)
 
