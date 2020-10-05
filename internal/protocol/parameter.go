@@ -224,7 +224,7 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 	for i, arg := range p.args {
 		//mass insert
 		f := p.inputFields[i%cnt]
-		if err := encodePrm(enc, f.tc, arg); err != nil {
+		if err := encodePrm(enc, f.tc, f.ft, arg); err != nil {
 			return err
 		}
 	}

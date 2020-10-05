@@ -105,7 +105,7 @@ func prmSize(tc typeCode, arg driver.NamedValue) int {
 }
 
 // encode parameter
-func encodePrm(e *encoding.Encoder, tc typeCode, arg driver.NamedValue) error {
+func encodePrm(e *encoding.Encoder, tc typeCode, ft fieldType, arg driver.NamedValue) error {
 	v := arg.Value
 	encTc := tc.encTc()
 	if v == nil && tc.supportNullValue() {
@@ -113,7 +113,7 @@ func encodePrm(e *encoding.Encoder, tc typeCode, arg driver.NamedValue) error {
 		return nil
 	}
 	e.Byte(byte(encTc)) // type code
-	return tc.fieldType().encodePrm(e, v)
+	return ft.encodePrm(e, v)
 }
 
 /*
