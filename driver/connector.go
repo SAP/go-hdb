@@ -43,6 +43,7 @@ const (
 	DefaultDfv          = DfvLevel8        // Default data version format level.
 	DefaultTimeout      = 300              // Default value connection timeout (300 seconds = 5 minutes).
 	DefaultTCPKeepAlive = 15 * time.Second // Default TCP keep-alive value (copied from net.dial.go)
+	DefaultBufferSize   = 16276            // Default value bufferSize.
 	DefaultFetchSize    = 128              // Default value fetchSize.
 	DefaultBulkSize     = 1000             // Default value bulkSize.
 	DefaultLobChunkSize = 4096             // Default value lobChunkSize.
@@ -92,6 +93,7 @@ type Connector struct {
 func newConnector() *Connector {
 	return &Connector{
 		applicationName:  defaultApplicationName,
+		bufferSize:       DefaultBufferSize,
 		fetchSize:        DefaultFetchSize,
 		bulkSize:         DefaultBulkSize,
 		lobChunkSize:     DefaultLobChunkSize,
