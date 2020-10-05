@@ -70,6 +70,7 @@ type parameterField struct {
 	name             string
 	parameterOptions parameterOptions
 	tc               typeCode
+	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
 	mode             parameterMode
 	fraction         int16
 	length           int16
@@ -87,7 +88,7 @@ func (f *parameterField) String() string {
 	)
 }
 
-func (f *parameterField) Converter() Converter { return f.tc.fieldType() }
+func (f *parameterField) Converter() Converter { return f.ft }
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
@@ -139,6 +140,7 @@ func (f *parameterField) Name() string {
 func (f *parameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
+	f.ft = f.tc.fieldType()
 	f.mode = parameterMode(dec.Int8())
 	dec.Skip(1) //filler
 	f.offset = dec.Uint32()
