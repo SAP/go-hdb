@@ -132,23 +132,23 @@ func (r *queryResultSet) NextResultSet() error {
 }
 
 func (r *queryResultSet) ColumnTypeDatabaseTypeName(idx int) string {
-	return r.rr.field(idx).TypeName()
+	return r.rr.field(idx).typeName()
 }
 
 func (r *queryResultSet) ColumnTypeLength(idx int) (int64, bool) {
-	return r.rr.field(idx).TypeLength()
+	return r.rr.field(idx).typeLength()
 }
 
 func (r *queryResultSet) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return r.rr.field(idx).TypePrecisionScale()
+	return r.rr.field(idx).typePrecisionScale()
 }
 
 func (r *queryResultSet) ColumnTypeNullable(idx int) (bool, bool) {
-	return r.rr.field(idx).Nullable(), true
+	return r.rr.field(idx).nullable(), true
 }
 
 func (r *queryResultSet) ColumnTypeScanType(idx int) reflect.Type {
-	return scanTypeMap[r.rr.field(idx).ScanType()]
+	return scanTypeMap[r.rr.field(idx).scanType()]
 }
 
 // QrsCache is a query result cache supporting reading

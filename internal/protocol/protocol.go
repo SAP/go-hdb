@@ -25,7 +25,7 @@ type rowsResult interface {
 	closed() bool                         // Closed returnr true if the database resultset is closed (completely read).
 	lastPacket() bool                     // LastPacket returns true if the last packet of a resultset was read from database.
 	copyRow(idx int, dest []driver.Value) // CopyRow fills the dest value slice with row data at index idx.
-	field(idx int) Field                  // Field returns the field descriptor at position idx.
+	field(idx int) rowField               // RowField returns the field descriptor at position idx.
 	queryResult() (*queryResult, error)   // Used by fetch next if RowsResult is based on a query (nil for CallResult).
 }
 
@@ -36,10 +36,10 @@ var (
 
 // A PrepareResult represents the result of a prepare statement.
 type PrepareResult struct {
-	fc           functionCode
-	stmtID       uint64
-	prmFields    []*parameterField
-	resultFields []*resultField
+	fc              functionCode
+	stmtID          uint64
+	parameterFields []*parameterField
+	resultFields    []*resultField
 }
 
 // Check checks consistency of the prepare result.
@@ -51,7 +51,7 @@ func (pr *PrepareResult) Check(qd *QueryDescr) error {
 
 	if !call {
 		// only input parameters allowed
-		for _, f := range pr.prmFields {
+		for _, f := range pr.parameterFields {
 			if f.Out() {
 				return fmt.Errorf("invalid parameter %s", f)
 			}
@@ -72,16 +72,16 @@ func (pr *PrepareResult) IsProcedureCall() bool {
 
 // NumField returns the number of parameter fields in a database statement.
 func (pr *PrepareResult) NumField() int {
-	return len(pr.prmFields)
+	return len(pr.parameterFields)
 }
 
 // NumInputField returns the number of input fields in a database statement.
 func (pr *PrepareResult) NumInputField() int {
 	if !pr.fc.isProcedureCall() {
-		return len(pr.prmFields) // only input fields
+		return len(pr.parameterFields) // only input fields
 	}
 	numField := 0
-	for _, f := range pr.prmFields {
+	for _, f := range pr.parameterFields {
 		if f.In() {
 			numField++
 		}
@@ -90,8 +90,8 @@ func (pr *PrepareResult) NumInputField() int {
 }
 
 // PrmField returns the parameter field at index idx.
-func (pr *PrepareResult) PrmField(idx int) Field {
-	return pr.prmFields[idx]
+func (pr *PrepareResult) PrmField(idx int) *parameterField {
+	return pr.parameterFields[idx]
 }
 
 // A QueryResult represents the resultset of a query.
@@ -109,7 +109,7 @@ func (qr *queryResult) rsID() uint64 {
 }
 
 // Field implements the RowsResult interface.
-func (qr *queryResult) field(idx int) Field {
+func (qr *queryResult) field(idx int) rowField {
 	return qr.fields[idx]
 }
 
@@ -143,7 +143,7 @@ func (qr *queryResult) columns() []string {
 		numField := len(qr.fields)
 		qr._columns = make([]string, numField)
 		for i := 0; i < numField; i++ {
-			qr._columns[i] = qr.fields[i].Name()
+			qr._columns[i] = qr.fields[i].name()
 		}
 	}
 	return qr._columns
@@ -167,7 +167,7 @@ func (cr *callResult) rsID() uint64 {
 }
 
 // Field implements the RowsResult interface.
-func (cr *callResult) field(idx int) Field {
+func (cr *callResult) field(idx int) rowField {
 	return cr.outputFields[idx]
 }
 
@@ -201,7 +201,7 @@ func (cr *callResult) columns() []string {
 		numField := len(cr.outputFields)
 		cr._columns = make([]string, numField)
 		for i := 0; i < numField; i++ {
-			cr._columns[i] = cr.outputFields[i].Name()
+			cr._columns[i] = cr.outputFields[i].name()
 		}
 	}
 	return cr._columns
@@ -213,14 +213,14 @@ func (cr *callResult) queryResult() (*queryResult, error) {
 
 func (cr *callResult) appendTableRefFields() {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{name: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
+		cr.outputFields = append(cr.outputFields, &parameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
 		cr.fieldValues = append(cr.fieldValues, encodeID(qr._rsID))
 	}
 }
 
 func (cr *callResult) appendTableRowsFields(s *Session) {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{name: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
+		cr.outputFields = append(cr.outputFields, &parameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
 		cr.fieldValues = append(cr.fieldValues, newQueryResultSet(s, qr))
 	}
 }

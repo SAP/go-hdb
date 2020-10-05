@@ -488,7 +488,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 			pr.resultFields = resMeta.resultFields
 		case pkParameterMetadata:
 			s.pr.read(prmMeta)
-			pr.prmFields = prmMeta.parameterFields
+			pr.parameterFields = prmMeta.parameterFields
 		}
 	}); err != nil {
 		return nil, err
@@ -501,7 +501,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
 	s.checkLock()
 
-	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.prmFields, args)); err != nil {
+	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
 
@@ -530,7 +530,7 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Resu
 			- chunkReaders
 			- nil (no callResult, exec does not have output parameters)
 		*/
-		if err := s.encodeLobs(nil, ids, pr.prmFields, args); err != nil {
+		if err := s.encodeLobs(nil, ids, pr.parameterFields, args); err != nil {
 			return nil, err
 		}
 	}
@@ -551,7 +551,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 		invariant: #inPrmFields == #args
 	*/
 	var inPrmFields, outPrmFields []*parameterField
-	for _, f := range pr.prmFields {
+	for _, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
 		}
@@ -610,7 +610,7 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 	*/
 	var inPrmFields, outPrmFields []*parameterField
 	var inArgs, outArgs []driver.NamedValue
-	for i, f := range pr.prmFields {
+	for i, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
 			inArgs = append(inArgs, args[i])
@@ -715,7 +715,7 @@ func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Row
 	s.SetInQuery(true)
 
 	// allow e.g inserts as query -> handle commit like in exec
-	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.prmFields, args)); err != nil {
+	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
 

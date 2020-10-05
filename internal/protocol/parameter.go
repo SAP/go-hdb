@@ -67,7 +67,7 @@ func newParameterFields(size int) []*parameterField {
 
 // parameterField contains database field attributes for parameters.
 type parameterField struct {
-	name             string
+	fieldName        string
 	parameterOptions parameterOptions
 	tc               typeCode
 	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
@@ -88,19 +88,20 @@ func (f *parameterField) String() string {
 	)
 }
 
+// Converter returns the Converter interface.
 func (f *parameterField) Converter() Converter { return f.ft }
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *parameterField) TypeName() string { return f.tc.typeName() }
+func (f *parameterField) typeName() string { return f.tc.typeName() }
 
 // ScanType returns the scan type of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *parameterField) ScanType() DataType { return f.tc.dataType() }
+func (f *parameterField) scanType() DataType { return f.tc.dataType() }
 
 // typeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *parameterField) TypeLength() (int64, bool) {
+func (f *parameterField) typeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
@@ -109,7 +110,7 @@ func (f *parameterField) TypeLength() (int64, bool) {
 
 // typePrecisionScale returns the type precision and scale (decimal types) of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
+func (f *parameterField) typePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
@@ -118,7 +119,7 @@ func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
 
 // nullable returns true if the field may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *parameterField) Nullable() bool {
+func (f *parameterField) nullable() bool {
 	return f.parameterOptions == poOptional
 }
 
@@ -133,8 +134,8 @@ func (f *parameterField) Out() bool {
 }
 
 // name returns the parameter field name.
-func (f *parameterField) Name() string {
-	return f.name
+func (f *parameterField) name() string {
+	return f.fieldName
 }
 
 func (f *parameterField) decode(dec *encoding.Decoder) {
@@ -173,7 +174,7 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 	names.decode(dec)
 
 	for _, f := range m.parameterFields {
-		f.name = names.name(f.offset)
+		f.fieldName = names.name(f.offset)
 	}
 	return dec.Error()
 }

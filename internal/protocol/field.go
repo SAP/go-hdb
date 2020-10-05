@@ -65,22 +65,18 @@ func (n fieldNames) decode(dec *encoding.Decoder) {
 	}
 }
 
-// A Field represents whether a db result or a parameter Field.
-type Field interface {
-	Name() string
-	TypeName() string
-	TypeLength() (int64, bool)
-	TypePrecisionScale() (int64, int64, bool)
-	ScanType() DataType
-	Nullable() bool
-	In() bool
-	Out() bool
-	Converter() Converter
+// A rowField represents whether a db result or a parameter Field of a stored procedure.
+type rowField interface {
+	typeName() string
+	typeLength() (int64, bool)
+	typePrecisionScale() (int64, int64, bool)
+	scanType() DataType
+	nullable() bool
 }
 
 var (
-	_ Field = (*resultField)(nil)
-	_ Field = (*parameterField)(nil)
+	_ rowField = (*resultField)(nil)
+	_ rowField = (*parameterField)(nil)
 )
 
 // TODO cache
