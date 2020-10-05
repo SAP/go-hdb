@@ -48,7 +48,7 @@ const (
 	coImplicitLobStreaming                connectOption = 37 //!< implicit lob streaming
 	coCachedViewProperty                  connectOption = 38 //!< provide cached view timestamps to the client
 	coXOpenXAProtocolSupported            connectOption = 39 //!< JTA(X/Open XA) Protocol
-	coMasterCommitRedirectionSupported    connectOption = 40 //!< S2PC routing control
+	coPrimaryCommitRedirectionSupported   connectOption = 40 //!< S2PC routing control
 	coActiveActiveProtocolVersion         connectOption = 41 //!< Version of Active/Active protocol
 	coActiveActiveConnectionOriginSite    connectOption = 42 //!< Tell where is the anchor connection located. This is unidirectional property from client to server.
 	coQueryTimeoutSupported               connectOption = 43 //!< support query timeout (e.g., Statement.setQueryTimeout)

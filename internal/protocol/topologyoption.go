@@ -14,7 +14,7 @@ const (
 	toTenantName       topologyOption = 3
 	toLoadfactor       topologyOption = 4
 	toVolumeID         topologyOption = 5
-	toIsMaster         topologyOption = 6
+	toIsPrimary        topologyOption = 6
 	toIsCurrentSession topologyOption = 7
 	toServiceType      topologyOption = 8
 	toNetworkDomain    topologyOption = 9
