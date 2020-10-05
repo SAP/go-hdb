@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"io"
 	"reflect"
 
 	p "github.com/SAP/go-hdb/internal/protocol"
