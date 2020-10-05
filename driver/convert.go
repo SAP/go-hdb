@@ -16,7 +16,7 @@ import (
 func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 	idx := nv.Ordinal - 1
 
-	f := pr.PrmField(idx)
+	f := pr.ParameterField(idx)
 
 	v, out := normNamedValue(nv)
 

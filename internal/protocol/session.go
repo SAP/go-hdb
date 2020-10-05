@@ -550,7 +550,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 		only in args
 		invariant: #inPrmFields == #args
 	*/
-	var inPrmFields, outPrmFields []*parameterField
+	var inPrmFields, outPrmFields []*ParameterField
 	for _, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
@@ -608,7 +608,7 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 		in,- and output args
 		invariant: #prmFields == #args
 	*/
-	var inPrmFields, outPrmFields []*parameterField
+	var inPrmFields, outPrmFields []*ParameterField
 	var inArgs, outArgs []driver.NamedValue
 	for i, f := range pr.parameterFields {
 		if f.In() {
@@ -653,7 +653,7 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 	//return driver.ResultNoRows, nil
 }
 
-func (s *Session) readCall(outputFields []*parameterField) (*callResult, []locatorID, error) {
+func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locatorID, error) {
 	cr := &callResult{outputFields: outputFields}
 
 	//var qrs []*QueryResult
@@ -918,7 +918,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 }
 
 // encodeLobs encodes (write to db) input lob parameters.
-func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*parameterField, args []driver.NamedValue) error {
+func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []driver.NamedValue) error {
 	chunkSize := int(s.cfg.LobChunkSize())
 
 	readers := make([]io.Reader, 0, len(ids))

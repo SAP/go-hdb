@@ -76,7 +76,7 @@ type rowField interface {
 
 var (
 	_ rowField = (*resultField)(nil)
-	_ rowField = (*parameterField)(nil)
+	_ rowField = (*ParameterField)(nil)
 )
 
 // TODO cache

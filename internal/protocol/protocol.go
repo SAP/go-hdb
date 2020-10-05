@@ -38,7 +38,7 @@ var (
 type PrepareResult struct {
 	fc              functionCode
 	stmtID          uint64
-	parameterFields []*parameterField
+	parameterFields []*ParameterField
 	resultFields    []*resultField
 }
 
@@ -89,8 +89,8 @@ func (pr *PrepareResult) NumInputField() int {
 	return numField
 }
 
-// PrmField returns the parameter field at index idx.
-func (pr *PrepareResult) PrmField(idx int) *parameterField {
+// ParameterField returns the parameter field at index idx.
+func (pr *PrepareResult) ParameterField(idx int) *ParameterField {
 	return pr.parameterFields[idx]
 }
 
@@ -155,7 +155,7 @@ func (qr *queryResult) queryResult() (*queryResult, error) {
 
 // A CallResult represents the result (output parameters and values) of a call statement.
 type callResult struct { // call output parameters
-	outputFields []*parameterField
+	outputFields []*ParameterField
 	fieldValues  []driver.Value
 	_columns     []string
 	qrs          []*queryResult // table output parameters
@@ -213,14 +213,14 @@ func (cr *callResult) queryResult() (*queryResult, error) {
 
 func (cr *callResult) appendTableRefFields() {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
+		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
 		cr.fieldValues = append(cr.fieldValues, encodeID(qr._rsID))
 	}
 }
 
 func (cr *callResult) appendTableRowsFields(s *Session) {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
+		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
 		cr.fieldValues = append(cr.fieldValues, newQueryResultSet(s, qr))
 	}
 }
