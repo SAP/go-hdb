@@ -19,16 +19,10 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 
 	f := pr.PrmField(idx)
 
-	converter := f.Converter()
-
 	v, out := normNamedValue(nv)
 
 	if out != f.Out() {
 		return fmt.Errorf("parameter descr / value mismatch - descr out %t value out %t", f.Out(), out)
-	}
-
-	if out && reflect.ValueOf(v).Kind() != reflect.Ptr {
-		return fmt.Errorf("out parameter %v needs to be pointer variable", v)
 	}
 
 	var err error
@@ -53,15 +47,18 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 	}
 
 	if out {
-		_, err = converter.Convert(v) // check field only
-	} else {
-		v, err = converter.Convert(v) // convert field
-	}
-	if err != nil {
-		return err
+		if reflect.ValueOf(v).Kind() != reflect.Ptr {
+			return fmt.Errorf("out parameter %v needs to be pointer variable", v)
+		}
+		if _, err := f.Convert(v); err != nil { // check field only
+			return err
+		}
+		return nil
 	}
 
-	nv.Value = v
+	if nv.Value, err = f.Convert(v); err != nil { // convert field
+		return err
+	}
 	return nil
 }
 

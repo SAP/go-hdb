@@ -84,12 +84,12 @@ func (f *parameterField) String() string {
 		f.mode,
 		f.fraction,
 		f.length,
-		f.name,
+		f.fieldName,
 	)
 }
 
-// Converter returns the Converter interface.
-func (f *parameterField) Converter() Converter { return f.ft }
+// Convert returns the result of the fieldType conversion.
+func (f *parameterField) Convert(v interface{}) (interface{}, error) { return f.ft.convert(v) }
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
