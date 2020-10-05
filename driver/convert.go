@@ -34,18 +34,6 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 		}
 	}
 
-	// special cases
-	switch v := v.(type) {
-	case io.Reader:
-		if f.Out() {
-			return fmt.Errorf("out parameter not writeable: %v", v)
-		}
-	case io.Writer:
-		if f.In() {
-			return fmt.Errorf("in parameter not readable: %v", v)
-		}
-	}
-
 	if out {
 		if reflect.ValueOf(v).Kind() != reflect.Ptr {
 			return fmt.Errorf("out parameter %v needs to be pointer variable", v)
