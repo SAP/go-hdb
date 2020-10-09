@@ -324,15 +324,6 @@ func (s *Session) ServerInfo() *common.ServerInfo {
 	}
 }
 
-// MaxBulkNum returns the maximal number of bulk calls before auto flush.
-func (s *Session) MaxBulkNum() int {
-	maxBulkNum := s.cfg.BulkSize()
-	if maxBulkNum > maxPartNum {
-		return maxPartNum // max number of parameters (see parameter header)
-	}
-	return maxBulkNum
-}
-
 func (s *Session) defaultClientOptions() connectOptions {
 	co := connectOptions{
 		int8(coDistributionProtocolVersion): optBooleanType(false),

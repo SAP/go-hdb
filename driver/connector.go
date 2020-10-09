@@ -52,10 +52,11 @@ const (
 
 // Connector minimal values.
 const (
-	minTimeout      = 0   // Minimal timeout value.
-	minFetchSize    = 1   // Minimal fetchSize value.
-	minBulkSize     = 1   // Minimal bulkSize value.
-	minLobChunkSize = 128 // Minimal lobChunkSize
+	minTimeout      = 0           // Minimal timeout value.
+	minFetchSize    = 1           // Minimal fetchSize value.
+	minBulkSize     = 1           // Minimal bulkSize value.
+	maxBulkSize     = p.MaxNumArg // Maximum bulk size.
+	minLobChunkSize = 128         // Minimal lobChunkSize
 	// TODO check maxLobChunkSize
 	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
 )
@@ -312,8 +313,11 @@ SetBulkSize sets the bulkSize of the connector.
 func (c *Connector) SetBulkSize(bulkSize int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if bulkSize < minBulkSize {
+	switch {
+	case bulkSize < minBulkSize:
 		bulkSize = minBulkSize
+	case bulkSize > maxBulkSize:
+		bulkSize = maxBulkSize
 	}
 	c.bulkSize = bulkSize
 	return nil
@@ -495,4 +499,4 @@ func (c *Connector) BasicAuthDSN() string {
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) { return newConn(ctx, c) }
 
 // Driver implements the database/sql/driver/Connector interface.
-func (c *Connector) Driver() driver.Driver { return drv }
+func (c *Connector) Driver() driver.Driver { return hdbDriver }

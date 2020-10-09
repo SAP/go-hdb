@@ -104,6 +104,7 @@ var (
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type Conn struct {
+	ctr     *Connector
 	session *p.Session
 	scanner *scanner.Scanner
 	closed  chan struct{}
@@ -127,7 +128,7 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", sv, minimalServerVersion)
 	}
 
-	c := &Conn{session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+	c := &Conn{ctr: ctr, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
 	if err := c.init(ctx, ctr); err != nil {
 		return nil, err
 	}
@@ -135,6 +136,9 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	if d != 0 {
 		go c.pinger(d, c.closed)
 	}
+
+	hdbDriver.addConn(1) // increment open connections.
+
 	return c, nil
 }
 
@@ -241,7 +245,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		case <-ctx.Done():
 			return
 		}
-		stmt, err = newStmt(c.session, qd.Query(), qd.IsBulk(), pr)
+		stmt, err = newStmt(c.session, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr)
 	done:
 		close(done)
 	}()
@@ -251,6 +255,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
+		hdbDriver.addStmt(1) // increment number of statements.
 		return stmt, err
 	}
 }
@@ -260,7 +265,8 @@ func (c *Conn) Close() error {
 	c.session.Lock()
 	defer c.session.Unlock()
 
-	close(c.closed) // signal connection close
+	hdbDriver.addConn(-1) // decrement open connections.
+	close(c.closed)       // signal connection close
 	return c.session.Close()
 }
 
@@ -305,6 +311,7 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 		c.session.Kill()
 		return nil, ctx.Err()
 	case <-done:
+		hdbDriver.addTx(1) // increment number of transactions.
 		return tx, err
 	}
 }
@@ -429,23 +436,28 @@ var (
 )
 
 type tx struct {
+	closed  bool
 	session *p.Session
 }
 
-func newTx(session *p.Session) *tx {
-	return &tx{
-		session: session,
+func newTx(session *p.Session) *tx { return &tx{session: session} }
+
+func (t *tx) close() {
+	if t.closed {
+		return
 	}
+	hdbDriver.addTx(-1) // decrement number of transactions.
+	t.closed = true
 }
 
 func (t *tx) Commit() error {
 	t.session.Lock()
 	defer t.session.Unlock()
 
+	t.close()
 	if t.session.IsBad() {
 		return driver.ErrBadConn
 	}
-
 	return t.session.Commit()
 }
 
@@ -453,10 +465,10 @@ func (t *tx) Rollback() error {
 	t.session.Lock()
 	defer t.session.Unlock()
 
+	t.close()
 	if t.session.IsBad() {
 		return driver.ErrBadConn
 	}
-
 	return t.session.Rollback()
 }
 
@@ -471,25 +483,26 @@ var (
 )
 
 type stmt struct {
-	pr                  *p.PrepareResult
-	session             *p.Session
-	query               string
-	bulk, flush         bool
-	maxBulkNum, bulkNum int
-	trace               bool // store flag for performance reasons (especially bulk inserts)
-	args                []driver.NamedValue
+	pr                *p.PrepareResult
+	session           *p.Session
+	query             string
+	bulk, flush       bool
+	bulkSize, numBulk int
+	trace             bool // store flag for performance reasons (especially bulk inserts)
+	args              []driver.NamedValue
 }
 
-func newStmt(session *p.Session, query string, bulk bool, pr *p.PrepareResult) (*stmt, error) {
-	return &stmt{session: session, query: query, pr: pr, bulk: bulk, maxBulkNum: session.MaxBulkNum(), trace: sqltrace.On()}, nil
+func newStmt(session *p.Session, query string, bulk bool, bulkSize int, pr *p.PrepareResult) (*stmt, error) {
+	return &stmt{session: session, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}, nil
 }
 
 func (s *stmt) Close() error {
 	s.session.Lock()
 	defer s.session.Unlock()
 
-	if len(s.args) != 0 && s.trace {
-		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.NumInput())
+	hdbDriver.addStmt(-1) // decrement number of statements.
+	if len(s.args) != 0 { // log always //TODO: Fatal?
+		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
 	}
 	return s.session.DropStatementID(s.pr.StmtID())
 }
@@ -575,12 +588,12 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 				s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
 			}
 			s.args = append(s.args, args...)
-			s.bulkNum++
-			if s.bulkNum == s.maxBulkNum {
+			s.numBulk++
+			if s.numBulk == s.bulkSize {
 				flush = true
 			}
 		}
-		if !flush || s.bulkNum == 0 { // done: no flush
+		if !flush || s.numBulk == 0 { // done: no flush
 			return driver.ResultNoRows, nil
 		}
 	}
@@ -603,7 +616,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 		case s.bulk: // flush case only
 			r, err = s.session.Exec(s.pr, s.args)
 			s.args = s.args[:0]
-			s.bulkNum = 0
+			s.numBulk = 0
 		default:
 			r, err = s.session.Exec(s.pr, args)
 		}
