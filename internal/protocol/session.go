@@ -114,8 +114,8 @@ type Session struct {
 	serverVersion common.HDBVersion
 
 	conn *dbConn
-	rd   *bufio.Reader
-	wr   *bufio.Writer
+	// rd   *bufio.Reader
+	// wr   *bufio.Writer
 
 	pr *protocolReader
 	pw *protocolWriter
@@ -172,10 +172,10 @@ func NewSession(ctx context.Context, cfg *SessionConfig) (*Session, error) {
 		cfg:       cfg,
 		sessionID: defaultSessionID,
 		conn:      conn,
-		rd:        bufRd,
-		wr:        bufWr,
-		pr:        pr,
-		pw:        pw,
+		// rd:        bufRd,
+		// wr:        bufWr,
+		pr: pr,
+		pw: pw,
 	}
 
 	authStepper := newAuth(cfg.Username, cfg.Password)

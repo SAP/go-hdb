@@ -15,7 +15,7 @@ import (
 Definition of queryResultSet in protocol layer:
 - queryResultSet is sql.Rows
 - sql.Rows can be used as datatype for scan
-- used ig go-hdb for call table output parameters
+- used in go-hdb for call table output parameters
 */
 
 // NoResult is the driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that do not return rows.

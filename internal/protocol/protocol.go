@@ -22,7 +22,7 @@ type rowsResult interface {
 	rsID() uint64                         // RsID returns the resultset id.
 	columns() []string                    // Columns returns the names of the resultset columns.
 	numRow() int                          // NumRow returns the number of rows available in FieldValues.
-	closed() bool                         // Closed returnr true if the database resultset is closed (completely read).
+	closed() bool                         // Closed returns true if the database resultset is closed (completely read).
 	lastPacket() bool                     // LastPacket returns true if the last packet of a resultset was read from database.
 	copyRow(idx int, dest []driver.Value) // CopyRow fills the dest value slice with row data at index idx.
 	field(idx int) rowField               // RowField returns the field descriptor at position idx.
