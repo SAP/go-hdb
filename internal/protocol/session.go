@@ -19,7 +19,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/common"
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/internal/container/varmap"
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -34,62 +33,6 @@ func padBytes(size int) int {
 	return 0
 }
 
-// sesion handling
-const (
-	sesRecording = "rec"
-	sesReplay    = "rpl"
-)
-
-type sessionStatus interface {
-	isBad() bool
-}
-
-type sessionConn interface {
-	io.ReadWriteCloser
-	sessionStatus
-}
-
-func newSessionConn(ctx context.Context, address string, dialer dial.Dialer, timeout, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (sessionConn, error) {
-	// session recording
-	if wr, ok := ctx.Value(sesRecording).(io.Writer); ok {
-		conn, err := newDbConn(ctx, address, dialer, timeout, tcpKeepAlive, tlsConfig)
-		if err != nil {
-			return nil, err
-		}
-		return proxyConn{
-			Reader:        io.TeeReader(conn, wr), // teereader: write database replies to writer
-			Writer:        conn,
-			Closer:        conn,
-			sessionStatus: conn,
-		}, nil
-	}
-	// session replay
-	if rd, ok := ctx.Value(sesReplay).(io.Reader); ok {
-		nwc := nullWriterCloser{}
-		return proxyConn{
-			Reader:        rd,
-			Writer:        nwc,
-			Closer:        nwc,
-			sessionStatus: nwc,
-		}, nil
-	}
-	return newDbConn(ctx, address, dialer, timeout, tcpKeepAlive, tlsConfig)
-}
-
-type nullWriterCloser struct{}
-
-func (n nullWriterCloser) Write(p []byte) (int, error) { return len(p), nil }
-func (n nullWriterCloser) Close() error                { return nil }
-func (n nullWriterCloser) isBad() bool                 { return false }
-
-// proxy connection
-type proxyConn struct {
-	io.Reader
-	io.Writer
-	io.Closer
-	sessionStatus
-}
-
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
 	address   string
@@ -98,18 +41,18 @@ type dbConn struct {
 	lastError error // error bad connection
 }
 
-func newDbConn(ctx context.Context, address string, dialer dial.Dialer, timeout, tcpKeepAlive time.Duration, tlsConfig *tls.Config) (*dbConn, error) {
-	conn, err := dialer.DialContext(ctx, address, dial.DialerOptions{Timeout: timeout, TCPKeepAlive: tcpKeepAlive})
+func newDbConn(ctx context.Context, cfg *SessionConfig) (*dbConn, error) {
+	conn, err := cfg.Dialer.DialContext(ctx, cfg.Host, dial.DialerOptions{Timeout: cfg.Timeout, TCPKeepAlive: cfg.TCPKeepAlive})
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if tlsConfig != nil {
-		conn = tls.Client(conn, tlsConfig)
+	if cfg.TLSConfig != nil {
+		conn = tls.Client(conn, cfg.TLSConfig)
 	}
 
-	return &dbConn{address: address, timeout: timeout, conn: conn}, nil
+	return &dbConn{address: cfg.Host, timeout: cfg.Timeout, conn: conn}, nil
 }
 
 func (c *dbConn) isBad() bool { return c.lastError != nil }
@@ -157,28 +100,6 @@ retError:
 	return n, driver.ErrBadConn
 }
 
-// SessionConfig represents the session relevant driver connector options.
-type SessionConfig interface {
-	Host() string
-	Username() string
-	Password() string
-	Locale() string
-	DriverVersion() string
-	DriverName() string
-	ApplicationName() string
-	BufferSize() int
-	FetchSize() int
-	BulkSize() int
-	LobChunkSize() int32
-	Dialer() dial.Dialer
-	TimeoutDuration() time.Duration
-	TCPKeepAlive() time.Duration
-	Dfv() int
-	SessionVariablesVarMap() *varmap.VarMap
-	TLSConfig() *tls.Config
-	Legacy() bool
-}
-
 const (
 	dfvLevel1        = 1
 	defaultSessionID = -1
@@ -186,13 +107,13 @@ const (
 
 // Session represents a HDB session.
 type Session struct {
-	cfg SessionConfig
+	cfg *SessionConfig
 
 	sessionID     int64
 	serverOptions connectOptions
 	serverVersion common.HDBVersion
 
-	conn sessionConn
+	conn *dbConn
 	rd   *bufio.Reader
 	wr   *bufio.Writer
 
@@ -218,10 +139,9 @@ type Session struct {
 }
 
 // NewSession creates a new database session.
-func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
-	var conn sessionConn
+func NewSession(ctx context.Context, cfg *SessionConfig) (*Session, error) {
 
-	conn, err := newSessionConn(ctx, cfg.Host(), cfg.Dialer(), cfg.TimeoutDuration(), cfg.TCPKeepAlive(), cfg.TLSConfig())
+	conn, err := newDbConn(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +149,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 	var bufRd *bufio.Reader
 	var bufWr *bufio.Writer
 
-	bufferSize := cfg.BufferSize()
+	bufferSize := cfg.BufferSize
 	if bufferSize > 0 {
 		bufRd = bufio.NewReaderSize(conn, bufferSize)
 		bufWr = bufio.NewWriterSize(conn, bufferSize)
@@ -238,7 +158,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		bufWr = bufio.NewWriter(conn)
 	}
 
-	pw := newProtocolWriter(bufWr, cfg.SessionVariablesVarMap()) // write upstream
+	pw := newProtocolWriter(bufWr, cfg.SessionVariables) // write upstream
 	if err := pw.writeProlog(); err != nil {
 		return nil, err
 	}
@@ -258,7 +178,7 @@ func NewSession(ctx context.Context, cfg SessionConfig) (*Session, error) {
 		pw:        pw,
 	}
 
-	authStepper := newAuth(cfg.Username(), cfg.Password())
+	authStepper := newAuth(cfg.Username, cfg.Password)
 	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
 		return nil, err
 	}
@@ -329,13 +249,13 @@ func (s *Session) defaultClientOptions() connectOptions {
 		int8(coDistributionProtocolVersion): optBooleanType(false),
 		int8(coSelectForUpdateSupported):    optBooleanType(false),
 		int8(coSplitBatchCommands):          optBooleanType(true),
-		int8(coDataFormatVersion2):          optIntType(s.cfg.Dfv()),
+		int8(coDataFormatVersion2):          optIntType(s.cfg.Dfv),
 		int8(coCompleteArrayExecution):      optBooleanType(true),
 		int8(coClientDistributionMode):      cdmOff,
 		// int8(coImplicitLobStreaming):        optBooleanType(true),
 	}
-	if s.cfg.Locale() != "" {
-		co[int8(coClientLocale)] = optStringType(s.cfg.Locale())
+	if s.cfg.Locale != "" {
+		co[int8(coClientLocale)] = optStringType(s.cfg.Locale)
 	}
 	return co
 }
@@ -346,9 +266,9 @@ func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, erro
 
 	// client context
 	clientContext := clientContext(plainOptions{
-		int8(ccoClientVersion):            optStringType(s.cfg.DriverVersion()),
-		int8(ccoClientType):               optStringType(s.cfg.DriverName()),
-		int8(ccoClientApplicationProgram): optStringType(s.cfg.ApplicationName()),
+		int8(ccoClientVersion):            optStringType(s.cfg.DriverVersion),
+		int8(ccoClientType):               optStringType(s.cfg.DriverName),
+		int8(ccoClientApplicationProgram): optStringType(s.cfg.ApplicationName),
 	})
 
 	if auth, err = stepper.next(); err != nil {
@@ -579,7 +499,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 	}
 
 	// legacy mode?
-	if s.cfg.Legacy() {
+	if s.cfg.Legacy {
 		cr.appendTableRefFields() // TODO review
 		for _, qr := range cr.qrs {
 			// add to cache
@@ -740,7 +660,7 @@ func (s *Session) fetchNext(rr rowsResult) error {
 	if err != nil {
 		return err
 	}
-	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr._rsID), fetchsize(s.cfg.FetchSize())); err != nil {
+	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr._rsID), fetchsize(s.cfg.FetchSize)); err != nil {
 		return err
 	}
 
@@ -848,7 +768,7 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 }
 
 func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
-	lobChunkSize := int64(s.cfg.LobChunkSize())
+	lobChunkSize := int64(s.cfg.LobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {
 		chunkSize := numChar - ofs
@@ -910,7 +830,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []driver.NamedValue) error {
-	chunkSize := int(s.cfg.LobChunkSize())
+	chunkSize := int(s.cfg.LobChunkSize)
 
 	readers := make([]io.Reader, 0, len(ids))
 	descrs := make([]*writeLobDescr, 0, len(ids))

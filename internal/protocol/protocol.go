@@ -13,7 +13,7 @@ import (
 	"math"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
-	"github.com/SAP/go-hdb/internal/container/varmap"
+	"github.com/SAP/go-hdb/internal/container/vermap"
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
@@ -522,8 +522,12 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 // protocol writer
 type protocolWriter struct {
 	wr  *bufio.Writer
-	sv  *varmap.VarMap // session variables
 	enc *encoding.Encoder
+
+	sv *vermap.VerMap // link to session variables
+	// last session variables snapshot
+	lastSVVersion int64
+	lastSV        map[string]string
 
 	tracer traceLogger
 
@@ -533,7 +537,7 @@ type protocolWriter struct {
 	ph *partHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer, sv *varmap.VarMap) *protocolWriter {
+func newProtocolWriter(wr *bufio.Writer, sv *vermap.VerMap) *protocolWriter {
 	return &protocolWriter{
 		wr:     wr,
 		sv:     sv,
@@ -569,8 +573,16 @@ func (w *protocolWriter) writeProlog() error {
 
 func (w *protocolWriter) write(sessionID int64, messageType messageType, commit bool, writers ...partWriter) error {
 	// check on session variables to be send as ClientInfo
-	if messageType.clientInfoSupported() && w.sv.HasUpdates() {
-		upd, del := w.sv.Delta()
+	if messageType.clientInfoSupported() && w.sv.Version() != w.lastSVVersion {
+		var upd map[string]string
+		var del map[string]bool
+
+		w.sv.WithRLock(func() {
+			upd, del = w.sv.CompareWithRLock(w.lastSV)
+			w.lastSVVersion = w.sv.Version()
+			w.lastSV = w.sv.LoadWithRLock()
+		})
+
 		// TODO: how to delete session variables via clientInfo
 		// ...for the time being we set the value to <space>...
 		for k := range del {

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/internal/container/varmap"
+	"github.com/SAP/go-hdb/internal/container/vermap"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
@@ -40,29 +40,26 @@ var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: tr
 
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel8        // Default data version format level.
-	DefaultTimeout      = 300              // Default value connection timeout (300 seconds = 5 minutes).
-	DefaultTCPKeepAlive = 15 * time.Second // Default TCP keep-alive value (copied from net.dial.go)
-	DefaultBufferSize   = 16276            // Default value bufferSize.
-	DefaultFetchSize    = 128              // Default value fetchSize.
-	DefaultBulkSize     = 1000             // Default value bulkSize.
-	DefaultLobChunkSize = 4096             // Default value lobChunkSize.
-	DefaultLegacy       = true             // Default value legacy.
+	DefaultDfv          = DfvLevel8         // Default data version format level.
+	DefaultTimeout      = 300 * time.Second // Default value connection timeout (300 seconds = 5 minutes).
+	DefaultTCPKeepAlive = 15 * time.Second  // Default TCP keep-alive value (copied from net.dial.go)
+	DefaultBufferSize   = 16276             // Default value bufferSize.
+	DefaultFetchSize    = 128               // Default value fetchSize.
+	DefaultBulkSize     = 1000              // Default value bulkSize.
+	DefaultLobChunkSize = 4096              // Default value lobChunkSize.
+	DefaultLegacy       = true              // Default value legacy.
 )
 
 // Connector minimal values.
 const (
-	minTimeout      = 0           // Minimal timeout value.
-	minFetchSize    = 1           // Minimal fetchSize value.
-	minBulkSize     = 1           // Minimal bulkSize value.
-	maxBulkSize     = p.MaxNumArg // Maximum bulk size.
-	minLobChunkSize = 128         // Minimal lobChunkSize
+	minTimeout      = 0 * time.Second // Minimal timeout value.
+	minFetchSize    = 1               // Minimal fetchSize value.
+	minBulkSize     = 1               // Minimal bulkSize value.
+	maxBulkSize     = p.MaxNumArg     // Maximum bulk size.
+	minLobChunkSize = 128             // Minimal lobChunkSize
 	// TODO check maxLobChunkSize
 	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
 )
-
-// check if Connector implements session parameter interface.
-var _ p.SessionConfig = (*Connector)(nil)
 
 /*
 SessionVariables maps session variables to their values.
@@ -75,20 +72,20 @@ A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
-	mu                              sync.RWMutex
-	host, username, password        string
-	locale                          string
-	applicationName                 string
-	bufferSize, fetchSize, bulkSize int
-	lobChunkSize                    int32
-	timeout, dfv                    int
-	pingInterval                    time.Duration
-	tcpKeepAlive                    time.Duration // see net.Dialer
-	tlsConfig                       *tls.Config
-	sessionVariables                *varmap.VarMap
-	defaultSchema                   Identifier
-	legacy                          bool
-	dialer                          dial.Dialer
+	mu                                            sync.RWMutex
+	host, username, password                      string
+	locale                                        string
+	applicationName                               string
+	bufferSize, fetchSize, bulkSize, lobChunkSize int
+	timeout                                       time.Duration
+	dfv                                           int
+	pingInterval                                  time.Duration
+	tcpKeepAlive                                  time.Duration // see net.Dialer
+	tlsConfig                                     *tls.Config
+	sessionVariables                              *vermap.VerMap
+	defaultSchema                                 Identifier
+	legacy                                        bool
+	dialer                                        dial.Dialer
 }
 
 func newConnector() *Connector {
@@ -101,7 +98,7 @@ func newConnector() *Connector {
 		timeout:          DefaultTimeout,
 		dfv:              DefaultDfv,
 		tcpKeepAlive:     DefaultTCPKeepAlive,
-		sessionVariables: varmap.NewVarMap(),
+		sessionVariables: vermap.NewVerMap(),
 		legacy:           DefaultLegacy,
 		dialer:           dial.DefaultDialer,
 	}
@@ -177,10 +174,11 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			if len(v) == 0 {
 				continue
 			}
-			timeout, err := strconv.Atoi(v[0])
+			t, err := strconv.Atoi(v[0])
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse timeout: %s", v[0])
 			}
+			timeout := time.Duration(t) * time.Second
 			if timeout < minTimeout {
 				c.timeout = minTimeout
 			} else {
@@ -241,6 +239,33 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 		}
 	}
 	return c, nil
+}
+
+// sessionConfig returns the session relevant configuration data as a snapshot.
+func (c *Connector) sessionConfig() *p.SessionConfig {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return &p.SessionConfig{
+		DriverVersion:    DriverVersion,
+		DriverName:       DriverName,
+		ApplicationName:  c.applicationName,
+		Host:             c.host,
+		Username:         c.username,
+		Password:         c.password,
+		Locale:           c.locale,
+		BufferSize:       c.bufferSize,
+		FetchSize:        c.fetchSize,
+		BulkSize:         c.bulkSize,
+		LobChunkSize:     c.lobChunkSize,
+		Dialer:           c.dialer,
+		Timeout:          c.timeout,
+		TCPKeepAlive:     c.tcpKeepAlive,
+		Dfv:              c.dfv,
+		SessionVariables: c.sessionVariables,
+		TLSConfig:        c.tlsConfig,
+		Legacy:           c.legacy,
+	}
 }
 
 // Host returns the host of the connector.
@@ -324,7 +349,7 @@ func (c *Connector) SetBulkSize(bulkSize int) error {
 }
 
 // LobChunkSize returns the lobChunkSize of the connector.
-func (c *Connector) LobChunkSize() int32 { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
+func (c *Connector) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
 
 // Dialer returns the dialer object of the connector.
 func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c.dialer }
@@ -341,19 +366,14 @@ func (c *Connector) SetDialer(dialer dial.Dialer) error {
 }
 
 // Timeout returns the timeout of the connector.
-func (c *Connector) Timeout() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
-
-// TimeoutDuration returns the timeout of the connector as a time.Duration value.
-func (c *Connector) TimeoutDuration() time.Duration {
-	return time.Duration(c.Timeout()) * time.Second
-}
+func (c *Connector) Timeout() time.Duration { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
 
 /*
 SetTimeout sets the timeout of the connector.
 
 For more information please see DSNTimeout.
 */
-func (c *Connector) SetTimeout(timeout int) error {
+func (c *Connector) SetTimeout(timeout time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if timeout < minTimeout {
@@ -429,19 +449,14 @@ func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) error {
 	return nil
 }
 
-// SessionVariablesVarMap returns the session variables VarMap stored in connector (for internal use only).
-func (c *Connector) SessionVariablesVarMap() *varmap.VarMap {
-	return c.sessionVariables
-}
-
 // SessionVariables returns the session variables stored in connector.
 func (c *Connector) SessionVariables() SessionVariables {
-	return SessionVariables(c.sessionVariables.LoadMap())
+	return SessionVariables(c.sessionVariables.Load())
 }
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.sessionVariables.StoreMap((map[string]string)(sessionVariables))
+	c.sessionVariables.Store((map[string]string)(sessionVariables))
 	return nil
 }
 

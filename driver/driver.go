@@ -65,9 +65,13 @@ func (d *Driver) Open(dsn string) (driver.Conn, error) {
 }
 
 // OpenConnector implements the driver.DriverContext interface.
-func (d *Driver) OpenConnector(dsn string) (driver.Connector, error) {
-	return NewDSNConnector(dsn)
-}
+func (d *Driver) OpenConnector(dsn string) (driver.Connector, error) { return NewDSNConnector(dsn) }
+
+// Name returns the driver name.
+func (d *Driver) Name() string { return DriverName }
+
+// Version returns the driver version.
+func (d *Driver) Version() string { return DriverVersion }
 
 // Stats returns driver statistics.
 func (d *Driver) Stats() Stats {

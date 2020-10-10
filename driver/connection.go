@@ -111,7 +111,7 @@ type Conn struct {
 }
 
 func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
-	session, err := p.NewSession(ctx, ctr)
+	session, err := p.NewSession(ctx, ctr.sessionConfig())
 	if err != nil {
 		return nil, err
 	}
