@@ -22,7 +22,7 @@ import (
 //
 // Caution:
 // Bulk statements need to be executed in the context of a transaction or connection
-// to guarantee that that all statement operations are done with the same connection.
+// to guarantee that that all statement operations are done within the same connection.
 func Example_bulkInsert() {
 	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()

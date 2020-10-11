@@ -15,8 +15,8 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleConnector shows how to open a database with the help of a connector.
-func ExampleConn_raw() {
+// ExampleConn-ServerInfo shows how to retrieve hdb server info with the help of sql.Conn.Raw().
+func ExampleConn_ServerInfo() {
 	db := sql.OpenDB(driver.DefaultTestConnector)
 	defer db.Close()
 

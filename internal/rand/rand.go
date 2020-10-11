@@ -23,7 +23,7 @@ func RandomBytes(n int) []byte {
 	return b
 }
 
-// RandomString returen a random string of alphanumeric characters and panics if crypto random reader returns an error.
+// RandomString returns a random string of alphanumeric characters and panics if crypto random reader returns an error.
 func RandomString(n int) string {
 	bytes := RandomBytes(n)
 	size := byte(len(csAlphanum)) // len character sets <= max(byte)
