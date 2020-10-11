@@ -241,33 +241,6 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 	return c, nil
 }
 
-// sessionConfig returns the session relevant configuration data as a snapshot.
-func (c *Connector) sessionConfig() *p.SessionConfig {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return &p.SessionConfig{
-		DriverVersion:    DriverVersion,
-		DriverName:       DriverName,
-		ApplicationName:  c.applicationName,
-		Host:             c.host,
-		Username:         c.username,
-		Password:         c.password,
-		Locale:           c.locale,
-		BufferSize:       c.bufferSize,
-		FetchSize:        c.fetchSize,
-		BulkSize:         c.bulkSize,
-		LobChunkSize:     c.lobChunkSize,
-		Dialer:           c.dialer,
-		Timeout:          c.timeout,
-		TCPKeepAlive:     c.tcpKeepAlive,
-		Dfv:              c.dfv,
-		SessionVariables: c.sessionVariables,
-		TLSConfig:        c.tlsConfig,
-		Legacy:           c.legacy,
-	}
-}
-
 // Host returns the host of the connector.
 func (c *Connector) Host() string { return c.host }
 

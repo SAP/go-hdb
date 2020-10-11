@@ -65,20 +65,6 @@ func (n fieldNames) decode(dec *encoding.Decoder) {
 	}
 }
 
-// A rowField represents whether a db result or a parameter Field of a stored procedure.
-type rowField interface {
-	typeName() string
-	typeLength() (int64, bool)
-	typePrecisionScale() (int64, int64, bool)
-	scanType() DataType
-	nullable() bool
-}
-
-var (
-	_ rowField = (*resultField)(nil)
-	_ rowField = (*ParameterField)(nil)
-)
-
 // TODO cache
 func newFieldValues(size int) []driver.Value {
 	return make([]driver.Value, size)

@@ -7,7 +7,6 @@ package protocol
 import (
 	"database/sql/driver"
 	"io"
-	"reflect"
 	"sync"
 )
 
@@ -49,27 +48,23 @@ var (
 
 type queryResultSet struct {
 	session *Session
-	rrs     []rowsResult
-	rr      rowsResult
-	idx     int // current result set
+	rowsResult
+
 	pos     int
 	lastErr error
 }
 
-func newQueryResultSet(session *Session, rrs ...rowsResult) *queryResultSet {
-	if len(rrs) == 0 {
-		panic("query result set is empty")
-	}
-	return &queryResultSet{session: session, rrs: rrs, rr: rrs[0]}
-}
-
-func (r *queryResultSet) Columns() []string {
-	return r.rr.columns()
+func newQueryResultSet(session *Session, rr rowsResult) *queryResultSet {
+	return &queryResultSet{session: session, rowsResult: rr}
 }
 
 func (r *queryResultSet) Close() error {
-	r.session.Lock()
-	defer r.session.Unlock()
+
+	// TODO replace lock with hold lock by conn
+	//r.session.Lock()
+	//defer r.session.Unlock()
+
+	//TODO replace in query with hold connection lock
 	defer r.session.SetInQuery(false)
 
 	// if lastError is set, attrs are nil
@@ -77,35 +72,39 @@ func (r *queryResultSet) Close() error {
 		return r.lastErr
 	}
 
-	if !r.rr.closed() {
-		return r.session.CloseResultsetID(r.rr.rsID())
+	if !r.rowsResult.closed() {
+		return r.session.CloseResultsetID(r.rowsResult.rsID())
 	}
 	return nil
 }
 
 func (r *queryResultSet) Next(dest []driver.Value) error {
-	r.session.Lock()
-	defer r.session.Unlock()
 
-	if r.session.IsBad() {
-		return driver.ErrBadConn
-	}
+	// TODO replace lock with hold lock by conn
 
-	if r.pos >= r.rr.numRow() {
-		if r.rr.lastPacket() {
+	//r.session.Lock()
+	//defer r.session.Unlock()
+
+	// TODO replace isBad with new connection call
+	//if r.session.IsBad() {
+	//	return driver.ErrBadConn
+	//}
+
+	if r.pos >= r.rowsResult.numRow() {
+		if r.rowsResult.lastPacket() {
 			return io.EOF
 		}
-		if err := r.session.fetchNext(r.rr); err != nil {
+		if err := r.session.fetchNext(r.rowsResult); err != nil {
 			r.lastErr = err //fieldValues and attrs are nil
 			return err
 		}
-		if r.rr.numRow() == 0 {
+		if r.rowsResult.numRow() == 0 {
 			return io.EOF
 		}
 		r.pos = 0
 	}
 
-	r.rr.copyRow(r.pos, dest)
+	r.rowsResult.copyRow(r.pos, dest)
 	r.pos++
 
 	// TODO eliminate
@@ -115,40 +114,6 @@ func (r *queryResultSet) Next(dest []driver.Value) error {
 		}
 	}
 	return nil
-}
-
-func (r *queryResultSet) HasNextResultSet() bool {
-	return (r.idx + 1) < len(r.rrs)
-}
-
-func (r *queryResultSet) NextResultSet() error {
-	if !r.HasNextResultSet() {
-		return io.EOF
-	}
-	r.lastErr = nil
-	r.idx++
-	r.rr = r.rrs[r.idx]
-	return nil
-}
-
-func (r *queryResultSet) ColumnTypeDatabaseTypeName(idx int) string {
-	return r.rr.field(idx).typeName()
-}
-
-func (r *queryResultSet) ColumnTypeLength(idx int) (int64, bool) {
-	return r.rr.field(idx).typeLength()
-}
-
-func (r *queryResultSet) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return r.rr.field(idx).typePrecisionScale()
-}
-
-func (r *queryResultSet) ColumnTypeNullable(idx int) (bool, bool) {
-	return r.rr.field(idx).nullable(), true
-}
-
-func (r *queryResultSet) ColumnTypeScanType(idx int) reflect.Type {
-	return scanTypeMap[r.rr.field(idx).scanType()]
 }
 
 // QrsCache is a query result cache supporting reading
@@ -180,7 +145,7 @@ func (c *queryResultSetCache) Get(id uint64) (*queryResultSet, bool) {
 	return qrs, ok
 }
 
-func (c *queryResultSetCache) cleanup(session *Session) {
+func (c *queryResultSetCache) Cleanup(session *Session) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for id, qrs := range c.cache {

@@ -7,18 +7,13 @@ package protocol
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
 	"database/sql/driver"
 	"fmt"
 	"io"
-	"net"
-	"sync"
-	"time"
 
 	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/driver/common"
-	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
@@ -31,73 +26,6 @@ func padBytes(size int) int {
 		return padding - r
 	}
 	return 0
-}
-
-// dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
-type dbConn struct {
-	address   string
-	timeout   time.Duration
-	conn      net.Conn
-	lastError error // error bad connection
-}
-
-func newDbConn(ctx context.Context, cfg *SessionConfig) (*dbConn, error) {
-	conn, err := cfg.Dialer.DialContext(ctx, cfg.Host, dial.DialerOptions{Timeout: cfg.Timeout, TCPKeepAlive: cfg.TCPKeepAlive})
-	if err != nil {
-		return nil, err
-	}
-
-	// is TLS connection requested?
-	if cfg.TLSConfig != nil {
-		conn = tls.Client(conn, cfg.TLSConfig)
-	}
-
-	return &dbConn{address: cfg.Host, timeout: cfg.Timeout, conn: conn}, nil
-}
-
-func (c *dbConn) isBad() bool { return c.lastError != nil }
-
-func (c *dbConn) deadline() (deadline time.Time) {
-	if c.timeout == 0 {
-		return
-	}
-	return time.Now().Add(c.timeout)
-}
-
-func (c *dbConn) Close() error {
-	return c.conn.Close()
-}
-
-// Read implements the io.Reader interface.
-func (c *dbConn) Read(b []byte) (n int, err error) {
-	//set timeout
-	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
-		goto retError
-	}
-	if n, err = c.conn.Read(b); err != nil {
-		goto retError
-	}
-	return
-retError:
-	plog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	c.lastError = err
-	return n, driver.ErrBadConn
-}
-
-// Write implements the io.Writer interface.
-func (c *dbConn) Write(b []byte) (n int, err error) {
-	//set timeout
-	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
-		goto retError
-	}
-	if n, err = c.conn.Write(b); err != nil {
-		goto retError
-	}
-	return
-retError:
-	plog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	c.lastError = err
-	return n, driver.ErrBadConn
 }
 
 const (
@@ -113,19 +41,9 @@ type Session struct {
 	serverOptions connectOptions
 	serverVersion common.HDBVersion
 
-	conn *dbConn
-	// rd   *bufio.Reader
-	// wr   *bufio.Writer
-
 	pr *protocolReader
 	pw *protocolWriter
 
-	//serialize write request - read reply
-	//supports calling session methods in go routines (driver methods with context cancellation)
-	mu       sync.Mutex
-	isLocked bool
-
-	inTx bool // in transaction
 	/*
 		As long as a session is in query mode no other sql statement must be executed.
 		Example:
@@ -139,46 +57,21 @@ type Session struct {
 }
 
 // NewSession creates a new database session.
-func NewSession(ctx context.Context, cfg *SessionConfig) (*Session, error) {
-
-	conn, err := newDbConn(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	var bufRd *bufio.Reader
-	var bufWr *bufio.Writer
-
-	bufferSize := cfg.BufferSize
-	if bufferSize > 0 {
-		bufRd = bufio.NewReaderSize(conn, bufferSize)
-		bufWr = bufio.NewWriterSize(conn, bufferSize)
-	} else {
-		bufRd = bufio.NewReader(conn)
-		bufWr = bufio.NewWriter(conn)
-	}
-
-	pw := newProtocolWriter(bufWr, cfg.SessionVariables) // write upstream
+func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (*Session, error) {
+	pw := newProtocolWriter(rw.Writer, cfg.SessionVariables) // write upstream
 	if err := pw.writeProlog(); err != nil {
 		return nil, err
 	}
 
-	pr := newProtocolReader(false, bufRd) // read downstream
+	pr := newProtocolReader(false, rw.Reader) // read downstream
 	if err := pr.readProlog(); err != nil {
 		return nil, err
 	}
 
-	s := &Session{
-		cfg:       cfg,
-		sessionID: defaultSessionID,
-		conn:      conn,
-		// rd:        bufRd,
-		// wr:        bufWr,
-		pr: pr,
-		pw: pw,
-	}
+	s := &Session{cfg: cfg, sessionID: defaultSessionID, pr: pr, pw: pw}
 
 	authStepper := newAuth(cfg.Username, cfg.Password)
+	var err error
 	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
 		return nil, err
 	}
@@ -191,46 +84,14 @@ func NewSession(ctx context.Context, cfg *SessionConfig) (*Session, error) {
 	return s, nil
 }
 
-// Lock session.
-func (s *Session) Lock() { s.mu.Lock(); s.isLocked = true }
-
-// Unlock session.
-func (s *Session) Unlock() { s.isLocked = false; s.mu.Unlock() }
-
-// checkLock checks if the session is locked
-func (s *Session) checkLock() {
-	if !s.isLocked {
-		panic("Session is not locked")
-	}
-}
-
-// Kill session.
-func (s *Session) Kill() {
-	s.checkLock()
-	plog.Printf("Kill session %d", s.sessionID)
-	s.conn.Close()
-}
-
 // Reset resets the session.
-func (s *Session) Reset() { s.checkLock(); s.SetInQuery(false); QrsCache.cleanup(s) }
-
-// Close closes the session.
-func (s *Session) Close() error { s.checkLock(); QrsCache.cleanup(s); return s.conn.Close() }
-
-// InTx indicates, that the session is in transaction mode.
-func (s *Session) InTx() bool { s.checkLock(); return s.inTx }
-
-// SetInTx sets the session transaction mode.
-func (s *Session) SetInTx(v bool) { s.checkLock(); s.inTx = v }
+func (s *Session) Reset() { s.SetInQuery(false); QrsCache.Cleanup(s) }
 
 // InQuery indicates, that the session is in query mode.
-func (s *Session) InQuery() bool { s.checkLock(); return s.inQuery }
+func (s *Session) InQuery() bool { return s.inQuery }
 
 // SetInQuery sets the session query mode.
-func (s *Session) SetInQuery(v bool) { s.checkLock(); s.inQuery = v }
-
-// IsBad indicates, that the session is in bad state.
-func (s *Session) IsBad() bool { s.checkLock(); return s.conn.isBad() }
+func (s *Session) SetInQuery(v bool) { s.inQuery = v }
 
 // ServerVersion returns the version reported by the hdb server.
 func (s *Session) ServerVersion() common.HDBVersion {
@@ -319,12 +180,12 @@ func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, erro
 }
 
 // QueryDirect executes a query without query parameters.
-func (s *Session) QueryDirect(query string) (driver.Rows, error) {
-	s.checkLock()
+func (s *Session) QueryDirect(query string, commit bool) (driver.Rows, error) {
+
 	s.SetInQuery(true)
 
 	// allow e.g inserts as query -> handle commit like in ExecDirect
-	if err := s.pw.write(s.sessionID, mtExecuteDirect, !s.inTx, command(query)); err != nil {
+	if err := s.pw.write(s.sessionID, mtExecuteDirect, commit, command(query)); err != nil {
 		return nil, err
 	}
 
@@ -355,10 +216,8 @@ func (s *Session) QueryDirect(query string) (driver.Rows, error) {
 }
 
 // ExecDirect executes a sql statement without statement parameters.
-func (s *Session) ExecDirect(query string) (driver.Result, error) {
-	s.checkLock()
-
-	if err := s.pw.write(s.sessionID, mtExecuteDirect, !s.inTx, command(query)); err != nil {
+func (s *Session) ExecDirect(query string, commit bool) (driver.Result, error) {
+	if err := s.pw.write(s.sessionID, mtExecuteDirect, commit, command(query)); err != nil {
 		return nil, err
 	}
 
@@ -380,8 +239,6 @@ func (s *Session) ExecDirect(query string) (driver.Result, error) {
 
 // Prepare prepares a sql statement.
 func (s *Session) Prepare(query string) (*PrepareResult, error) {
-	s.checkLock()
-
 	if err := s.pw.write(s.sessionID, mtPrepare, false, command(query)); err != nil {
 		return nil, err
 	}
@@ -409,10 +266,8 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 }
 
 // Exec executes a sql statement.
-func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
-	s.checkLock()
-
-	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue, commit bool) (driver.Result, error) {
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
 
@@ -454,7 +309,6 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue) (driver.Resu
 
 // QueryCall executes a stored procecure (by Query).
 func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
-	s.checkLock()
 	s.SetInQuery(true)
 
 	/*
@@ -513,8 +367,6 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 
 // ExecCall executes a stored procecure (by Exec).
 func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
-	s.checkLock()
-
 	/*
 		in,- and output args
 		invariant: #prmFields == #args
@@ -621,12 +473,11 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 }
 
 // Query executes a query.
-func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
-	s.checkLock()
+func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue, commit bool) (driver.Rows, error) {
 	s.SetInQuery(true)
 
 	// allow e.g inserts as query -> handle commit like in exec
-	if err := s.pw.write(s.sessionID, mtExecute, !s.inTx, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
 
@@ -654,8 +505,6 @@ func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue) (driver.Row
 
 // FetchNext fetches next chunk in query result set.
 func (s *Session) fetchNext(rr rowsResult) error {
-	s.checkLock()
-
 	qr, err := rr.queryResult()
 	if err != nil {
 		return err
@@ -678,7 +527,6 @@ func (s *Session) fetchNext(rr rowsResult) error {
 
 // DropStatementID releases the hdb statement handle.
 func (s *Session) DropStatementID(id uint64) error {
-	s.checkLock()
 	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtDropStatementID, false, statementID(id)); err != nil {
 		return err
@@ -688,7 +536,6 @@ func (s *Session) DropStatementID(id uint64) error {
 
 // CloseResultsetID releases the hdb resultset handle.
 func (s *Session) CloseResultsetID(id uint64) error {
-	s.checkLock()
 	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCloseResultset, false, resultsetID(id)); err != nil {
 		return err
@@ -698,7 +545,6 @@ func (s *Session) CloseResultsetID(id uint64) error {
 
 // Commit executes a database commit.
 func (s *Session) Commit() error {
-	s.checkLock()
 	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCommit, false); err != nil {
 		return err
@@ -706,13 +552,11 @@ func (s *Session) Commit() error {
 	if err := s.pr.readSkip(); err != nil {
 		return err
 	}
-	s.inTx = false
 	return nil
 }
 
 // Rollback executes a database rollback.
 func (s *Session) Rollback() error {
-	s.checkLock()
 	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtRollback, false); err != nil {
 		return err
@@ -720,7 +564,17 @@ func (s *Session) Rollback() error {
 	if err := s.pr.readSkip(); err != nil {
 		return err
 	}
-	s.inTx = false
+	return nil
+}
+
+// Disconnect disconnects the session.
+func (s *Session) Disconnect() error {
+	if err := s.pw.write(s.sessionID, mtDisconnect, false); err != nil {
+		return err
+	}
+	if err := s.pr.readSkip(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -730,8 +584,9 @@ func (s *Session) Rollback() error {
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
 func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
-	s.Lock()
-	defer s.Unlock()
+	// TODO lock should be held by QureyResultSet
+	//s.Lock()
+	//defer s.Unlock()
 
 	var err error
 

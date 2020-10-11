@@ -5,15 +5,20 @@
 package driver
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/common"
+	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	p "github.com/SAP/go-hdb/internal/protocol"
 	"github.com/SAP/go-hdb/internal/protocol/scanner"
@@ -88,6 +93,60 @@ func init() {
 	p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
 }
 
+// dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
+type dbConn struct {
+	conn      net.Conn
+	timeout   time.Duration
+	lastError error // error bad connection
+}
+
+func (c *dbConn) isBad() bool { return c.lastError != nil }
+
+func (c *dbConn) deadline() (deadline time.Time) {
+	if c.timeout == 0 {
+		return
+	}
+	return time.Now().Add(c.timeout)
+}
+
+func (c *dbConn) Close() error {
+	return c.conn.Close()
+}
+
+// Read implements the io.Reader interface.
+func (c *dbConn) Read(b []byte) (n int, err error) {
+	//set timeout
+	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
+		goto retError
+	}
+	if n, err = c.conn.Read(b); err != nil {
+		goto retError
+	}
+	return
+retError:
+	// TODO logger
+	// plog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
+}
+
+// Write implements the io.Writer interface.
+func (c *dbConn) Write(b []byte) (n int, err error) {
+	//set timeout
+	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
+		goto retError
+	}
+	if n, err = c.conn.Write(b); err != nil {
+		goto retError
+	}
+	return
+retError:
+	// TODO logger
+	// plog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
+}
+
 //  check if conn implements all required interfaces
 var (
 	_ driver.Conn               = (*Conn)(nil)
@@ -104,14 +163,67 @@ var (
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type Conn struct {
-	ctr     *Connector
+	sync.Mutex
+
+	dbConn  *dbConn
 	session *p.Session
 	scanner *scanner.Scanner
 	closed  chan struct{}
+
+	inTx bool // in transaction
+	// TODO replace with holding connection lock in QueryResultSet
+	/*
+		As long as a session is in query mode no other sql statement must be executed.
+		Example:
+		- pinger is active
+		- select with blob fields is executed
+		- scan is hitting the database again (blob streaming)
+		- if in between a ping gets executed (ping selects db) hdb raises error
+		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
+	*/
+	inQuery bool // in query
+
+	bulkSize int
 }
 
 func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
-	session, err := p.NewSession(ctx, ctr.sessionConfig())
+
+	ctr.mu.RLock() // lock connector
+
+	conn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
+	if err != nil {
+		return nil, err
+	}
+
+	// is TLS connection requested?
+	if ctr.tlsConfig != nil {
+		conn = tls.Client(conn, ctr.tlsConfig)
+	}
+
+	dbConn := &dbConn{conn: conn, timeout: ctr.timeout}
+	// buffer connection
+	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
+
+	sessionConfig := &p.SessionConfig{
+		DriverVersion:    DriverVersion,
+		DriverName:       DriverName,
+		ApplicationName:  ctr.applicationName,
+		Username:         ctr.username,
+		Password:         ctr.password,
+		Locale:           ctr.locale,
+		FetchSize:        ctr.fetchSize,
+		LobChunkSize:     ctr.lobChunkSize,
+		Dfv:              ctr.dfv,
+		SessionVariables: ctr.sessionVariables,
+		Legacy:           ctr.legacy,
+	}
+
+	pingInterval := ctr.pingInterval
+	bulkSize := ctr.bulkSize
+
+	ctr.mu.RUnlock() // unlock connector
+
+	session, err := p.NewSession(ctx, rw, sessionConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -128,13 +240,12 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", sv, minimalServerVersion)
 	}
 
-	c := &Conn{ctr: ctr, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+	c := &Conn{dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{}), bulkSize: bulkSize}
 	if err := c.init(ctx, ctr); err != nil {
 		return nil, err
 	}
-	d := ctr.PingInterval()
-	if d != 0 {
-		go c.pinger(d, c.closed)
+	if pingInterval != 0 {
+		go c.pinger(pingInterval, c.closed)
 	}
 
 	hdbDriver.addConn(1) // increment open connections.
@@ -149,6 +260,13 @@ func (c *Conn) init(ctx context.Context, ctr *Connector) error {
 		}
 	}
 	return nil
+}
+
+// kill conection
+func (c *Conn) kill() {
+	// TODO logger
+	// plog.Printf("Kill session %d", s.sessionID)
+	c.dbConn.Close()
 }
 
 func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
@@ -168,12 +286,13 @@ func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
 
 // Ping implements the driver.Pinger interface.
 func (c *Conn) Ping(ctx context.Context) (err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
+
 	if c.session.InQuery() {
 		return ErrNestedQuery
 	}
@@ -183,13 +302,13 @@ func (c *Conn) Ping(ctx context.Context) (err error) {
 
 	done := make(chan struct{})
 	go func() {
-		_, err = c.session.QueryDirect(pingQuery)
+		_, err = c.session.QueryDirect(pingQuery, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return ctx.Err()
 	case <-done:
 		return err
@@ -198,11 +317,11 @@ func (c *Conn) Ping(ctx context.Context) (err error) {
 
 // ResetSession implements the driver.SessionResetter interface.
 func (c *Conn) ResetSession(ctx context.Context) error {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	c.session.Reset()
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
 	return nil
@@ -210,12 +329,13 @@ func (c *Conn) ResetSession(ctx context.Context) error {
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
+
 	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
@@ -245,14 +365,14 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		case <-ctx.Done():
 			return
 		}
-		stmt, err = newStmt(c.session, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr)
+		stmt, err = newStmt(c, qd.Query(), qd.IsBulk(), c.bulkSize, pr)
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addStmt(1) // increment number of statements.
@@ -262,25 +382,32 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 // Close implements the driver.Conn interface.
 func (c *Conn) Close() error {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	hdbDriver.addConn(-1) // decrement open connections.
 	close(c.closed)       // signal connection close
-	return c.session.Close()
+
+	// cleanup query cache
+	p.QrsCache.Cleanup(c.session)
+
+	c.session.Disconnect() // ignore error
+	return c.dbConn.Close()
 }
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if c.session.InTx() {
+
+	if c.inTx {
 		return nil, ErrNestedTransaction
 	}
+
 	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
@@ -293,22 +420,22 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	done := make(chan struct{})
 	go func() {
 		// set isolation level
-		if _, err = c.session.ExecDirect(fmt.Sprintf(isolationLevelStmt, level)); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(isolationLevelStmt, level), !c.inTx); err != nil {
 			goto done
 		}
 		// set access mode
-		if _, err = c.session.ExecDirect(fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly])); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly]), !c.inTx); err != nil {
 			goto done
 		}
-		c.session.SetInTx(true)
-		tx = newTx(c.session)
+		c.inTx = true
+		tx = newTx(c)
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addTx(1) // increment number of transactions.
@@ -318,12 +445,13 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
+
 	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
@@ -357,13 +485,13 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 
 	done := make(chan struct{})
 	go func() {
-		rows, err = c.session.QueryDirect(query)
+		rows, err = c.session.QueryDirect(query, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, err
@@ -372,12 +500,13 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 
 // ExecContext implements the driver.ExecerContext interface.
 func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
+
 	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
@@ -397,14 +526,14 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if err != nil {
 			goto done
 		}
-		r, err = c.session.ExecDirect(qd.Query())
+		r, err = c.session.ExecDirect(qd.Query(), !c.inTx)
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
@@ -436,40 +565,38 @@ var (
 )
 
 type tx struct {
-	closed  bool
-	session *p.Session
+	conn   *Conn
+	closed bool
 }
 
-func newTx(session *p.Session) *tx { return &tx{session: session} }
+func newTx(conn *Conn) *tx { return &tx{conn: conn} }
 
-func (t *tx) close() {
+func (t *tx) Commit() error   { return t.close(false) }
+func (t *tx) Rollback() error { return t.close(true) }
+
+func (t *tx) close(rollback bool) error {
+	c := t.conn
+
+	c.Lock()
+	defer c.Unlock()
+
 	if t.closed {
-		return
+		return nil
 	}
-	hdbDriver.addTx(-1) // decrement number of transactions.
 	t.closed = true
-}
 
-func (t *tx) Commit() error {
-	t.session.Lock()
-	defer t.session.Unlock()
-
-	t.close()
-	if t.session.IsBad() {
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
-	return t.session.Commit()
-}
 
-func (t *tx) Rollback() error {
-	t.session.Lock()
-	defer t.session.Unlock()
+	c.inTx = false
 
-	t.close()
-	if t.session.IsBad() {
-		return driver.ErrBadConn
+	hdbDriver.addTx(-1) // decrement number of transactions.
+
+	if rollback {
+		return c.session.Rollback()
 	}
-	return t.session.Rollback()
+	return c.session.Commit()
 }
 
 //statement
@@ -483,8 +610,8 @@ var (
 )
 
 type stmt struct {
+	conn              *Conn
 	pr                *p.PrepareResult
-	session           *p.Session
 	query             string
 	bulk, flush       bool
 	bulkSize, numBulk int
@@ -492,19 +619,25 @@ type stmt struct {
 	args              []driver.NamedValue
 }
 
-func newStmt(session *p.Session, query string, bulk bool, bulkSize int, pr *p.PrepareResult) (*stmt, error) {
-	return &stmt{session: session, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}, nil
+func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) (*stmt, error) {
+	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}, nil
 }
 
 func (s *stmt) Close() error {
-	s.session.Lock()
-	defer s.session.Unlock()
+	c := s.conn
+
+	c.Lock()
+	defer c.Unlock()
+
+	if c.dbConn.isBad() {
+		return driver.ErrBadConn
+	}
 
 	hdbDriver.addStmt(-1) // decrement number of statements.
 	if len(s.args) != 0 { // log always //TODO: Fatal?
 		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
 	}
-	return s.session.DropStatementID(s.pr.StmtID())
+	return c.session.DropStatementID(s.pr.StmtID())
 }
 
 func (s *stmt) NumInput() int {
@@ -519,13 +652,16 @@ func (s *stmt) NumInput() int {
 }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
-	s.session.Lock()
-	defer s.session.Unlock()
+	c := s.conn
 
-	if s.session.IsBad() {
+	c.Lock()
+	defer c.Unlock()
+
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if s.session.InQuery() {
+
+	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
 	if s.trace {
@@ -546,16 +682,16 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	done := make(chan struct{})
 	go func() {
 		if s.pr.IsProcedureCall() {
-			rows, err = s.session.QueryCall(s.pr, args)
+			rows, err = c.session.QueryCall(s.pr, args)
 		} else {
-			rows, err = s.session.Query(s.pr, args)
+			rows, err = c.session.Query(s.pr, args, !c.inTx)
 		}
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		s.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, err
@@ -598,13 +734,16 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 		}
 	}
 
-	s.session.Lock()
-	defer s.session.Unlock()
+	c := s.conn
 
-	if s.session.IsBad() {
+	c.Lock()
+	defer c.Unlock()
+
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if s.session.InQuery() {
+
+	if c.session.InQuery() {
 		return nil, ErrNestedQuery
 	}
 
@@ -612,20 +751,20 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 	go func() {
 		switch {
 		case s.pr.IsProcedureCall():
-			r, err = s.session.ExecCall(s.pr, args)
+			r, err = c.session.ExecCall(s.pr, args)
 		case s.bulk: // flush case only
-			r, err = s.session.Exec(s.pr, s.args)
+			r, err = c.session.Exec(s.pr, s.args, !c.inTx)
 			s.args = s.args[:0]
 			s.numBulk = 0
 		default:
-			r, err = s.session.Exec(s.pr, args)
+			r, err = c.session.Exec(s.pr, args, !c.inTx)
 		}
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		s.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err

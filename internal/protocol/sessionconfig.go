@@ -5,10 +5,6 @@
 package protocol
 
 import (
-	"crypto/tls"
-	"time"
-
-	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/internal/container/vermap"
 )
 
@@ -17,17 +13,12 @@ type SessionConfig struct {
 	DriverVersion, DriverName string
 	ApplicationName           string
 
-	Host, Username, Password string
-	Locale                   string
+	Username, Password string
+	Locale             string
 
-	BufferSize, FetchSize, BulkSize, LobChunkSize int
-
-	Dialer       dial.Dialer
-	Timeout      time.Duration
-	TCPKeepAlive time.Duration
+	FetchSize, LobChunkSize int
 
 	Dfv              int
 	SessionVariables *vermap.VerMap
-	TLSConfig        *tls.Config
 	Legacy           bool
 }

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	"github.com/SAP/go-hdb/internal/container/vermap"
@@ -20,13 +21,28 @@ import (
 // rowsResult represents the row resultset of a query or stored procedure (output parameters, call table results).
 type rowsResult interface {
 	rsID() uint64                         // RsID returns the resultset id.
-	columns() []string                    // Columns returns the names of the resultset columns.
 	numRow() int                          // NumRow returns the number of rows available in FieldValues.
 	closed() bool                         // Closed returns true if the database resultset is closed (completely read).
 	lastPacket() bool                     // LastPacket returns true if the last packet of a resultset was read from database.
 	copyRow(idx int, dest []driver.Value) // CopyRow fills the dest value slice with row data at index idx.
-	field(idx int) rowField               // RowField returns the field descriptor at position idx.
 	queryResult() (*queryResult, error)   // Used by fetch next if RowsResult is based on a query (nil for CallResult).
+
+	// driver.Rows
+	Columns() []string
+
+	// driver.RowsColumnTypeDatabaseTypeName
+	ColumnTypeDatabaseTypeName(idx int) string
+	// driver.RowsColumnTypeLength
+	ColumnTypeLength(idx int) (int64, bool)
+	// driver.RowsColumnTypeNullable
+	ColumnTypeNullable(idx int) (bool, bool)
+	// driver.RowsColumnTypePrecisionScale
+	ColumnTypePrecisionScale(idx int) (int64, int64, bool)
+	// driver.RowsColumnTypeScanType
+	ColumnTypeScanType(idx int) reflect.Type
+	// driver.RowsNextResultSet
+	HasNextResultSet() bool
+	NextResultSet() error
 }
 
 var (
@@ -108,11 +124,6 @@ func (qr *queryResult) rsID() uint64 {
 	return qr._rsID
 }
 
-// Field implements the RowsResult interface.
-func (qr *queryResult) field(idx int) rowField {
-	return qr.fields[idx]
-}
-
 // NumRow implements the RowsResult interface.
 func (qr *queryResult) numRow() int {
 	if len(qr.fieldValues) == 0 {
@@ -137,8 +148,8 @@ func (qr *queryResult) lastPacket() bool {
 	return qr.attributes.LastPacket()
 }
 
-// Columns implements the RowsResult interface.
-func (qr *queryResult) columns() []string {
+// Columns implements the driver.Rows interface.
+func (qr *queryResult) Columns() []string {
 	if qr._columns == nil {
 		numField := len(qr.fields)
 		qr._columns = make([]string, numField)
@@ -148,6 +159,24 @@ func (qr *queryResult) columns() []string {
 	}
 	return qr._columns
 }
+
+func (qr *queryResult) ColumnTypeDatabaseTypeName(idx int) string { return qr.fields[idx].typeName() }
+func (qr *queryResult) ColumnTypeLength(idx int) (int64, bool)    { return qr.fields[idx].typeLength() }
+func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return qr.fields[idx].typePrecisionScale()
+}
+func (qr *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return qr.fields[idx].nullable(), true
+}
+func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type {
+	return scanTypeMap[qr.fields[idx].scanType()]
+}
+
+// nest result set:
+// - currently not used
+// - could be implemented as pointer to next queryResult (advancing by copying data from next)
+func (qr *queryResult) HasNextResultSet() bool { return false }
+func (qr *queryResult) NextResultSet() error   { return io.EOF }
 
 func (qr *queryResult) queryResult() (*queryResult, error) {
 	return qr, nil
@@ -164,11 +193,6 @@ type callResult struct { // call output parameters
 // RsID implements the RowsResult interface.
 func (cr *callResult) rsID() uint64 {
 	return 0
-}
-
-// Field implements the RowsResult interface.
-func (cr *callResult) field(idx int) rowField {
-	return cr.outputFields[idx]
 }
 
 // NumRow implements the RowsResult interface.
@@ -195,8 +219,8 @@ func (cr *callResult) lastPacket() bool {
 	return true
 }
 
-// Columns implements the RowsResult interface.
-func (cr *callResult) columns() []string {
+// Columns implements the driver.Rows interface.
+func (cr *callResult) Columns() []string {
 	if cr._columns == nil {
 		numField := len(cr.outputFields)
 		cr._columns = make([]string, numField)
@@ -206,6 +230,28 @@ func (cr *callResult) columns() []string {
 	}
 	return cr._columns
 }
+
+func (cr *callResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return cr.outputFields[idx].typeName()
+}
+func (cr *callResult) ColumnTypeLength(idx int) (int64, bool) {
+	return cr.outputFields[idx].typeLength()
+}
+func (cr *callResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return cr.outputFields[idx].typePrecisionScale()
+}
+func (cr *callResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return cr.outputFields[idx].nullable(), true
+}
+func (cr *callResult) ColumnTypeScanType(idx int) reflect.Type {
+	return scanTypeMap[cr.outputFields[idx].scanType()]
+}
+
+// nest result set:
+// - currently not used
+// - could be implemented as pointer to next queryResult (advancing by copying data from next)
+func (cr *callResult) HasNextResultSet() bool { return false }
+func (cr *callResult) NextResultSet() error   { return io.EOF }
 
 func (cr *callResult) queryResult() (*queryResult, error) {
 	return nil, errors.New("cannot use call result as query result")
