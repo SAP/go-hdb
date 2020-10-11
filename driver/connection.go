@@ -233,10 +233,20 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
 
-	session, err := p.NewSession(
-		ctx,
-		rw,
-		&p.SessionConfig{DriverVersion, DriverName, ctr.applicationName, ctr.username, ctr.password, ctr.sessionVariables, ctr.locale, ctr.fetchSize, ctr.lobChunkSize, ctr.dfv, ctr.legacy},
+	session, err := p.NewSession(ctx, rw,
+		&p.SessionConfig{
+			DriverVersion:    DriverVersion,
+			DriverName:       DriverName,
+			ApplicationName:  ctr.applicationName,
+			Username:         ctr.username,
+			Password:         ctr.password,
+			SessionVariables: ctr.sessionVariables,
+			Locale:           ctr.locale,
+			FetchSize:        ctr.fetchSize,
+			LobChunkSize:     ctr.lobChunkSize,
+			Dfv:              ctr.dfv,
+			Legacy:           ctr.legacy,
+		},
 	)
 	if err != nil {
 		return nil, err
