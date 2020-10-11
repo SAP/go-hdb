@@ -15,6 +15,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/common"
@@ -63,10 +64,10 @@ var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries
 const (
-	pingQuery          = "select 1 from dummy"
-	isolationLevelStmt = "set transaction isolation level %s"
-	accessModeStmt     = "set transaction %s"
-	defaultSchema      = "set schema %s"
+	dummyQuery        = "select 1 from dummy"
+	setIsolationLevel = "set transaction isolation level %s"
+	setAccessMode     = "set transaction %s"
+	setDefaultSchema  = "set schema %s"
 )
 
 var minimalServerVersion = common.ParseHDBVersion("2.00.042")
@@ -124,8 +125,7 @@ func (c *dbConn) Read(b []byte) (n int, err error) {
 	}
 	return
 retError:
-	// TODO logger
-	// plog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
 	c.lastError = err
 	return n, driver.ErrBadConn
 }
@@ -141,10 +141,40 @@ func (c *dbConn) Write(b []byte) (n int, err error) {
 	}
 	return
 retError:
-	// TODO logger
-	// plog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
 	c.lastError = err
 	return n, driver.ErrBadConn
+}
+
+const (
+	lrNestedQuery = 1
+)
+
+type connLock struct {
+	// 64 bit alignment
+	lockReason int64 // atomic access
+
+	mu     sync.Mutex // tryLock mutex
+	connMu sync.Mutex // connection mutex
+}
+
+func (l *connLock) tryLock(lockReason int64) error {
+	l.mu.Lock()
+	if atomic.LoadInt64(&l.lockReason) == lrNestedQuery {
+		l.mu.Unlock()
+		return ErrNestedQuery
+	}
+	l.connMu.Lock()
+	atomic.StoreInt64(&l.lockReason, lockReason)
+	l.mu.Unlock()
+	return nil
+}
+
+func (l *connLock) lock() { l.connMu.Lock() }
+
+func (l *connLock) unlock() {
+	atomic.StoreInt64(&l.lockReason, 0)
+	l.connMu.Unlock()
 }
 
 //  check if conn implements all required interfaces
@@ -163,15 +193,7 @@ var (
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type Conn struct {
-	sync.Mutex
-
-	dbConn  *dbConn
-	session *p.Session
-	scanner *scanner.Scanner
-	closed  chan struct{}
-
-	inTx bool // in transaction
-	// TODO replace with holding connection lock in QueryResultSet
+	// Holding connection lock in QueryResultSet (see rows.onClose)
 	/*
 		As long as a session is in query mode no other sql statement must be executed.
 		Example:
@@ -181,47 +203,61 @@ type Conn struct {
 		- if in between a ping gets executed (ping selects db) hdb raises error
 		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
 	*/
-	inQuery bool // in query
+	connLock
+
+	dbConn  *dbConn
+	session *p.Session
+	scanner *scanner.Scanner
+	closed  chan struct{}
+
+	inTx bool // in transaction
 
 	bulkSize int
 }
 
-func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
+func newConn(ctx context.Context, ctrX *Connector) (driver.Conn, error) {
 
-	ctr.mu.RLock() // lock connector
+	ctrX.mu.RLock() // lock connector
 
-	conn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
+	sessionConfig := &p.SessionConfig{
+		DriverVersion:    DriverVersion,
+		DriverName:       DriverName,
+		ApplicationName:  ctrX.applicationName,
+		Username:         ctrX.username,
+		Password:         ctrX.password,
+		Locale:           ctrX.locale,
+		FetchSize:        ctrX.fetchSize,
+		LobChunkSize:     ctrX.lobChunkSize,
+		Dfv:              ctrX.dfv,
+		SessionVariables: ctrX.sessionVariables,
+		Legacy:           ctrX.legacy,
+	}
+
+	dialer := ctrX.dialer
+	host := ctrX.host
+	timeout := ctrX.timeout
+	tcpKeepAlive := ctrX.tcpKeepAlive
+	tlsConfig := ctrX.tlsConfig
+	pingInterval := ctrX.pingInterval
+	bufferSize := ctrX.bufferSize
+	bulkSize := ctrX.bulkSize
+	defaultSchema := ctrX.defaultSchema
+
+	ctrX.mu.RUnlock() // unlock connector
+
+	conn, err := dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: timeout, TCPKeepAlive: tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if ctr.tlsConfig != nil {
-		conn = tls.Client(conn, ctr.tlsConfig)
+	if tlsConfig != nil {
+		conn = tls.Client(conn, tlsConfig)
 	}
 
-	dbConn := &dbConn{conn: conn, timeout: ctr.timeout}
+	dbConn := &dbConn{conn: conn, timeout: timeout}
 	// buffer connection
-	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
-
-	sessionConfig := &p.SessionConfig{
-		DriverVersion:    DriverVersion,
-		DriverName:       DriverName,
-		ApplicationName:  ctr.applicationName,
-		Username:         ctr.username,
-		Password:         ctr.password,
-		Locale:           ctr.locale,
-		FetchSize:        ctr.fetchSize,
-		LobChunkSize:     ctr.lobChunkSize,
-		Dfv:              ctr.dfv,
-		SessionVariables: ctr.sessionVariables,
-		Legacy:           ctr.legacy,
-	}
-
-	pingInterval := ctr.pingInterval
-	bulkSize := ctr.bulkSize
-
-	ctr.mu.RUnlock() // unlock connector
+	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, bufferSize), bufio.NewWriterSize(dbConn, bufferSize))
 
 	session, err := p.NewSession(ctx, rw, sessionConfig)
 	if err != nil {
@@ -241,9 +277,12 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	}
 
 	c := &Conn{dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{}), bulkSize: bulkSize}
-	if err := c.init(ctx, ctr); err != nil {
-		return nil, err
+	if defaultSchema != "" {
+		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, defaultSchema), nil); err != nil {
+			return nil, err
+		}
 	}
+
 	if pingInterval != 0 {
 		go c.pinger(pingInterval, c.closed)
 	}
@@ -253,19 +292,9 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	return c, nil
 }
 
-func (c *Conn) init(ctx context.Context, ctr *Connector) error {
-	if ctr.defaultSchema != "" {
-		if _, err := c.ExecContext(ctx, fmt.Sprintf(defaultSchema, ctr.defaultSchema), nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // kill conection
 func (c *Conn) kill() {
-	// TODO logger
-	// plog.Printf("Kill session %d", s.sessionID)
+	dlog.Printf("Kill session %d", s.sessionID)
 	c.dbConn.Close()
 }
 
@@ -286,23 +315,18 @@ func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
 
 // Ping implements the driver.Pinger interface.
 func (c *Conn) Ping(ctx context.Context) (err error) {
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(0); err != nil {
+		return err
+	}
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
 
-	if c.session.InQuery() {
-		return ErrNestedQuery
-	}
-
-	// caution!!!
-	defer c.session.SetInQuery(false)
-
 	done := make(chan struct{})
 	go func() {
-		_, err = c.session.QueryDirect(pingQuery, !c.inTx)
+		_, err = c.session.QueryDirect(dummyQuery, !c.inTx)
 		close(done)
 	}()
 
@@ -317,10 +341,11 @@ func (c *Conn) Ping(ctx context.Context) (err error) {
 
 // ResetSession implements the driver.SessionResetter interface.
 func (c *Conn) ResetSession(ctx context.Context) error {
-	c.Lock()
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
-	c.session.Reset()
+	p.QueryResultCache.Cleanup(c.session)
+
 	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
@@ -329,15 +354,13 @@ func (c *Conn) ResetSession(ctx context.Context) error {
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
-	}
-
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
 	}
 
 	done := make(chan struct{})
@@ -382,14 +405,14 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 // Close implements the driver.Conn interface.
 func (c *Conn) Close() error {
-	c.Lock()
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
 	hdbDriver.addConn(-1) // decrement open connections.
 	close(c.closed)       // signal connection close
 
 	// cleanup query cache
-	p.QrsCache.Cleanup(c.session)
+	p.QueryResultCache.Cleanup(c.session)
 
 	c.session.Disconnect() // ignore error
 	return c.dbConn.Close()
@@ -397,8 +420,10 @@ func (c *Conn) Close() error {
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
@@ -406,10 +431,6 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 	if c.inTx {
 		return nil, ErrNestedTransaction
-	}
-
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
 	}
 
 	level, ok := isolationLevel[opts.Isolation]
@@ -420,11 +441,11 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	done := make(chan struct{})
 	go func() {
 		// set isolation level
-		if _, err = c.session.ExecDirect(fmt.Sprintf(isolationLevelStmt, level), !c.inTx); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(setIsolationLevel, level), !c.inTx); err != nil {
 			goto done
 		}
 		// set access mode
-		if _, err = c.session.ExecDirect(fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly]), !c.inTx); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(setAccessMode, readOnly[opts.ReadOnly]), !c.inTx); err != nil {
 			goto done
 		}
 		c.inTx = true
@@ -445,23 +466,23 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
+	}
 
 	if c.dbConn.isBad() {
+		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
-	}
-
 	if len(args) != 0 {
+		c.unlock()
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
 	qd, err := p.NewQueryDescr(query, c.scanner)
 	if err != nil {
+		c.unlock()
 		return nil, err
 	}
 	switch qd.Kind() {
@@ -469,14 +490,20 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		// direct execution of call procedure
 		// - returns no parameter metadata (sps 82) but only field values
 		// --> let's take the 'prepare way' for stored procedures
+		c.unlock()
 		return nil, driver.ErrSkip
 	case p.QkID:
 		// query call table result
-		qrs, ok := p.QrsCache.Get(qd.ID())
+		rows, ok := p.QueryResultCache.Get(qd.ID())
 		if !ok {
 			return nil, fmt.Errorf("invalid result set id %s", query)
 		}
-		return qrs, nil
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+		} else {
+			c.unlock()
+		}
+		return rows, nil
 	}
 
 	if sqltrace.On() {
@@ -492,23 +519,27 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	select {
 	case <-ctx.Done():
 		c.kill()
+		c.unlock()
 		return nil, ctx.Err()
 	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+		} else {
+			c.unlock()
+		}
 		return rows, err
 	}
 }
 
 // ExecContext implements the driver.ExecerContext interface.
 func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
-	}
-
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
 	}
 
 	if len(args) != 0 {
@@ -577,8 +608,8 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) error {
 	c := t.conn
 
-	c.Lock()
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
 	if t.closed {
 		return nil
@@ -626,8 +657,8 @@ func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareRes
 func (s *stmt) Close() error {
 	c := s.conn
 
-	c.Lock()
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return driver.ErrBadConn
@@ -654,16 +685,15 @@ func (s *stmt) NumInput() int {
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
 	c := s.conn
 
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
+	}
 
 	if c.dbConn.isBad() {
+		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
-	}
 	if s.trace {
 		sqltrace.Tracef("%s %v", s.query, args)
 	}
@@ -676,6 +706,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 		numExpected = s.pr.NumField() // all fields needs to be input fields
 	}
 	if numArg != numExpected {
+		c.unlock()
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
 	}
 
@@ -692,8 +723,14 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	select {
 	case <-ctx.Done():
 		c.kill()
+		c.unlock()
 		return nil, ctx.Err()
 	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+		} else {
+			c.unlock()
+		}
 		return rows, err
 	}
 }
@@ -725,7 +762,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 			}
 			s.args = append(s.args, args...)
 			s.numBulk++
-			if s.numBulk == s.bulkSize {
+			if s.numBulk >= s.bulkSize {
 				flush = true
 			}
 		}
@@ -736,15 +773,13 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 
 	c := s.conn
 
-	c.Lock()
-	defer c.Unlock()
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
-	}
-
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
 	}
 
 	done := make(chan struct{})

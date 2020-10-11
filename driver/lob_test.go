@@ -167,8 +167,11 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 	row := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table))
 
 	err = conn.PingContext(ctx)
-	if err != ErrNestedQuery {
-		t.Fatalf("got error %s - expected %s", err, ErrNestedQuery)
+	switch {
+	case err == nil:
+		t.Fatalf("got error: <nil> - expected: %s", ErrNestedQuery)
+	case err != ErrNestedQuery:
+		t.Fatalf("got error: %s - expected: %s", err, ErrNestedQuery)
 	}
 
 	if err := row.Scan(lob); err != nil {

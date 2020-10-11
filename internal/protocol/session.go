@@ -43,17 +43,6 @@ type Session struct {
 
 	pr *protocolReader
 	pw *protocolWriter
-
-	/*
-		As long as a session is in query mode no other sql statement must be executed.
-		Example:
-		- pinger is active
-		- select with blob fields is executed
-		- scan is hitting the database again (blob streaming)
-		- if in between a ping gets executed (ping selects db) hdb raises error
-		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
-	*/
-	inQuery bool // in query
 }
 
 // NewSession creates a new database session.
@@ -84,19 +73,8 @@ func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (
 	return s, nil
 }
 
-// Reset resets the session.
-func (s *Session) Reset() { s.SetInQuery(false); QrsCache.Cleanup(s) }
-
-// InQuery indicates, that the session is in query mode.
-func (s *Session) InQuery() bool { return s.inQuery }
-
-// SetInQuery sets the session query mode.
-func (s *Session) SetInQuery(v bool) { s.inQuery = v }
-
 // ServerVersion returns the version reported by the hdb server.
-func (s *Session) ServerVersion() common.HDBVersion {
-	return s.serverVersion
-}
+func (s *Session) ServerVersion() common.HDBVersion { return s.serverVersion }
 
 // ServerInfo returnsinformation reported by hdb server.
 func (s *Session) ServerInfo() *common.ServerInfo {
@@ -181,15 +159,12 @@ func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, erro
 
 // QueryDirect executes a query without query parameters.
 func (s *Session) QueryDirect(query string, commit bool) (driver.Rows, error) {
-
-	s.SetInQuery(true)
-
 	// allow e.g inserts as query -> handle commit like in ExecDirect
 	if err := s.pw.write(s.sessionID, mtExecuteDirect, commit, command(query)); err != nil {
 		return nil, err
 	}
 
-	qr := &queryResult{}
+	qr := &queryResult{session: s}
 	meta := &resultMetadata{}
 	resSet := &resultset{}
 
@@ -199,7 +174,7 @@ func (s *Session) QueryDirect(query string, commit bool) (driver.Rows, error) {
 			s.pr.read(meta)
 			qr.fields = meta.resultFields
 		case pkResultsetID:
-			s.pr.read((*resultsetID)(&qr._rsID))
+			s.pr.read((*resultsetID)(&qr.rsID))
 		case pkResultset:
 			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
@@ -209,10 +184,10 @@ func (s *Session) QueryDirect(query string, commit bool) (driver.Rows, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if qr._rsID == 0 { // non select query
+	if qr.rsID == 0 { // non select query
 		return noResult, nil
 	}
-	return newQueryResultSet(s, qr), nil
+	return qr, nil
 }
 
 // ExecDirect executes a sql statement without statement parameters.
@@ -309,8 +284,6 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue, commit bool)
 
 // QueryCall executes a stored procecure (by Query).
 func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
-	s.SetInQuery(true)
-
 	/*
 		only in args
 		invariant: #inPrmFields == #args
@@ -357,12 +330,12 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 		cr.appendTableRefFields() // TODO review
 		for _, qr := range cr.qrs {
 			// add to cache
-			QrsCache.set(qr._rsID, newQueryResultSet(s, qr))
+			QueryResultCache.set(qr.rsID, qr)
 		}
 	} else {
 		cr.appendTableRowsFields(s)
 	}
-	return newQueryResultSet(s, cr), nil
+	return cr, nil
 }
 
 // ExecCall executes a stored procecure (by Exec).
@@ -417,7 +390,7 @@ func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.
 }
 
 func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locatorID, error) {
-	cr := &callResult{outputFields: outputFields}
+	cr := &callResult{session: s, outputFields: outputFields}
 
 	//var qrs []*QueryResult
 	var qr *queryResult
@@ -441,7 +414,7 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 				- resultset might not be provided for all tables
 				- so, 'additional' query result is detected by new metadata part
 			*/
-			qr = &queryResult{}
+			qr = &queryResult{session: s}
 			cr.qrs = append(cr.qrs, qr)
 			s.pr.read(meta)
 			qr.fields = meta.resultFields
@@ -451,7 +424,7 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 			qr.fieldValues = resSet.fieldValues
 			qr.attributes = ph.partAttributes
 		case pkResultsetID:
-			s.pr.read((*resultsetID)(&qr._rsID))
+			s.pr.read((*resultsetID)(&qr.rsID))
 		case pkWriteLobReply:
 			s.pr.read(lobReply)
 			ids = lobReply.ids
@@ -474,20 +447,18 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 
 // Query executes a query.
 func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue, commit bool) (driver.Rows, error) {
-	s.SetInQuery(true)
-
 	// allow e.g inserts as query -> handle commit like in exec
 	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
 
-	qr := &queryResult{fields: pr.resultFields}
+	qr := &queryResult{session: s, fields: pr.resultFields}
 	resSet := &resultset{}
 
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
 		case pkResultsetID:
-			s.pr.read((*resultsetID)(&qr._rsID))
+			s.pr.read((*resultsetID)(&qr.rsID))
 		case pkResultset:
 			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
@@ -497,19 +468,15 @@ func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue, commit bool
 	}); err != nil {
 		return nil, err
 	}
-	if qr._rsID == 0 { // non select query
+	if qr.rsID == 0 { // non select query
 		return noResult, nil
 	}
-	return newQueryResultSet(s, qr), nil
+	return qr, nil
 }
 
 // FetchNext fetches next chunk in query result set.
-func (s *Session) fetchNext(rr rowsResult) error {
-	qr, err := rr.queryResult()
-	if err != nil {
-		return err
-	}
-	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr._rsID), fetchsize(s.cfg.FetchSize)); err != nil {
+func (s *Session) fetchNext(qr *queryResult) error {
+	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr.rsID), fetchsize(s.cfg.FetchSize)); err != nil {
 		return err
 	}
 
@@ -527,7 +494,6 @@ func (s *Session) fetchNext(rr rowsResult) error {
 
 // DropStatementID releases the hdb statement handle.
 func (s *Session) DropStatementID(id uint64) error {
-	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtDropStatementID, false, statementID(id)); err != nil {
 		return err
 	}
@@ -536,7 +502,6 @@ func (s *Session) DropStatementID(id uint64) error {
 
 // CloseResultsetID releases the hdb resultset handle.
 func (s *Session) CloseResultsetID(id uint64) error {
-	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCloseResultset, false, resultsetID(id)); err != nil {
 		return err
 	}
@@ -545,7 +510,6 @@ func (s *Session) CloseResultsetID(id uint64) error {
 
 // Commit executes a database commit.
 func (s *Session) Commit() error {
-	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtCommit, false); err != nil {
 		return err
 	}
@@ -557,7 +521,6 @@ func (s *Session) Commit() error {
 
 // Rollback executes a database rollback.
 func (s *Session) Rollback() error {
-	s.SetInQuery(false)
 	if err := s.pw.write(s.sessionID, mtRollback, false); err != nil {
 		return err
 	}
@@ -584,10 +547,6 @@ func (s *Session) Disconnect() error {
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
 func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
-	// TODO lock should be held by QureyResultSet
-	//s.Lock()
-	//defer s.Unlock()
-
 	var err error
 
 	if descr.isCharBased {

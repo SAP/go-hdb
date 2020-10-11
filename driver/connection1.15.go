@@ -17,8 +17,8 @@ var (
 
 // IsValid implements the driver.Validator interface.
 func (c *Conn) IsValid() bool {
-	c.Lock()
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
 	return !c.dbConn.isBad()
 }
