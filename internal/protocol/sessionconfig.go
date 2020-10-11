@@ -10,15 +10,11 @@ import (
 
 // SessionConfig represents the session relevant driver connector options.
 type SessionConfig struct {
-	DriverVersion, DriverName string
-	ApplicationName           string
-
-	Username, Password string
-	Locale             string
-
-	FetchSize, LobChunkSize int
-
-	Dfv              int
-	SessionVariables *vermap.VerMap
-	Legacy           bool
+	DriverVersion, DriverName           string
+	ApplicationName, Username, Password string
+	SessionVariables                    *vermap.VerMap
+	Locale                              string
+	FetchSize, LobChunkSize             int
+	Dfv                                 int
+	Legacy                              bool
 }

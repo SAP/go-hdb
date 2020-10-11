@@ -73,6 +73,9 @@ func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (
 	return s, nil
 }
 
+// SessionID returns the session id of the hdb connection.
+func (s *Session) SessionID() int64 { return s.sessionID }
+
 // ServerVersion returns the version reported by the hdb server.
 func (s *Session) ServerVersion() common.HDBVersion { return s.serverVersion }
 
@@ -432,16 +435,6 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 	}); err != nil {
 		return nil, nil, err
 	}
-
-	// init fieldValues
-	if cr.fieldValues == nil {
-		cr.fieldValues = newFieldValues(0)
-	}
-	for _, qr := range cr.qrs {
-		if qr.fieldValues == nil {
-			qr.fieldValues = newFieldValues(0)
-		}
-	}
 	return cr, ids, nil
 }
 
@@ -480,14 +473,13 @@ func (s *Session) fetchNext(qr *queryResult) error {
 		return err
 	}
 
-	resSet := &resultset{}
+	resSet := &resultset{resultFields: qr.fields, fieldValues: qr.fieldValues} // reuse field values
 
 	return s.pr.iterateParts(func(ph *partHeader) {
 		if ph.partKind == pkResultset {
-			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
-			qr.fieldValues = resSet.fieldValues
 			qr.attributes = ph.partAttributes
+			qr.fieldValues = resSet.fieldValues
 		}
 	})
 }

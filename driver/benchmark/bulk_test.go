@@ -7,6 +7,7 @@
 package benchmark
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"testing"
@@ -16,7 +17,7 @@ import (
 
 type bulkTabler interface {
 	createTable(db *sql.DB, b *testing.B)
-	bulkInsert(db *sql.DB, samples int, b *testing.B)
+	bulkInsert(conn *sql.Conn, samples int, b *testing.B)
 }
 
 type bulkTable1 struct {
@@ -33,8 +34,10 @@ func (t *bulkTable1) createTable(db *sql.DB, b *testing.B) {
 	}
 }
 
-func (t *bulkTable1) bulkInsert(db *sql.DB, samples int, b *testing.B) {
-	stmt, err := db.Prepare(fmt.Sprintf("bulk insert into %s values (?)", t.tableName))
+func (t *bulkTable1) bulkInsert(conn *sql.Conn, samples int, b *testing.B) {
+	ctx := context.Background()
+
+	stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("bulk insert into %s values (?)", t.tableName))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -43,11 +46,11 @@ func (t *bulkTable1) bulkInsert(db *sql.DB, samples int, b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < samples; i++ {
-		if _, err := stmt.Exec(i); err != nil {
+		if _, err := stmt.ExecContext(ctx, i); err != nil {
 			b.Fatal(err)
 		}
 	}
-	if _, err := stmt.Exec(); err != nil {
+	if _, err := stmt.ExecContext(ctx); err != nil {
 		b.Fatal(err)
 	}
 }
@@ -77,17 +80,14 @@ func BenchmarkBulk(b *testing.B) {
 	for _, test := range tests {
 		for _, s := range bulkSizes {
 			connector.SetBulkSize(s)
+			conn, err := db.Conn(context.Background())
+			if err != nil {
+				b.Fatal(err)
+			}
 			name := fmt.Sprintf("Bulk sequentially %s batchSize %d", test.name, s)
 			b.Run(name, func(b *testing.B) {
-				test.table.bulkInsert(db, samples, b)
+				test.table.bulkInsert(conn, samples, b)
 			})
 		}
 	}
-
-	// b.Run("Ping sequentially", func(b *testing.B) {
-	// 	benchmarkPingSeq(c, b)
-	// })
-	// b.Run("Ping parallel", func(b *testing.B) {
-	// 	b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(c, pb, b) })
-	// })
 }

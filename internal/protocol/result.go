@@ -174,7 +174,7 @@ func (r *resultset) String() string {
 func (r *resultset) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numArg := ph.numArg()
 	cols := len(r.resultFields)
-	r.fieldValues = newFieldValues(numArg * cols)
+	r.fieldValues = resizeFieldValues(numArg*cols, r.fieldValues)
 
 	for i := 0; i < numArg; i++ {
 		for j, field := range r.resultFields {

@@ -205,61 +205,39 @@ type Conn struct {
 	*/
 	connLock
 
+	ctr     *Connector
 	dbConn  *dbConn
 	session *p.Session
 	scanner *scanner.Scanner
 	closed  chan struct{}
 
 	inTx bool // in transaction
-
-	bulkSize int
 }
 
-func newConn(ctx context.Context, ctrX *Connector) (driver.Conn, error) {
+func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 
-	ctrX.mu.RLock() // lock connector
+	ctr.mu.RLock() // lock connector
+	defer ctr.mu.RUnlock()
 
-	sessionConfig := &p.SessionConfig{
-		DriverVersion:    DriverVersion,
-		DriverName:       DriverName,
-		ApplicationName:  ctrX.applicationName,
-		Username:         ctrX.username,
-		Password:         ctrX.password,
-		Locale:           ctrX.locale,
-		FetchSize:        ctrX.fetchSize,
-		LobChunkSize:     ctrX.lobChunkSize,
-		Dfv:              ctrX.dfv,
-		SessionVariables: ctrX.sessionVariables,
-		Legacy:           ctrX.legacy,
-	}
-
-	dialer := ctrX.dialer
-	host := ctrX.host
-	timeout := ctrX.timeout
-	tcpKeepAlive := ctrX.tcpKeepAlive
-	tlsConfig := ctrX.tlsConfig
-	pingInterval := ctrX.pingInterval
-	bufferSize := ctrX.bufferSize
-	bulkSize := ctrX.bulkSize
-	defaultSchema := ctrX.defaultSchema
-
-	ctrX.mu.RUnlock() // unlock connector
-
-	conn, err := dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: timeout, TCPKeepAlive: tcpKeepAlive})
+	conn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if tlsConfig != nil {
-		conn = tls.Client(conn, tlsConfig)
+	if ctr.tlsConfig != nil {
+		conn = tls.Client(conn, ctr.tlsConfig)
 	}
 
-	dbConn := &dbConn{conn: conn, timeout: timeout}
+	dbConn := &dbConn{conn: conn, timeout: ctr.timeout}
 	// buffer connection
-	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, bufferSize), bufio.NewWriterSize(dbConn, bufferSize))
+	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
 
-	session, err := p.NewSession(ctx, rw, sessionConfig)
+	session, err := p.NewSession(
+		ctx,
+		rw,
+		&p.SessionConfig{DriverVersion, DriverName, ctr.applicationName, ctr.username, ctr.password, ctr.sessionVariables, ctr.locale, ctr.fetchSize, ctr.lobChunkSize, ctr.dfv, ctr.legacy},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -276,15 +254,15 @@ func newConn(ctx context.Context, ctrX *Connector) (driver.Conn, error) {
 		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", sv, minimalServerVersion)
 	}
 
-	c := &Conn{dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{}), bulkSize: bulkSize}
-	if defaultSchema != "" {
-		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, defaultSchema), nil); err != nil {
+	c := &Conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+	if ctr.defaultSchema != "" {
+		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, ctr.defaultSchema), nil); err != nil {
 			return nil, err
 		}
 	}
 
-	if pingInterval != 0 {
-		go c.pinger(pingInterval, c.closed)
+	if ctr.pingInterval != 0 {
+		go c.pinger(ctr.pingInterval, c.closed)
 	}
 
 	hdbDriver.addConn(1) // increment open connections.
@@ -294,7 +272,7 @@ func newConn(ctx context.Context, ctrX *Connector) (driver.Conn, error) {
 
 // kill conection
 func (c *Conn) kill() {
-	dlog.Printf("Kill session %d", s.sessionID)
+	dlog.Printf("Kill session %d", c.session.SessionID())
 	c.dbConn.Close()
 }
 
@@ -388,7 +366,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		case <-ctx.Done():
 			return
 		}
-		stmt, err = newStmt(c, qd.Query(), qd.IsBulk(), c.bulkSize, pr)
+		stmt, err = newStmt(c, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr) //take latest connector bulk size
 	done:
 		close(done)
 	}()

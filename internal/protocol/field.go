@@ -65,7 +65,9 @@ func (n fieldNames) decode(dec *encoding.Decoder) {
 	}
 }
 
-// TODO cache
-func newFieldValues(size int) []driver.Value {
+func resizeFieldValues(size int, values []driver.Value) []driver.Value {
+	if size <= cap(values) {
+		return values[:size]
+	}
 	return make([]driver.Value, size)
 }

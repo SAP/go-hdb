@@ -245,7 +245,7 @@ func (p *outputParameters) String() string {
 func (p *outputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numArg := ph.numArg()
 	cols := len(p.outputFields)
-	p.fieldValues = newFieldValues(numArg * cols)
+	p.fieldValues = resizeFieldValues(numArg*cols, p.fieldValues)
 
 	for i := 0; i < numArg; i++ {
 		for j, field := range p.outputFields {

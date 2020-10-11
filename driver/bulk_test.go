@@ -7,6 +7,7 @@
 package driver
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -14,13 +15,12 @@ import (
 )
 
 // TestBulkFrame
-func testBulkFrame(db *sql.DB, samples int, cmd string, insertFct func(stmt *sql.Stmt), t *testing.T) {
-
+func testBulkFrame(conn *sql.Conn, samples int, cmd string, insertFct func(stmt *sql.Stmt), t *testing.T) {
 	// 1. prepare
 	tmpTableName := RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
-	tx, err := db.Begin()
+	tx, err := conn.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,15 +77,16 @@ func testBulkFrame(db *sql.DB, samples int, cmd string, insertFct func(stmt *sql
 }
 
 // TestBulkInsertDuplicates
-func testBulkInsertDuplicates(db *sql.DB, t *testing.T) {
+func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
+	ctx := context.Background()
 
 	table := RandomIdentifier("bulkInsertDuplicates")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("bulk insert into %s values (?,?)", table))
+	stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("bulk insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -130,7 +131,7 @@ func testBulkInsertDuplicates(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testBulk(db *sql.DB, t *testing.T) {
+func testBulk(conn *sql.Conn, t *testing.T) {
 	const samples = 1000
 
 	tests := []struct {
@@ -172,13 +173,13 @@ func testBulk(db *sql.DB, t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			testBulkFrame(db, samples, test.cmd, test.insertFct, t)
+			testBulkFrame(conn, samples, test.cmd, test.insertFct, t)
 		})
 	}
 }
 
 // TestBulkBlob
-func testBulkBlob(db *sql.DB, t *testing.T) {
+func testBulkBlob(conn *sql.Conn, t *testing.T) {
 
 	samples := 100
 	lobData := func(i int) string {
@@ -189,7 +190,7 @@ func testBulkBlob(db *sql.DB, t *testing.T) {
 	tmpTableName := RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
-	tx, err := db.Begin()
+	tx, err := conn.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +265,7 @@ func testBulkBlob(db *sql.DB, t *testing.T) {
 func TestBulk(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, t *testing.T)
+		fct  func(conn *sql.Conn, t *testing.T)
 	}{
 		{"testBulk", testBulk},
 		{"testBulkInsertDuplicates", testBulkInsertDuplicates},
@@ -274,9 +275,13 @@ func TestBulk(t *testing.T) {
 	db := sql.OpenDB(DefaultTestConnector)
 	defer db.Close()
 
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, t)
+			test.fct(conn, t) // run bulk tests on conn
 		})
 	}
 }
