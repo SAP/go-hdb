@@ -654,7 +654,7 @@ func (s *stmt) Close() error {
 
 	hdbDriver.addStmt(-1) // decrement number of statements.
 	if len(s.args) != 0 { // log always //TODO: Fatal?
-		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
+		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
 	}
 	return c.session.DropStatementID(s.pr.StmtID())
 }

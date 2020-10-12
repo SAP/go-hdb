@@ -8,14 +8,21 @@ import (
 	"flag"
 	"log"
 	"os"
-	"sync"
+	"strconv"
 	"sync/atomic"
 )
 
+func boolToInt64(f bool) int64 {
+	if f {
+		return 1
+	}
+	return 0
+}
+
 type sqlTrace struct {
-	once sync.Once
-	flag bool
-	on   int32 // true for on != 0 - atomic access
+	// 64-bit alignement
+	on int64 // atomic access (0: false, 1:true)
+
 	*log.Logger
 }
 
@@ -24,31 +31,42 @@ func newSQLTrace() *sqlTrace {
 		Logger: log.New(os.Stdout, "hdb ", log.Ldate|log.Ltime|log.Lshortfile),
 	}
 }
+func (t *sqlTrace) On() bool      { return atomic.LoadInt64(&t.on) != 0 }
+func (t *sqlTrace) SetOn(on bool) { atomic.StoreInt64(&t.on, boolToInt64(on)) }
+
+type flagValue struct {
+	t *sqlTrace
+}
+
+func (v flagValue) IsBoolFlag() bool { return true }
+
+func (v flagValue) String() string {
+	if v.t == nil {
+		return ""
+	}
+	return strconv.FormatBool(v.t.On())
+}
+
+func (v flagValue) Set(s string) error {
+	f, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	v.t.SetOn(f)
+	return nil
+}
 
 var tracer = newSQLTrace()
 
 func init() {
-	flag.BoolVar(&tracer.flag, "hdb.sqlTrace", false, "enabling hdb sql trace")
-}
-
-func boolToInt32(f bool) int32 {
-	if f {
-		return 1
-	}
-	return 0
+	flag.Var(&flagValue{t: tracer}, "hdb.sqlTrace", "enabling hdb sql trace")
 }
 
 // On returns if tracing methods output is active.
-func On() bool {
-	tracer.once.Do(func() {
-		// init on with flag value
-		atomic.StoreInt32(&tracer.on, boolToInt32(tracer.flag))
-	})
-	return atomic.LoadInt32(&tracer.on) != 0
-}
+func On() bool { return tracer.On() }
 
 // SetOn sets tracing methods output active or inactive.
-func SetOn(on bool) { atomic.StoreInt32(&tracer.on, boolToInt32(on)) }
+func SetOn(on bool) { tracer.SetOn(on) }
 
 // Trace calls trace logger Print method to print to the trace logger.
 func Trace(v ...interface{}) { tracer.Print(v...) }
