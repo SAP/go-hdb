@@ -22,8 +22,10 @@ func (*Conn) Exec(query string, args []driver.Value) (driver.Result, error) { pa
 // Query implements the driver.Queryer interface.
 func (*Conn) Query(query string, args []driver.Value) (driver.Rows, error) { panic("deprecated") }
 
-func (*stmt) Exec(args []driver.Value) (driver.Result, error)         { panic("deprecated") }
-func (*stmt) Query(args []driver.Value) (rows driver.Rows, err error) { panic("deprecated") }
+func (*stmt) Exec(args []driver.Value) (driver.Result, error)             { panic("deprecated") }
+func (*stmt) Query(args []driver.Value) (rows driver.Rows, err error)     { panic("deprecated") }
+func (*callStmt) Exec(args []driver.Value) (driver.Result, error)         { panic("deprecated") }
+func (*callStmt) Query(args []driver.Value) (rows driver.Rows, err error) { panic("deprecated") }
 
 // replaced driver interface methods
 // sql.Stmt.ColumnConverter --> replaced by CheckNamedValue

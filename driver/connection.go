@@ -376,7 +376,13 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		case <-ctx.Done():
 			return
 		}
-		stmt, err = newStmt(c, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr) //take latest connector bulk size
+
+		if pr.IsProcedureCall() {
+			stmt = newCallStmt(c, qd.Query(), pr)
+		} else {
+			stmt = newStmt(c, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr) //take latest connector bulk size
+		}
+
 	done:
 		close(done)
 	}()
@@ -457,20 +463,24 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	if err := c.tryLock(lrNestedQuery); err != nil {
 		return nil, err
 	}
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
 
 	if c.dbConn.isBad() {
-		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 
 	if len(args) != 0 {
-		c.unlock()
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
 	qd, err := p.NewQueryDescr(query, c.scanner)
 	if err != nil {
-		c.unlock()
 		return nil, err
 	}
 	switch qd.Kind() {
@@ -478,7 +488,6 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		// direct execution of call procedure
 		// - returns no parameter metadata (sps 82) but only field values
 		// --> let's take the 'prepare way' for stored procedures
-		c.unlock()
 		return nil, driver.ErrSkip
 	case p.QkID:
 		// query call table result
@@ -488,8 +497,7 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		}
 		if onCloser, ok := rows.(p.OnCloser); ok {
 			onCloser.SetOnClose(c.unlock)
-		} else {
-			c.unlock()
+			hasRowsCloser = true
 		}
 		return rows, nil
 	}
@@ -507,13 +515,11 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	select {
 	case <-ctx.Done():
 		c.kill()
-		c.unlock()
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(p.OnCloser); ok {
 			onCloser.SetOnClose(c.unlock)
-		} else {
-			c.unlock()
+			hasRowsCloser = true
 		}
 		return rows, err
 	}
@@ -630,16 +636,16 @@ var (
 
 type stmt struct {
 	conn              *Conn
-	pr                *p.PrepareResult
 	query             string
+	pr                *p.PrepareResult
 	bulk, flush       bool
 	bulkSize, numBulk int
 	trace             bool // store flag for performance reasons (especially bulk inserts)
 	args              []driver.NamedValue
 }
 
-func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) (*stmt, error) {
-	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}, nil
+func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
+	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}
 }
 
 func (s *stmt) Close() error {
@@ -676,9 +682,15 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	if err := c.tryLock(lrNestedQuery); err != nil {
 		return nil, err
 	}
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
 
 	if c.dbConn.isBad() {
-		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 
@@ -686,38 +698,24 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 		sqltrace.Tracef("%s %v", s.query, args)
 	}
 
-	numArg := len(args)
-	var numExpected int
-	if s.pr.IsProcedureCall() {
-		numExpected = s.pr.NumInputField() // input fields only
-	} else {
-		numExpected = s.pr.NumField() // all fields needs to be input fields
-	}
-	if numArg != numExpected {
-		c.unlock()
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
+	if len(args) != s.pr.NumField() { // all fields needs to be input fields
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumField())
 	}
 
 	done := make(chan struct{})
 	go func() {
-		if s.pr.IsProcedureCall() {
-			rows, err = c.session.QueryCall(s.pr, args)
-		} else {
-			rows, err = c.session.Query(s.pr, args, !c.inTx)
-		}
+		rows, err = c.session.Query(s.pr, args, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
 		c.kill()
-		c.unlock()
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(p.OnCloser); ok {
 			onCloser.SetOnClose(c.unlock)
-		} else {
-			c.unlock()
+			hasRowsCloser = true
 		}
 		return rows, err
 	}
@@ -772,14 +770,11 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 
 	done := make(chan struct{})
 	go func() {
-		switch {
-		case s.pr.IsProcedureCall():
-			r, err = c.session.ExecCall(s.pr, args)
-		case s.bulk: // flush case only
+		if s.bulk { // flush case only
 			r, err = c.session.Exec(s.pr, s.args, !c.inTx)
 			s.args = s.args[:0]
 			s.numBulk = 0
-		default:
+		} else {
 			r, err = c.session.Exec(s.pr, args, !c.inTx)
 		}
 		close(done)
@@ -809,5 +804,134 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 		}
 	}
 
+	return convertNamedValue(s.pr, nv)
+}
+
+//  check if callStmt implements all required interfaces
+var (
+	_ driver.Stmt              = (*callStmt)(nil)
+	_ driver.StmtExecContext   = (*callStmt)(nil)
+	_ driver.StmtQueryContext  = (*callStmt)(nil)
+	_ driver.NamedValueChecker = (*callStmt)(nil)
+)
+
+type callStmt struct {
+	conn  *Conn
+	query string
+	pr    *p.PrepareResult
+}
+
+func newCallStmt(conn *Conn, query string, pr *p.PrepareResult) *callStmt {
+	return &callStmt{conn: conn, query: query, pr: pr}
+}
+
+func (s *callStmt) Close() error {
+	c := s.conn
+
+	c.lock()
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return driver.ErrBadConn
+	}
+
+	hdbDriver.addStmt(-1) // decrement number of statements.
+
+	return c.session.DropStatementID(s.pr.StmtID())
+}
+
+func (s *callStmt) NumInput() int {
+	/*
+		NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
+		- #args == #param (only in params):    query, exec, exec bulk (non control query)
+		- #args == #param (in and out params): exec call
+		- #args == 0:                          exec bulk (control query)
+		- #args == #input param:               query call
+	*/
+	return -1
+}
+
+func (s *callStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
+	c := s.conn
+
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
+	}
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
+	}
+
+	if sqltrace.On() {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
+
+	if len(args) != s.pr.NumInputField() { // input fields only
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumInputField())
+	}
+
+	done := make(chan struct{})
+	go func() {
+		rows, err = c.session.QueryCall(s.pr, args)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.kill()
+		return nil, ctx.Err()
+	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+			hasRowsCloser = true
+		}
+		return rows, err
+	}
+}
+
+func (s *callStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+	c := s.conn
+
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
+	}
+
+	if sqltrace.On() {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
+
+	if len(args) != s.pr.NumField() {
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumField())
+	}
+
+	done := make(chan struct{})
+	go func() {
+		r, err = c.session.ExecCall(s.pr, args)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.kill()
+		return nil, ctx.Err()
+	case <-done:
+		return r, err
+	}
+}
+
+// CheckNamedValue implements NamedValueChecker interface.
+func (s *callStmt) CheckNamedValue(nv *driver.NamedValue) error {
 	return convertNamedValue(s.pr, nv)
 }

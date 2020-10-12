@@ -14,11 +14,16 @@ import (
 )
 
 func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
+
 	idx := nv.Ordinal - 1
 
 	f := pr.ParameterField(idx)
 
 	v, out := normNamedValue(nv)
+
+	if _, ok := v.([][]interface{}); ok {
+		return nil
+	}
 
 	if out != f.Out() {
 		return fmt.Errorf("parameter descr / value mismatch - descr out %t value out %t", f.Out(), out)

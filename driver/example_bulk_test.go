@@ -47,6 +47,8 @@ func Example_bulkInsert() {
 	}
 	defer stmt.Close()
 
+	// Alternative 1
+
 	// Bulk insert.
 	for i := 0; i < 1000; i++ {
 		if _, err := stmt.Exec(i); err != nil {
@@ -57,6 +59,17 @@ func Example_bulkInsert() {
 	if _, err := stmt.Exec(); err != nil {
 		log.Fatal(err)
 	}
+
+	// Alternative 2
+
+	// bulkData := make([][]interface{}, 10)
+	// for i := 0; i < 10; i++ {
+	// 	bulkData[i] = []interface{}{i}
+	// }
+
+	// if _, err := stmt.Exec(bulkData); err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	// Select number of inserted rows.
 	var numRow int
