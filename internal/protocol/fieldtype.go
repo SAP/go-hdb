@@ -256,14 +256,19 @@ func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
-func (ft _booleanType) convert(v interface{}) (interface{}, error) {
+func (ft _booleanType) convert(v interface{}) (interface{}, error) { return convertBool(ft, v) }
+
+func convertBool(ft fieldType, v interface{}) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}
-	return convertToBool(ft, v)
-}
 
-func convertToBool(ft fieldType, v interface{}) (bool, error) {
+	switch v := v.(type) {
+
+	case bool:
+		return v, nil
+	}
+
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 
@@ -286,11 +291,11 @@ func convertToBool(ft fieldType, v interface{}) (bool, error) {
 		if rv.IsNil() {
 			return false, nil
 		}
-		return convertToBool(ft, rv.Elem().Interface())
+		return convertBool(ft, rv.Elem().Interface())
 	}
 
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertToBool(ft, rv.Convert(stringReflectType).Interface())
+		return convertBool(ft, rv.Convert(stringReflectType).Interface())
 	}
 
 	return false, newConvertError(ft, v, nil)
@@ -315,45 +320,35 @@ func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, e
 		return v, nil
 	}
 
-	switch v.(type) {
-
-	case int, int64:
-		return v, nil
-	}
-
-	i64, err := convertToInt64(ft, v)
-	if err != nil {
-		return nil, err
-	}
-	if i64 > max || i64 < min {
-		return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
-	}
-	return i64, nil
-}
-
-func convertToInt64(ft fieldType, v interface{}) (int64, error) {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-
-	// bool is represented in HDB as tinyint
+	// conversions without allocations (return v)
 	case reflect.Bool:
-		if rv.Bool() {
-			return 1, nil
-		}
-		return 0, nil
+		return v, nil // return (no furhter check needed)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return rv.Int(), nil
+		i64 := rv.Int()
+		if i64 > max || i64 < min {
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
+		}
+		return v, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u64 := rv.Uint()
 		if u64 >= 1<<63 {
 			return 0, newConvertError(ft, v, ErrUint64OutOfRange)
 		}
-		return int64(u64), nil
+		if int64(u64) > max || int64(u64) < min {
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
+		}
+		return v, nil
+	// conversions with allocations (return i64)
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		i64 := int64(f64)
 		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
 			return 0, newConvertError(ft, v, nil)
+		}
+		if i64 > max || i64 < min {
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
 	case reflect.String:
@@ -361,19 +356,22 @@ func convertToInt64(ft fieldType, v interface{}) (int64, error) {
 		if err != nil {
 			return 0, newConvertError(ft, v, nil)
 		}
+		if i64 > max || i64 < min {
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
+		}
 		return i64, nil
+	// pointer
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
 			return 0, nil
 		}
-		return convertToInt64(ft, rv.Elem().Interface())
+		return convertInteger(ft, rv.Elem().Interface(), min, max)
 	}
-
+	// last resort (try via string)
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertToInt64(ft, rv.Convert(stringReflectType).Interface())
+		return convertInteger(ft, rv.Convert(stringReflectType).Interface(), min, max)
 	}
-
 	return 0, newConvertError(ft, v, nil)
 }
 
@@ -387,40 +385,37 @@ func convertFloat(ft fieldType, v interface{}, max float64) (driver.Value, error
 	if v == nil {
 		return v, nil
 	}
-	f64, err := convertToFloat64(ft, v)
-	if err != nil {
-		return nil, err
-	}
-	if math.Abs(f64) > max {
-		return nil, newConvertError(ft, v, ErrFloatOutOfRange)
-	}
-	return f64, nil
-}
 
-func convertToFloat64(ft fieldType, v interface{}) (float64, error) {
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-
+	// conversions without allocations (return v)
 	case reflect.Float32, reflect.Float64:
-		return rv.Float(), nil
+		if math.Abs(rv.Float()) > max {
+			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
+		}
+		return v, nil
+	// conversions with allocations (return f64)
 	case reflect.String:
 		f64, err := strconv.ParseFloat(rv.String(), 64)
 		if err != nil {
 			return 0, newConvertError(ft, v, nil)
 		}
+		if math.Abs(f64) > max {
+			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
+		}
 		return f64, nil
+	// pointer
 	case reflect.Ptr:
 		// indirect pointers
 		if rv.IsNil() {
 			return 0, nil
 		}
-		return convertToFloat64(ft, rv.Elem().Interface())
+		return convertFloat(ft, rv.Elem().Interface(), max)
 	}
-
+	// last resort (try via string)
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertToFloat64(ft, rv.Convert(stringReflectType).Interface())
+		return convertFloat(ft, rv.Convert(stringReflectType).Interface(), max)
 	}
-
 	return 0, newConvertError(ft, v, nil)
 }
 
@@ -651,22 +646,29 @@ func (ft _bigintType) encodePrm(e *encoding.Encoder, v interface{}) error {
 
 func asInt64(ft fieldType, v interface{}) (int64, error) {
 	switch v := v.(type) {
-	default:
-		return 0, newConvertError(ft, v, nil)
 	case bool:
 		if v {
 			return 1, nil
 		}
 		return 0, nil
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(rv.Uint()), nil
+	default:
+		return 0, newConvertError(ft, v, nil)
 	}
 }
 
 func (ft _realType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
+	case float32:
+		e.Float32(v)
+		return nil
 	case float64:
 		e.Float32(float32(v))
 		return nil
@@ -676,6 +678,9 @@ func (ft _realType) encodePrm(e *encoding.Encoder, v interface{}) error {
 }
 func (ft _doubleType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
+	case float32:
+		e.Float64(float64(v))
+		return nil
 	case float64:
 		e.Float64(v)
 		return nil

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -17,8 +18,19 @@ func assertEqualInt(t *testing.T, tc typeCode, v interface{}, r int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cv.(int64) != r {
-		t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+
+	rv := reflect.ValueOf(cv)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if rv.Int() != r {
+			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if int64(rv.Uint()) != r {
+			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+		}
+	default:
+		t.Fatalf("invalid type %[1]T %[1]v", cv)
 	}
 }
 
@@ -63,8 +75,14 @@ func assertEqualFloat(t *testing.T, tc typeCode, v interface{}, r float64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cv.(float64) != r {
-		t.Fatalf("assert equal float failed %v - %f expected", cv, r)
+	rv := reflect.ValueOf(cv)
+	switch rv.Kind() {
+	case reflect.Float32, reflect.Float64:
+		if rv.Float() != r {
+			t.Fatalf("assert equal float failed %v - %f expected", cv, r)
+		}
+	default:
+		t.Fatalf("invalid type %[1]T %[1]v", cv)
 	}
 }
 
