@@ -314,6 +314,13 @@ func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, e
 	if v == nil {
 		return v, nil
 	}
+
+	switch v.(type) {
+
+	case int, int64:
+		return v, nil
+	}
+
 	i64, err := convertToInt64(ft, v)
 	if err != nil {
 		return nil, err
@@ -653,6 +660,8 @@ func asInt64(ft fieldType, v interface{}) (int64, error) {
 		return 0, nil
 	case int64:
 		return v, nil
+	case int:
+		return int64(v), nil
 	}
 }
 

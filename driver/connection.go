@@ -89,6 +89,10 @@ var (
 	Flush = sql.Named(bulk, &flushTok)
 )
 
+const (
+	maxNumTraceArg = 20
+)
+
 func init() {
 	p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem())
 	p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
@@ -640,13 +644,13 @@ var (
 )
 
 type stmt struct {
-	conn              *Conn
-	query             string
-	pr                *p.PrepareResult
-	bulk, flush       bool
-	bulkSize, numBulk int
-	trace             bool // store flag for performance reasons (especially bulk inserts)
-	args              []driver.NamedValue
+	conn                 *Conn
+	query                string
+	pr                   *p.PrepareResult
+	bulk, flush, compArg bool
+	bulkSize, numBulk    int
+	trace                bool // store flag for performance reasons (especially bulk inserts)
+	args                 []driver.NamedValue
 }
 
 func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
@@ -737,42 +741,31 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	}
 }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
-	if s.trace {
-		sqltrace.Tracef("%s %v", s.query, args)
-	}
-
-	flush := s.flush // store s.flush
-	s.flush = false  // reset s.flush
-
+func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	numArg := len(args)
-	numExpected := 0
-	if s.bulk && numArg == 0 { // bulk flush
-		flush = true
-	} else {
-		numExpected = s.pr.NumField()
-	}
-	if numArg != numExpected {
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
-	}
-
-	// handle bulk insert
-	if s.bulk {
-		if numArg != 0 { // add to argument buffer
-			if s.args == nil {
-				s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
-			}
-			s.args = append(s.args, args...)
-			s.numBulk++
-			if s.numBulk >= s.bulkSize {
-				flush = true
-			}
+	switch {
+	case s.bulk:
+		flush := s.flush
+		s.flush = false
+		if numArg != 0 && numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
 		}
-		if !flush || s.numBulk == 0 { // done: no flush
-			return driver.ResultNoRows, nil
+		return s.execBulk(ctx, args, flush)
+	case s.compArg:
+		s.compArg = false
+		if numArg != 1 {
+			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
 		}
+		return s.execCompArg(ctx, &args[0])
+	default:
+		if numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		return s.exec(ctx, args)
 	}
+}
 
+func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
 	c := s.conn
 
 	if err := c.tryLock(0); err != nil {
@@ -782,6 +775,14 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
+	}
+
+	if s.trace {
+		if len(args) > maxNumTraceArg {
+			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, args[:maxNumTraceArg])
+		} else {
+			sqltrace.Tracef("%s %v", s.query, args)
+		}
 	}
 
 	done := make(chan struct{})
@@ -805,8 +806,42 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r dri
 	}
 }
 
+func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush bool) (r driver.Result, err error) {
+	numArg := len(args)
+
+	if numArg == 0 {
+		flush = true
+	}
+
+	if numArg != 0 { // add to argument buffer
+		if s.args == nil {
+			s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
+		}
+		s.args = append(s.args, args...)
+		s.numBulk++
+		if s.numBulk >= s.bulkSize {
+			flush = true
+		}
+	}
+	if !flush || s.numBulk == 0 { // done: no flush
+		return driver.ResultNoRows, nil
+	}
+
+	// flush
+	r, err = s.exec(ctx, s.args)
+	s.args = s.args[:0]
+	s.numBulk = 0
+	return
+}
+
+func (s *stmt) execCompArg(ctx context.Context, nv *driver.NamedValue) (driver.Result, error) {
+
+	return nil, nil
+}
+
 // CheckNamedValue implements NamedValueChecker interface.
 func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
+	// check on bulk args
 	if nv.Name == bulk {
 		if ptr, ok := nv.Value.(**struct{}); ok {
 			switch ptr {
@@ -820,7 +855,20 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 		}
 	}
 
-	return convertNamedValue(s.pr, nv)
+	// check on standard value
+	err := convertNamedValue(s.pr, nv)
+	if err == nil || s.bulk || nv.Ordinal != 1 {
+		return err
+	}
+
+	// check first argument if 'composite'
+	if nv.Value, err = convertCompType(nv.Value); err != nil {
+		return err
+	}
+
+	s.compArg = true
+	return nil
+
 }
 
 // callStmt methods

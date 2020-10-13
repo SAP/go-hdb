@@ -76,14 +76,16 @@ func BenchmarkBulk(b *testing.B) {
 		test.table.createTable(db, b)
 	}
 
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+
 	// execute sequential tests
 	for _, test := range tests {
 		for _, s := range bulkSizes {
-			connector.SetBulkSize(s)
-			conn, err := db.Conn(context.Background())
-			if err != nil {
-				b.Fatal(err)
-			}
+			connector.SetBulkSize(s) // change bulk size
 			name := fmt.Sprintf("Bulk sequentially %s batchSize %d", test.name, s)
 			b.Run(name, func(b *testing.B) {
 				test.table.bulkInsert(conn, samples, b)

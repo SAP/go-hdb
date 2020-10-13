@@ -21,10 +21,6 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 
 	v, out := normNamedValue(nv)
 
-	if _, ok := v.([][]interface{}); ok {
-		return nil
-	}
-
 	if out != f.Out() {
 		return fmt.Errorf("parameter descr / value mismatch - descr out %t value out %t", f.Out(), out)
 	}
@@ -59,4 +55,19 @@ func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {
 		return out.Dest, true // 'flatten' driver.NamedValue (remove sql.Out)
 	}
 	return nv.Value, false
+}
+
+func convertCompType(v interface{}) (interface{}, error) {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Array, reflect.Slice:
+		return rv.Interface(), nil
+	case reflect.Ptr:
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertCompType(rv.Elem().Interface())
+	default:
+		return nil, fmt.Errorf("invalid composite type %[1]T %[1]v", v)
+	}
 }

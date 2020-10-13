@@ -527,9 +527,15 @@ func (s *Session) Disconnect() error {
 	if err := s.pw.write(s.sessionID, mtDisconnect, false); err != nil {
 		return err
 	}
-	if err := s.pr.readSkip(); err != nil {
-		return err
-	}
+	/*
+		Do not read server reply as on slow connections the TCP/IP connection is closed (by Server)
+		before the reply can be read completely.
+
+		// if err := s.pr.readSkip(); err != nil {
+		// 	return err
+		// }
+
+	*/
 	return nil
 }
 
