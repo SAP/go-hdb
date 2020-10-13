@@ -624,14 +624,19 @@ func (t *tx) close(rollback bool) error {
 	return c.session.Commit()
 }
 
-//statement
+//statements
 
-//  check if stmt implements all required interfaces
+//  check if statements implements all required interfaces
 var (
 	_ driver.Stmt              = (*stmt)(nil)
 	_ driver.StmtExecContext   = (*stmt)(nil)
 	_ driver.StmtQueryContext  = (*stmt)(nil)
 	_ driver.NamedValueChecker = (*stmt)(nil)
+
+	_ driver.Stmt              = (*callStmt)(nil)
+	_ driver.StmtExecContext   = (*callStmt)(nil)
+	_ driver.StmtQueryContext  = (*callStmt)(nil)
+	_ driver.NamedValueChecker = (*callStmt)(nil)
 )
 
 type stmt struct {
@@ -648,6 +653,28 @@ func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareRes
 	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}
 }
 
+type callStmt struct {
+	conn  *Conn
+	query string
+	pr    *p.PrepareResult
+}
+
+func newCallStmt(conn *Conn, query string, pr *p.PrepareResult) *callStmt {
+	return &callStmt{conn: conn, query: query, pr: pr}
+}
+
+/*
+	NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
+	- #args == #param (only in params):    query, exec, exec bulk (non control query)
+	- #args == #param (in and out params): exec call
+	- #args == 0:                          exec bulk (control query)
+	- #args == #input param:               query call
+*/
+func (s *stmt) NumInput() int     { return -1 }
+func (s *callStmt) NumInput() int { return -1 }
+
+// stmt methods
+
 func (s *stmt) Close() error {
 	c := s.conn
 
@@ -663,17 +690,6 @@ func (s *stmt) Close() error {
 		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
 	}
 	return c.session.DropStatementID(s.pr.StmtID())
-}
-
-func (s *stmt) NumInput() int {
-	/*
-		NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
-		- #args == #param (only in params):    query, exec, exec bulk (non control query)
-		- #args == #param (in and out params): exec call
-		- #args == 0:                          exec bulk (control query)
-		- #args == #input param:               query call
-	*/
-	return -1
 }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
@@ -807,23 +823,7 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 	return convertNamedValue(s.pr, nv)
 }
 
-//  check if callStmt implements all required interfaces
-var (
-	_ driver.Stmt              = (*callStmt)(nil)
-	_ driver.StmtExecContext   = (*callStmt)(nil)
-	_ driver.StmtQueryContext  = (*callStmt)(nil)
-	_ driver.NamedValueChecker = (*callStmt)(nil)
-)
-
-type callStmt struct {
-	conn  *Conn
-	query string
-	pr    *p.PrepareResult
-}
-
-func newCallStmt(conn *Conn, query string, pr *p.PrepareResult) *callStmt {
-	return &callStmt{conn: conn, query: query, pr: pr}
-}
+// callStmt methods
 
 func (s *callStmt) Close() error {
 	c := s.conn
@@ -838,17 +838,6 @@ func (s *callStmt) Close() error {
 	hdbDriver.addStmt(-1) // decrement number of statements.
 
 	return c.session.DropStatementID(s.pr.StmtID())
-}
-
-func (s *callStmt) NumInput() int {
-	/*
-		NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
-		- #args == #param (only in params):    query, exec, exec bulk (non control query)
-		- #args == #param (in and out params): exec call
-		- #args == 0:                          exec bulk (control query)
-		- #args == #input param:               query call
-	*/
-	return -1
 }
 
 func (s *callStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
