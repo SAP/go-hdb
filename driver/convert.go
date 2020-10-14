@@ -44,9 +44,11 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 		return nil
 	}
 
-	if nv.Value, err = f.Convert(v); err != nil { // convert field
+	if v, err = f.Convert(v); err != nil { // convert field
 		return err
 	}
+
+	nv.Value = v
 	return nil
 }
 
@@ -58,7 +60,19 @@ func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {
 }
 
 func convertCompType(singleField bool, v interface{}) (interface{}, error) {
-	return v, nil
+
+	// fmt.Printf("conver comp type %v", v)
+
+	switch v := v.(type) {
+
+	case []interface{}:
+		return v, nil
+
+	case [][]interface{}:
+		return v, nil
+	}
+
+	return nil, fmt.Errorf("invalid composite type %[1]T %[1]v", v)
 
 	// }
 
