@@ -8,24 +8,24 @@ import (
 	"testing"
 )
 
-func testParseHDBVersion(t *testing.T) {
+func testHDBVersionNumberParse(t *testing.T) {
 	var tests = []struct {
 		s string
-		v HDBVersion
+		v hdbVersionNumber
 	}{
-		{"2.00.048.00", HDBVersion{2, 0, 48, 0, 0}},
-		{"2.00.045.00.15756393121", HDBVersion{2, 0, 45, 0, 15756393121}},
+		{"2.00.048.00", hdbVersionNumber{2, 0, 48, 0, 0}},
+		{"2.00.045.00.15756393121", hdbVersionNumber{2, 0, 45, 0, 15756393121}},
 	}
 
 	for i, test := range tests {
-		v := ParseHDBVersion(test.s)
+		v := parseHDBVersionNumber(test.s)
 		if v.String() != test.s {
 			t.Fatalf("line: %d got: %s expected: %s", i, v, test.s)
 		}
 	}
 }
 
-func testCompareHDBVersion(t *testing.T) {
+func testHDBVersionNumberCompare(t *testing.T) {
 	var tests = []struct {
 		s1, s2 string
 		r      int
@@ -35,10 +35,25 @@ func testCompareHDBVersion(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		v1 := ParseHDBVersion(test.s1)
-		v2 := ParseHDBVersion(test.s2)
-		if v1.Compare(v2) != test.r {
+		v1 := parseHDBVersionNumber(test.s1)
+		v2 := parseHDBVersionNumber(test.s2)
+		if v1.compare(v2) != test.r {
 			t.Fatalf("line: %d expected: compare(%s,%s) = %d", i, v1, v2, test.r)
+		}
+	}
+}
+
+func testHDBVersionFeature(t *testing.T) {
+	for f, cv1 := range hdbFeatureAvailability {
+		for _, cv2 := range hdbFeatureAvailability {
+			v1 := ParseHDBVersion(cv1.String())
+			v2 := ParseHDBVersion(cv2.String())
+
+			hasFeature := v2.Compare(v1) >= 0
+
+			if v2.HasFeature(f) != hasFeature {
+				t.Fatalf("Version %s has feature %d - got %t - expected %t", v2, f, v2.HasFeature(f), hasFeature)
+			}
 		}
 	}
 }
@@ -48,8 +63,9 @@ func TestHDBVersion(t *testing.T) {
 		name string
 		fct  func(t *testing.T)
 	}{
-		{"parse", testParseHDBVersion},
-		{"compare", testCompareHDBVersion},
+		{"parse", testHDBVersionNumberParse},
+		{"compare", testHDBVersionNumberCompare},
+		{"feature", testHDBVersionFeature},
 	}
 
 	for _, test := range tests {

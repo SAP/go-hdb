@@ -57,17 +57,41 @@ func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {
 	return nv.Value, false
 }
 
-func convertCompType(v interface{}) (interface{}, error) {
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Array, reflect.Slice:
-		return rv.Interface(), nil
-	case reflect.Ptr:
-		if rv.IsNil() {
-			return nil, nil
-		}
-		return convertCompType(rv.Elem().Interface())
-	default:
-		return nil, fmt.Errorf("invalid composite type %[1]T %[1]v", v)
-	}
+func convertCompType(singleField bool, v interface{}) (interface{}, error) {
+	return v, nil
+
+	// }
+
+	// func convertList(v interface{}) (interface{}, error) {
+	// 	rv := reflect.ValueOf(v)
+	// 	switch rv.Kind() {
+
+	// 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	// 		return rv.Int(), nil
+	// 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	// 		return int64(rv.Uint()), nil
+	// 	default:
+	// 		return 0, newConvertError(ft, v, nil)
+	// 	}
+
+	// }
+
+	// 	switch vt := v.(type) {
+
+	// 	case []interface{}, [][]interface
+
+	// 	}
+
+	// rv := reflect.ValueOf(v)
+	// switch rv.Kind() {
+	// case reflect.Array, reflect.Slice:
+	// 	return rv.Interface(), nil
+	// case reflect.Ptr:
+	// 	if rv.IsNil() {
+	// 		return nil, nil
+	// 	}
+	// 	return convertCompType(rv.Elem().Interface())
+	// default:
+	// 	return nil, fmt.Errorf("invalid composite type %[1]T %[1]v", v)
+	// }
 }

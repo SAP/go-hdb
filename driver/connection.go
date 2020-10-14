@@ -70,8 +70,6 @@ const (
 	setDefaultSchema  = "set schema %s"
 )
 
-var minimalServerVersion = common.ParseHDBVersion("2.00.042")
-
 // bulk statement
 const (
 	bulk = "b$"
@@ -254,18 +252,6 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	sv := session.ServerVersion()
-	/*
-		hdb version < 2.00.042
-		- no support of providing ClientInfo (server variables) in CONNECT message (see messageType.clientInfoSupported())
-	*/
-	switch {
-	case sv.IsEmpty(): // hdb version 1 does not report fullVersionString
-		return nil, fmt.Errorf("server version 1.00 is not supported - minimal server version: %s", minimalServerVersion)
-	case sv.Compare(minimalServerVersion) == -1:
-		return nil, fmt.Errorf("server version %s is not supported - minimal server version: %s", sv, minimalServerVersion)
 	}
 
 	c := &Conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
@@ -862,7 +848,7 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 	}
 
 	// check first argument if 'composite'
-	if nv.Value, err = convertCompType(nv.Value); err != nil {
+	if nv.Value, err = convertCompType(s.pr.NumField() == 1, nv.Value); err != nil {
 		return err
 	}
 

@@ -39,7 +39,7 @@ type Session struct {
 
 	sessionID     int64
 	serverOptions connectOptions
-	serverVersion common.HDBVersion
+	serverVersion *common.HDBVersion
 
 	pr *protocolReader
 	pw *protocolWriter
@@ -75,9 +75,6 @@ func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (
 
 // SessionID returns the session id of the hdb connection.
 func (s *Session) SessionID() int64 { return s.sessionID }
-
-// ServerVersion returns the version reported by the hdb server.
-func (s *Session) ServerVersion() common.HDBVersion { return s.serverVersion }
 
 // ServerInfo returnsinformation reported by hdb server.
 func (s *Session) ServerInfo() *common.ServerInfo {
