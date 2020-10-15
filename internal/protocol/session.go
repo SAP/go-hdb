@@ -241,7 +241,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 }
 
 // Exec executes a sql statement.
-func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue, commit bool) (driver.Result, error) {
+func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
 	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
 	}
@@ -283,7 +283,7 @@ func (s *Session) Exec(pr *PrepareResult, args []driver.NamedValue, commit bool)
 }
 
 // QueryCall executes a stored procecure (by Query).
-func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver.Rows, error) {
+func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows, error) {
 	/*
 		only in args
 		invariant: #inPrmFields == #args
@@ -339,13 +339,13 @@ func (s *Session) QueryCall(pr *PrepareResult, args []driver.NamedValue) (driver
 }
 
 // ExecCall executes a stored procecure (by Exec).
-func (s *Session) ExecCall(pr *PrepareResult, args []driver.NamedValue) (driver.Result, error) {
+func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result, error) {
 	/*
 		in,- and output args
 		invariant: #prmFields == #args
 	*/
 	var inPrmFields, outPrmFields []*ParameterField
-	var inArgs, outArgs []driver.NamedValue
+	var inArgs, outArgs []interface{}
 	for i, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
@@ -436,7 +436,7 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 }
 
 // Query executes a query.
-func (s *Session) Query(pr *PrepareResult, args []driver.NamedValue, commit bool) (driver.Rows, error) {
+func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (driver.Rows, error) {
 	// allow e.g inserts as query -> handle commit like in exec
 	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
 		return nil, err
@@ -638,7 +638,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 }
 
 // encodeLobs encodes (write to db) input lob parameters.
-func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []driver.NamedValue) error {
+func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []interface{}) error {
 	chunkSize := int(s.cfg.LobChunkSize)
 
 	readers := make([]io.Reader, 0, len(ids))
@@ -650,9 +650,9 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 	for i, arg := range args { // range over args (mass / bulk operation)
 		f := inPrmFields[i%numInPrmField]
 		if f.tc.isLob() {
-			rd, ok := arg.Value.(io.Reader)
+			rd, ok := arg.(io.Reader)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", arg.Value)
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", arg)
 			}
 			if f.tc.isCharBased() {
 				rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer

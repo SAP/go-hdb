@@ -182,10 +182,10 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 // input parameters
 type inputParameters struct {
 	inputFields []*ParameterField
-	args        []driver.NamedValue
+	args        []interface{}
 }
 
-func newInputParameters(inputFields []*ParameterField, args []driver.NamedValue) *inputParameters {
+func newInputParameters(inputFields []*ParameterField, args []interface{}) *inputParameters {
 	return &inputParameters{inputFields: inputFields, args: args}
 }
 

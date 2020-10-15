@@ -90,8 +90,7 @@ type resDecoder interface {
 }
 
 // parameter size
-func prmSize(tc typeCode, arg driver.NamedValue) int {
-	v := arg.Value
+func prmSize(tc typeCode, v interface{}) int {
 	if v == nil && tc.supportNullValue() {
 		return 0
 	}
@@ -99,8 +98,7 @@ func prmSize(tc typeCode, arg driver.NamedValue) int {
 }
 
 // encode parameter
-func encodePrm(e *encoding.Encoder, tc typeCode, ft fieldType, arg driver.NamedValue) error {
-	v := arg.Value
+func encodePrm(e *encoding.Encoder, tc typeCode, ft fieldType, v interface{}) error {
 	encTc := tc.encTc()
 	if v == nil && tc.supportNullValue() {
 		e.Byte(byte(encTc) | 0x80) // type code null value: set high bit

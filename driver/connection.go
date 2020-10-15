@@ -616,6 +616,19 @@ func (t *tx) close(rollback bool) error {
 
 //statements
 
+/*
+
+TODO: explanation why using []interface{} args insteaf of []driver.NamedValue
+
+issue: exec many would need to create driver.NamedValues which is huge allocation effort
+
+so, do the alloc for simple queries and execs between []driver.NamedValue and []interface{}
+instead and try to reuse the []interface{}
+
+real named arguments need to be handled in stmts in future
+
+*/
+
 //  check if statements implements all required interfaces
 var (
 	_ driver.Stmt              = (*stmt)(nil)
@@ -636,9 +649,10 @@ type stmt struct {
 	bulk, flush, compArg bool
 	bulkSize, numBulk    int
 	trace                bool // store flag for performance reasons (especially bulk inserts)
-	args                 []driver.NamedValue
 
-	manyArgs []driver.NamedValue // reuse args buffer for execMany
+	// TODO buffer ? check if two are needed
+	bulkArgs []interface{}
+	manyArgs []interface{} // reuse args buffer for execMany
 }
 
 func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
@@ -677,14 +691,14 @@ func (s *stmt) Close() error {
 		return driver.ErrBadConn
 	}
 
-	hdbDriver.addStmt(-1) // decrement number of statements.
-	if len(s.args) != 0 { // log always //TODO: Fatal?
-		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
+	hdbDriver.addStmt(-1)     // decrement number of statements.
+	if len(s.bulkArgs) != 0 { // log always //TODO: Fatal?
+		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.bulkArgs)/s.pr.NumField())
 	}
 	return c.session.DropStatementID(s.pr.StmtID())
 }
 
-func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
+func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
 	c := s.conn
 
 	if err := c.tryLock(lrNestedQuery); err != nil {
@@ -700,6 +714,12 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
+	}
+
+	// TODO buffer
+	args := make([]interface{}, len(nvargs))
+	for i, nv := range nvargs {
+		args[i] = nv.Value
 	}
 
 	if s.trace {
@@ -729,8 +749,8 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows
 	}
 }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	numArg := len(args)
+func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	numArg := len(nvargs)
 	switch {
 	case s.bulk:
 		flush := s.flush
@@ -738,22 +758,27 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		if numArg != 0 && numArg != s.pr.NumField() {
 			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
 		}
-		return s.execBulk(ctx, args, flush)
+		return s.execBulk(ctx, nvargs, flush)
 	case s.compArg:
 		s.compArg = false
 		if numArg != 1 {
 			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
 		}
-		return s.execCompArg(ctx, &args[0])
+		return s.execCompArg(ctx, &nvargs[0])
 	default:
 		if numArg != s.pr.NumField() {
 			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		// TODO buffer
+		args := make([]interface{}, len(nvargs))
+		for i, nv := range nvargs {
+			args[i] = nv.Value
 		}
 		return s.exec(ctx, args)
 	}
 }
 
-func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+func (s *stmt) exec(ctx context.Context, args []interface{}) (r driver.Result, err error) {
 	c := s.conn
 
 	if err := c.tryLock(0); err != nil {
@@ -775,13 +800,7 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Res
 
 	done := make(chan struct{})
 	go func() {
-		if s.bulk { // flush case only
-			r, err = c.session.Exec(s.pr, s.args, !c.inTx)
-			s.args = s.args[:0]
-			s.numBulk = 0
-		} else {
-			r, err = c.session.Exec(s.pr, args, !c.inTx)
-		}
+		r, err = c.session.Exec(s.pr, args, !c.inTx)
 		close(done)
 	}()
 
@@ -808,18 +827,20 @@ bulk or many execs
 
 */
 
-func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush bool) (r driver.Result, err error) {
-	numArg := len(args)
+func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush bool) (r driver.Result, err error) {
+	numArg := len(nvargs)
 
 	if numArg == 0 {
 		flush = true
 	}
 
 	if numArg != 0 { // add to argument buffer
-		if s.args == nil {
-			s.args = make([]driver.NamedValue, 0, s.pr.NumField()*s.bulkSize)
+		if s.bulkArgs == nil {
+			s.bulkArgs = make([]interface{}, 0, s.pr.NumField()*s.bulkSize)
 		}
-		s.args = append(s.args, args...)
+		for _, nv := range nvargs {
+			s.bulkArgs = append(s.bulkArgs, nv.Value)
+		}
 		s.numBulk++
 		if s.numBulk >= s.bulkSize {
 			flush = true
@@ -830,8 +851,8 @@ func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush boo
 	}
 
 	// flush
-	r, err = s.exec(ctx, s.args)
-	s.args = s.args[:0]
+	r, err = s.exec(ctx, s.bulkArgs)
+	s.bulkArgs = s.bulkArgs[:0]
 	s.numBulk = 0
 	return
 }
@@ -953,7 +974,7 @@ func (s *callStmt) Close() error {
 	return c.session.DropStatementID(s.pr.StmtID())
 }
 
-func (s *callStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
+func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
 	c := s.conn
 
 	if err := c.tryLock(lrNestedQuery); err != nil {
@@ -969,6 +990,12 @@ func (s *callStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
+	}
+
+	// TODO buffer
+	args := make([]interface{}, len(nvargs))
+	for i, nv := range nvargs {
+		args[i] = nv.Value
 	}
 
 	if sqltrace.On() {
@@ -998,7 +1025,7 @@ func (s *callStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (
 	}
 }
 
-func (s *callStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
+func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
 	c := s.conn
 
 	if err := c.tryLock(0); err != nil {
@@ -1008,6 +1035,12 @@ func (s *callStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r
 
 	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
+	}
+
+	// TODO buffer
+	args := make([]interface{}, len(nvargs))
+	for i, nv := range nvargs {
+		args[i] = nv.Value
 	}
 
 	if sqltrace.On() {
