@@ -15,8 +15,8 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleBulkInsert inserts 1000 integer values into database table test.
-// Precondition: the test database table with one field of type integer must exist.
+// ExampleBulkInsert inserts 1000 rows into a database table.
+//
 // The insert SQL command is "bulk insert" instead of "insert".
 // After the insertion of the values a final stmt.Exec() without parameters must be executed.
 //
@@ -30,7 +30,7 @@ func Example_bulkInsert() {
 	tableName := driver.RandomIdentifier("table_")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f float)", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -41,7 +41,7 @@ func Example_bulkInsert() {
 	}
 
 	// Prepare statement on basis of connection (bulk insert).
-	stmt, err := conn.PrepareContext(context.Background(), fmt.Sprintf("bulk insert into %s values (?)", tableName))
+	stmt, err := conn.PrepareContext(context.Background(), fmt.Sprintf("bulk insert into %s values (?,?)", tableName))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func Example_bulkInsert() {
 
 	// Bulk insert.
 	for i := 0; i < 1000; i++ {
-		if _, err := stmt.Exec(i); err != nil {
+		if _, err := stmt.Exec(i, float64(i)); err != nil {
 			log.Fatal(err)
 		}
 	}

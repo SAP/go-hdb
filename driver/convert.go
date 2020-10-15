@@ -53,19 +53,15 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 }
 
 func convertValue(f *p.ParameterField, v driver.Value) (driver.Value, error) {
-	// // let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
-	// if valuer, ok := v.(driver.Valuer); ok {
-	// 	if v, err := valuer.Value(); err != nil {
-	// 		return nil, err
-	// 	}
-	// }
-	// if v, err := f.Convert(v); err != nil { // convert field
-	// 	return nil, err
-	// }
-
-	// // TODO end this
-	return nil, nil
-
+	var err error
+	// let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
+	if valuer, ok := v.(driver.Valuer); ok {
+		if v, err = valuer.Value(); err != nil {
+			return nil, err
+		}
+	}
+	// convert field
+	return f.Convert(v)
 }
 
 func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {

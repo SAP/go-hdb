@@ -15,18 +15,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-//TODO
-
-// T O D O description exec many
-
-// ExampleBulkInsert inserts 1000 integer values into database table test.
-// Precondition: the test database table with one field of type integer must exist.
-// The insert SQL command is "bulk insert" instead of "insert".
-// After the insertion of the values a final stmt.Exec() without parameters must be executed.
-//
-// Caution:
-// Bulk statements need to be executed in the context of a transaction or connection
-// to guarantee that that all statement operations are done within the same connection.
+// ExampleManyInsert inserts 1000 rows into a database table via a 'mass' operation.
 func Example_manyInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
@@ -63,10 +52,7 @@ func Example_manyInsert() {
 	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&numRow); err != nil {
 		log.Fatal(err)
 	}
-
-	// TODO
-	//fmt.Print(numRow)
-	fmt.Print(1000)
+	fmt.Print(numRow)
 
 	// Drop table.
 	if _, err := db.Exec(fmt.Sprintf("drop table %s", tableName)); err != nil {

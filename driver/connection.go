@@ -691,10 +691,15 @@ func (s *stmt) Close() error {
 		return driver.ErrBadConn
 	}
 
-	hdbDriver.addStmt(-1)     // decrement number of statements.
+	hdbDriver.addStmt(-1) // decrement number of statements.
+
 	if len(s.bulkArgs) != 0 { // log always //TODO: Fatal?
 		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.bulkArgs)/s.pr.NumField())
 	}
+
+	s.bulkArgs = nil
+	s.manyArgs = nil
+
 	return c.session.DropStatementID(s.pr.StmtID())
 }
 
@@ -764,7 +769,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		if numArg != 1 {
 			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
 		}
-		return s.execCompArg(ctx, &nvargs[0])
+		return s.execMany(ctx, &nvargs[0])
 	default:
 		if numArg != s.pr.NumField() {
 			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
@@ -869,60 +874,65 @@ func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush b
 // 	RowsAffected() (int64, error)
 // }
 
-func (s *stmt) execCompArg(ctx context.Context, nv *driver.NamedValue) (driver.Result, error) {
+// TODO pooling
+func getArgs(numRows, numFields int) []interface{} {
+	if numRows > maxBulkSize {
+		numRows = maxBulkSize
+	}
+	return make([]interface{}, numRows*numFields)
+}
 
-	// if s.manyArgs == nil {
-	// 	s.manyArgs = make([]driver.NamedValue, 0, s.pr.NumField()*s.bulkSize)
-	// }
+func (s *stmt) execManyPackage(ctx context.Context, fromRow, toRow int, rows [][]interface{}) (int64, error) {
 
-	// var rowsAffected int64
+	numField := s.pr.NumField()
 
-	// //	args := s.manyArgs
-	// numRows := 0
+	args := make([]interface{}, (toRow-fromRow)*numField)
 
-	// rows := nv.Value.([][]interface{})
+	i := 0
+	for j := fromRow; j < toRow; j++ {
+		row := rows[j]
+		if len(row) != numField {
+			return 0, fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, len(row), numField)
+		}
+		for k, v := range row {
+			f := s.pr.ParameterField(k)
+			v, err := convertValue(f, v)
+			if err != nil {
+				return 0, err
+			}
+			args[i] = v
+			i++
+		}
+	}
 
-	// for _, row := range rows {
+	r, err := s.exec(ctx, args)
+	if err != nil {
+		return 0, err
+	}
+	return r.RowsAffected()
+}
 
-	// 	if len(rows) != s.pr.NumField() {
-	// 		/// raise error
-	// 	}
+/*
+Due to the split in packages (maxBulkSize), execMany data might only be written partially to the database.
+*/
+func (s *stmt) execMany(ctx context.Context, nv *driver.NamedValue) (driver.Result, error) {
+	var totalRowsAffected int64
+	rows := nv.Value.([][]interface{})
 
-	// 	// for _, field := range row {
-	// 	// 	if err := convertNamedValue(s.pr, nv); err != nil {
-	// 	// 		return driver.RowsAffected(rowsAffected), err
-	// 	// 	}
-	// 	// 	// TODO			args := append(args, driver.NamedValue{Value: })
-	// 	// }
+	// maxBulkSize packages
+	fromRow := 0
+	for fromRow < len(rows) {
+		toRow := min(fromRow+maxBulkSize, len(rows))
 
-	// 	/*
-	// 		Issue:
-	// 		execMany might execute only a part in case of error
-	// 	*/
-	// 	numRows++
-	// 	if s.numBulk >= s.bulkSize {
-	// 		numRows = 0
-	// 		r, err := s.exec(ctx, s.args)
-	// 		if rows, err := r.RowsAffected(); err != nil {
-	// 			rowsAffected += rows
-	// 		}
-	// 		if err != nil {
-	// 			return driver.RowsAffected(rowsAffected), err
-	// 		}
-	// 	}
-	// }
+		rowsAffected, err := s.execManyPackage(ctx, fromRow, toRow, rows)
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+		totalRowsAffected += rowsAffected
 
-	// if numRows == 0 {
-	// 	return driver.RowsAffected(rowsAffected), nil
-	// }
-
-	// r, err := s.exec(ctx, s.args)
-	// if rows, err := r.RowsAffected(); err != nil {
-	// 	rowsAffected += rows
-	// }
-	// s.manyArgs = s.manyArgs[:0]
-	// return driver.RowsAffected(rowsAffected), err
-	return nil, nil
+		fromRow = toRow
+	}
+	return driver.RowsAffected(totalRowsAffected), nil
 }
 
 // CheckNamedValue implements NamedValueChecker interface.
