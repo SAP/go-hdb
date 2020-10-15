@@ -45,7 +45,7 @@ const (
 	DefaultTCPKeepAlive = 15 * time.Second  // Default TCP keep-alive value (copied from net.dial.go)
 	DefaultBufferSize   = 16276             // Default value bufferSize.
 	DefaultFetchSize    = 128               // Default value fetchSize.
-	DefaultBulkSize     = 1000              // Default value bulkSize.
+	DefaultBulkSize     = 10000             // Default value bulkSize.
 	DefaultLobChunkSize = 4096              // Default value lobChunkSize.
 	DefaultLegacy       = true              // Default value legacy.
 )

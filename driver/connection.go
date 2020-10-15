@@ -637,6 +637,8 @@ type stmt struct {
 	bulkSize, numBulk    int
 	trace                bool // store flag for performance reasons (especially bulk inserts)
 	args                 []driver.NamedValue
+
+	manyArgs []driver.NamedValue // reuse args buffer for execMany
 }
 
 func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
@@ -792,6 +794,20 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Res
 	}
 }
 
+/* TODO
+
+nv NamedValue is a struct
+- cannot chenge reference of value -> impact on caller
+- but shouldn' collect and send [] to session but only value
+- ---> should reduce allocs massively
+
+
+namedvalue does only make sense for queries and call procs
+but NOT for
+bulk or many execs
+
+*/
+
 func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush bool) (r driver.Result, err error) {
 	numArg := len(args)
 
@@ -801,7 +817,7 @@ func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush boo
 
 	if numArg != 0 { // add to argument buffer
 		if s.args == nil {
-			s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
+			s.args = make([]driver.NamedValue, 0, s.pr.NumField()*s.bulkSize)
 		}
 		s.args = append(s.args, args...)
 		s.numBulk++
@@ -820,8 +836,71 @@ func (s *stmt) execBulk(ctx context.Context, args []driver.NamedValue, flush boo
 	return
 }
 
+// // Result is the result of a query execution.
+// type Result interface {
+// 	// LastInsertId returns the database's auto-generated ID
+// 	// after, for example, an INSERT into a table with primary
+// 	// key.
+// 	LastInsertId() (int64, error)
+
+// 	// RowsAffected returns the number of rows affected by the
+// 	// query.
+// 	RowsAffected() (int64, error)
+// }
+
 func (s *stmt) execCompArg(ctx context.Context, nv *driver.NamedValue) (driver.Result, error) {
 
+	// if s.manyArgs == nil {
+	// 	s.manyArgs = make([]driver.NamedValue, 0, s.pr.NumField()*s.bulkSize)
+	// }
+
+	// var rowsAffected int64
+
+	// //	args := s.manyArgs
+	// numRows := 0
+
+	// rows := nv.Value.([][]interface{})
+
+	// for _, row := range rows {
+
+	// 	if len(rows) != s.pr.NumField() {
+	// 		/// raise error
+	// 	}
+
+	// 	// for _, field := range row {
+	// 	// 	if err := convertNamedValue(s.pr, nv); err != nil {
+	// 	// 		return driver.RowsAffected(rowsAffected), err
+	// 	// 	}
+	// 	// 	// TODO			args := append(args, driver.NamedValue{Value: })
+	// 	// }
+
+	// 	/*
+	// 		Issue:
+	// 		execMany might execute only a part in case of error
+	// 	*/
+	// 	numRows++
+	// 	if s.numBulk >= s.bulkSize {
+	// 		numRows = 0
+	// 		r, err := s.exec(ctx, s.args)
+	// 		if rows, err := r.RowsAffected(); err != nil {
+	// 			rowsAffected += rows
+	// 		}
+	// 		if err != nil {
+	// 			return driver.RowsAffected(rowsAffected), err
+	// 		}
+	// 	}
+	// }
+
+	// if numRows == 0 {
+	// 	return driver.RowsAffected(rowsAffected), nil
+	// }
+
+	// r, err := s.exec(ctx, s.args)
+	// if rows, err := r.RowsAffected(); err != nil {
+	// 	rowsAffected += rows
+	// }
+	// s.manyArgs = s.manyArgs[:0]
+	// return driver.RowsAffected(rowsAffected), err
 	return nil, nil
 }
 
