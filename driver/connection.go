@@ -642,17 +642,41 @@ var (
 	_ driver.NamedValueChecker = (*callStmt)(nil)
 )
 
-type stmt struct {
-	conn                 *Conn
-	query                string
-	pr                   *p.PrepareResult
-	bulk, flush, compArg bool
-	bulkSize, numBulk    int
-	trace                bool // store flag for performance reasons (especially bulk inserts)
+type argsPool struct {
+	sync.Pool
+}
 
-	// TODO buffer ? check if two are needed
-	bulkArgs []interface{}
-	manyArgs []interface{} // reuse args buffer for execMany
+func (p *argsPool) put(v []interface{}) { p.Put(v) }
+
+func (p *argsPool) getSize(size int) []interface{} {
+	v := p.Get()
+	if v == nil || cap(v.([]interface{})) < size {
+		return make([]interface{}, size)
+	}
+	return v.([]interface{})[0:size]
+}
+
+func (p *argsPool) getNVArgs(nvargs []driver.NamedValue) []interface{} {
+	v := p.getSize(len(nvargs))
+	for i, nv := range nvargs {
+		v[i] = nv.Value
+	}
+	return v
+}
+
+var (
+	smallArgsPool = argsPool{} // rather small slices
+	hugeArgsPool  = argsPool{} // rather huge slices (like for bulk or many)
+)
+
+type stmt struct {
+	conn              *Conn
+	query             string
+	pr                *p.PrepareResult
+	bulk, flush, many bool
+	bulkSize, numBulk int
+	trace             bool // store flag for performance reasons (especially bulk inserts)
+	bulkArgs          []interface{}
 }
 
 func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
@@ -693,12 +717,15 @@ func (s *stmt) Close() error {
 
 	hdbDriver.addStmt(-1) // decrement number of statements.
 
-	if len(s.bulkArgs) != 0 { // log always //TODO: Fatal?
-		dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.bulkArgs)/s.pr.NumField())
-	}
+	if s.bulkArgs != nil {
 
-	s.bulkArgs = nil
-	s.manyArgs = nil
+		if len(s.bulkArgs) != 0 { // log always //TODO: Fatal?
+			dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.bulkArgs)/s.pr.NumField())
+		}
+
+		hugeArgsPool.put(s.bulkArgs)
+		s.bulkArgs = nil
+	}
 
 	return c.session.DropStatementID(s.pr.StmtID())
 }
@@ -721,11 +748,8 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 		return nil, driver.ErrBadConn
 	}
 
-	// TODO buffer
-	args := make([]interface{}, len(nvargs))
-	for i, nv := range nvargs {
-		args[i] = nv.Value
-	}
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
 
 	if s.trace {
 		sqltrace.Tracef("%s %v", s.query, args)
@@ -764,8 +788,8 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
 		}
 		return s.execBulk(ctx, nvargs, flush)
-	case s.compArg:
-		s.compArg = false
+	case s.many:
+		s.many = false
 		if numArg != 1 {
 			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
 		}
@@ -774,11 +798,8 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		if numArg != s.pr.NumField() {
 			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
 		}
-		// TODO buffer
-		args := make([]interface{}, len(nvargs))
-		for i, nv := range nvargs {
-			args[i] = nv.Value
-		}
+		args := smallArgsPool.getNVArgs(nvargs)
+		defer smallArgsPool.put(args)
 		return s.exec(ctx, args)
 	}
 }
@@ -841,7 +862,8 @@ func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush b
 
 	if numArg != 0 { // add to argument buffer
 		if s.bulkArgs == nil {
-			s.bulkArgs = make([]interface{}, 0, s.pr.NumField()*s.bulkSize)
+			s.bulkArgs = hugeArgsPool.getSize(s.pr.NumField() * s.bulkSize)
+			s.bulkArgs = s.bulkArgs[:0]
 		}
 		for _, nv := range nvargs {
 			s.bulkArgs = append(s.bulkArgs, nv.Value)
@@ -862,49 +884,21 @@ func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush b
 	return
 }
 
-// // Result is the result of a query execution.
-// type Result interface {
-// 	// LastInsertId returns the database's auto-generated ID
-// 	// after, for example, an INSERT into a table with primary
-// 	// key.
-// 	LastInsertId() (int64, error)
-
-// 	// RowsAffected returns the number of rows affected by the
-// 	// query.
-// 	RowsAffected() (int64, error)
-// }
-
-// TODO pooling
-func getArgs(numRows, numFields int) []interface{} {
-	if numRows > maxBulkSize {
-		numRows = maxBulkSize
-	}
-	return make([]interface{}, numRows*numFields)
-}
-
-
-xxx - provide slice instead of from to bla
-
-func (s *stmt) execManyPackage(ctx context.Context, fromRow, toRow int, rows [][]interface{}) (int64, error) {
-
+func (s *stmt) execManyPackage(ctx context.Context, rows [][]interface{}, args []interface{}) (int64, error) {
 	numField := s.pr.NumField()
+	args = args[:0]
 
-	args := make([]interface{}, (toRow-fromRow)*numField)
-
-	i := 0
-	for j := fromRow; j < toRow; j++ {
-		row := rows[j]
+	for i, row := range rows {
 		if len(row) != numField {
 			return 0, fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, len(row), numField)
 		}
-		for k, v := range row {
-			f := s.pr.ParameterField(k)
+		for j, v := range row {
+			f := s.pr.ParameterField(j)
 			v, err := convertValue(f, v)
 			if err != nil {
 				return 0, err
 			}
-			args[i] = v
-			i++
+			args = append(args, v)
 		}
 	}
 
@@ -922,12 +916,15 @@ func (s *stmt) execMany(ctx context.Context, nv *driver.NamedValue) (driver.Resu
 	var totalRowsAffected int64
 	rows := nv.Value.([][]interface{})
 
+	args := hugeArgsPool.getSize(min(len(rows), s.bulkSize))
+	defer hugeArgsPool.put(args)
+
 	// bulkSize packages
 	fromRow := 0
 	for fromRow < len(rows) {
 		toRow := min(fromRow+s.bulkSize, len(rows))
 
-		rowsAffected, err := s.execManyPackage(ctx, fromRow, toRow, rows)
+		rowsAffected, err := s.execManyPackage(ctx, rows[fromRow:toRow], args)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
 		}
@@ -965,7 +962,7 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 		return err
 	}
 
-	s.compArg = true
+	s.many = true
 	return nil
 
 }
@@ -1005,11 +1002,8 @@ func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue)
 		return nil, driver.ErrBadConn
 	}
 
-	// TODO buffer
-	args := make([]interface{}, len(nvargs))
-	for i, nv := range nvargs {
-		args[i] = nv.Value
-	}
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
 
 	if sqltrace.On() {
 		sqltrace.Tracef("%s %v", s.query, args)
@@ -1050,11 +1044,8 @@ func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) 
 		return nil, driver.ErrBadConn
 	}
 
-	// TODO buffer
-	args := make([]interface{}, len(nvargs))
-	for i, nv := range nvargs {
-		args[i] = nv.Value
-	}
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
 
 	if sqltrace.On() {
 		sqltrace.Tracef("%s %v", s.query, args)
