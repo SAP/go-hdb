@@ -882,6 +882,9 @@ func getArgs(numRows, numFields int) []interface{} {
 	return make([]interface{}, numRows*numFields)
 }
 
+
+xxx - provide slice instead of from to bla
+
 func (s *stmt) execManyPackage(ctx context.Context, fromRow, toRow int, rows [][]interface{}) (int64, error) {
 
 	numField := s.pr.NumField()
@@ -919,10 +922,10 @@ func (s *stmt) execMany(ctx context.Context, nv *driver.NamedValue) (driver.Resu
 	var totalRowsAffected int64
 	rows := nv.Value.([][]interface{})
 
-	// maxBulkSize packages
+	// bulkSize packages
 	fromRow := 0
 	for fromRow < len(rows) {
-		toRow := min(fromRow+maxBulkSize, len(rows))
+		toRow := min(fromRow+s.bulkSize, len(rows))
 
 		rowsAffected, err := s.execManyPackage(ctx, fromRow, toRow, rows)
 		if err != nil {
