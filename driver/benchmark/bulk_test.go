@@ -68,7 +68,7 @@ func BenchmarkBulk(b *testing.B) {
 
 	bulkSizes := []int{1000, 10000, 100000, 1000000}
 
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		b.Fatal(err)
 	}

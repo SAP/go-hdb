@@ -22,7 +22,7 @@ This demonstrates the usage of the type Decimal to write and scan decimal databa
 For variables TestDSN and TestSchema see main_test.go.
 */
 func ExampleDecimal() {
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

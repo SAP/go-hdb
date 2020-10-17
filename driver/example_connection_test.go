@@ -18,7 +18,7 @@ import (
 
 // ExampleConn-ServerInfo shows how to retrieve hdb server info with the help of sql.Conn.Raw().
 func ExampleConn_ServerInfo() {
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -88,8 +89,8 @@ type Connector struct {
 	dialer                                        dial.Dialer
 }
 
-// NewConnector returns a new Connector instance with default values.
-func NewConnector() *Connector {
+// newConnector returns a new Connector instance with default values.
+func newConnector() *Connector {
 	return &Connector{
 		applicationName:  defaultApplicationName,
 		bufferSize:       DefaultBufferSize,
@@ -105,9 +106,89 @@ func NewConnector() *Connector {
 	}
 }
 
+// Connector attributes.
+const (
+	caDSN           = "dsn"
+	caDefaultSchema = "defaultSchema"
+	caPingInterval  = "pingInterval"
+	caBulkSize      = "bulkSize"
+)
+
+func stringAttr(attr string, value interface{}) (string, error) {
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.String {
+		return v.String(), nil
+	}
+	return "", fmt.Errorf("attribute %s: invalid parameter value %v", attr, value)
+}
+
+func int64Attr(attr string, value interface{}) (int64, error) {
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u64 := v.Uint()
+		if u64 >= 1<<63 {
+			return 0, fmt.Errorf("attribute %s: integer out of range %d", attr, value)
+		}
+		return int64(u64), nil
+	}
+	return 0, fmt.Errorf("attribute %s: invalid parameter value %v", attr, value)
+}
+
+// NewConnector returns a new connector instance setting connector attributes to
+// values defined in attrs.
+// Example:
+//	dsn := "hdb://SYSTEM:MyPassword@localhost:39013"
+//	schema:= "MySchema"
+//	connector := NewConnector(map[string]interface{}{"dsn": dsn, "defaultSchema": schema}
+func NewConnector(attrs map[string]interface{}) (*Connector, error) {
+	c := newConnector()
+
+	for attr, value := range attrs {
+		switch attr {
+
+		default:
+			return nil, fmt.Errorf("invalid attribute: %s", attr)
+
+		case caDSN:
+			dsn, err := stringAttr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.setDSN(dsn); err != nil {
+				return nil, err
+			}
+
+		case caDefaultSchema:
+			defaultSchema, err := stringAttr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			c.defaultSchema = defaultSchema
+
+		case caPingInterval:
+			pingInterval, err := int64Attr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			c.pingInterval = time.Duration(pingInterval)
+
+		case caBulkSize:
+			bulkSize, err := int64Attr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			c.bulkSize = int(bulkSize)
+		}
+	}
+	return c, nil
+}
+
 // NewBasicAuthConnector creates a connector for basic authentication.
 func NewBasicAuthConnector(host, username, password string) *Connector {
-	c := NewConnector()
+	c := newConnector()
 	c.host = host
 	c.username = username
 	c.password = password
@@ -131,15 +212,8 @@ func (e ParseDSNError) Unwrap() error { return e.err }
 
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsn string) (*Connector, error) {
-	c := NewConnector()
+	c := newConnector()
 	return c, c.setDSN(dsn)
-}
-
-// SetDSN sets the dsn attributes of the connector.
-func (c *Connector) SetDSN(dsn string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.setDSN(dsn)
 }
 
 func (c *Connector) setDSN(dsn string) error {

@@ -635,7 +635,7 @@ func TestDataType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

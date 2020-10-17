@@ -20,7 +20,7 @@ import (
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-func testColumnType(connector drivertest.Connector, dataType func(string, int) string, scanType func(reflect.Type, int) reflect.Type, dfv int, t *testing.T) {
+func testColumnType(connector *Connector, dataType func(string, int) string, scanType func(reflect.Type, int) reflect.Type, dfv int, t *testing.T) {
 	var (
 		testTime    = time.Now()
 		testDecimal = (*Decimal)(big.NewRat(1, 1))
@@ -223,7 +223,7 @@ func TestColumnType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -197,7 +197,7 @@ func TestLob(t *testing.T) {
 		{"delayedScan", testLobDelayedScan},
 	}
 
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

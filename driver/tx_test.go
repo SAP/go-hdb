@@ -123,7 +123,7 @@ func TestTransaction(t *testing.T) {
 		{"transactionRollback", testTransactionRollback},
 	}
 
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

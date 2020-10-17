@@ -220,7 +220,7 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 	}
 
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

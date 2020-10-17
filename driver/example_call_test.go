@@ -27,7 +27,7 @@ begin
 end
 `
 
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,7 +73,7 @@ begin
 end
 `
 
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -151,7 +151,7 @@ begin
   drop table #test;
 end
 `
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

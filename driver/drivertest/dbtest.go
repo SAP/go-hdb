@@ -6,7 +6,6 @@ package drivertest
 
 import (
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"flag"
 	"log"
@@ -39,9 +38,9 @@ type dbFlags struct {
 	// dropSchemas will drop all schemas with GoHDBTestSchemaPrefix prefix to clean-up all not yet deleted
 	// test schemas created by go-hdb unit tests.
 	dropSchemas bool
-	// pingInt sets the connection ping interval in milliseconds.
+	// pingInterval sets the connection ping interval in milliseconds.
 	// If zero, the connection ping is deactivated.
-	pingInt int
+	pingInterval int
 }
 
 func newDBFlags() *dbFlags {
@@ -51,7 +50,7 @@ func newDBFlags() *dbFlags {
 	flag.StringVar(&f.schema, "schema", testGoHDBSchemaPrefix+rand.RandomString(16), "database schema")
 	flag.BoolVar(&f.dropSchema, "dropschema", true, "drop test schema if test ran successfully")
 	flag.BoolVar(&f.dropSchemas, "dropschemas", false, "drop all existing test schemas if test ran successfully")
-	flag.IntVar(&f.pingInt, "pingint", 0, "sets the connection ping interval (if zero, the connection ping is deactivated)")
+	flag.IntVar(&f.pingInterval, "pingint", 0, "sets the connection ping interval (if zero, the connection ping is deactivated)")
 
 	return f
 }
@@ -61,38 +60,19 @@ var stdDBFlags = newDBFlags()
 // DSN returns the dsn parameter.
 func DSN() string { return stdDBFlags.dsn }
 
-// // Schema returns the database schema.
-// func Schema() string { return stdDBFlags.schema }
+// Schema returns the database schema.
+func Schema() string { return stdDBFlags.schema }
 
-// // PingInt returns the ping interval.
-// func PingInt() int { return stdDBFlags.pingInt }
+// PingInterval returns the ping interval.
+func PingInterval() int { return stdDBFlags.pingInterval }
 
-// Connector interface.
-type Connector interface {
-	driver.Connector
-	SetDSN(dsn string) error
-	SetDefaultSchema(schema string) error
-	SetPingInterval(d time.Duration) error
-	SetDfv(dfv int) error
-	SetLegacy(b bool) error
-	SetBulkSize(bulkSize int) error
-}
-
-// DefaultConnector set test default values to ctr and returns it ('fluent').
-// ctr needs to implement drivertest.connector interface which is 'fullfilled' by driver.Connector.
-// driver.Connector cannot be used directly because of cyclic reference between
-// go-hdb/driver and go-hdb/driver.drivertest.
-func DefaultConnector(ctr Connector) (Connector, error) {
-	if err := ctr.SetDSN(stdDBFlags.dsn); err != nil {
-		return nil, err
+// DefaultAttrs returns the key value map of connector default testing attributes.
+func DefaultAttrs() map[string]interface{} {
+	return map[string]interface{}{
+		"dsn":           DSN(),
+		"defaultSchema": Schema(),
+		"pingInterval":  time.Second * time.Duration(PingInterval()),
 	}
-	if err := ctr.SetDefaultSchema(stdDBFlags.schema); err != nil {
-		return nil, err
-	}
-	if err := ctr.SetPingInterval(time.Duration(stdDBFlags.pingInt) * time.Millisecond); err != nil {
-		return nil, err
-	}
-	return ctr, nil
 }
 
 // dbTest provides setup and teardown methods for unit tests using the database.

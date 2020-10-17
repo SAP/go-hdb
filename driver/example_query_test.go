@@ -17,7 +17,7 @@ import (
 // TODO
 // ExampleQuery: tbd
 func Example_query() {
-	connector, err := drivertest.DefaultConnector(NewConnector())
+	connector, err := NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

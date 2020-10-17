@@ -98,7 +98,7 @@ func ExampleLob_pipe() {
 	defer file.Close()
 
 	// Open Test database.
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

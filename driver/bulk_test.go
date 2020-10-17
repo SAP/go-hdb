@@ -275,7 +275,7 @@ func TestBulk(t *testing.T) {
 		{"testBulkBlob", testBulkBlob},
 	}
 
-	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
