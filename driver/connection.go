@@ -256,7 +256,7 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 
 	c := &Conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
 	if ctr.defaultSchema != "" {
-		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, ctr.defaultSchema), nil); err != nil {
+		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, Identifier(ctr.defaultSchema)), nil); err != nil {
 			return nil, err
 		}
 	}

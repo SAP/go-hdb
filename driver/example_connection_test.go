@@ -13,11 +13,16 @@ import (
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // ExampleConn-ServerInfo shows how to retrieve hdb server info with the help of sql.Conn.Raw().
 func ExampleConn_ServerInfo() {
-	db := sql.OpenDB(driver.DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	// Grab connection.

@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package driver_test
 
 import (
 	//"bytes"
@@ -16,11 +16,14 @@ import (
 	"io"
 	"sync"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testLobInsert(db *sql.DB, t *testing.T) {
 
-	table := RandomIdentifier("lobInsert")
+	table := driver.RandomIdentifier("lobInsert")
 
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i1 integer, b1 blob, i2 integer, b2 blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
@@ -43,7 +46,7 @@ func (randReader) Read(b []byte) (n int, err error) {
 func testLobPipe(db *sql.DB, t *testing.T) {
 	const lobSize = 10000
 
-	table := RandomIdentifier("lobPipe")
+	table := driver.RandomIdentifier("lobPipe")
 
 	lrd := io.LimitReader(randReader{}, lobSize)
 
@@ -68,7 +71,7 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lob := &Lob{}
+	lob := &driver.Lob{}
 
 	rd, wr := io.Pipe()
 	lob.SetReader(rd)
@@ -122,7 +125,7 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 func testLobDelayedScan(db *sql.DB, t *testing.T) {
 	const lobSize = 10000
 
-	table := RandomIdentifier("lobPipe")
+	table := driver.RandomIdentifier("lobPipe")
 
 	rd := io.LimitReader(randReader{}, lobSize)
 
@@ -142,7 +145,7 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lob := &Lob{}
+	lob := &driver.Lob{}
 	lob.SetReader(rd)
 
 	if _, err := stmt.Exec(lob); err != nil {
@@ -169,9 +172,9 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 	err = conn.PingContext(ctx)
 	switch {
 	case err == nil:
-		t.Fatalf("got error: <nil> - expected: %s", ErrNestedQuery)
-	case err != ErrNestedQuery:
-		t.Fatalf("got error: %s - expected: %s", err, ErrNestedQuery)
+		t.Fatalf("got error: <nil> - expected: %s", driver.ErrNestedQuery)
+	case err != driver.ErrNestedQuery:
+		t.Fatalf("got error: %s - expected: %s", err, driver.ErrNestedQuery)
 	}
 
 	if err := row.Scan(lob); err != nil {
@@ -194,7 +197,11 @@ func TestLob(t *testing.T) {
 		{"delayedScan", testLobDelayedScan},
 	}
 
-	db := sql.OpenDB(DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	for _, test := range tests {

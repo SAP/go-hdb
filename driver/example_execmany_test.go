@@ -13,6 +13,7 @@ import (
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // ExampleManyInsert inserts 1000 rows into a database table via a 'mass' operation.
@@ -20,7 +21,11 @@ func Example_manyInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
 
-	db := sql.OpenDB(driver.DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

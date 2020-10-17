@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package driver_test
 
 import (
 	"context"
@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testConnection(db *sql.DB, t *testing.T) {
@@ -38,7 +41,7 @@ func testPing(db *sql.DB, t *testing.T) {
 }
 
 func testInsertByQuery(db *sql.DB, t *testing.T) {
-	table := RandomIdentifier("insertByQuery_")
+	table := driver.RandomIdentifier("insertByQuery_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +69,7 @@ func testHDBError(db *sql.DB, t *testing.T) {
 		if err == nil {
 			t.Fatal("hdb error expected")
 		}
-		dbError, ok := err.(Error)
+		dbError, ok := err.(driver.Error)
 		if !ok {
 			t.Fatalf("hdb error expected got %v", err)
 		}
@@ -86,8 +89,8 @@ begin
 	exec 'drop table %[2]s';
 end
 `
-	procedure := RandomIdentifier("proc_")
-	tableName := RandomIdentifier("table_")
+	procedure := driver.RandomIdentifier("proc_")
+	tableName := driver.RandomIdentifier("table_")
 
 	if _, err := db.Exec(fmt.Sprintf(procOut, procedure, tableName)); err != nil { // Create stored procedure.
 		t.Fatal(err)
@@ -99,7 +102,7 @@ end
 }
 
 func testQueryAttributeAlias(db *sql.DB, t *testing.T) {
-	table := RandomIdentifier("queryAttributeAlias_")
+	table := driver.RandomIdentifier("queryAttributeAlias_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +130,7 @@ func testQueryAttributeAlias(db *sql.DB, t *testing.T) {
 func testRowsAffected(db *sql.DB, t *testing.T) {
 	const maxRows = 10
 
-	table := RandomIdentifier("rowsAffected_")
+	table := driver.RandomIdentifier("rowsAffected_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +158,7 @@ func testRowsAffected(db *sql.DB, t *testing.T) {
 }
 
 func testUpsert(db *sql.DB, t *testing.T) {
-	table := RandomIdentifier("upsert_")
+	table := driver.RandomIdentifier("upsert_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (key int primary key, val int)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +220,11 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 	}
 
-	db := sql.OpenDB(DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	for _, test := range tests {

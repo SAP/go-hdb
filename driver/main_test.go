@@ -8,36 +8,21 @@ package driver
 
 import (
 	"database/sql"
+	"flag"
 	"log"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
-// globals
-var (
-	DefaultTestConnector *Connector
-	NewTestConnector     func() *Connector
-)
-
 func TestMain(m *testing.M) {
-	dbTest := drivertest.NewDBTest()
-
-	NewTestConnector = func() *Connector {
-		connector, err := NewDSNConnector(dbTest.DSN())
-		if err != nil {
-			log.Fatal(err)
-		}
-		connector.SetDefaultSchema(Identifier(dbTest.Schema()))
-		connector.SetPingInterval(time.Duration(dbTest.PingInt()) * time.Millisecond)
-		return connector
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	if !flag.Parsed() {
+		flag.Parse()
 	}
 
-	DefaultTestConnector = NewTestConnector()
-
-	connector, err := NewDSNConnector(dbTest.DSN())
+	connector, err := NewDSNConnector(drivertest.DSN())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,8 +30,8 @@ func TestMain(m *testing.M) {
 	defer db.Close()
 	//TestDB.SetMaxIdleConns(0)
 
-	dbTest.Setup(db)
+	drivertest.Setup(db)
 	exitCode := m.Run()
-	dbTest.Teardown(db, exitCode == 0)
+	drivertest.Teardown(db, exitCode == 0)
 	os.Exit(exitCode)
 }

@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // ExampleLobRead reads data from a largs data object database field into a bytes.Buffer.
@@ -97,7 +98,11 @@ func ExampleLob_pipe() {
 	defer file.Close()
 
 	// Open Test database.
-	db := sql.OpenDB(driver.DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.

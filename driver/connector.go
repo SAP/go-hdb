@@ -83,12 +83,13 @@ type Connector struct {
 	tcpKeepAlive                                  time.Duration // see net.Dialer
 	tlsConfig                                     *tls.Config
 	sessionVariables                              *vermap.VerMap
-	defaultSchema                                 Identifier
+	defaultSchema                                 string
 	legacy                                        bool
 	dialer                                        dial.Dialer
 }
 
-func newConnector() *Connector {
+// NewConnector returns a new Connector instance with default values.
+func NewConnector() *Connector {
 	return &Connector{
 		applicationName:  defaultApplicationName,
 		bufferSize:       DefaultBufferSize,
@@ -106,7 +107,7 @@ func newConnector() *Connector {
 
 // NewBasicAuthConnector creates a connector for basic authentication.
 func NewBasicAuthConnector(host, username, password string) *Connector {
-	c := newConnector()
+	c := NewConnector()
 	c.host = host
 	c.username = username
 	c.password = password
@@ -130,15 +131,25 @@ func (e ParseDSNError) Unwrap() error { return e.err }
 
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsn string) (*Connector, error) {
-	if dsn == "" {
-		return nil, fmt.Errorf("invalid DSN parameter error - DSN is empty")
-	}
+	c := NewConnector()
+	return c, c.setDSN(dsn)
+}
 
-	c := newConnector()
+// SetDSN sets the dsn attributes of the connector.
+func (c *Connector) SetDSN(dsn string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.setDSN(dsn)
+}
+
+func (c *Connector) setDSN(dsn string) error {
+	if dsn == "" {
+		return fmt.Errorf("invalid DSN parameter error - DSN is empty")
+	}
 
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, &ParseDSNError{err}
+		return &ParseDSNError{err}
 	}
 
 	c.host = u.Host
@@ -154,7 +165,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 		switch k {
 
 		default:
-			return nil, fmt.Errorf("URL parameter %s is not supported", k)
+			return fmt.Errorf("URL parameter %s is not supported", k)
 
 		case DSNFetchSize:
 			if len(v) == 0 {
@@ -162,7 +173,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			}
 			fetchSize, err := strconv.Atoi(v[0])
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse fetchSize: %s", v[0])
+				return fmt.Errorf("failed to parse fetchSize: %s", v[0])
 			}
 			if fetchSize < minFetchSize {
 				c.fetchSize = minFetchSize
@@ -176,7 +187,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			}
 			t, err := strconv.Atoi(v[0])
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse timeout: %s", v[0])
+				return fmt.Errorf("failed to parse timeout: %s", v[0])
 			}
 			timeout := time.Duration(t) * time.Second
 			if timeout < minTimeout {
@@ -209,7 +220,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			if v[0] != "" {
 				b, err = strconv.ParseBool(v[0])
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse InsecureSkipVerify (bool): %s", v[0])
+					return fmt.Errorf("failed to parse InsecureSkipVerify (bool): %s", v[0])
 				}
 			}
 			if c.tlsConfig == nil {
@@ -221,13 +232,13 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			for _, fn := range v {
 				rootPEM, err := ioutil.ReadFile(fn)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				if certPool == nil {
 					certPool = x509.NewCertPool()
 				}
 				if ok := certPool.AppendCertsFromPEM(rootPEM); !ok {
-					return nil, fmt.Errorf("failed to parse root certificate - filename: %s", fn)
+					return fmt.Errorf("failed to parse root certificate - filename: %s", fn)
 				}
 			}
 			if certPool != nil {
@@ -238,17 +249,40 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			}
 		}
 	}
-	return c, nil
+	return nil
+}
+
+// BasicAuthDSN return the connector DSN for basic authentication.
+func (c *Connector) BasicAuthDSN() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	values := url.Values{}
+	if c.locale != "" {
+		values.Set(DSNLocale, c.locale)
+	}
+	if c.fetchSize != 0 {
+		values.Set(DSNFetchSize, fmt.Sprintf("%d", c.fetchSize))
+	}
+	if c.timeout != 0 {
+		values.Set(DSNTimeout, fmt.Sprintf("%d", c.timeout))
+	}
+	return (&url.URL{
+		Scheme:   DriverName,
+		User:     url.UserPassword(c.username, c.password),
+		Host:     c.host,
+		RawQuery: values.Encode(),
+	}).String()
 }
 
 // Host returns the host of the connector.
-func (c *Connector) Host() string { return c.host }
+func (c *Connector) Host() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.host }
 
 // Username returns the username of the connector.
-func (c *Connector) Username() string { return c.username }
+func (c *Connector) Username() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.username }
 
 // Password returns the password of the connector.
-func (c *Connector) Password() string { return c.password }
+func (c *Connector) Password() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.password }
 
 // Locale returns the locale of the connector.
 func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.locale }
@@ -434,14 +468,14 @@ func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error
 }
 
 // DefaultSchema returns the database default schema of the connector.
-func (c *Connector) DefaultSchema() Identifier {
+func (c *Connector) DefaultSchema() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.defaultSchema
 }
 
 // SetDefaultSchema sets the database default schema of the connector.
-func (c *Connector) SetDefaultSchema(schema Identifier) error {
+func (c *Connector) SetDefaultSchema(schema string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.defaultSchema = schema
@@ -461,26 +495,6 @@ func (c *Connector) SetLegacy(b bool) error {
 	defer c.mu.Unlock()
 	c.legacy = b
 	return nil
-}
-
-// BasicAuthDSN return the connector DSN for basic authentication.
-func (c *Connector) BasicAuthDSN() string {
-	values := url.Values{}
-	if c.locale != "" {
-		values.Set(DSNLocale, c.locale)
-	}
-	if c.fetchSize != 0 {
-		values.Set(DSNFetchSize, fmt.Sprintf("%d", c.fetchSize))
-	}
-	if c.timeout != 0 {
-		values.Set(DSNTimeout, fmt.Sprintf("%d", c.timeout))
-	}
-	return (&url.URL{
-		Scheme:   DriverName,
-		User:     url.UserPassword(c.username, c.password),
-		Host:     c.host,
-		RawQuery: values.Encode(),
-	}).String()
 }
 
 // Connect implements the database/sql/driver/Connector interface.

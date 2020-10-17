@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package driver_test
 
 import (
 	"context"
@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // TestBulkFrame
 func testBulkFrame(conn *sql.Conn, samples int, cmd string, insertFct func(stmt *sql.Stmt), t *testing.T) {
 	// 1. prepare
-	tmpTableName := RandomIdentifier("#tmpTable")
+	tmpTableName := driver.RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
 	tx, err := conn.BeginTx(context.Background(), nil)
@@ -80,7 +83,7 @@ func testBulkFrame(conn *sql.Conn, samples int, cmd string, insertFct func(stmt 
 func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 	ctx := context.Background()
 
-	table := RandomIdentifier("bulkInsertDuplicates")
+	table := driver.RandomIdentifier("bulkInsertDuplicates")
 
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
@@ -111,7 +114,7 @@ func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 		t.Fatal("error duplicate key expected")
 	}
 
-	dbError, ok := err.(Error)
+	dbError, ok := err.(driver.Error)
 	if !ok {
 		t.Fatal("driver.Error expected")
 	}
@@ -158,10 +161,10 @@ func testBulk(conn *sql.Conn, t *testing.T) {
 			"bulkInsertViaParameter",
 			"insert into",
 			func(stmt *sql.Stmt) {
-				prm := NoFlush
+				prm := driver.NoFlush
 				for i := 0; i < samples; i++ {
 					if i == (samples - 1) {
-						prm = Flush
+						prm = driver.Flush
 					}
 					if _, err := stmt.Exec(i, prm); err != nil {
 						t.Fatalf("insert failed: %s", err)
@@ -187,7 +190,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 	}
 
 	// 1. prepare
-	tmpTableName := RandomIdentifier("#tmpTable")
+	tmpTableName := driver.RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
 	tx, err := conn.BeginTx(context.Background(), nil)
@@ -208,7 +211,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 
 	// 2. call insert function
 	for i := 0; i < samples; i++ {
-		lob := new(Lob).SetReader(strings.NewReader(lobData(i)))
+		lob := new(driver.Lob).SetReader(strings.NewReader(lobData(i)))
 
 		if _, err := stmt.Exec(i, lob); err != nil {
 			t.Fatalf("insert failed: %s", err)
@@ -242,7 +245,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 		var j int
 		builder := new(strings.Builder)
 
-		lob := new(Lob).SetWriter(builder)
+		lob := new(driver.Lob).SetWriter(builder)
 
 		if err := rows.Scan(&j, lob); err != nil {
 			t.Fatal(err)
@@ -272,7 +275,11 @@ func TestBulk(t *testing.T) {
 		{"testBulkBlob", testBulkBlob},
 	}
 
-	db := sql.OpenDB(DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	conn, err := db.Conn(context.Background())

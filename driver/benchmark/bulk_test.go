@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 type bulkTabler interface {
@@ -67,7 +68,10 @@ func BenchmarkBulk(b *testing.B) {
 
 	bulkSizes := []int{1000, 10000, 100000, 1000000}
 
-	connector := NewTestConnector()
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		b.Fatal(err)
+	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

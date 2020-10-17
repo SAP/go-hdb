@@ -6,10 +6,12 @@ package drivertest
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"flag"
 	"log"
 	"os"
+	"time"
 
 	"github.com/SAP/go-hdb/internal/rand"
 )
@@ -54,41 +56,59 @@ func newDBFlags() *dbFlags {
 	return f
 }
 
-// DBTest provides setup and teardown methods for unit tests using the database.
-type DBTest struct {
-	flags *dbFlags
-}
-
-// NewDBTest creates a new database test object.
-func NewDBTest() *DBTest {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	flags := newDBFlags()
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-	return &DBTest{flags: flags}
-}
+var stdDBFlags = newDBFlags()
 
 // DSN returns the dsn parameter.
-func (t *DBTest) DSN() string { return t.flags.dsn }
+func DSN() string { return stdDBFlags.dsn }
 
-// Schema returns the database schema.
-func (t *DBTest) Schema() string { return t.flags.schema }
+// // Schema returns the database schema.
+// func Schema() string { return stdDBFlags.schema }
 
-// PingInt returns the ping interval.
-func (t *DBTest) PingInt() int { return t.flags.pingInt }
+// // PingInt returns the ping interval.
+// func PingInt() int { return stdDBFlags.pingInt }
 
-// Setup creates the database schema.
-func (t *DBTest) Setup(db *sql.DB) {
-	if err := CreateSchema(db, t.flags.schema); err != nil {
-		t.exit(err)
-	}
-	log.Printf("created schema %s", t.flags.schema)
+// Connector interface.
+type Connector interface {
+	driver.Connector
+	SetDSN(dsn string) error
+	SetDefaultSchema(schema string) error
+	SetPingInterval(d time.Duration) error
+	SetDfv(dfv int) error
+	SetLegacy(b bool) error
+	SetBulkSize(bulkSize int) error
 }
 
-// Teardown deletes the database schema(s).
-func (t *DBTest) Teardown(db *sql.DB, drop bool) {
-	schema := t.flags.schema
+// DefaultConnector set test default values to ctr and returns it ('fluent').
+// ctr needs to implement drivertest.connector interface which is 'fullfilled' by driver.Connector.
+// driver.Connector cannot be used directly because of cyclic reference between
+// go-hdb/driver and go-hdb/driver.drivertest.
+func DefaultConnector(ctr Connector) (Connector, error) {
+	if err := ctr.SetDSN(stdDBFlags.dsn); err != nil {
+		return nil, err
+	}
+	if err := ctr.SetDefaultSchema(stdDBFlags.schema); err != nil {
+		return nil, err
+	}
+	if err := ctr.SetPingInterval(time.Duration(stdDBFlags.pingInt) * time.Millisecond); err != nil {
+		return nil, err
+	}
+	return ctr, nil
+}
+
+// dbTest provides setup and teardown methods for unit tests using the database.
+type dbTest struct{}
+
+// setup creates the database schema.
+func (t *dbTest) setup(db *sql.DB) {
+	if err := CreateSchema(db, stdDBFlags.schema); err != nil {
+		t.exit(err)
+	}
+	log.Printf("created schema %s", stdDBFlags.schema)
+}
+
+// teardown deletes the database schema(s).
+func (t *dbTest) teardown(db *sql.DB, drop bool) {
+	schema := stdDBFlags.schema
 
 	numTables, err := NumTablesInSchema(db, schema)
 	if err != nil {
@@ -105,7 +125,7 @@ func (t *DBTest) Teardown(db *sql.DB, drop bool) {
 	}
 
 	switch {
-	case t.flags.dropSchemas:
+	case stdDBFlags.dropSchemas:
 		schemas, err := QuerySchemasPrefix(db, testGoHDBSchemaPrefix)
 		if err != nil {
 			t.exit(err)
@@ -115,13 +135,13 @@ func (t *DBTest) Teardown(db *sql.DB, drop bool) {
 			log.Printf("dropped schema %s", schema)
 		}
 		log.Printf("number of dropped schemas: %d", len(schemas))
-	case t.flags.dropSchema:
+	case stdDBFlags.dropSchema:
 		DropSchema(db, schema)
 		log.Printf("dropped schema %s", schema)
 	}
 }
 
-func (t *DBTest) exit(err error) {
+func (t *dbTest) exit(err error) {
 	prefix := ""
 	for err != nil {
 		log.Printf("%s%s", prefix, err.Error())
@@ -130,3 +150,11 @@ func (t *DBTest) exit(err error) {
 	}
 	os.Exit(1)
 }
+
+var stdDBTest = dbTest{}
+
+// Setup creates the database schema.
+func Setup(db *sql.DB) { stdDBTest.setup(db) }
+
+// Teardown deletes the database schema(s).
+func Teardown(db *sql.DB, drop bool) { stdDBTest.teardown(db, drop) }

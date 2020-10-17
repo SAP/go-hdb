@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testDataType(db *sql.DB, dataType string, fieldSize int, check func(in, out interface{}, fieldSize int, t *testing.T) bool, testData []interface{}, t *testing.T) {
@@ -633,7 +635,10 @@ func TestDataType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector := NewTestConnector()
+	connector, err := drivertest.DefaultConnector(NewConnector())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for dfv := range testSet {
 		name := fmt.Sprintf("dfv %d", dfv)

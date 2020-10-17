@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func benchmarkPing(c *driver.Connector, b *testing.B) {
@@ -34,12 +35,15 @@ func benchmarkPingPar(c *driver.Connector, pb *testing.PB, b *testing.B) {
 }
 
 func BenchmarkPing(b *testing.B) {
-	c := DefaultTestConnector
+	connector, err := driver.NewDSNConnector(drivertest.DSN())
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.Run("Ping sequentially", func(b *testing.B) {
-		benchmarkPingSeq(c, b)
+		benchmarkPingSeq(connector, b)
 	})
 	b.Run("Ping parallel", func(b *testing.B) {
-		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(c, pb, b) })
+		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(connector, pb, b) })
 	})
 }

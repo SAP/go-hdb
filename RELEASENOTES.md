@@ -13,6 +13,10 @@ Release Notes
 - Support of sql.driver.Validator interface (go 1.15)
 - Performance improvements
 
+#### Incompatibilities
+
+- some minor type incompatibilities most users should not be affected of
+
 ## Release 0.101
 
 #### Minor revisions

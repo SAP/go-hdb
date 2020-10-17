@@ -4,16 +4,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package driver_test
 
 import (
 	"database/sql"
 	"fmt"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testTransactionCommit(db *sql.DB, t *testing.T) {
-	table := RandomIdentifier("testTxCommit_")
+	table := driver.RandomIdentifier("testTxCommit_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i tinyint)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +69,7 @@ func testTransactionCommit(db *sql.DB, t *testing.T) {
 }
 
 func testTransactionRollback(db *sql.DB, t *testing.T) {
-	table := RandomIdentifier("testTxRollback_")
+	table := driver.RandomIdentifier("testTxRollback_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i tinyint)", table)); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +123,11 @@ func TestTransaction(t *testing.T) {
 		{"transactionRollback", testTransactionRollback},
 	}
 
-	db := sql.OpenDB(DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	for _, test := range tests {

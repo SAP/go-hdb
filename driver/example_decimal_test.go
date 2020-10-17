@@ -13,6 +13,7 @@ import (
 	"math/big"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 /*
@@ -21,8 +22,11 @@ This demonstrates the usage of the type Decimal to write and scan decimal databa
 For variables TestDSN and TestSchema see main_test.go.
 */
 func ExampleDecimal() {
-
-	db := sql.OpenDB(driver.DefaultTestConnector)
+	connector, err := drivertest.DefaultConnector(driver.NewConnector())
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")
