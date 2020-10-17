@@ -180,7 +180,9 @@ func NewConnector(attrs map[string]interface{}) (*Connector, error) {
 			if err != nil {
 				return nil, err
 			}
-			c.bulkSize = int(bulkSize)
+			if err := c.setBulkSize(int(bulkSize)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return c, nil
@@ -419,6 +421,10 @@ SetBulkSize sets the bulkSize of the connector.
 func (c *Connector) SetBulkSize(bulkSize int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.setBulkSize(bulkSize)
+}
+
+func (c *Connector) setBulkSize(bulkSize int) error {
 	switch {
 	case bulkSize < minBulkSize:
 		bulkSize = minBulkSize
