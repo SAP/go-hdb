@@ -55,11 +55,11 @@ var readOnly = map[bool]string{
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
 var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 
-// ErrNestedTransaction is the error raised if a tranasction is created within a transaction as this is not supported by hdb.
+// ErrNestedTransaction is the error raised if a transaction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("nested transactions are not supported")
 
 // ErrNestedQuery is the error raised if a sql statement is executed before an "active" statement is closed.
-// Example: execute sql statement before rows of privious select statement are closed.
+// Example: execute sql statement before rows of previous select statement are closed.
 var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries
