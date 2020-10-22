@@ -20,7 +20,7 @@ func boolToInt64(f bool) int64 {
 }
 
 type sqlTrace struct {
-	// 64-bit alignement
+	// 64-bit alignment
 	on int64 // atomic access (0: false, 1:true)
 
 	*log.Logger
