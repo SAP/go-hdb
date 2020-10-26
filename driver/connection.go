@@ -272,7 +272,7 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	return c, nil
 }
 
-// kill conection
+// kill connection
 func (c *Conn) kill() {
 	dlog.Printf("Kill session %d", c.session.SessionID())
 	c.dbConn.Close()

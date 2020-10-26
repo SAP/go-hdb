@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.102
 
+#### Minor revisions
+
+Release 0.102.1 (need to upgrade: no)
+
+- Fixed some report card issues
+
 #### Release Notes
 
 - Added support of HANA server versions < 2.00.042 again
