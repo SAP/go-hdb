@@ -8,22 +8,34 @@ import (
 	"bytes"
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 )
 
 func assertEqualInt(t *testing.T, tc typeCode, v interface{}, r int64) {
-	cv, err := tc.fieldType().Convert(v)
+	cv, err := tc.fieldType().convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cv.(int64) != r {
-		t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+
+	rv := reflect.ValueOf(cv)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if rv.Int() != r {
+			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if int64(rv.Uint()) != r {
+			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
+		}
+	default:
+		t.Fatalf("invalid type %[1]T %[1]v", cv)
 	}
 }
 
 func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
-	_, err := tc.fieldType().Convert(v)
+	_, err := tc.fieldType().convert(v)
 
 	if !errors.Is(err, ErrIntegerOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
@@ -59,17 +71,23 @@ func testConvertInteger(t *testing.T) {
 }
 
 func assertEqualFloat(t *testing.T, tc typeCode, v interface{}, r float64) {
-	cv, err := tc.fieldType().Convert(v)
+	cv, err := tc.fieldType().convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cv.(float64) != r {
-		t.Fatalf("assert equal float failed %v - %f expected", cv, r)
+	rv := reflect.ValueOf(cv)
+	switch rv.Kind() {
+	case reflect.Float32, reflect.Float64:
+		if rv.Float() != r {
+			t.Fatalf("assert equal float failed %v - %f expected", cv, r)
+		}
+	default:
+		t.Fatalf("invalid type %[1]T %[1]v", cv)
 	}
 }
 
 func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
-	_, err := tc.fieldType().Convert(v)
+	_, err := tc.fieldType().convert(v)
 
 	if !errors.Is(err, ErrFloatOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
@@ -102,7 +120,7 @@ func testConvertFloat(t *testing.T) {
 }
 
 func assertEqualTime(t *testing.T, v interface{}, r time.Time) {
-	cv, err := tcTimestamp.fieldType().Convert(v)
+	cv, err := tcTimestamp.fieldType().convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +146,7 @@ func testConvertTime(t *testing.T) {
 }
 
 func assertEqualString(t *testing.T, tc typeCode, v interface{}, r string) {
-	cv, err := tc.fieldType().Convert(v)
+	cv, err := tc.fieldType().convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +172,7 @@ func testConvertString(t *testing.T) {
 }
 
 func assertEqualBytes(t *testing.T, tc typeCode, v interface{}, r []byte) {
-	cv, err := tc.fieldType().Convert(v)
+	cv, err := tc.fieldType().convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}

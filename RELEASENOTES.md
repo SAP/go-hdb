@@ -1,6 +1,24 @@
 Release Notes
 =============
 
+## Release 0.102
+
+#### Release Notes
+
+- Added support of HANA server versions < 2.00.042 again
+- Fixed bug when executing stored procedures without output (return) parameters (+ added test) 
+- Updated bulk example (bulk operations need to be executed in transaction or connection context!)
+- Added full support of sql.Conn.Raw()
+- Added method ServerInfo to driver.Conn (+ example)
+- driver.Driver is now public and provides some additional methods (e.g. Stats) 
+- Support of sql.driver.Validator interface (go 1.15)
+- Added 'execute many' (experimental - please see Example_manyInsert())
+- Performance improvements
+
+#### Incompatibilities
+
+- some minor type incompatibilities most users should not be affected of
+
 ## Release 0.101
 
 #### Minor revisions

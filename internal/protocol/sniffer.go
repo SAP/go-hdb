@@ -203,7 +203,7 @@ func (r *sniffDownReader) readMsg() error {
 		case pkParameterMetadata:
 			r.pr.read(r.prmMeta)
 		case pkOutputParameters:
-			outFields := []*parameterField{}
+			outFields := []*ParameterField{}
 			for _, f := range r.prmMeta.parameterFields {
 				if f.Out() {
 					outFields = append(outFields, f)

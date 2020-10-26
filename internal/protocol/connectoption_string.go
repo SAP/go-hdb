@@ -47,7 +47,7 @@ func _() {
 	_ = x[coImplicitLobStreaming-37]
 	_ = x[coCachedViewProperty-38]
 	_ = x[coXOpenXAProtocolSupported-39]
-	_ = x[coMasterCommitRedirectionSupported-40]
+	_ = x[coPrimaryCommitRedirectionSupported-40]
 	_ = x[coActiveActiveProtocolVersion-41]
 	_ = x[coActiveActiveConnectionOriginSite-42]
 	_ = x[coQueryTimeoutSupported-43]
@@ -66,9 +66,9 @@ func _() {
 	_ = x[coLRRPingTime-56]
 }
 
-const _connectOption_name = "coConnectionIDcoCompleteArrayExecutioncoClientLocalecoSupportsLargeBulkOperationscoDistributionEnabledcoPrimaryConnectionIDcoPrimaryConnectionHostcoPrimaryConnectionPortcoCompleteDatatypeSupportcoLargeNumberOfParametersSupportcoSystemIDcoDataFormatVersioncoAbapVarcharModecoSelectForUpdateSupportedcoClientDistributionModecoEngineDataFormatVersioncoDistributionProtocolVersioncoSplitBatchCommandscoUseTransactionFlagsOnlycoRowSlotImageParametercoIgnoreUnknownPartscoTableOutputParameterMetadataSupportcoDataFormatVersion2coItabParametercoDescribeTableOutputParametercoColumnarResultSetcoScrollableResultSetcoClientInfoNullValueSupportedcoAssociatedConnectionIDcoNonTransactionalPreparecoFdaEnabledcoOSUsercoRowSlotImageResultSetcoEndiannesscoUpdateTopologyAnwherecoEnableArrayTypecoImplicitLobStreamingcoCachedViewPropertycoXOpenXAProtocolSupportedcoMasterCommitRedirectionSupportedcoActiveActiveProtocolVersioncoActiveActiveConnectionOriginSitecoQueryTimeoutSupportedcoFullVersionStringcoDatabaseNamecoBuildPlatformcoImplicitXASessionSupportedcoClientSideColumnEncryptionVersioncoCompressionLevelAndFlagscoClientSideReExecutionSupportedcoClientReconnectWaitTimeoutcoOriginalAnchorConnectionIDcoFlagSet1coTopologyNetworkGroupcoIPAddresscoLRRPingTime"
+const _connectOption_name = "coConnectionIDcoCompleteArrayExecutioncoClientLocalecoSupportsLargeBulkOperationscoDistributionEnabledcoPrimaryConnectionIDcoPrimaryConnectionHostcoPrimaryConnectionPortcoCompleteDatatypeSupportcoLargeNumberOfParametersSupportcoSystemIDcoDataFormatVersioncoAbapVarcharModecoSelectForUpdateSupportedcoClientDistributionModecoEngineDataFormatVersioncoDistributionProtocolVersioncoSplitBatchCommandscoUseTransactionFlagsOnlycoRowSlotImageParametercoIgnoreUnknownPartscoTableOutputParameterMetadataSupportcoDataFormatVersion2coItabParametercoDescribeTableOutputParametercoColumnarResultSetcoScrollableResultSetcoClientInfoNullValueSupportedcoAssociatedConnectionIDcoNonTransactionalPreparecoFdaEnabledcoOSUsercoRowSlotImageResultSetcoEndiannesscoUpdateTopologyAnwherecoEnableArrayTypecoImplicitLobStreamingcoCachedViewPropertycoXOpenXAProtocolSupportedcoPrimaryCommitRedirectionSupportedcoActiveActiveProtocolVersioncoActiveActiveConnectionOriginSitecoQueryTimeoutSupportedcoFullVersionStringcoDatabaseNamecoBuildPlatformcoImplicitXASessionSupportedcoClientSideColumnEncryptionVersioncoCompressionLevelAndFlagscoClientSideReExecutionSupportedcoClientReconnectWaitTimeoutcoOriginalAnchorConnectionIDcoFlagSet1coTopologyNetworkGroupcoIPAddresscoLRRPingTime"
 
-var _connectOption_index = [...]uint16{0, 14, 38, 52, 81, 102, 123, 146, 169, 194, 226, 236, 255, 272, 298, 322, 347, 376, 396, 421, 444, 464, 501, 521, 536, 566, 585, 606, 636, 660, 685, 697, 705, 728, 740, 763, 780, 802, 822, 848, 882, 911, 945, 968, 987, 1001, 1016, 1044, 1079, 1105, 1137, 1165, 1193, 1203, 1225, 1236, 1249}
+var _connectOption_index = [...]uint16{0, 14, 38, 52, 81, 102, 123, 146, 169, 194, 226, 236, 255, 272, 298, 322, 347, 376, 396, 421, 444, 464, 501, 521, 536, 566, 585, 606, 636, 660, 685, 697, 705, 728, 740, 763, 780, 802, 822, 848, 883, 912, 946, 969, 988, 1002, 1017, 1045, 1080, 1106, 1138, 1166, 1194, 1204, 1226, 1237, 1250}
 
 func (i connectOption) String() string {
 	i -= 1

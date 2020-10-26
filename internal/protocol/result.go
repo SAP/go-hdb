@@ -79,19 +79,17 @@ func (f *resultField) String() string {
 	)
 }
 
-func (f *resultField) Converter() Converter { return f.tc.fieldType() }
-
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *resultField) TypeName() string { return f.tc.typeName() }
+func (f *resultField) typeName() string { return f.tc.typeName() }
 
 // ScanType returns the scan type of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *resultField) ScanType() DataType { return f.tc.dataType() }
+func (f *resultField) scanType() DataType { return f.tc.dataType() }
 
 // TypeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *resultField) TypeLength() (int64, bool) {
+func (f *resultField) typeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
@@ -100,7 +98,7 @@ func (f *resultField) TypeLength() (int64, bool) {
 
 // TypePrecisionScale returns the type precision and scale (decimal types) of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *resultField) TypePrecisionScale() (int64, int64, bool) {
+func (f *resultField) typePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
@@ -109,12 +107,10 @@ func (f *resultField) TypePrecisionScale() (int64, int64, bool) {
 
 // Nullable returns true if the field may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *resultField) Nullable() bool { return f.columnOptions == coOptional }
+func (f *resultField) nullable() bool { return f.columnOptions == coOptional }
 
 // Name returns the result field name.
-func (f *resultField) Name() string { return f.columnDisplayName }
-func (f *resultField) In() bool     { return false }
-func (f *resultField) Out() bool    { return true }
+func (f *resultField) name() string { return f.columnDisplayName }
 
 func (f *resultField) decode(dec *encoding.Decoder) {
 	f.columnOptions = columnOptions(dec.Int8())
@@ -178,7 +174,7 @@ func (r *resultset) String() string {
 func (r *resultset) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numArg := ph.numArg()
 	cols := len(r.resultFields)
-	r.fieldValues = newFieldValues(numArg * cols)
+	r.fieldValues = resizeFieldValues(numArg*cols, r.fieldValues)
 
 	for i := 0; i < numArg; i++ {
 		for j, field := range r.resultFields {

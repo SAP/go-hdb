@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package driver_test
 
 import (
 	"bytes"
@@ -13,9 +13,12 @@ import (
 	"log"
 	"reflect"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
-func testCallEchoQueryRow(db *sql.DB, proc Identifier, t *testing.T) {
+func testCallEchoQueryRow(db *sql.DB, proc driver.Identifier, t *testing.T) {
 	const txt = "Hello World!"
 
 	var out string
@@ -39,17 +42,17 @@ end
 `
 	const txt = "Hello World - 𝄞𝄞€€!"
 
-	proc := RandomIdentifier("procBlobEcho_")
+	proc := driver.RandomIdentifier("procBlobEcho_")
 
 	if _, err := db.Exec(fmt.Sprintf(procBlobEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
-	inlob := new(Lob)
+	inlob := new(driver.Lob)
 	inlob.SetReader(bytes.NewReader([]byte(txt)))
 
 	b := new(bytes.Buffer)
-	outlob := new(Lob)
+	outlob := new(driver.Lob)
 	outlob.SetWriter(b)
 
 	if err := db.QueryRow(fmt.Sprintf("call %s(?, ?)", proc), inlob).Scan(outlob); err != nil {
@@ -71,14 +74,14 @@ begin
 end
 `
 	// create procedure
-	proc := RandomIdentifier("procEcho_")
+	proc := driver.RandomIdentifier("procEcho_")
 	if _, err := db.Exec(fmt.Sprintf(procEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, proc Identifier, t *testing.T)
+		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
 	}{
 		{"QueryRow", testCallEchoQueryRow},
 		//		{"Query", testCallEchoQuery},
@@ -87,16 +90,16 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, proc, t)
+			test.fct(db, proc, t)
 		})
 	}
 }
 
 func testCallTableOut(db *sql.DB, t *testing.T) {
-	const procTableOut = `create procedure %[1]s.%[2]s (in i integer, out t1 %[1]s.%[3]s, out t2 %[1]s.%[3]s, out t3 %[1]s.%[3]s)
+	const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
 language SQLSCRIPT as
 begin
-  create local temporary table #test like %[1]s.%[3]s;
+  create local temporary table #test like %[2]s;
   insert into #test values(0, 'A');
   insert into #test values(1, 'B');
   insert into #test values(2, 'C');
@@ -160,8 +163,8 @@ end
 		}
 	}
 
-	testCall := func(db *sql.DB, proc Identifier, legacy bool, targets []interface{}, t *testing.T) {
-		rows, err := db.Query(fmt.Sprintf("call %s.%s(?, ?, ?, ?)", TestSchema, proc), 1)
+	testCall := func(db *sql.DB, proc driver.Identifier, legacy bool, targets []interface{}, t *testing.T) {
+		rows, err := db.Query(fmt.Sprintf("call %s(?, ?, ?, ?)", proc), 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,28 +192,27 @@ end
 		}
 	}
 
-	tableType := RandomIdentifier("tt2_")
-	proc := RandomIdentifier("procTableOut_")
+	tableType := driver.RandomIdentifier("tt2_")
+	proc := driver.RandomIdentifier("procTableOut_")
 
 	// create table type
-	if _, err := db.Exec(fmt.Sprintf("create type %s.%s as table (i integer, x varchar(10))", TestSchema, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
 		t.Fatal(err)
 	}
 	// create procedure
-	if _, err := db.Exec(fmt.Sprintf(procTableOut, TestSchema, proc, tableType)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
-	connector, err := NewDSNConnector(TestDSN)
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
-	connector.SetDefaultSchema(TestSchema)
 
 	tests := []struct {
 		name    string
 		legacy  bool
-		fct     func(db *sql.DB, proc Identifier, legacy bool, targets []interface{}, t *testing.T)
+		fct     func(db *sql.DB, proc driver.Identifier, legacy bool, targets []interface{}, t *testing.T)
 		targets []interface{}
 	}{
 		{"tableOutRef", true, testCall, []interface{}{createString(), createString(), createString()}},
@@ -227,6 +229,42 @@ end
 	}
 }
 
+func testCallNoOutQueryRow(db *sql.DB, proc driver.Identifier, t *testing.T) {
+	var out string
+	// as the procedure does not have out parameters a try to scan any value should return the right sql error: sql.ErrNoRows.
+	if err := db.QueryRow(fmt.Sprintf("call %s", proc)).Scan(&out); err != sql.ErrNoRows {
+		t.Fatalf("error %s - expected %s", err, sql.ErrNoRows)
+	}
+}
+
+func testCallNoOut(db *sql.DB, t *testing.T) {
+	const procNoOut = `create procedure %[1]s
+language SQLSCRIPT as
+begin
+end
+`
+	// create procedure
+	proc := driver.RandomIdentifier("procNoOut_")
+	if _, err := db.Exec(fmt.Sprintf(procNoOut, proc)); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
+	}{
+		{"QueryRow", testCallNoOutQueryRow},
+		//		{"Query", testCallEchoQuery},
+		//		{"Exec", testCallEchoExec},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(db, proc, t)
+		})
+	}
+}
+
 func TestCall(t *testing.T) {
 	tests := []struct {
 		name string
@@ -235,11 +273,19 @@ func TestCall(t *testing.T) {
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
 		{"tableOut", testCallTableOut},
+		{"noOut", testCallNoOut},
 	}
+
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
+	defer db.Close()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(TestDB, t)
+			test.fct(db, t)
 		})
 	}
 }

@@ -13,7 +13,8 @@ import (
 
 const (
 	partHeaderSize = 16
-	maxPartNum     = math.MaxInt16
+	// MaxNumArg is the maximum number of arguments allowed to send in a part.
+	MaxNumArg = math.MaxInt16
 )
 
 type partAttributes int8
@@ -83,7 +84,7 @@ func (h *partHeader) setNumArg(numArg int) error {
 	switch {
 	default:
 		return fmt.Errorf("maximum number of arguments %d exceeded", numArg)
-	case numArg <= maxPartNum:
+	case numArg <= MaxNumArg:
 		h.argumentCount = int16(numArg)
 		h.bigArgumentCount = 0
 

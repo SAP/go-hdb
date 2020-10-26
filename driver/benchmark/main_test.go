@@ -4,7 +4,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package benchmark
 
 import (
 	"database/sql"
@@ -13,6 +13,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 		flag.Parse()
 	}
 
-	connector, err := NewDSNConnector(drivertest.DSN())
+	connector, err := driver.NewDSNConnector(drivertest.DSN())
 	if err != nil {
 		log.Fatal(err)
 	}

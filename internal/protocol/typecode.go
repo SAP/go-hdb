@@ -139,48 +139,40 @@ tcBintext:
 - see dataTypeMap and encTc
 */
 
-var dataTypeMap = map[typeCode]DataType{
-	tcBoolean:    DtBoolean,
-	tcTinyint:    DtTinyint,
-	tcSmallint:   DtSmallint,
-	tcInteger:    DtInteger,
-	tcBigint:     DtBigint,
-	tcReal:       DtReal,
-	tcDouble:     DtDouble,
-	tcDate:       DtTime,
-	tcTime:       DtTime,
-	tcTimestamp:  DtTime,
-	tcLongdate:   DtTime,
-	tcSeconddate: DtTime,
-	tcDaydate:    DtTime,
-	tcSecondtime: DtTime,
-	tcDecimal:    DtDecimal,
-	tcChar:       DtString,
-	tcVarchar:    DtString,
-	tcString:     DtString,
-	tcAlphanum:   DtString,
-	tcNchar:      DtString,
-	tcNvarchar:   DtString,
-	tcNstring:    DtString,
-	tcShorttext:  DtString,
-	tcBinary:     DtBytes,
-	tcVarbinary:  DtBytes,
-	tcBlob:       DtLob,
-	tcClob:       DtLob,
-	tcNclob:      DtLob,
-	tcText:       DtLob,
-	tcBintext:    DtLob,
-	tcTableRef:   DtString,
-	tcTableRows:  DtRows,
-}
-
-// DataType converts a type code into one of the supported data types by the driver.
 func (tc typeCode) dataType() DataType {
-	dt, ok := dataTypeMap[tc]
-	if !ok {
+	// performance: use switch instead of map
+	switch tc {
+	case tcBoolean:
+		return DtBoolean
+	case tcTinyint:
+		return DtTinyint
+	case tcSmallint:
+		return DtSmallint
+	case tcInteger:
+		return DtInteger
+	case tcBigint:
+		return DtBigint
+	case tcReal:
+		return DtReal
+	case tcDouble:
+		return DtDouble
+	case tcDate:
+		return DtTime
+	case tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
+		return DtTime
+	case tcDecimal:
+		return DtDecimal
+	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcTableRef:
+		return DtString
+	case tcBinary, tcVarbinary:
+		return DtBytes
+	case tcBlob, tcClob, tcNclob, tcText, tcBintext:
+		return DtLob
+	case tcTableRows:
+		return DtRows
+	default:
 		panic(fmt.Sprintf("Missing DataType for typeCode %s", tc))
 	}
-	return dt
 }
 
 // typeName returns the database type name.
@@ -189,47 +181,54 @@ func (tc typeCode) typeName() string {
 	return strings.ToUpper(tc.String()[2:])
 }
 
-var tcFieldTypeMap = map[typeCode]fieldType{
-	tcBoolean:    booleanType,
-	tcTinyint:    tinyintType,
-	tcSmallint:   smallintType,
-	tcInteger:    integerType,
-	tcBigint:     bigintType,
-	tcReal:       realType,
-	tcDouble:     doubleType,
-	tcDate:       dateType,
-	tcTime:       timeType,
-	tcTimestamp:  timestampType,
-	tcLongdate:   longdateType,
-	tcSeconddate: seconddateType,
-	tcDaydate:    daydateType,
-	tcSecondtime: secondtimeType,
-	tcDecimal:    decimalType,
-	tcChar:       varType,
-	tcVarchar:    varType,
-	tcString:     varType,
-	tcAlphanum:   alphaType,
-	tcNchar:      cesu8Type,
-	tcNvarchar:   cesu8Type,
-	tcNstring:    cesu8Type,
-	tcShorttext:  cesu8Type,
-	tcBinary:     varType,
-	tcVarbinary:  varType,
-	tcBlob:       lobVarType,
-	tcClob:       lobVarType,
-	tcNclob:      lobCESU8Type,
-	tcText:       lobCESU8Type,
-	//	tcBintext:    lobCESU8Type,
-	tcBintext: lobVarType,
-	tcLocator: lobCESU8Type,
-	//tcNlocator: lobCESU8Type,
-	tcNlocator: lobVarType,
-}
-
 func (tc typeCode) fieldType() fieldType {
-	f, ok := tcFieldTypeMap[tc]
-	if !ok {
+	// performance: use switch instead of map
+	switch tc {
+	case tcBoolean:
+		return booleanType
+	case tcTinyint:
+		return tinyintType
+	case tcSmallint:
+		return smallintType
+	case tcInteger:
+		return integerType
+	case tcBigint:
+		return bigintType
+	case tcReal:
+		return realType
+	case tcDouble:
+		return doubleType
+	case tcDate:
+		return dateType
+	case tcTime:
+		return timeType
+	case tcTimestamp:
+		return timestampType
+	case tcLongdate:
+		return longdateType
+	case tcSeconddate:
+		return seconddateType
+	case tcDaydate:
+		return daydateType
+	case tcSecondtime:
+		return secondtimeType
+	case tcDecimal:
+		return decimalType
+	case tcChar, tcVarchar, tcString:
+		return varType
+	case tcAlphanum:
+		return alphaType
+	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
+		return cesu8Type
+	case tcBinary, tcVarbinary:
+		return varType
+	case tcBlob, tcClob, tcLocator:
+		return lobVarType
+	case tcNclob, tcText, tcNlocator:
+		return lobCESU8Type
+	case tcBintext: // ?? lobCESU8Type
+		return lobVarType
+	default:
 		panic(fmt.Sprintf("Missing FieldType for typeCode %s", tc))
 	}
-	return f
 }

@@ -5,14 +5,21 @@
 package driver
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/common"
+	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	p "github.com/SAP/go-hdb/internal/protocol"
 	"github.com/SAP/go-hdb/internal/protocol/scanner"
@@ -48,19 +55,19 @@ var readOnly = map[bool]string{
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
 var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 
-// ErrNestedTransaction is the error raised if a tranasction is created within a transaction as this is not supported by hdb.
+// ErrNestedTransaction is the error raised if a transaction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("nested transactions are not supported")
 
 // ErrNestedQuery is the error raised if a sql statement is executed before an "active" statement is closed.
-// Example: execute sql statement before rows of privious select statement are closed.
+// Example: execute sql statement before rows of previous select statement are closed.
 var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries
 const (
-	pingQuery          = "select 1 from dummy"
-	isolationLevelStmt = "set transaction isolation level %s"
-	accessModeStmt     = "set transaction %s"
-	defaultSchema      = "set schema %s"
+	dummyQuery        = "select 1 from dummy"
+	setIsolationLevel = "set transaction isolation level %s"
+	setAccessMode     = "set transaction %s"
+	setDefaultSchema  = "set schema %s"
 )
 
 // bulk statement
@@ -80,57 +87,198 @@ var (
 	Flush = sql.Named(bulk, &flushTok)
 )
 
+const (
+	maxNumTraceArg = 20
+)
+
 func init() {
 	p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem())
 	p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
 }
 
-//  check if conn implements all required interfaces
-var (
-	_ driver.Conn               = (*conn)(nil)
-	_ driver.ConnPrepareContext = (*conn)(nil)
-	_ driver.Pinger             = (*conn)(nil)
-	_ driver.ConnBeginTx        = (*conn)(nil)
-	_ driver.ExecerContext      = (*conn)(nil)
-	_ driver.Execer             = (*conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
-	_ driver.QueryerContext     = (*conn)(nil)
-	_ driver.Queryer            = (*conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
-	_ driver.NamedValueChecker  = (*conn)(nil)
-	_ driver.SessionResetter    = (*conn)(nil)
+// dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
+type dbConn struct {
+	conn      net.Conn
+	timeout   time.Duration
+	lastError error // error bad connection
+	closed    bool
+}
+
+func (c *dbConn) isBad() bool { return c.lastError != nil || c.closed }
+
+func (c *dbConn) deadline() (deadline time.Time) {
+	if c.timeout == 0 {
+		return
+	}
+	return time.Now().Add(c.timeout)
+}
+
+func (c *dbConn) Close() error {
+	c.closed = true
+	return c.conn.Close()
+}
+
+// Read implements the io.Reader interface.
+func (c *dbConn) Read(b []byte) (n int, err error) {
+	//set timeout
+	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
+		goto retError
+	}
+	if n, err = c.conn.Read(b); err != nil {
+		goto retError
+	}
+	return
+retError:
+	dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
+}
+
+// Write implements the io.Writer interface.
+func (c *dbConn) Write(b []byte) (n int, err error) {
+	//set timeout
+	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
+		goto retError
+	}
+	if n, err = c.conn.Write(b); err != nil {
+		goto retError
+	}
+	return
+retError:
+	dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+	c.lastError = err
+	return n, driver.ErrBadConn
+}
+
+const (
+	lrNestedQuery = 1
 )
 
-type conn struct {
-	session *p.Session
-	scanner *scanner.Scanner
-	closed  chan struct{}
+type connLock struct {
+	// 64 bit alignment
+	lockReason int64 // atomic access
+
+	mu     sync.Mutex // tryLock mutex
+	connMu sync.Mutex // connection mutex
 }
 
-func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
-	session, err := p.NewSession(ctx, ctr)
-	if err != nil {
-		return nil, err
+func (l *connLock) tryLock(lockReason int64) error {
+	l.mu.Lock()
+	if atomic.LoadInt64(&l.lockReason) == lrNestedQuery {
+		l.mu.Unlock()
+		return ErrNestedQuery
 	}
-	c := &conn{session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
-	if err := c.init(ctx, ctr); err != nil {
-		return nil, err
-	}
-	d := ctr.PingInterval()
-	if d != 0 {
-		go c.pinger(d, c.closed)
-	}
-	return c, nil
-}
-
-func (c *conn) init(ctx context.Context, ctr *Connector) error {
-	if ctr.defaultSchema != "" {
-		if _, err := c.ExecContext(ctx, fmt.Sprintf(defaultSchema, ctr.defaultSchema), nil); err != nil {
-			return err
-		}
-	}
+	l.connMu.Lock()
+	atomic.StoreInt64(&l.lockReason, lockReason)
+	l.mu.Unlock()
 	return nil
 }
 
-func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
+func (l *connLock) lock() { l.connMu.Lock() }
+
+func (l *connLock) unlock() {
+	atomic.StoreInt64(&l.lockReason, 0)
+	l.connMu.Unlock()
+}
+
+//  check if conn implements all required interfaces
+var (
+	_ driver.Conn               = (*Conn)(nil)
+	_ driver.ConnPrepareContext = (*Conn)(nil)
+	_ driver.Pinger             = (*Conn)(nil)
+	_ driver.ConnBeginTx        = (*Conn)(nil)
+	_ driver.ExecerContext      = (*Conn)(nil)
+	_ driver.Execer             = (*Conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
+	_ driver.QueryerContext     = (*Conn)(nil)
+	_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
+	_ driver.NamedValueChecker  = (*Conn)(nil)
+	_ driver.SessionResetter    = (*Conn)(nil)
+)
+
+// Conn is the implementation of the database/sql/driver Conn interface.
+type Conn struct {
+	// Holding connection lock in QueryResultSet (see rows.onClose)
+	/*
+		As long as a session is in query mode no other sql statement must be executed.
+		Example:
+		- pinger is active
+		- select with blob fields is executed
+		- scan is hitting the database again (blob streaming)
+		- if in between a ping gets executed (ping selects db) hdb raises error
+		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
+	*/
+	connLock
+
+	ctr     *Connector
+	dbConn  *dbConn
+	session *p.Session
+	scanner *scanner.Scanner
+	closed  chan struct{}
+
+	inTx bool // in transaction
+}
+
+func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
+
+	ctr.mu.RLock() // lock connector
+	defer ctr.mu.RUnlock()
+
+	conn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
+	if err != nil {
+		return nil, err
+	}
+
+	// is TLS connection requested?
+	if ctr.tlsConfig != nil {
+		conn = tls.Client(conn, ctr.tlsConfig)
+	}
+
+	dbConn := &dbConn{conn: conn, timeout: ctr.timeout}
+	// buffer connection
+	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
+
+	session, err := p.NewSession(ctx, rw,
+		&p.SessionConfig{
+			DriverVersion:    DriverVersion,
+			DriverName:       DriverName,
+			ApplicationName:  ctr.applicationName,
+			Username:         ctr.username,
+			Password:         ctr.password,
+			SessionVariables: ctr.sessionVariables,
+			Locale:           ctr.locale,
+			FetchSize:        ctr.fetchSize,
+			LobChunkSize:     ctr.lobChunkSize,
+			Dfv:              ctr.dfv,
+			Legacy:           ctr.legacy,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+	if ctr.defaultSchema != "" {
+		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, Identifier(ctr.defaultSchema)), nil); err != nil {
+			return nil, err
+		}
+	}
+
+	if ctr.pingInterval != 0 {
+		go c.pinger(ctr.pingInterval, c.closed)
+	}
+
+	hdbDriver.addConn(1) // increment open connections.
+
+	return c, nil
+}
+
+// kill conection
+func (c *Conn) kill() {
+	dlog.Printf("Kill session %d", c.session.SessionID())
+	c.dbConn.Close()
+}
+
+func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
@@ -145,55 +293,54 @@ func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
 	}
 }
 
-func (c *conn) Ping(ctx context.Context) (err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+// Ping implements the driver.Pinger interface.
+func (c *Conn) Ping(ctx context.Context) (err error) {
+	if err := c.tryLock(0); err != nil {
+		return err
+	}
+	defer c.unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
-	if c.session.InQuery() {
-		return ErrNestedQuery
-	}
-
-	// caution!!!
-	defer c.session.SetInQuery(false)
 
 	done := make(chan struct{})
 	go func() {
-		_, err = c.session.QueryDirect(pingQuery)
+		_, err = c.session.QueryDirect(dummyQuery, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return ctx.Err()
 	case <-done:
 		return err
 	}
 }
 
-func (c *conn) ResetSession(ctx context.Context) error {
-	c.session.Lock()
-	defer c.session.Unlock()
+// ResetSession implements the driver.SessionResetter interface.
+func (c *Conn) ResetSession(ctx context.Context) error {
+	c.lock()
+	defer c.unlock()
 
-	c.session.Reset()
-	if c.session.IsBad() {
+	p.QueryResultCache.Cleanup(c.session)
+
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
 	return nil
 }
 
-func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
-
-	if c.session.IsBad() {
-		return nil, driver.ErrBadConn
+// PrepareContext implements the driver.ConnPrepareContext interface.
+func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
+	if err := c.tryLock(0); err != nil {
+		return nil, err
 	}
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
 	}
 
 	done := make(chan struct{})
@@ -221,40 +368,55 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		case <-ctx.Done():
 			return
 		}
-		stmt, err = newStmt(c.session, qd.Query(), qd.IsBulk(), pr)
+
+		if pr.IsProcedureCall() {
+			stmt = newCallStmt(c, qd.Query(), pr)
+		} else {
+			stmt = newStmt(c, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr) //take latest connector bulk size
+		}
+
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
+		hdbDriver.addStmt(1) // increment number of statements.
 		return stmt, err
 	}
 }
 
-func (c *conn) Close() error {
-	c.session.Lock()
-	defer c.session.Unlock()
+// Close implements the driver.Conn interface.
+func (c *Conn) Close() error {
+	c.lock()
+	defer c.unlock()
 
-	close(c.closed) // signal connection close
-	return c.session.Close()
+	hdbDriver.addConn(-1) // decrement open connections.
+	close(c.closed)       // signal connection close
+
+	// cleanup query cache
+	p.QueryResultCache.Cleanup(c.session)
+
+	c.session.Disconnect() // ignore error
+	return c.dbConn.Close()
 }
 
-func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
+// BeginTx implements the driver.ConnBeginTx interface.
+func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
 
-	if c.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if c.session.InTx() {
+
+	if c.inTx {
 		return nil, ErrNestedTransaction
-	}
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
 	}
 
 	level, ok := isolationLevel[opts.Isolation]
@@ -265,37 +427,44 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	done := make(chan struct{})
 	go func() {
 		// set isolation level
-		if _, err = c.session.ExecDirect(fmt.Sprintf(isolationLevelStmt, level)); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(setIsolationLevel, level), !c.inTx); err != nil {
 			goto done
 		}
 		// set access mode
-		if _, err = c.session.ExecDirect(fmt.Sprintf(accessModeStmt, readOnly[opts.ReadOnly])); err != nil {
+		if _, err = c.session.ExecDirect(fmt.Sprintf(setAccessMode, readOnly[opts.ReadOnly]), !c.inTx); err != nil {
 			goto done
 		}
-		c.session.SetInTx(true)
-		tx = newTx(c.session)
+		c.inTx = true
+		tx = newTx(c)
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
+		hdbDriver.addTx(1) // increment number of transactions.
 		return tx, err
 	}
 }
 
-func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
-
-	if c.session.IsBad() {
-		return nil, driver.ErrBadConn
+// QueryContext implements the driver.QueryerContext interface.
+func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (rows driver.Rows, err error) {
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
 	}
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
 	}
 
 	if len(args) != 0 {
@@ -314,46 +483,58 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return nil, driver.ErrSkip
 	case p.QkID:
 		// query call table result
-		qrs, ok := p.QrsCache.Get(qd.ID())
+		rows, ok := p.QueryResultCache.Get(qd.ID())
 		if !ok {
 			return nil, fmt.Errorf("invalid result set id %s", query)
 		}
-		return qrs, nil
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+			hasRowsCloser = true
+		}
+		return rows, nil
 	}
 
-	sqltrace.Traceln(query)
+	if sqltrace.On() {
+		sqltrace.Traceln(query)
+	}
 
 	done := make(chan struct{})
 	go func() {
-		rows, err = c.session.QueryDirect(query)
+		rows, err = c.session.QueryDirect(query, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+			hasRowsCloser = true
+		}
 		return rows, err
 	}
 }
 
-func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
-	c.session.Lock()
-	defer c.session.Unlock()
-
-	if c.session.IsBad() {
-		return nil, driver.ErrBadConn
+// ExecContext implements the driver.ExecerContext interface.
+func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (r driver.Result, err error) {
+	if err := c.tryLock(0); err != nil {
+		return nil, err
 	}
-	if c.session.InQuery() {
-		return nil, ErrNestedQuery
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
 	}
 
 	if len(args) != 0 {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
-	sqltrace.Traceln(query)
+	if sqltrace.On() {
+		sqltrace.Traceln(query)
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -362,28 +543,35 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if err != nil {
 			goto done
 		}
-		r, err = c.session.ExecDirect(qd.Query())
+		r, err = c.session.ExecDirect(qd.Query(), !c.inTx)
 	done:
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		c.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
 	}
 }
 
-// CheckNamedValue implements NamedValueChecker interface.
-// - called by sql driver for ExecContext and QueryContext
-// - no check needs to be performed as ExecContext and QueryContext provided
-//   with parameters will force the 'prepare way' (driver.ErrSkip)
-// - Anyway, CheckNamedValue must be implemented to avoid default sql driver checks
-//   which would fail for custom arg types like Lob
-func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
+// CheckNamedValue implements the NamedValueChecker interface.
+func (c *Conn) CheckNamedValue(nv *driver.NamedValue) error {
+	// - called by sql driver for ExecContext and QueryContext
+	// - no check needs to be performed as ExecContext and QueryContext provided
+	//   with parameters will force the 'prepare way' (driver.ErrSkip)
+	// - Anyway, CheckNamedValue must be implemented to avoid default sql driver checks
+	//   which would fail for custom arg types like Lob
 	return nil
+}
+
+// Conn Raw access methods
+
+// ServerInfo returns parameters reported by hdb server.
+func (c *Conn) ServerInfo() *common.ServerInfo {
+	return c.session.ServerInfo()
 }
 
 //transaction
@@ -394,191 +582,458 @@ var (
 )
 
 type tx struct {
-	session *p.Session
+	conn   *Conn
+	closed bool
 }
 
-func newTx(session *p.Session) *tx {
-	return &tx{
-		session: session,
+func newTx(conn *Conn) *tx { return &tx{conn: conn} }
+
+func (t *tx) Commit() error   { return t.close(false) }
+func (t *tx) Rollback() error { return t.close(true) }
+
+func (t *tx) close(rollback bool) error {
+	c := t.conn
+
+	c.lock()
+	defer c.unlock()
+
+	if t.closed {
+		return nil
 	}
-}
+	t.closed = true
 
-func (t *tx) Commit() error {
-	t.session.Lock()
-	defer t.session.Unlock()
-
-	if t.session.IsBad() {
+	if c.dbConn.isBad() {
 		return driver.ErrBadConn
 	}
 
-	return t.session.Commit()
-}
+	c.inTx = false
 
-func (t *tx) Rollback() error {
-	t.session.Lock()
-	defer t.session.Unlock()
+	hdbDriver.addTx(-1) // decrement number of transactions.
 
-	if t.session.IsBad() {
-		return driver.ErrBadConn
+	if rollback {
+		return c.session.Rollback()
 	}
-
-	return t.session.Rollback()
+	return c.session.Commit()
 }
 
-//statement
+/*
+statements
 
-//  check if stmt implements all required interfaces
+args interface to session
+. []interface{} (args) instead of []driver.NamedValue (nvargs) is used as
+  . bulk / many operations would have a huge allocation effort / overhead
+    converting args to nvargs
+  . drawback: nvargs for simply query and exec stmts need to convert nvargs to args
+
+nvargs
+. check support (v1.0.0)
+  . call (most probably as HANA does support parameter names)
+  . query input parameters (most probably not, as HANA does not support them)
+  . exec input parameters (could be done (map to table field name) but is it worth the effort?
+*/
+
+// TODO handling of nvargs when real named args are supported (v1.0.0)
+
+//  check if statements implements all required interfaces
 var (
 	_ driver.Stmt              = (*stmt)(nil)
 	_ driver.StmtExecContext   = (*stmt)(nil)
 	_ driver.StmtQueryContext  = (*stmt)(nil)
 	_ driver.NamedValueChecker = (*stmt)(nil)
+
+	_ driver.Stmt              = (*callStmt)(nil)
+	_ driver.StmtExecContext   = (*callStmt)(nil)
+	_ driver.StmtQueryContext  = (*callStmt)(nil)
+	_ driver.NamedValueChecker = (*callStmt)(nil)
 )
 
-type stmt struct {
-	pr                  *p.PrepareResult
-	session             *p.Session
-	query               string
-	bulk, flush         bool
-	maxBulkNum, bulkNum int
-	args                []driver.NamedValue
+type argsPool struct {
+	sync.Pool
 }
 
-func newStmt(session *p.Session, query string, bulk bool, pr *p.PrepareResult) (*stmt, error) {
-	return &stmt{session: session, query: query, pr: pr, bulk: bulk, maxBulkNum: session.MaxBulkNum()}, nil
+func (p *argsPool) put(v []interface{}) { p.Put(v) }
+
+func (p *argsPool) getSize(size int) []interface{} {
+	v := p.Get()
+	if v == nil || cap(v.([]interface{})) < size {
+		return make([]interface{}, size)
+	}
+	return v.([]interface{})[0:size]
 }
+
+func (p *argsPool) getNVArgs(nvargs []driver.NamedValue) []interface{} {
+	v := p.getSize(len(nvargs))
+	for i, nv := range nvargs {
+		v[i] = nv.Value
+	}
+	return v
+}
+
+var smallArgsPool = argsPool{} // rather small slices
+
+type stmt struct {
+	conn              *Conn
+	query             string
+	pr                *p.PrepareResult
+	bulk, flush, many bool
+	bulkSize, numBulk int
+	trace             bool          // store flag for performance reasons (especially bulk inserts)
+	args              []interface{} // bulk or many
+}
+
+func newStmt(conn *Conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
+	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}
+}
+
+type callStmt struct {
+	conn  *Conn
+	query string
+	pr    *p.PrepareResult
+}
+
+func newCallStmt(conn *Conn, query string, pr *p.PrepareResult) *callStmt {
+	return &callStmt{conn: conn, query: query, pr: pr}
+}
+
+/*
+	NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
+	- #args == #param (only in params):    query, exec, exec bulk (non control query)
+	- #args == #param (in and out params): exec call
+	- #args == 0:                          exec bulk (control query)
+	- #args == #input param:               query call
+*/
+func (s *stmt) NumInput() int     { return -1 }
+func (s *callStmt) NumInput() int { return -1 }
+
+// stmt methods
 
 func (s *stmt) Close() error {
-	s.session.Lock()
-	defer s.session.Unlock()
+	c := s.conn
 
-	if len(s.args) != 0 {
-		sqltrace.Tracef("close: %s - not flushed records: %d)", s.query, len(s.args)/s.NumInput())
+	c.lock()
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return driver.ErrBadConn
 	}
-	return s.session.DropStatementID(s.pr.StmtID())
+
+	hdbDriver.addStmt(-1) // decrement number of statements.
+
+	if s.args != nil {
+		if len(s.args) != 0 { // log always //TODO: Fatal?
+			dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.args)/s.pr.NumField())
+		}
+		s.args = nil
+	}
+
+	return c.session.DropStatementID(s.pr.StmtID())
 }
 
-func (s *stmt) NumInput() int {
-	/*
-		NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
-		- #args == #param (only in params):    query, exec, exec bulk (non control query)
-		- #args == #param (in and out params): exec call
-		- #args == 0:                          exec bulk (control query)
-		- #args == #input param:               query call
-	*/
-	return -1
-}
+func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
+	c := s.conn
 
-func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (rows driver.Rows, err error) {
-	s.session.Lock()
-	defer s.session.Unlock()
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
+	}
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
 
-	if s.session.IsBad() {
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if s.session.InQuery() {
-		return nil, ErrNestedQuery
+
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
+
+	if s.trace {
+		sqltrace.Tracef("%s %v", s.query, args)
 	}
 
-	sqltrace.Tracef("%s %v", s.query, args)
-
-	numArg := len(args)
-	var numExpected int
-	if s.pr.IsProcedureCall() {
-		numExpected = s.pr.NumInputField() // input fields only
-	} else {
-		numExpected = s.pr.NumField() // all fields needs to be input fields
-	}
-	if numArg != numExpected {
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
+	if len(args) != s.pr.NumField() { // all fields needs to be input fields
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumField())
 	}
 
 	done := make(chan struct{})
 	go func() {
-		if s.pr.IsProcedureCall() {
-			rows, err = s.session.QueryCall(s.pr, args)
-		} else {
-			rows, err = s.session.Query(s.pr, args)
-		}
+		rows, err = c.session.Query(s.pr, args, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		s.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+			hasRowsCloser = true
+		}
 		return rows, err
 	}
 }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (r driver.Result, err error) {
-	s.session.Lock()
-	defer s.session.Unlock()
+func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	numArg := len(nvargs)
+	switch {
+	case s.bulk:
+		flush := s.flush
+		s.flush = false
+		if numArg != 0 && numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		return s.execBulk(ctx, nvargs, flush)
+	case s.many:
+		s.many = false
+		if numArg != 1 {
+			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
+		}
+		return s.execMany(ctx, &nvargs[0])
+	default:
+		if numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		args := smallArgsPool.getNVArgs(nvargs)
+		defer smallArgsPool.put(args)
+		return s.exec(ctx, args)
+	}
+}
 
-	if s.session.IsBad() {
+func (s *stmt) exec(ctx context.Context, args []interface{}) (r driver.Result, err error) {
+	c := s.conn
+
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if s.session.InQuery() {
-		return nil, ErrNestedQuery
-	}
 
-	sqltrace.Tracef("%s %v", s.query, args)
-
-	numArg := len(args)
-	var numExpected int
-	if s.bulk && numArg == 0 { // ok - bulk control
-		numExpected = 0
-	} else {
-		numExpected = s.pr.NumField()
+	if s.trace {
+		if len(args) > maxNumTraceArg {
+			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, args[:maxNumTraceArg])
+		} else {
+			sqltrace.Tracef("%s %v", s.query, args)
+		}
 	}
-	if numArg != numExpected {
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numExpected)
-	}
-
-	if numArg == 0 { // flush
-		s.flush = true
-	}
-	defer func() { s.flush = false }()
 
 	done := make(chan struct{})
 	go func() {
-		switch {
-		case s.pr.IsProcedureCall():
-			r, err = s.session.ExecCall(s.pr, args)
-		case s.bulk:
-			r, err = driver.ResultNoRows, nil
-
-			if numArg != 0 { // add to argument buffer
-				if s.args == nil {
-					s.args = make([]driver.NamedValue, 0, DefaultBulkSize)
-				}
-				s.args = append(s.args, args...)
-				s.bulkNum++
-			}
-
-			if s.bulkNum != 0 && (s.flush || s.bulkNum == s.maxBulkNum) { // flush
-				r, err = s.session.Exec(s.pr, s.args)
-				s.args = s.args[:0]
-				s.bulkNum = 0
-			}
-		default:
-			r, err = s.session.Exec(s.pr, args)
-		}
+		r, err = c.session.Exec(s.pr, args, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		s.session.Kill()
+		c.kill()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
 	}
 }
 
+func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush bool) (r driver.Result, err error) {
+	numArg := len(nvargs)
+
+	switch numArg {
+	case 0: // exec without args --> flush
+		flush = true
+	default: // add to argument buffer
+		if s.args == nil {
+			s.args = make([]interface{}, 0, s.pr.NumField()*s.bulkSize)
+		}
+		for _, nv := range nvargs {
+			s.args = append(s.args, nv.Value)
+		}
+		s.numBulk++
+		if s.numBulk >= s.bulkSize {
+			flush = true
+		}
+	}
+
+	if !flush || s.numBulk == 0 { // done: no flush
+		return driver.ResultNoRows, nil
+	}
+
+	// flush
+	r, err = s.exec(ctx, s.args)
+	s.args = s.args[:0]
+	s.numBulk = 0
+	return
+}
+
+/*
+execMany variants
+*/
+
+type execManyer interface {
+	numRow() int
+	fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error
+}
+
+type execManyIntfList []interface{}
+type execManyIntfMatrix [][]interface{}
+type execManyGenList reflect.Value
+type execManyGenMatrix reflect.Value
+
+func (em execManyIntfList) numRow() int   { return len(em) }
+func (em execManyIntfMatrix) numRow() int { return len(em) }
+func (em execManyGenList) numRow() int    { return reflect.Value(em).Len() }
+func (em execManyGenMatrix) numRow() int  { return reflect.Value(em).Len() }
+
+func (em execManyIntfList) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
+	f := pr.ParameterField(0)
+	rows := em[startRow:endRow]
+	for i, row := range rows {
+		row, err := convertValue(f, row)
+		if err != nil {
+			return err
+		}
+		args[i] = row
+	}
+	return nil
+}
+
+func (em execManyGenList) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
+	f := pr.ParameterField(0)
+	cnt := 0
+	for i := startRow; i < endRow; i++ {
+		row, err := convertValue(f, reflect.Value(em).Index(i).Interface())
+		if err != nil {
+			return err
+		}
+		args[cnt] = row
+		cnt++
+	}
+	return nil
+}
+
+func (em execManyIntfMatrix) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
+	numField := pr.NumField()
+	rows := em[startRow:endRow]
+	cnt := 0
+	for i, row := range rows {
+		if len(row) != numField {
+			return fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, len(row), numField)
+		}
+		for j, col := range row {
+			f := pr.ParameterField(j)
+			col, err := convertValue(f, col)
+			if err != nil {
+				return err
+			}
+			args[cnt] = col
+			cnt++
+		}
+	}
+	return nil
+}
+
+func (em execManyGenMatrix) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
+	numField := pr.NumField()
+	cnt := 0
+	for i := startRow; i < endRow; i++ {
+		v, err := convertMany(reflect.Value(em).Index(i).Interface())
+		if err != nil {
+			return err
+		}
+		row := reflect.ValueOf(v) // need to be array or slice
+		if row.Len() != numField {
+			return fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, row.Len(), numField)
+		}
+		for j := 0; j < numField; j++ {
+			col := row.Index(j).Interface()
+			f := pr.ParameterField(j)
+			col, err := convertValue(f, col)
+			if err != nil {
+				return err
+			}
+			args[cnt] = col
+			cnt++
+		}
+	}
+	return nil
+}
+
+func (s *stmt) newExecManyVariant(numField int, v interface{}) execManyer {
+	if numField == 1 {
+		if v, ok := v.([]interface{}); ok {
+			return execManyIntfList(v)
+		}
+		return execManyGenList(reflect.ValueOf(v))
+	}
+	if v, ok := v.([][]interface{}); ok {
+		return execManyIntfMatrix(v)
+	}
+	return execManyGenMatrix(reflect.ValueOf(v))
+}
+
+/*
+Non 'atomic' (transactional) operation due to the split in packages (maxBulkSize),
+execMany data might only be written partially to the database in case of hdb stmt errors.
+*/
+func (s *stmt) execMany(ctx context.Context, nvarg *driver.NamedValue) (driver.Result, error) {
+
+	if len(s.args) != 0 {
+		return driver.ResultNoRows, fmt.Errorf("execMany: not flushed entries: %d)", len(s.args))
+	}
+
+	numField := s.pr.NumField()
+
+	defer func() { s.args = s.args[:0] }() // reset args
+
+	var totalRowsAffected int64
+
+	variant := s.newExecManyVariant(numField, nvarg.Value)
+	numRow := variant.numRow()
+
+	size := min(numRow*numField, s.bulkSize*numField)
+	if s.args == nil || cap(s.args) < size {
+		s.args = make([]interface{}, size)
+	} else {
+		s.args = s.args[:size]
+	}
+
+	numPack := numRow / s.bulkSize
+	if numRow%s.bulkSize != 0 {
+		numPack++
+	}
+
+	for p := 0; p < numPack; p++ {
+
+		startRow := p * s.bulkSize
+		endRow := min(startRow+s.bulkSize, numRow)
+
+		args := s.args[0 : (endRow-startRow)*numField]
+
+		if err := variant.fill(s.pr, startRow, endRow, args); err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+
+		// flush
+		r, err := s.exec(ctx, args)
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+		n, err := r.RowsAffected()
+		totalRowsAffected += n
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+	}
+
+	return driver.RowsAffected(totalRowsAffected), nil
+}
+
 // CheckNamedValue implements NamedValueChecker interface.
 func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
+	// check on bulk args
 	if nv.Name == bulk {
 		if ptr, ok := nv.Value.(**struct{}); ok {
 			switch ptr {
@@ -592,5 +1047,126 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 		}
 	}
 
+	// check on standard value
+	err := convertNamedValue(s.pr, nv)
+	if err == nil || s.bulk || nv.Ordinal != 1 {
+		return err
+	}
+
+	// check first argument if 'composite'
+	if nv.Value, err = convertMany(nv.Value); err != nil {
+		return err
+	}
+
+	s.many = true
+	return nil
+
+}
+
+// callStmt methods
+
+func (s *callStmt) Close() error {
+	c := s.conn
+
+	c.lock()
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return driver.ErrBadConn
+	}
+
+	hdbDriver.addStmt(-1) // decrement number of statements.
+
+	return c.session.DropStatementID(s.pr.StmtID())
+}
+
+func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
+	c := s.conn
+
+	if err := c.tryLock(lrNestedQuery); err != nil {
+		return nil, err
+	}
+	hasRowsCloser := false
+	defer func() {
+		// unlock connection if rows will not do it
+		if !hasRowsCloser {
+			c.unlock()
+		}
+	}()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
+	}
+
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
+
+	if sqltrace.On() {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
+
+	if len(args) != s.pr.NumInputField() { // input fields only
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumInputField())
+	}
+
+	done := make(chan struct{})
+	go func() {
+		rows, err = c.session.QueryCall(s.pr, args)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.kill()
+		return nil, ctx.Err()
+	case <-done:
+		if onCloser, ok := rows.(p.OnCloser); ok {
+			onCloser.SetOnClose(c.unlock)
+			hasRowsCloser = true
+		}
+		return rows, err
+	}
+}
+
+func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
+	c := s.conn
+
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
+	}
+
+	args := smallArgsPool.getNVArgs(nvargs)
+	defer smallArgsPool.put(args)
+
+	if sqltrace.On() {
+		sqltrace.Tracef("%s %v", s.query, args)
+	}
+
+	if len(args) != s.pr.NumField() {
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(args), s.pr.NumField())
+	}
+
+	done := make(chan struct{})
+	go func() {
+		r, err = c.session.ExecCall(s.pr, args)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.kill()
+		return nil, ctx.Err()
+	case <-done:
+		return r, err
+	}
+}
+
+// CheckNamedValue implements NamedValueChecker interface.
+func (s *callStmt) CheckNamedValue(nv *driver.NamedValue) error {
 	return convertNamedValue(s.pr, nv)
 }

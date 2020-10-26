@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // ExampleLobRead reads data from a largs data object database field into a bytes.Buffer.
@@ -97,7 +98,7 @@ func ExampleLob_pipe() {
 	defer file.Close()
 
 	// Open Test database.
-	connector, err := driver.NewDSNConnector(driver.TestDSN)
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

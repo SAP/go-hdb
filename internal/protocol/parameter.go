@@ -61,45 +61,47 @@ func (k parameterMode) String() string {
 	return fmt.Sprintf("%v", t)
 }
 
-func newParameterFields(size int) []*parameterField {
-	return make([]*parameterField, size)
+func newParameterFields(size int) []*ParameterField {
+	return make([]*ParameterField, size)
 }
 
-// parameterField contains database field attributes for parameters.
-type parameterField struct {
-	name             string
+// ParameterField contains database field attributes for parameters.
+type ParameterField struct {
+	fieldName        string
 	parameterOptions parameterOptions
 	tc               typeCode
+	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
 	mode             parameterMode
 	fraction         int16
 	length           int16
 	offset           uint32
 }
 
-func (f *parameterField) String() string {
+func (f *ParameterField) String() string {
 	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s fraction %d length %d name %s",
 		f.parameterOptions,
 		f.tc,
 		f.mode,
 		f.fraction,
 		f.length,
-		f.name,
+		f.fieldName,
 	)
 }
 
-func (f *parameterField) Converter() Converter { return f.tc.fieldType() }
+// Convert returns the result of the fieldType conversion.
+func (f *ParameterField) Convert(v interface{}) (interface{}, error) { return f.ft.convert(v) }
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *parameterField) TypeName() string { return f.tc.typeName() }
+func (f *ParameterField) typeName() string { return f.tc.typeName() }
 
 // ScanType returns the scan type of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *parameterField) ScanType() DataType { return f.tc.dataType() }
+func (f *ParameterField) scanType() DataType { return f.tc.dataType() }
 
 // typeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *parameterField) TypeLength() (int64, bool) {
+func (f *ParameterField) typeLength() (int64, bool) {
 	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
@@ -108,7 +110,7 @@ func (f *parameterField) TypeLength() (int64, bool) {
 
 // typePrecisionScale returns the type precision and scale (decimal types) of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
+func (f *ParameterField) typePrecisionScale() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
@@ -117,28 +119,29 @@ func (f *parameterField) TypePrecisionScale() (int64, int64, bool) {
 
 // nullable returns true if the field may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *parameterField) Nullable() bool {
+func (f *ParameterField) nullable() bool {
 	return f.parameterOptions == poOptional
 }
 
-// in returns true if the parameter field is an input field.
-func (f *parameterField) In() bool {
+// In returns true if the parameter field is an input field.
+func (f *ParameterField) In() bool {
 	return f.mode == pmInout || f.mode == pmIn
 }
 
-// out returns true if the parameter field is an output field.
-func (f *parameterField) Out() bool {
+// Out returns true if the parameter field is an output field.
+func (f *ParameterField) Out() bool {
 	return f.mode == pmInout || f.mode == pmOut
 }
 
 // name returns the parameter field name.
-func (f *parameterField) Name() string {
-	return f.name
+func (f *ParameterField) name() string {
+	return f.fieldName
 }
 
-func (f *parameterField) decode(dec *encoding.Decoder) {
+func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
+	f.ft = f.tc.fieldType()
 	f.mode = parameterMode(dec.Int8())
 	dec.Skip(1) //filler
 	f.offset = dec.Uint32()
@@ -149,7 +152,7 @@ func (f *parameterField) decode(dec *encoding.Decoder) {
 
 // parameter metadata
 type parameterMetadata struct {
-	parameterFields []*parameterField
+	parameterFields []*ParameterField
 }
 
 func (m *parameterMetadata) String() string {
@@ -162,7 +165,7 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 	names := fieldNames{}
 
 	for i := 0; i < len(m.parameterFields); i++ {
-		f := new(parameterField)
+		f := new(ParameterField)
 		f.decode(dec)
 		m.parameterFields[i] = f
 		names.insert(f.offset)
@@ -171,18 +174,18 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 	names.decode(dec)
 
 	for _, f := range m.parameterFields {
-		f.name = names.name(f.offset)
+		f.fieldName = names.name(f.offset)
 	}
 	return dec.Error()
 }
 
 // input parameters
 type inputParameters struct {
-	inputFields []*parameterField
-	args        []driver.NamedValue
+	inputFields []*ParameterField
+	args        []interface{}
 }
 
-func newInputParameters(inputFields []*parameterField, args []driver.NamedValue) *inputParameters {
+func newInputParameters(inputFields []*ParameterField, args []interface{}) *inputParameters {
 	return &inputParameters{inputFields: inputFields, args: args}
 }
 
@@ -222,7 +225,7 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 	for i, arg := range p.args {
 		//mass insert
 		f := p.inputFields[i%cnt]
-		if err := encodePrm(enc, f.tc, arg); err != nil {
+		if err := encodePrm(enc, f.tc, f.ft, arg); err != nil {
 			return err
 		}
 	}
@@ -231,7 +234,7 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 
 // output parameter
 type outputParameters struct {
-	outputFields []*parameterField
+	outputFields []*ParameterField
 	fieldValues  []driver.Value
 }
 
@@ -242,7 +245,7 @@ func (p *outputParameters) String() string {
 func (p *outputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numArg := ph.numArg()
 	cols := len(p.outputFields)
-	p.fieldValues = newFieldValues(numArg * cols)
+	p.fieldValues = resizeFieldValues(numArg*cols, p.fieldValues)
 
 	for i := 0; i < numArg; i++ {
 		for j, field := range p.outputFields {

@@ -13,17 +13,18 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/internal/container/varmap"
+	"github.com/SAP/go-hdb/internal/container/vermap"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 // Data Format Version values.
-// Driver does currently support DfvLevel1, DfvLevel4 and DfvLevel6.
+// Driver does currently support DfvLevel1, DfvLevel4, DfvLevel6 and DfvLevel8.
 const (
 	DfvLevel0 = 0 // base data format
 	DfvLevel1 = 1 // eval types support all data types
@@ -40,27 +41,26 @@ var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: tr
 
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel8        // Default data version format level.
-	DefaultTimeout      = 300              // Default value connection timeout (300 seconds = 5 minutes).
-	DefaultTCPKeepAlive = 15 * time.Second // Default TCP keep-alive value (copied from net.dial.go)
-	DefaultFetchSize    = 128              // Default value fetchSize.
-	DefaultBulkSize     = 1000             // Default value bulkSize.
-	DefaultLobChunkSize = 4096             // Default value lobChunkSize.
-	DefaultLegacy       = true             // Default value legacy.
+	DefaultDfv          = DfvLevel8         // Default data version format level.
+	DefaultTimeout      = 300 * time.Second // Default value connection timeout (300 seconds = 5 minutes).
+	DefaultTCPKeepAlive = 15 * time.Second  // Default TCP keep-alive value (copied from net.dial.go)
+	DefaultBufferSize   = 16276             // Default value bufferSize.
+	DefaultFetchSize    = 128               // Default value fetchSize.
+	DefaultBulkSize     = 10000             // Default value bulkSize.
+	DefaultLobChunkSize = 4096              // Default value lobChunkSize.
+	DefaultLegacy       = true              // Default value legacy.
 )
 
-// Connector minimal values.
+// Connector minimal / maximal values.
 const (
-	minTimeout      = 0   // Minimal timeout value.
-	minFetchSize    = 1   // Minimal fetchSize value.
-	minBulkSize     = 1   // Minimal bulkSize value.
-	minLobChunkSize = 128 // Minimal lobChunkSize
+	minTimeout      = 0 * time.Second // Minimal timeout value.
+	minFetchSize    = 1               // Minimal fetchSize value.
+	minBulkSize     = 1               // Minimal bulkSize value.
+	MaxBulkSize     = p.MaxNumArg     // Maximum bulk size.
+	minLobChunkSize = 128             // Minimal lobChunkSize
 	// TODO check maxLobChunkSize
 	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
 )
-
-// check if Connector implements session parameter interface.
-var _ p.SessionConfig = (*Connector)(nil)
 
 /*
 SessionVariables maps session variables to their values.
@@ -73,35 +73,129 @@ A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
-	mu                              sync.RWMutex
-	host, username, password        string
-	locale                          string
-	applicationName                 string
-	bufferSize, fetchSize, bulkSize int
-	lobChunkSize                    int32
-	timeout, dfv                    int
-	pingInterval                    time.Duration
-	tcpKeepAlive                    time.Duration // see net.Dialer
-	tlsConfig                       *tls.Config
-	sessionVariables                *varmap.VarMap
-	defaultSchema                   Identifier
-	legacy                          bool
-	dialer                          dial.Dialer
+	mu                                            sync.RWMutex
+	host, username, password                      string
+	locale                                        string
+	applicationName                               string
+	bufferSize, fetchSize, bulkSize, lobChunkSize int
+	timeout                                       time.Duration
+	dfv                                           int
+	pingInterval                                  time.Duration
+	tcpKeepAlive                                  time.Duration // see net.Dialer
+	tlsConfig                                     *tls.Config
+	sessionVariables                              *vermap.VerMap
+	defaultSchema                                 string
+	legacy                                        bool
+	dialer                                        dial.Dialer
 }
 
+// newConnector returns a new Connector instance with default values.
 func newConnector() *Connector {
 	return &Connector{
 		applicationName:  defaultApplicationName,
+		bufferSize:       DefaultBufferSize,
 		fetchSize:        DefaultFetchSize,
 		bulkSize:         DefaultBulkSize,
 		lobChunkSize:     DefaultLobChunkSize,
 		timeout:          DefaultTimeout,
 		dfv:              DefaultDfv,
 		tcpKeepAlive:     DefaultTCPKeepAlive,
-		sessionVariables: varmap.NewVarMap(),
+		sessionVariables: vermap.NewVerMap(),
 		legacy:           DefaultLegacy,
 		dialer:           dial.DefaultDialer,
 	}
+}
+
+// Connector attributes.
+const (
+	caDSN           = "dsn"
+	caDefaultSchema = "defaultSchema"
+	caPingInterval  = "pingInterval"
+	caBufferSize    = "bufferSize"
+	caBulkSize      = "bulkSize"
+)
+
+func stringAttr(attr string, value interface{}) (string, error) {
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.String {
+		return v.String(), nil
+	}
+	return "", fmt.Errorf("attribute %s: invalid parameter value %v", attr, value)
+}
+
+func int64Attr(attr string, value interface{}) (int64, error) {
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u64 := v.Uint()
+		if u64 >= 1<<63 {
+			return 0, fmt.Errorf("attribute %s: integer out of range %d", attr, value)
+		}
+		return int64(u64), nil
+	}
+	return 0, fmt.Errorf("attribute %s: invalid parameter value %v", attr, value)
+}
+
+// NewConnector returns a new connector instance setting connector attributes to
+// values defined in attrs.
+// Example:
+//	dsn := "hdb://SYSTEM:MyPassword@localhost:39013"
+//	schema:= "MySchema"
+//	connector := NewConnector(map[string]interface{}{"dsn": dsn, "defaultSchema": schema}
+func NewConnector(attrs map[string]interface{}) (*Connector, error) {
+	c := newConnector()
+
+	for attr, value := range attrs {
+		switch attr {
+
+		default:
+			return nil, fmt.Errorf("Connector: invalid attribute: %s", attr)
+
+		case caDSN:
+			dsn, err := stringAttr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.setDSN(dsn); err != nil {
+				return nil, err
+			}
+
+		case caDefaultSchema:
+			defaultSchema, err := stringAttr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			c.defaultSchema = defaultSchema
+
+		case caPingInterval:
+			pingInterval, err := int64Attr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			c.pingInterval = time.Duration(pingInterval)
+
+		case caBufferSize:
+			bufferSize, err := int64Attr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.setBufferSize(int(bufferSize)); err != nil {
+				return nil, err
+			}
+
+		case caBulkSize:
+			bulkSize, err := int64Attr(attr, value)
+			if err != nil {
+				return nil, err
+			}
+			if err := c.setBulkSize(int(bulkSize)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return c, nil
 }
 
 // NewBasicAuthConnector creates a connector for basic authentication.
@@ -130,15 +224,18 @@ func (e ParseDSNError) Unwrap() error { return e.err }
 
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsn string) (*Connector, error) {
-	if dsn == "" {
-		return nil, fmt.Errorf("invalid DSN parameter error - DSN is empty")
-	}
-
 	c := newConnector()
+	return c, c.setDSN(dsn)
+}
+
+func (c *Connector) setDSN(dsn string) error {
+	if dsn == "" {
+		return fmt.Errorf("invalid DSN parameter error - DSN is empty")
+	}
 
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, &ParseDSNError{err}
+		return &ParseDSNError{err}
 	}
 
 	c.host = u.Host
@@ -154,7 +251,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 		switch k {
 
 		default:
-			return nil, fmt.Errorf("URL parameter %s is not supported", k)
+			return fmt.Errorf("URL parameter %s is not supported", k)
 
 		case DSNFetchSize:
 			if len(v) == 0 {
@@ -162,7 +259,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			}
 			fetchSize, err := strconv.Atoi(v[0])
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse fetchSize: %s", v[0])
+				return fmt.Errorf("failed to parse fetchSize: %s", v[0])
 			}
 			if fetchSize < minFetchSize {
 				c.fetchSize = minFetchSize
@@ -174,10 +271,11 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			if len(v) == 0 {
 				continue
 			}
-			timeout, err := strconv.Atoi(v[0])
+			t, err := strconv.Atoi(v[0])
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse timeout: %s", v[0])
+				return fmt.Errorf("failed to parse timeout: %s", v[0])
 			}
+			timeout := time.Duration(t) * time.Second
 			if timeout < minTimeout {
 				c.timeout = minTimeout
 			} else {
@@ -208,7 +306,7 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			if v[0] != "" {
 				b, err = strconv.ParseBool(v[0])
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse InsecureSkipVerify (bool): %s", v[0])
+					return fmt.Errorf("failed to parse InsecureSkipVerify (bool): %s", v[0])
 				}
 			}
 			if c.tlsConfig == nil {
@@ -220,13 +318,13 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			for _, fn := range v {
 				rootPEM, err := ioutil.ReadFile(fn)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				if certPool == nil {
 					certPool = x509.NewCertPool()
 				}
 				if ok := certPool.AppendCertsFromPEM(rootPEM); !ok {
-					return nil, fmt.Errorf("failed to parse root certificate - filename: %s", fn)
+					return fmt.Errorf("failed to parse root certificate - filename: %s", fn)
 				}
 			}
 			if certPool != nil {
@@ -237,17 +335,40 @@ func NewDSNConnector(dsn string) (*Connector, error) {
 			}
 		}
 	}
-	return c, nil
+	return nil
+}
+
+// BasicAuthDSN return the connector DSN for basic authentication.
+func (c *Connector) BasicAuthDSN() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	values := url.Values{}
+	if c.locale != "" {
+		values.Set(DSNLocale, c.locale)
+	}
+	if c.fetchSize != 0 {
+		values.Set(DSNFetchSize, fmt.Sprintf("%d", c.fetchSize))
+	}
+	if c.timeout != 0 {
+		values.Set(DSNTimeout, fmt.Sprintf("%d", c.timeout))
+	}
+	return (&url.URL{
+		Scheme:   DriverName,
+		User:     url.UserPassword(c.username, c.password),
+		Host:     c.host,
+		RawQuery: values.Encode(),
+	}).String()
 }
 
 // Host returns the host of the connector.
-func (c *Connector) Host() string { return c.host }
+func (c *Connector) Host() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.host }
 
 // Username returns the username of the connector.
-func (c *Connector) Username() string { return c.username }
+func (c *Connector) Username() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.username }
 
 // Password returns the password of the connector.
-func (c *Connector) Password() string { return c.password }
+func (c *Connector) Password() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.password }
 
 // Locale returns the locale of the connector.
 func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.locale }
@@ -283,6 +404,20 @@ func (c *Connector) SetApplicationName(name string) error {
 // BufferSize returns the bufferSize of the connector.
 func (c *Connector) BufferSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bufferSize }
 
+/*
+SetBufferSize sets the bufferSize of the connector.
+*/
+func (c *Connector) SetBufferSize(bufferSize int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.setBufferSize(bufferSize)
+}
+
+func (c *Connector) setBufferSize(bufferSize int) error {
+	c.bufferSize = bufferSize
+	return nil
+}
+
 // FetchSize returns the fetchSize of the connector.
 func (c *Connector) FetchSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.fetchSize }
 
@@ -310,15 +445,22 @@ SetBulkSize sets the bulkSize of the connector.
 func (c *Connector) SetBulkSize(bulkSize int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if bulkSize < minBulkSize {
+	return c.setBulkSize(bulkSize)
+}
+
+func (c *Connector) setBulkSize(bulkSize int) error {
+	switch {
+	case bulkSize < minBulkSize:
 		bulkSize = minBulkSize
+	case bulkSize > MaxBulkSize:
+		bulkSize = MaxBulkSize
 	}
 	c.bulkSize = bulkSize
 	return nil
 }
 
 // LobChunkSize returns the lobChunkSize of the connector.
-func (c *Connector) LobChunkSize() int32 { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
+func (c *Connector) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
 
 // Dialer returns the dialer object of the connector.
 func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c.dialer }
@@ -335,19 +477,14 @@ func (c *Connector) SetDialer(dialer dial.Dialer) error {
 }
 
 // Timeout returns the timeout of the connector.
-func (c *Connector) Timeout() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
-
-// TimeoutDuration returns the timeout of the connector as a time.Duration value.
-func (c *Connector) TimeoutDuration() time.Duration {
-	return time.Duration(c.Timeout()) * time.Second
-}
+func (c *Connector) Timeout() time.Duration { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
 
 /*
 SetTimeout sets the timeout of the connector.
 
 For more information please see DSNTimeout.
 */
-func (c *Connector) SetTimeout(timeout int) error {
+func (c *Connector) SetTimeout(timeout time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if timeout < minTimeout {
@@ -423,31 +560,26 @@ func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) error {
 	return nil
 }
 
-// SessionVariablesVarMap returns the session variables VarMap stored in connector (for internal use only).
-func (c *Connector) SessionVariablesVarMap() *varmap.VarMap {
-	return c.sessionVariables
-}
-
 // SessionVariables returns the session variables stored in connector.
 func (c *Connector) SessionVariables() SessionVariables {
-	return SessionVariables(c.sessionVariables.LoadMap())
+	return SessionVariables(c.sessionVariables.Load())
 }
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.sessionVariables.StoreMap((map[string]string)(sessionVariables))
+	c.sessionVariables.Store((map[string]string)(sessionVariables))
 	return nil
 }
 
 // DefaultSchema returns the database default schema of the connector.
-func (c *Connector) DefaultSchema() Identifier {
+func (c *Connector) DefaultSchema() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.defaultSchema
 }
 
 // SetDefaultSchema sets the database default schema of the connector.
-func (c *Connector) SetDefaultSchema(schema Identifier) error {
+func (c *Connector) SetDefaultSchema(schema string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.defaultSchema = schema
@@ -469,28 +601,8 @@ func (c *Connector) SetLegacy(b bool) error {
 	return nil
 }
 
-// BasicAuthDSN return the connector DSN for basic authentication.
-func (c *Connector) BasicAuthDSN() string {
-	values := url.Values{}
-	if c.locale != "" {
-		values.Set(DSNLocale, c.locale)
-	}
-	if c.fetchSize != 0 {
-		values.Set(DSNFetchSize, fmt.Sprintf("%d", c.fetchSize))
-	}
-	if c.timeout != 0 {
-		values.Set(DSNTimeout, fmt.Sprintf("%d", c.timeout))
-	}
-	return (&url.URL{
-		Scheme:   DriverName,
-		User:     url.UserPassword(c.username, c.password),
-		Host:     c.host,
-		RawQuery: values.Encode(),
-	}).String()
-}
-
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) { return newConn(ctx, c) }
 
 // Driver implements the database/sql/driver/Connector interface.
-func (c *Connector) Driver() driver.Driver { return drv }
+func (c *Connector) Driver() driver.Driver { return hdbDriver }

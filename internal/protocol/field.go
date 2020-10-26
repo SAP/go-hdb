@@ -65,25 +65,9 @@ func (n fieldNames) decode(dec *encoding.Decoder) {
 	}
 }
 
-// A Field represents whether a db result or a parameter Field.
-type Field interface {
-	Name() string
-	TypeName() string
-	TypeLength() (int64, bool)
-	TypePrecisionScale() (int64, int64, bool)
-	ScanType() DataType
-	Nullable() bool
-	In() bool
-	Out() bool
-	Converter() Converter
-}
-
-var (
-	_ Field = (*resultField)(nil)
-	_ Field = (*parameterField)(nil)
-)
-
-// TODO cache
-func newFieldValues(size int) []driver.Value {
+func resizeFieldValues(size int, values []driver.Value) []driver.Value {
+	if size <= cap(values) {
+		return values[:size]
+	}
 	return make([]driver.Value, size)
 }

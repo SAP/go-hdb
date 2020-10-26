@@ -1,25 +1,23 @@
-go-hdb
-======
+# go-hdb
 
 [![GoDoc](https://godoc.org/github.com/SAP/go-hdb/driver?status.png)](https://godoc.org/github.com/SAP/go-hdb/driver)
 [![Go Report Card](https://goreportcard.com/badge/github.com/SAP/go-hdb)](https://goreportcard.com/report/github.com/SAP/go-hdb)
 [![REUSE status](https://api.reuse.software/badge/git.fsfe.org/reuse/api)](https://api.reuse.software/info/git.fsfe.org/reuse/api)
 ![](https://github.com/SAP/go-hdb/workflows/build/badge.svg)
 
-Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It implements the SAP HANA SQL command network protocol:  
-<http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf>
+Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It implements the SAP HANA SQL command network protocol.
 
 For the official SAP HANA client Go support (not this database driver) please see [SAP Help Portal](https://help.sap.com/viewer/0eec0d68141541d1b07893a39944924e/2.0.02/en-US/0ffbe86c9d9f44338441829c6bee15e6.html).
 
 ## Installation
 
 ```
-go get github.com/SAP/go-hdb/driver
+go get -u github.com/SAP/go-hdb/driver
 ```
 
 ## Building
 
-To build go-hdb you need to have a working Go environment with [version 1.15 or higher installed](https://golang.org/dl/).
+To build go-hdb you need to have a working Go environment of the [latest or second latest Go version](https://golang.org/dl/).
 
 ## Documentation
 

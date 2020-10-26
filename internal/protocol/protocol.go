@@ -7,39 +7,22 @@ package protocol
 import (
 	"bufio"
 	"database/sql/driver"
-	"errors"
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 
 	"github.com/SAP/go-hdb/driver/sqltrace"
-	"github.com/SAP/go-hdb/internal/container/varmap"
+	"github.com/SAP/go-hdb/internal/container/vermap"
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
-)
-
-// rowsResult represents the row resultset of a query or stored procedure (output parameters, call table results).
-type rowsResult interface {
-	rsID() uint64                         // RsID returns the resultset id.
-	columns() []string                    // Columns returns the names of the resultset columns.
-	numRow() int                          // NumRow returns the number of rows available in FieldValues.
-	closed() bool                         // Closed returnr true if the database resultset is closed (completely read).
-	lastPacket() bool                     // LastPacket returns true if the last packet of a resultset was read from database.
-	copyRow(idx int, dest []driver.Value) // CopyRow fills the dest value slice with row data at index idx.
-	field(idx int) Field                  // Field returns the field descriptor at position idx.
-	queryResult() (*queryResult, error)   // Used by fetch next if RowsResult is based on a query (nil for CallResult).
-}
-
-var (
-	_ rowsResult = (*queryResult)(nil)
-	_ rowsResult = (*callResult)(nil)
 )
 
 // A PrepareResult represents the result of a prepare statement.
 type PrepareResult struct {
-	fc           functionCode
-	stmtID       uint64
-	prmFields    []*parameterField
-	resultFields []*resultField
+	fc              functionCode
+	stmtID          uint64
+	parameterFields []*ParameterField
+	resultFields    []*resultField
 }
 
 // Check checks consistency of the prepare result.
@@ -51,7 +34,7 @@ func (pr *PrepareResult) Check(qd *QueryDescr) error {
 
 	if !call {
 		// only input parameters allowed
-		for _, f := range pr.prmFields {
+		for _, f := range pr.parameterFields {
 			if f.Out() {
 				return fmt.Errorf("invalid parameter %s", f)
 			}
@@ -72,16 +55,16 @@ func (pr *PrepareResult) IsProcedureCall() bool {
 
 // NumField returns the number of parameter fields in a database statement.
 func (pr *PrepareResult) NumField() int {
-	return len(pr.prmFields)
+	return len(pr.parameterFields)
 }
 
 // NumInputField returns the number of input fields in a database statement.
 func (pr *PrepareResult) NumInputField() int {
 	if !pr.fc.isProcedureCall() {
-		return len(pr.prmFields) // only input fields
+		return len(pr.parameterFields) // only input fields
 	}
 	numField := 0
-	for _, f := range pr.prmFields {
+	for _, f := range pr.parameterFields {
 		if f.In() {
 			numField++
 		}
@@ -89,139 +72,282 @@ func (pr *PrepareResult) NumInputField() int {
 	return numField
 }
 
-// PrmField returns the parameter field at index idx.
-func (pr *PrepareResult) PrmField(idx int) Field {
-	return pr.prmFields[idx]
+// ParameterField returns the parameter field at index idx.
+func (pr *PrepareResult) ParameterField(idx int) *ParameterField {
+	return pr.parameterFields[idx]
 }
+
+// OnCloser defines getter and setter for a function which should be called when closing.
+type OnCloser interface {
+	OnClose() func()
+	SetOnClose(func())
+}
+
+// NoResult is the driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that do not return rows.
+var noResult = new(noResultType)
+
+//  check if noResultType implements all required interfaces
+var (
+	_ driver.Rows = (*noResultType)(nil)
+)
+
+var noColumns = []string{}
+
+type noResultType struct{}
+
+func (r *noResultType) Columns() []string              { return noColumns }
+func (r *noResultType) Close() error                   { return nil }
+func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
+
+// check if queryResult does implement all driver row interfaces.
+var (
+	_ driver.Rows                           = (*queryResult)(nil)
+	_ driver.RowsColumnTypeDatabaseTypeName = (*queryResult)(nil)
+	_ driver.RowsColumnTypeLength           = (*queryResult)(nil)
+	_ driver.RowsColumnTypeNullable         = (*queryResult)(nil)
+	_ driver.RowsColumnTypePrecisionScale   = (*queryResult)(nil)
+	_ driver.RowsColumnTypeScanType         = (*queryResult)(nil)
+	_ driver.RowsNextResultSet              = (*queryResult)(nil)
+)
 
 // A QueryResult represents the resultset of a query.
 type queryResult struct {
-	_rsID       uint64
+	session     *Session
+	rsID        uint64
 	fields      []*resultField
 	fieldValues []driver.Value
 	attributes  partAttributes
 	_columns    []string
+	pos         int
+	lastErr     error
+	closed      bool
+	onClose     func()
 }
 
-// RsID implements the RowsResult interface.
-func (qr *queryResult) rsID() uint64 {
-	return qr._rsID
-}
+// OnClose implements the OnCloser interface
+func (qr *queryResult) OnClose() func() { return qr.onClose }
 
-// Field implements the RowsResult interface.
-func (qr *queryResult) field(idx int) Field {
-	return qr.fields[idx]
-}
+// SetOnClose implements the OnCloser interface
+func (qr *queryResult) SetOnClose(f func()) { qr.onClose = f }
 
-// NumRow implements the RowsResult interface.
-func (qr *queryResult) numRow() int {
-	if qr.fieldValues == nil {
-		return 0
-	}
-	return len(qr.fieldValues) / len(qr.fields)
-}
-
-// CopyRow implements the RowsResult interface.
-func (qr *queryResult) copyRow(idx int, dest []driver.Value) {
-	cols := len(qr.fields)
-	copy(dest, qr.fieldValues[idx*cols:(idx+1)*cols])
-}
-
-// Closed implements the RowsResult interface.
-func (qr *queryResult) closed() bool {
-	return qr.attributes.ResultsetClosed()
-}
-
-// LastPacket implements the RowsResult interface.
-func (qr *queryResult) lastPacket() bool {
-	return qr.attributes.LastPacket()
-}
-
-// Columns implements the RowsResult interface.
-func (qr *queryResult) columns() []string {
+// Columns implements the driver.Rows interface.
+func (qr *queryResult) Columns() []string {
 	if qr._columns == nil {
 		numField := len(qr.fields)
 		qr._columns = make([]string, numField)
 		for i := 0; i < numField; i++ {
-			qr._columns[i] = qr.fields[i].Name()
+			qr._columns[i] = qr.fields[i].name()
 		}
 	}
 	return qr._columns
 }
 
-func (qr *queryResult) queryResult() (*queryResult, error) {
-	return qr, nil
+// Close implements the driver.Rows interface.
+func (qr *queryResult) Close() error {
+	if !qr.closed && qr.onClose != nil {
+		defer qr.onClose()
+	}
+	qr.closed = true
+
+	if qr.attributes.ResultsetClosed() {
+		return nil
+	}
+	// if lastError is set, attrs are nil
+	if qr.lastErr != nil {
+		return qr.lastErr
+	}
+	return qr.session.CloseResultsetID(qr.rsID)
 }
+
+func (qr *queryResult) numRow() int {
+	if len(qr.fieldValues) == 0 {
+		return 0
+	}
+	return len(qr.fieldValues) / len(qr.fields)
+}
+
+func (qr *queryResult) copyRow(idx int, dest []driver.Value) {
+	cols := len(qr.fields)
+	copy(dest, qr.fieldValues[idx*cols:(idx+1)*cols])
+}
+
+// Next implements the driver.Rows interface.
+func (qr *queryResult) Next(dest []driver.Value) error {
+	if qr.pos >= qr.numRow() {
+		if qr.attributes.LastPacket() {
+			return io.EOF
+		}
+		if err := qr.session.fetchNext(qr); err != nil {
+			qr.lastErr = err //fieldValues and attrs are nil
+			return err
+		}
+		if qr.numRow() == 0 {
+			return io.EOF
+		}
+		qr.pos = 0
+	}
+
+	qr.copyRow(qr.pos, dest)
+	qr.pos++
+
+	// TODO eliminate
+	for _, v := range dest {
+		if v, ok := v.(sessionSetter); ok {
+			v.setSession(qr.session)
+		}
+	}
+	return nil
+}
+
+// ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
+func (qr *queryResult) ColumnTypeDatabaseTypeName(idx int) string { return qr.fields[idx].typeName() }
+
+// ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
+func (qr *queryResult) ColumnTypeLength(idx int) (int64, bool) { return qr.fields[idx].typeLength() }
+
+// ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
+func (qr *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return qr.fields[idx].nullable(), true
+}
+
+// ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
+func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return qr.fields[idx].typePrecisionScale()
+}
+
+// ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
+func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type {
+	return scanTypeMap[qr.fields[idx].scanType()]
+}
+
+/*
+driver.RowsNextResultSet:
+- currently not used
+- could be implemented as pointer to next queryResult (advancing by copying data from next)
+*/
+
+// HasNextResultSet implements the driver.RowsNextResultSet interface.
+func (qr *queryResult) HasNextResultSet() bool { return false }
+
+// NextResultSet implements the driver.RowsNextResultSet interface.
+func (qr *queryResult) NextResultSet() error { return io.EOF }
+
+// check if callResult does implement all driver row interfaces.
+var (
+	_ driver.Rows                           = (*callResult)(nil)
+	_ driver.RowsColumnTypeDatabaseTypeName = (*callResult)(nil)
+	_ driver.RowsColumnTypeLength           = (*callResult)(nil)
+	_ driver.RowsColumnTypeNullable         = (*callResult)(nil)
+	_ driver.RowsColumnTypePrecisionScale   = (*callResult)(nil)
+	_ driver.RowsColumnTypeScanType         = (*callResult)(nil)
+	_ driver.RowsNextResultSet              = (*callResult)(nil)
+)
 
 // A CallResult represents the result (output parameters and values) of a call statement.
 type callResult struct { // call output parameters
-	outputFields []*parameterField
+	session      *Session
+	outputFields []*ParameterField
 	fieldValues  []driver.Value
 	_columns     []string
 	qrs          []*queryResult // table output parameters
+	eof          bool
+	closed       bool
+	onClose      func()
 }
 
-// RsID implements the RowsResult interface.
-func (cr *callResult) rsID() uint64 {
-	return 0
-}
+// OnClose implements the OnCloser interface
+func (cr *callResult) OnClose() func() { return cr.onClose }
 
-// Field implements the RowsResult interface.
-func (cr *callResult) field(idx int) Field {
-	return cr.outputFields[idx]
-}
+// SetOnClose implements the OnCloser interface
+func (cr *callResult) SetOnClose(f func()) { cr.onClose = f }
 
-// NumRow implements the RowsResult interface.
-func (cr *callResult) numRow() int {
-	if cr.fieldValues == nil {
-		return 0
-	}
-	return len(cr.fieldValues) / len(cr.outputFields)
-}
-
-// CopyRow implements the RowsResult interface.
-func (cr *callResult) copyRow(idx int, dest []driver.Value) {
-	cols := len(cr.outputFields)
-	copy(dest, cr.fieldValues[idx*cols:(idx+1)*cols])
-}
-
-// Closed implements the RowsResult interface.
-func (cr *callResult) closed() bool {
-	return true
-}
-
-// LastPacket implements the RowsResult interface.
-func (cr *callResult) lastPacket() bool {
-	return true
-}
-
-// Columns implements the RowsResult interface.
-func (cr *callResult) columns() []string {
+// Columns implements the driver.Rows interface.
+func (cr *callResult) Columns() []string {
 	if cr._columns == nil {
 		numField := len(cr.outputFields)
 		cr._columns = make([]string, numField)
 		for i := 0; i < numField; i++ {
-			cr._columns[i] = cr.outputFields[i].Name()
+			cr._columns[i] = cr.outputFields[i].name()
 		}
 	}
 	return cr._columns
 }
 
-func (cr *callResult) queryResult() (*queryResult, error) {
-	return nil, errors.New("cannot use call result as query result")
+/// Next implements the driver.Rows interface.
+func (cr *callResult) Next(dest []driver.Value) error {
+	if len(cr.fieldValues) == 0 || cr.eof {
+		return io.EOF
+	}
+
+	copy(dest, cr.fieldValues)
+	cr.eof = true
+	// TODO eliminate
+	for _, v := range dest {
+		if v, ok := v.(sessionSetter); ok {
+			v.setSession(cr.session)
+		}
+	}
+	return nil
 }
 
+// Close implements the driver.Rows interface.
+func (cr *callResult) Close() error {
+	if !cr.closed && cr.onClose != nil {
+		cr.onClose()
+	}
+	cr.closed = true
+	return nil
+}
+
+// ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
+func (cr *callResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return cr.outputFields[idx].typeName()
+}
+
+// ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
+func (cr *callResult) ColumnTypeLength(idx int) (int64, bool) {
+	return cr.outputFields[idx].typeLength()
+}
+
+// ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
+func (cr *callResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return cr.outputFields[idx].nullable(), true
+}
+
+// ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
+func (cr *callResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return cr.outputFields[idx].typePrecisionScale()
+}
+
+// ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
+func (cr *callResult) ColumnTypeScanType(idx int) reflect.Type {
+	return scanTypeMap[cr.outputFields[idx].scanType()]
+}
+
+/*
+driver.RowsNextResultSet:
+- currently not used
+- could be implemented as pointer to next queryResult (advancing by copying data from next)
+*/
+
+// HasNextResultSet implements the driver.RowsNextResultSet interface.
+func (cr *callResult) HasNextResultSet() bool { return false }
+
+// NextResultSet implements the driver.RowsNextResultSet interface.
+func (cr *callResult) NextResultSet() error { return io.EOF }
+
+//
 func (cr *callResult) appendTableRefFields() {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{name: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
-		cr.fieldValues = append(cr.fieldValues, encodeID(qr._rsID))
+		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
+		cr.fieldValues = append(cr.fieldValues, encodeID(qr.rsID))
 	}
 }
 
 func (cr *callResult) appendTableRowsFields(s *Session) {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &parameterField{name: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
-		cr.fieldValues = append(cr.fieldValues, newQueryResultSet(s, qr))
+		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
+		cr.fieldValues = append(cr.fieldValues, qr)
 	}
 }
 
@@ -331,8 +457,10 @@ func (r *protocolReader) checkError() error {
 	}
 
 	if r.lastErrors.isWarnings() {
-		for _, e := range r.lastErrors.errors {
-			sqltrace.Traceln(e)
+		if sqltrace.On() {
+			for _, e := range r.lastErrors.errors {
+				sqltrace.Traceln(e)
+			}
 		}
 		return nil
 	}
@@ -520,8 +648,12 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 // protocol writer
 type protocolWriter struct {
 	wr  *bufio.Writer
-	sv  *varmap.VarMap // session variables
 	enc *encoding.Encoder
+
+	sv *vermap.VerMap // link to session variables
+	// last session variables snapshot
+	lastSVVersion int64
+	lastSV        map[string]string
 
 	tracer traceLogger
 
@@ -531,7 +663,7 @@ type protocolWriter struct {
 	ph *partHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer, sv *varmap.VarMap) *protocolWriter {
+func newProtocolWriter(wr *bufio.Writer, sv *vermap.VerMap) *protocolWriter {
 	return &protocolWriter{
 		wr:     wr,
 		sv:     sv,
@@ -567,8 +699,16 @@ func (w *protocolWriter) writeProlog() error {
 
 func (w *protocolWriter) write(sessionID int64, messageType messageType, commit bool, writers ...partWriter) error {
 	// check on session variables to be send as ClientInfo
-	if messageType.clientInfoSupported() && w.sv.HasUpdates() {
-		upd, del := w.sv.Delta()
+	if messageType.clientInfoSupported() && w.sv.Version() != w.lastSVVersion {
+		var upd map[string]string
+		var del map[string]bool
+
+		w.sv.WithRLock(func() {
+			upd, del = w.sv.CompareWithRLock(w.lastSV)
+			w.lastSVVersion = w.sv.Version()
+			w.lastSV = w.sv.LoadWithRLock()
+		})
+
 		// TODO: how to delete session variables via clientInfo
 		// ...for the time being we set the value to <space>...
 		for k := range del {
