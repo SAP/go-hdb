@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 )
 
+fail
+
 // DriverVersion is the version number of the hdb driver.
 const DriverVersion = "0.102.1"
 
