@@ -35,6 +35,8 @@ func testLobInsert(db *sql.DB, t *testing.T) {
 	}
 	defer stmt.Close()
 
+	// TODO
+
 }
 
 type randReader struct{}
@@ -51,7 +53,9 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	lrd := io.LimitReader(randReader{}, lobSize)
 
 	wrBuf := &bytes.Buffer{}
-	wrBuf.ReadFrom(lrd)
+	if _, err := wrBuf.ReadFrom(lrd); err != nil {
+		t.Fatal(err)
+	}
 
 	cmpBuf := &bytes.Buffer{}
 
@@ -89,7 +93,9 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 
 	mwr := io.MultiWriter(wr, cmpBuf)
 
-	wrBuf.WriteTo(mwr)
+	if _, err := wrBuf.WriteTo(mwr); err != nil {
+		t.Fatal(err)
+	}
 	wr.Close()
 	wg.Wait()
 
@@ -112,7 +118,9 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	}()
 
 	rdBuf := &bytes.Buffer{}
-	rdBuf.ReadFrom(rd)
+	if _, err := rdBuf.ReadFrom(rd); err != nil {
+		t.Fatal(err)
+	}
 
 	wg.Wait()
 

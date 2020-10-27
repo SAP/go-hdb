@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	locatorIDSize       = 8
 	writeLobRequestSize = 21
 )
 
@@ -284,6 +283,14 @@ func (r *readLobReply) String() string {
 	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.opt, r.b)
 }
 
+func (r *readLobReply) resize(size int) {
+	if r.b == nil || size > cap(r.b) {
+		r.b = make([]byte, size)
+	} else {
+		r.b = r.b[:size]
+	}
+}
+
 func (r *readLobReply) decode(dec *encoding.Decoder, ph *partHeader) error {
 	if ph.numArg() != 1 {
 		panic("numArg == 1 expected")
@@ -292,7 +299,7 @@ func (r *readLobReply) decode(dec *encoding.Decoder, ph *partHeader) error {
 	r.opt = lobOptions(dec.Int8())
 	size := int(dec.Int32())
 	dec.Skip(3)
-	r.b = sizeBuffer(r.b, size)
+	r.resize(size)
 	dec.Bytes(r.b)
 	return nil
 }

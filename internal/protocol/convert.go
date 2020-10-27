@@ -42,14 +42,14 @@ func convertLongdateToTime(longdate int64) time.Time {
 
 // nanosecond: HDB - 7 digits precision (not 9 digits)
 func convertTimeToLongdate(t time.Time) int64 {
-	return (((((((convertTimeToDayDate(t)-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60)+int64(t.Second()))*10000000 + int64(t.Nanosecond()/100) + 1
+	return (((((((convertTimeToDayDate(t)-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60)+int64(t.Second()))*1e7 + int64(t.Nanosecond()/1e2) + 1
 }
 
 // Seconddate
 func convertSeconddateToTime(seconddate int64) time.Time {
 	const dayfactor = 24 * 60 * 60
 	seconddate--
-	d := (seconddate % dayfactor) * 1000000000
+	d := (seconddate % dayfactor) * 1e9
 	t := convertDaydateToTime((seconddate / dayfactor) + 1)
 	return t.Add(time.Duration(d))
 }
@@ -69,7 +69,7 @@ func convertTimeToDayDate(t time.Time) int64 {
 
 // Secondtime
 func convertSecondtimeToTime(secondtime int) time.Time {
-	return time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(int64(secondtime-1) * 1000000000))
+	return time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(int64(secondtime-1) * 1e9))
 }
 func convertTimeToSecondtime(t time.Time) int {
 	return (t.Hour()*60+t.Minute())*60 + t.Second() + 1

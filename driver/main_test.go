@@ -27,11 +27,10 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 	db := sql.OpenDB(connector)
-	defer db.Close()
-	//TestDB.SetMaxIdleConns(0)
-
+	// TestDB.SetMaxIdleConns(0)
 	drivertest.Setup(db)
 	exitCode := m.Run()
 	drivertest.Teardown(db, exitCode == 0)
+	db.Close()
 	os.Exit(exitCode)
 }

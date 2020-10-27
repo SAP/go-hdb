@@ -151,7 +151,7 @@ func NewConnector(attrs map[string]interface{}) (*Connector, error) {
 		switch attr {
 
 		default:
-			return nil, fmt.Errorf("Connector: invalid attribute: %s", attr)
+			return nil, fmt.Errorf("connector: invalid attribute: %s", attr)
 
 		case caDSN:
 			dsn, err := stringAttr(attr, value)
@@ -567,7 +567,7 @@ func (c *Connector) SessionVariables() SessionVariables {
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.sessionVariables.Store((map[string]string)(sessionVariables))
+	c.sessionVariables.Store(map[string]string(sessionVariables))
 	return nil
 }
 

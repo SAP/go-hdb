@@ -27,7 +27,7 @@ func (c clientInfo) set(k, v string) {
 	c[k] = v
 }
 
-func (c clientInfo) get(k, v string) (string, bool) {
+func (c clientInfo) get(k string) (string, bool) {
 	v, ok := c[k]
 	return v, ok
 }

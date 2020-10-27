@@ -23,7 +23,7 @@ func (t optTinyintType) String() string      { return fmt.Sprintf("%d", int8(t))
 func (t optIntType) String() string          { return fmt.Sprintf("%d", int(t)) }
 func (t optBigintType) String() string       { return fmt.Sprintf("%d", int64(t)) }
 func (t optDoubleType) String() string       { return fmt.Sprintf("%g", float64(t)) }
-func (t optStringType) String() string       { return fmt.Sprintf("%s", string(t)) }
+func (t optStringType) String() string       { return string(t) }
 func (t optBinaryStringType) String() string { return fmt.Sprintf("%v", []byte(t)) }
 
 type multiLineOptions []plainOptions

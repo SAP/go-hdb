@@ -261,9 +261,7 @@ func convertBool(ft fieldType, v interface{}) (interface{}, error) {
 		return v, nil
 	}
 
-	switch v := v.(type) {
-
-	case bool:
+	if v, ok := v.(bool); ok {
 		return v, nil
 	}
 
@@ -431,17 +429,13 @@ func convertTime(ft fieldType, v interface{}) (driver.Value, error) {
 		return nil, nil
 	}
 
-	switch v := v.(type) {
-
-	case time.Time:
+	if v, ok := v.(time.Time); ok {
 		return v, nil
 	}
 
 	rv := reflect.ValueOf(v)
 
-	switch rv.Kind() {
-
-	case reflect.Ptr:
+	if rv.Kind() == reflect.Ptr {
 		// indirect pointers
 		if rv.IsNil() {
 			return nil, nil
@@ -512,8 +506,8 @@ func convertBytes(ft fieldType, v interface{}) (driver.Value, error) {
 	return nil, newConvertError(ft, v, nil)
 }
 
-func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(false, ft, v) }
-func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(true, ft, v) }
+func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v) }
+func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v) }
 
 // ReadProvider is the interface wrapping the Reader which provides an io.Reader.
 type ReadProvider interface {
@@ -521,7 +515,7 @@ type ReadProvider interface {
 }
 
 // Lob
-func convertLob(isCharBased bool, ft fieldType, v interface{}) (driver.Value, error) {
+func convertLob(ft fieldType, v interface{}) (driver.Value, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -557,9 +551,9 @@ func (_lobCESU8Type) prmSize(v interface{}) int { return lobInputParametersSize 
 func (ft _varType) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return varBytesSize(ft, len(v))
+		return varBytesSize(len(v))
 	case string:
-		return varBytesSize(ft, len(v))
+		return varBytesSize(len(v))
 	default:
 		return -1
 	}
@@ -570,15 +564,15 @@ func (ft _alphaType) prmSize(v interface{}) int {
 func (ft _cesu8Type) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return varBytesSize(ft, cesu8.Size(v))
+		return varBytesSize(cesu8.Size(v))
 	case string:
-		return varBytesSize(ft, cesu8.StringSize(v))
+		return varBytesSize(cesu8.StringSize(v))
 	default:
 		return -1
 	}
 }
 
-func varBytesSize(ft fieldType, size int) int {
+func varBytesSize(size int) int {
 	switch {
 	default:
 		return -1

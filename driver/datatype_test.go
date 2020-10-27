@@ -57,9 +57,13 @@ func testDataType(db *sql.DB, dataType string, fieldSize int, check func(in, out
 
 		switch in := in.(type) {
 		case Lob:
-			in.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+			if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
 		case NullLob:
-			in.Lob.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+			if _, err := in.Lob.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
 		}
 
 		if _, err := stmt.Exec(in, i); err != nil {
@@ -143,9 +147,6 @@ func TestDataType(t *testing.T) {
 
 			walk := func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() && filter(info.Name()) {
-
-					// t.Logf("filenmane %s", info.Name())
-
 					content, err := ioutil.ReadFile(path)
 					if err != nil {
 						t.Fatal(err)
@@ -159,7 +160,9 @@ func TestDataType(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			filepath.Walk(root, walk)
+			if err := filepath.Walk(root, walk); err != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 
@@ -428,16 +431,11 @@ func TestDataType(t *testing.T) {
 		return equalLongdate(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	// logDecimal := func(in, out *big.Rat, t *testing.T) {
-	// 	t.Logf("In(num %s denum %s) - Out(num %s denum %s)", in.Num().String(), in.Denom().String(), out.Num().String(), out.Denom().String())
-	// }
-
 	checkDecimal := func(in, out interface{}, fieldSize int, t *testing.T) bool {
 		if out, ok := out.(NullDecimal); ok {
 			in := in.(NullDecimal)
 			return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0)
 		}
-		// logDecimal((*big.Rat)(in.(*Decimal)), (*big.Rat)(out.(*Decimal)), t)
 		return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0
 	}
 
@@ -456,8 +454,11 @@ func TestDataType(t *testing.T) {
 		for _, f := range testLobFiles {
 			if !ascii || f.isASCII {
 				if first {
-					testData = append(testData, NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}})
-					testData = append(testData, NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}})
+					testData = append(
+						testData,
+						NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}},
+						NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}},
+					)
 					first = false
 				}
 				testData = append(testData, Lob{rd: bytes.NewReader(f.content)})
@@ -467,7 +468,9 @@ func TestDataType(t *testing.T) {
 	}
 
 	compareLob := func(in, out Lob, t *testing.T) bool {
-		in.rd.(*bytes.Reader).Seek(0, io.SeekStart)
+		if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
+			t.Fatal(err)
+		}
 		content, err := ioutil.ReadAll(in.rd)
 		if err != nil {
 			t.Fatal(err)

@@ -10,11 +10,7 @@ import (
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
 )
 
-const (
-	messageHeaderSize = 32
-)
-
-//message header
+//message header (size: 32 bytes)
 type messageHeader struct {
 	sessionID     int64
 	packetCount   int32
@@ -38,7 +34,7 @@ func (h *messageHeader) encode(enc *encoding.Encoder) error {
 	enc.Uint32(h.varPartLength)
 	enc.Uint32(h.varPartSize)
 	enc.Int16(h.noOfSegm)
-	enc.Zeroes(10) //messageHeaderSize
+	enc.Zeroes(10) // size: 32 bytes
 	return nil
 }
 
@@ -48,6 +44,6 @@ func (h *messageHeader) decode(dec *encoding.Decoder) error {
 	h.varPartLength = dec.Uint32()
 	h.varPartSize = dec.Uint32()
 	h.noOfSegm = dec.Int16()
-	dec.Skip(10) //messageHeaderSize
+	dec.Skip(10) // size: 32 bytes
 	return dec.Error()
 }
