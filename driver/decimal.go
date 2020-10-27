@@ -128,10 +128,10 @@ func (d Decimal) Value() (driver.Value, error) {
 
 	switch {
 	default:
-		v, err = encodeDecimal(m, neg, exp)
+		v = encodeDecimal(m, neg, exp)
 	case df&dfUnderflow != 0: // set to zero
 		m.Set(natZero)
-		v, err = encodeDecimal(m, false, 0)
+		v = encodeDecimal(m, false, 0)
 	case df&dfOverflow != 0:
 		err = ErrDecimalOutOfRange
 	}
@@ -307,7 +307,7 @@ func decodeDecimal(b []byte, m *big.Int) (bool, int) {
 	return neg, exp
 }
 
-func encodeDecimal(m *big.Int, neg bool, exp int) (driver.Value, error) {
+func encodeDecimal(m *big.Int, neg bool, exp int) driver.Value {
 
 	b := make([]byte, decimalSize)
 
@@ -329,7 +329,7 @@ func encodeDecimal(m *big.Int, neg bool, exp int) (driver.Value, error) {
 		b[15] |= 0x80
 	}
 
-	return b, nil
+	return b
 }
 
 // NullDecimal represents an Decimal that may be null.

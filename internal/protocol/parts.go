@@ -65,39 +65,6 @@ func (*writeLobRequest) kind() partKind     { return pkWriteLobRequest }
 func (*writeLobReply) kind() partKind       { return pkWriteLobReply }
 
 // func (lobFlags) kind() partKind                   { return pkLobFlags }
-
-// check if part types implement part interface
-var (
-	_ part = (*hdbErrors)(nil)
-	_ part = (*authInitReq)(nil)
-	_ part = (*authInitRep)(nil)
-	_ part = (*authFinalReq)(nil)
-	_ part = (*authFinalRep)(nil)
-	_ part = (*clientContext)(nil)
-	_ part = (*clientID)(nil)
-	_ part = (*clientInfo)(nil)
-	_ part = (*connectOptions)(nil)
-	_ part = (*topologyInformation)(nil)
-	_ part = (*command)(nil)
-	_ part = (*rowsAffected)(nil)
-	_ part = (*transactionFlags)(nil)
-	_ part = (*statementContext)(nil)
-	_ part = (*statementID)(nil)
-	_ part = (*parameterMetadata)(nil)
-	_ part = (*inputParameters)(nil)
-	_ part = (*outputParameters)(nil)
-	_ part = (*resultMetadata)(nil)
-	_ part = (*resultsetID)(nil)
-	_ part = (*resultset)(nil)
-	_ part = (*fetchsize)(nil)
-	_ part = (*readLobRequest)(nil)
-	_ part = (*readLobReply)(nil)
-	_ part = (*writeLobRequest)(nil)
-	_ part = (*writeLobReply)(nil)
-
-//	_ part = (*lobFlags)(nil)
-)
-
 type partWriter interface {
 	part
 	numArg() int
@@ -228,9 +195,6 @@ var partTypeMap = map[partKind]reflect.Type{
 	pkWriteLobReply:       reflect.TypeOf((*writeLobReply)(nil)).Elem(),
 	pkWriteLobRequest:     reflect.TypeOf((*writeLobRequest)(nil)).Elem(),
 }
-
-var partReaderType = reflect.TypeOf((*partReader)(nil)).Elem()
-var prmPartReaderType = reflect.TypeOf((*prmPartReader)(nil)).Elem()
 
 func newPartReader(pk partKind) (partReader, error) {
 	pt, ok := partTypeMap[pk]

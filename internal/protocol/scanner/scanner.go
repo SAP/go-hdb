@@ -225,10 +225,10 @@ func (sc *Scanner) scanNumber() Token {
 }
 
 // Next reads and returns the next token.
-func (sc *Scanner) Next() (Token, int, int) {
+func (sc *Scanner) Next() (token Token, start, end int) {
 	sc.scanWhitespace()
 
-	start := sc.i
+	start = sc.i
 
 	ch, ok := sc.readRune()
 	if !ok {
@@ -255,15 +255,12 @@ func (sc *Scanner) Next() (Token, int, int) {
 		return Identifier, start, sc.i
 
 	case isSingleQuote(ch) || isDoubleQuote(ch):
-		token := sc.scanQuotedIdentifier(ch)
-		return token, start, sc.i
+		return sc.scanQuotedIdentifier(ch), start, sc.i
 
 	case isColon(ch):
-		token := sc.scanVariable()
-		return token, start, sc.i
+		return sc.scanVariable(), start, sc.i
 
 	case isNumber(ch):
-		sc.scanNumber()
-		return Number, start, sc.i
+		return sc.scanNumber(), start, sc.i
 	}
 }

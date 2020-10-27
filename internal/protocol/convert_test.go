@@ -142,7 +142,6 @@ func testConvertTime(t *testing.T) {
 
 	// time reference
 	assertEqualTime(t, &timeValue, timeValue)
-
 }
 
 func assertEqualString(t *testing.T, tc typeCode, v interface{}, r string) {
@@ -168,7 +167,6 @@ func testConvertString(t *testing.T) {
 
 	// string reference
 	assertEqualString(t, tcString, &stringValue, stringValue)
-
 }
 
 func assertEqualBytes(t *testing.T, tc typeCode, v interface{}, r []byte) {
@@ -176,7 +174,7 @@ func assertEqualBytes(t *testing.T, tc typeCode, v interface{}, r []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Compare(cv.([]byte), r) != 0 {
+	if !bytes.Equal(cv.([]byte), r) {
 		t.Fatalf("assert equal bytes failed %v - %v expected", cv, r)
 	}
 }

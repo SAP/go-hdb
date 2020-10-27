@@ -12,7 +12,7 @@ import (
 
 const (
 	sqlStateSize = 5
-	//bytes of fix length fields mod 8
+	// bytes of fix length fields mod 8
 	// - errorCode = 4, errorPosition = 4, errortextLength = 4, errorLevel = 1, sqlState = 5 => 18 bytes
 	// - 18 mod 8 = 2
 	fixLength = 2

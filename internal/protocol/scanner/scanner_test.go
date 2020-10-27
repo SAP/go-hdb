@@ -124,12 +124,10 @@ var testData = []struct {
 }
 
 func testScannerX(t *testing.T) {
-
 	tvs := make([]tokenValue, 0)
 	scanner := Scanner{}
 
 	for i, d := range testData {
-
 		tvs = tvs[:0]
 		scanner.Reset(d.s)
 

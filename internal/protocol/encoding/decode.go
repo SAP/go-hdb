@@ -94,7 +94,7 @@ func (d *Decoder) Byte() byte { // ReadB as sig differs from ReadByte (vet issue
 	if d.err != nil {
 		return 0
 	}
-	return byte(d.b[0])
+	return d.b[0]
 }
 
 // Bytes reads and returns a byte slice.
