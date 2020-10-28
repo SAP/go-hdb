@@ -19,6 +19,6 @@ steps:
     GOHDBDSN:
       from_secret: GOHDBDSN
   commands:
-    - go test ./...
+    - go test -v ./...
 
      
