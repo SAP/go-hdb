@@ -157,7 +157,7 @@ type parameterMetadata struct {
 }
 
 func (m *parameterMetadata) String() string {
-	return fmt.Sprintf("parameter forlds %v", m.parameterFields)
+	return fmt.Sprintf("parameter %v", m.parameterFields)
 }
 
 func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
