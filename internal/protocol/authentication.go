@@ -4,7 +4,7 @@
 
 package protocol
 
-//Salted Challenge Response Authentication Mechanism (SCRAM)
+// Salted Challenge Response Authentication Mechanism (SCRAM)
 
 import (
 	"crypto/hmac"
@@ -411,7 +411,7 @@ func (a *auth) next() (partReadWriter, error) {
 		if len(serverChallenge) != serverChallengeSize {
 			return nil, fmt.Errorf("invalid server challenge size %d - expected %d", len(serverChallenge), serverChallengeSize)
 		}
-		clientProof := clientProof(key, []byte(a.password), salt, serverChallenge, a.clientChallenge(a.initRep.method))
+		clientProof := clientProof(key, salt, serverChallenge, a.clientChallenge(a.initRep.method))
 		if len(clientProof) != clientProofSize {
 			return nil, fmt.Errorf("invalid client proof size %d - expected %d", len(clientProof), clientProofSize)
 		}
@@ -435,10 +435,10 @@ func scramsha256Key(password, salt []byte) []byte {
 }
 
 func scrampbkdf2sha256Key(password, salt []byte, rounds int) []byte {
-	return _sha256(pbkdf2.Key(password, salt, int(rounds), clientProofSize, sha256.New))
+	return _sha256(pbkdf2.Key(password, salt, rounds, clientProofSize, sha256.New))
 }
 
-func clientProof(key, password, salt, serverChallenge, clientChallenge []byte) []byte {
+func clientProof(key, salt, serverChallenge, clientChallenge []byte) []byte {
 	sig := _hmac(_sha256(key), salt, serverChallenge, clientChallenge)
 	proof := xor(sig, key)
 	return proof

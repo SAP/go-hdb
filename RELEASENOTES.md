@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.2 (upgrade urgency: high)
+
+- Fixed go-hdb 'panic' using DECIMAL fields with precision and scale specified
+
 Release 0.102.1 (need to upgrade: no)
 
 - Fixed some report card issues

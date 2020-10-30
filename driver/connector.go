@@ -37,11 +37,12 @@ const (
 	DfvLevel8 = 8 // with FIXED8/12/16 support
 )
 
-var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true, DfvLevel8: true}
+//var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true, DfvLevel8: true}
+var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true}
 
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel8         // Default data version format level.
+	DefaultDfv          = DfvLevel6         // Default data version format level.
 	DefaultTimeout      = 300 * time.Second // Default value connection timeout (300 seconds = 5 minutes).
 	DefaultTCPKeepAlive = 15 * time.Second  // Default TCP keep-alive value (copied from net.dial.go)
 	DefaultBufferSize   = 16276             // Default value bufferSize.
@@ -151,7 +152,7 @@ func NewConnector(attrs map[string]interface{}) (*Connector, error) {
 		switch attr {
 
 		default:
-			return nil, fmt.Errorf("Connector: invalid attribute: %s", attr)
+			return nil, fmt.Errorf("connector: invalid attribute: %s", attr)
 
 		case caDSN:
 			dsn, err := stringAttr(attr, value)
@@ -567,7 +568,7 @@ func (c *Connector) SessionVariables() SessionVariables {
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.sessionVariables.Store((map[string]string)(sessionVariables))
+	c.sessionVariables.Store(map[string]string(sessionVariables))
 	return nil
 }
 

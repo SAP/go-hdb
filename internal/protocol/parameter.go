@@ -67,14 +67,15 @@ func newParameterFields(size int) []*ParameterField {
 
 // ParameterField contains database field attributes for parameters.
 type ParameterField struct {
+	// field alignment
 	fieldName        string
-	parameterOptions parameterOptions
-	tc               typeCode
 	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
-	mode             parameterMode
+	offset           uint32
 	fraction         int16
 	length           int16
-	offset           uint32
+	parameterOptions parameterOptions
+	tc               typeCode
+	mode             parameterMode
 }
 
 func (f *ParameterField) String() string {
@@ -156,7 +157,7 @@ type parameterMetadata struct {
 }
 
 func (m *parameterMetadata) String() string {
-	return fmt.Sprintf("parameter forlds %v", m.parameterFields)
+	return fmt.Sprintf("parameter %v", m.parameterFields)
 }
 
 func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {

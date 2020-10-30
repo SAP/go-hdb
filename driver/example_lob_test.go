@@ -143,8 +143,12 @@ func ExampleLob_pipe() {
 	// Read file line by line and write data to pipe.
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		pipeWriter.Write(scanner.Bytes())
-		pipeWriter.Write([]byte{'\n'}) // Write nl which was stripped off by scanner.
+		if _, err := pipeWriter.Write(scanner.Bytes()); err != nil {
+			log.Fatal(err)
+		}
+		if _, err := pipeWriter.Write([]byte{'\n'}); err != nil { // Write nl which was stripped off by scanner.
+			log.Fatal(err)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)

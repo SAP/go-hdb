@@ -333,7 +333,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 			QueryResultCache.set(qr.rsID, qr)
 		}
 	} else {
-		cr.appendTableRowsFields(s)
+		cr.appendTableRowsFields()
 	}
 	return cr, nil
 }
@@ -639,7 +639,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []interface{}) error {
-	chunkSize := int(s.cfg.LobChunkSize)
+	chunkSize := s.cfg.LobChunkSize
 
 	readers := make([]io.Reader, 0, len(ids))
 	descrs := make([]*writeLobDescr, 0, len(ids))

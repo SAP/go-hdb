@@ -36,7 +36,6 @@ func main() {
 }
 
 func handler(conn net.Conn, dbAddr net.Addr) {
-
 	dbConn, err := net.Dial(dbAddr.Network(), dbAddr.String())
 	if err != nil {
 		log.Printf("hdb connection error: %s", err)
@@ -84,7 +83,7 @@ func (v *addrValue) Set(s string) error {
 	return nil
 }
 
-func cli() (net.Addr, net.Addr) {
+func cli() (addr, dbAddr net.Addr) {
 	const usageText = `
 %[1]s is a Hana Network Protocol analyzer. It lets you see whats happening
 on protocol level connecting a client to the database server.
@@ -96,18 +95,18 @@ Using with other clients might
 
 Usage of %[1]s:
 `
-	addr := &addrValue{addr: defaultAddr}
-	dbAddr := &addrValue{addr: defaultDBAddr}
+	a := &addrValue{addr: defaultAddr}
+	dba := &addrValue{addr: defaultDBAddr}
 
 	args := flag.NewFlagSet("", flag.ExitOnError)
 	args.Usage = func() {
 		fmt.Fprintf(args.Output(), usageText, os.Args[0])
 		args.PrintDefaults()
 	}
-	args.Var(addr, "s", "<host:port>: Sniffer address to accept connections. (required)")
-	args.Var(dbAddr, "db", "<host:port>: Database address to connect to. (required)")
+	args.Var(a, "s", "<host:port>: Sniffer address to accept connections. (required)")
+	args.Var(dba, "db", "<host:port>: Database address to connect to. (required)")
 
 	args.Parse(os.Args[1:])
 
-	return addr, dbAddr
+	return a, dba
 }

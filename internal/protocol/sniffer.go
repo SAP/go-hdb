@@ -62,7 +62,7 @@ func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 	s.dbRd = bufio.NewReader(io.TeeReader(dbConn, s.clWr))
 
 	s.upRd = newSniffUpReader(s.clRd)
-	s.downRd = newSniffDownReader(s.dbRd, s.upRd)
+	s.downRd = newSniffDownReader(s.dbRd)
 
 	return s
 }
@@ -181,7 +181,7 @@ type sniffDownReader struct {
 	prmMeta *parameterMetadata
 }
 
-func newSniffDownReader(rd *bufio.Reader, upRd *sniffUpReader) *sniffDownReader {
+func newSniffDownReader(rd *bufio.Reader) *sniffDownReader {
 	return &sniffDownReader{
 		sniffReader: newSniffReader(false, rd),
 		resMeta:     &resultMetadata{},

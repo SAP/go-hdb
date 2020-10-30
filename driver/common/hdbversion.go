@@ -136,7 +136,7 @@ type HDBVersion struct {
 // ParseHDBVersion parses a semantic hdb version string field.
 func ParseHDBVersion(s string) *HDBVersion {
 	number := parseHDBVersionNumber(s)
-	if number.isZero() { //hdb 1.00 does not report version
+	if number.isZero() { // hdb 1.00 does not report version
 		number = hdbVersionNumberOne
 	}
 
@@ -144,7 +144,7 @@ func ParseHDBVersion(s string) *HDBVersion {
 	// detect features
 	for f, cv := range hdbFeatureAvailability {
 		if number.compare(cv) >= 0 { // v is equal or greater than cv
-			feature = feature | f // add feature
+			feature |= f // add feature
 		}
 	}
 	return &HDBVersion{hdbVersionNumber: number, feature: feature}

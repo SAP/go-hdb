@@ -112,16 +112,17 @@ var (
 
 // A QueryResult represents the resultset of a query.
 type queryResult struct {
-	session     *Session
-	rsID        uint64
+	// field alignment
 	fields      []*resultField
 	fieldValues []driver.Value
-	attributes  partAttributes
 	_columns    []string
-	pos         int
 	lastErr     error
-	closed      bool
+	session     *Session
+	rsID        uint64
+	pos         int
 	onClose     func()
+	attributes  partAttributes
+	closed      bool
 }
 
 // OnClose implements the OnCloser interface
@@ -344,7 +345,7 @@ func (cr *callResult) appendTableRefFields() {
 	}
 }
 
-func (cr *callResult) appendTableRowsFields(s *Session) {
+func (cr *callResult) appendTableRowsFields() {
 	for i, qr := range cr.qrs {
 		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
 		cr.fieldValues = append(cr.fieldValues, qr)
@@ -354,9 +355,7 @@ func (cr *callResult) appendTableRowsFields(s *Session) {
 type protocolReader struct {
 	upStream bool
 
-	// authentication
-	step   int
-	method string
+	step int // authentication
 
 	dec    *encoding.Decoder
 	tracer traceLogger

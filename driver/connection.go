@@ -651,18 +651,18 @@ type argsPool struct {
 	sync.Pool
 }
 
-func (p *argsPool) put(v []interface{}) { p.Put(v) }
+func (ap *argsPool) put(v []interface{}) { ap.Put(v) }
 
-func (p *argsPool) getSize(size int) []interface{} {
-	v := p.Get()
+func (ap *argsPool) getSize(size int) []interface{} {
+	v := ap.Get()
 	if v == nil || cap(v.([]interface{})) < size {
 		return make([]interface{}, size)
 	}
 	return v.([]interface{})[0:size]
 }
 
-func (p *argsPool) getNVArgs(nvargs []driver.NamedValue) []interface{} {
-	v := p.getSize(len(nvargs))
+func (ap *argsPool) getNVArgs(nvargs []driver.NamedValue) []interface{} {
+	v := ap.getSize(len(nvargs))
 	for i, nv := range nvargs {
 		v[i] = nv.Value
 	}
