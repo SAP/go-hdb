@@ -8,6 +8,7 @@ import (
 	"fmt"
 )
 
+// HDB datatype constants.
 const (
 	DtBoolean = "boolean"
 
@@ -45,11 +46,13 @@ const (
 	DtBlob  = "blob"
 )
 
+// HDBColumn is the subset of methods needed to be implemented by all column types.
 type HDBColumn interface {
-	Name() string
-	Column() string
+	Name() string   // Name of the column.
+	Column() string // Definition of the column.
 }
 
+// HDB default column datatypes.
 var (
 	HDBBoolean = column{typ: DtBoolean}
 
@@ -84,28 +87,38 @@ func (c column) Type() string   { return c.typ }
 func (c column) Name() string   { return c.typ }
 func (c column) Column() string { return c.typ }
 
+// SizeColumn represents a database column with a size parameter (e.g. varchar).
 type SizeColumn struct {
 	column
 	size int
 }
 
+// NewSizeColumn returns a new SizeColumn object.
 func NewSizeColumn(typ string, size int) *SizeColumn {
 	return &SizeColumn{column: column{typ: typ}, size: size}
 }
 
-func (c SizeColumn) Size() int      { return c.size }
-func (c SizeColumn) Name() string   { return fmt.Sprintf("%s_%d", c.Type(), c.size) }
+// Size return the size of the column.
+func (c SizeColumn) Size() int { return c.size }
+
+// Name implements the HDBColumn interface.
+func (c SizeColumn) Name() string { return fmt.Sprintf("%s_%d", c.Type(), c.size) }
+
+// Column implements the HDBColumn interface.
 func (c SizeColumn) Column() string { return fmt.Sprintf("%s(%d)", c.Type(), c.size) }
 
+// PrecScaleColumn represents a database column with precision and scale parameters (e.g. decimal).
 type PrecScaleColumn struct {
 	column
 	prec, scale int
 }
 
+// NewPrecScalColumn returns a new PrecScaleColumn object.
 func NewPrecScalColumn(typ string, prec, scale int) *PrecScaleColumn {
 	return &PrecScaleColumn{column: column{typ: typ}, prec: prec, scale: scale}
 }
 
+// Name implements the HDBColumn interface.
 func (c PrecScaleColumn) Name() string {
 	if c.prec == 0 && c.scale == 0 {
 		return c.column.Name()
@@ -113,6 +126,7 @@ func (c PrecScaleColumn) Name() string {
 	return fmt.Sprintf("%s_%d_%d", c.Type(), c.prec, c.scale)
 }
 
+// Column implements the HDBColumn interface.
 func (c PrecScaleColumn) Column() string {
 	if c.prec == 0 && c.scale == 0 {
 		return c.column.Column()
