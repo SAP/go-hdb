@@ -228,6 +228,8 @@ func (tc typeCode) fieldType() fieldType {
 		return lobCESU8Type
 	case tcBintext: // ?? lobCESU8Type
 		return lobVarType
+	case tcFixed8:
+		return fixed8Type // used for decimals(x,y) 2^63 - 1
 	default:
 		panic(fmt.Sprintf("Missing FieldType for typeCode %s", tc))
 	}

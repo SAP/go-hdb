@@ -64,6 +64,9 @@ const (
 	daydateFieldSize    = 4
 	secondtimeFieldSize = 4
 	decimalFieldSize    = 16
+	fixed8FieldSize     = 8
+	fixed12FieldSize    = 12
+	fixed16FieldSize    = 16
 
 	lobInputParametersSize = 9
 )
@@ -165,6 +168,7 @@ var (
 	daydateType    = _daydateType{}
 	secondtimeType = _secondtimeType{}
 	decimalType    = _decimalType{}
+	fixed8Type     = _fixed8Type{}
 	varType        = _varType{}
 	alphaType      = _alphaType{}
 	cesu8Type      = _cesu8Type{}
@@ -187,6 +191,7 @@ type _seconddateType struct{}
 type _daydateType struct{}
 type _secondtimeType struct{}
 type _decimalType struct{}
+type _fixed8Type struct{}
 type _varType struct{}
 type _alphaType struct{}
 type _cesu8Type struct{}
@@ -209,6 +214,7 @@ var (
 	_ fieldType = (*_daydateType)(nil)
 	_ fieldType = (*_secondtimeType)(nil)
 	_ fieldType = (*_decimalType)(nil)
+	_ fieldType = (*_fixed8Type)(nil)
 	_ fieldType = (*_varType)(nil)
 	_ fieldType = (*_alphaType)(nil)
 	_ fieldType = (*_cesu8Type)(nil)
@@ -248,6 +254,7 @@ func (_seconddateType) String() string { return "seconddateType" }
 func (_daydateType) String() string    { return "daydateType" }
 func (_secondtimeType) String() string { return "secondtimeType" }
 func (_decimalType) String() string    { return "decimalType" }
+func (_fixed8Type) String() string     { return "fixed8Type" }
 func (_varType) String() string        { return "varType" }
 func (_alphaType) String() string      { return "alphaType" }
 func (_cesu8Type) String() string      { return "cesu8Type" }
@@ -463,6 +470,12 @@ func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
 	return nil, newConvertError(ft, v, nil)
 }
 
+// fixed8
+func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
+
+
+
+
 func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
 func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
@@ -545,6 +558,7 @@ func (_seconddateType) prmSize(interface{}) int { return seconddateFieldSize }
 func (_daydateType) prmSize(interface{}) int    { return daydateFieldSize }
 func (_secondtimeType) prmSize(interface{}) int { return secondtimeFieldSize }
 func (_decimalType) prmSize(interface{}) int    { return decimalFieldSize }
+func (_fixed8Type) prmSize(interface{}) int     { return fixed8FieldSize }
 func (_lobVarType) prmSize(v interface{}) int   { return lobInputParametersSize }
 func (_lobCESU8Type) prmSize(v interface{}) int { return lobInputParametersSize }
 

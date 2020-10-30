@@ -609,7 +609,9 @@ func TestDataType(t *testing.T) {
 		{drivertest.HDBDaydate, checkDate, timeTestData},
 		{drivertest.HDBSecondtime, checkTime, timeTestData},
 		{drivertest.NewPrecScalColumn(drivertest.DtDecimal, 0, 0), checkDecimal, decimalTestData},  // floating point decimal number
-		{drivertest.NewPrecScalColumn(drivertest.DtDecimal, 18, 2), checkDecimal, decimalTestData}, // precision, scale decimal number
+		{drivertest.NewPrecScalColumn(drivertest.DtDecimal, 18, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
+		// {drivertest.NewPrecScalColumn(drivertest.DtDecimal, 19, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
+		// {drivertest.NewPrecScalColumn(drivertest.DtDecimal, 29, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
 		{drivertest.HDBBoolean, checkBoolean, booleanTestData},
 		{drivertest.HDBClob, checkLob, lobTestData(true)},
 		{drivertest.HDBNclob, checkLob, lobTestData(false)},
