@@ -28,6 +28,7 @@ _testmain.go
 *.prof
 todo*.*
 *.txt
+*.pdf
 !LICENSES/*.txt
 .reuse/
 *.debug
