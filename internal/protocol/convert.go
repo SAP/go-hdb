@@ -5,31 +5,229 @@
 package protocol
 
 import (
+	"errors"
+	"fmt"
+	"math"
+	"reflect"
+	"strconv"
 	"time"
 )
 
-// string / binary length indicators
-const (
-	bytesLenIndNullValue byte = 255
-	bytesLenIndSmall     byte = 245
-	bytesLenIndMedium    byte = 246
-	bytesLenIndBig       byte = 247
-)
+// ErrUint64OutOfRange means that a uint64 exceeds the size of a int64.
+var ErrUint64OutOfRange = errors.New("uint64 values with high bit set are not supported")
 
-const (
-	realNullValue   uint32 = ^uint32(0)
-	doubleNullValue uint64 = ^uint64(0)
-)
+// ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
+var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
-const (
-	booleanFalseValue   byte  = 0
-	booleanNullValue    byte  = 1
-	booleanTrueValue    byte  = 2
-	longdateNullValue   int64 = 3155380704000000001
-	seconddateNullValue int64 = 315538070401
-	daydateNullValue    int32 = 3652062
-	secondtimeNullValue int32 = 86402
-)
+// ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
+var ErrFloatOutOfRange = errors.New("float out of range error")
+
+/*
+Conversion routines hdb parameters
+- return value is interface{} to avoid allocations in case
+  parameter is already of target type
+*/
+func convertBool(v interface{}) (interface{}, error) {
+	if v == nil {
+		return v, nil
+	}
+
+	if v, ok := v.(bool); ok {
+		return v, nil
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+
+	case reflect.Bool:
+		return rv.Bool(), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int() != 0, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return rv.Uint() != 0, nil
+	case reflect.Float32, reflect.Float64:
+		return rv.Float() != 0, nil
+	case reflect.String:
+		b, err := strconv.ParseBool(rv.String())
+		if err != nil {
+			return nil, err
+		}
+		return b, nil
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertBool(rv.Elem().Interface())
+	}
+
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertBool(rv.Convert(stringReflectType).Interface())
+	}
+	return nil, fmt.Errorf("unsupported bool conversion: %[1]T %[1]v", v)
+}
+
+func convertInteger(v interface{}, min, max int64) (interface{}, error) {
+	if v == nil {
+		return v, nil
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	// conversions without allocations (return v)
+	case reflect.Bool:
+		return v, nil // return (no furhter check needed)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i64 := rv.Int()
+		if i64 > max || i64 < min {
+			return nil, ErrIntegerOutOfRange
+		}
+		return v, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u64 := rv.Uint()
+		if u64 >= 1<<63 {
+			return nil, ErrUint64OutOfRange
+		}
+		if int64(u64) > max || int64(u64) < min {
+			return nil, ErrIntegerOutOfRange
+		}
+		return v, nil
+	// conversions with allocations (return i64)
+	case reflect.Float32, reflect.Float64:
+		f64 := rv.Float()
+		i64 := int64(f64)
+		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
+			return nil, fmt.Errorf("unsupported integer conversion: %[1]T %[1]v", v)
+		}
+		if i64 > max || i64 < min {
+			return nil, ErrIntegerOutOfRange
+		}
+		return i64, nil
+	case reflect.String:
+		i64, err := strconv.ParseInt(rv.String(), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		if i64 > max || i64 < min {
+			return nil, ErrIntegerOutOfRange
+		}
+		return i64, nil
+	// pointer
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertInteger(rv.Elem().Interface(), min, max)
+	}
+	// last resort (try via string)
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertInteger(rv.Convert(stringReflectType).Interface(), min, max)
+	}
+	return nil, fmt.Errorf("unsupported integer conversion: %[1]T %[1]v", v)
+}
+
+func convertFloat(v interface{}, max float64) (interface{}, error) {
+	if v == nil {
+		return v, nil
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	// conversions without allocations (return v)
+	case reflect.Float32, reflect.Float64:
+		if math.Abs(rv.Float()) > max {
+			return nil, ErrFloatOutOfRange
+		}
+		return v, nil
+	// conversions with allocations (return f64)
+	case reflect.String:
+		f64, err := strconv.ParseFloat(rv.String(), 64)
+		if err != nil {
+			return nil, err
+		}
+		if math.Abs(f64) > max {
+			return nil, ErrFloatOutOfRange
+		}
+		return f64, nil
+	// pointer
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertFloat(rv.Elem().Interface(), max)
+	}
+	// last resort (try via string)
+	if rv.Type().ConvertibleTo(stringReflectType) {
+		return convertFloat(rv.Convert(stringReflectType).Interface(), max)
+	}
+	return nil, fmt.Errorf("unsupported float conversion: %[1]T %[1]v", v)
+}
+
+func convertTime(v interface{}) (interface{}, error) {
+	if v == nil {
+		return nil, nil
+	}
+
+	if v, ok := v.(time.Time); ok {
+		return v, nil
+	}
+
+	rv := reflect.ValueOf(v)
+
+	if rv.Kind() == reflect.Ptr {
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertTime(rv.Elem().Interface())
+	}
+
+	if rv.Type().ConvertibleTo(timeReflectType) {
+		tv := rv.Convert(timeReflectType)
+		return tv.Interface().(time.Time), nil
+	}
+	return nil, fmt.Errorf("unsupported time conversion: %[1]T %[1]v", v)
+}
+
+func convertBytes(v interface{}) (interface{}, error) {
+	if v == nil {
+		return v, nil
+	}
+
+	switch v := v.(type) {
+
+	case string, []byte:
+		return v, nil
+	}
+
+	rv := reflect.ValueOf(v)
+
+	switch rv.Kind() {
+
+	case reflect.String:
+		return rv.String(), nil
+
+	case reflect.Slice:
+		if rv.Type() == bytesReflectType {
+			return rv.Bytes(), nil
+		}
+
+	case reflect.Ptr:
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertBytes(rv.Elem().Interface())
+	}
+
+	if rv.Type().ConvertibleTo(bytesReflectType) {
+		bv := rv.Convert(bytesReflectType)
+		return bv.Interface().([]byte), nil
+	}
+	return nil, fmt.Errorf("unsupported bytes conversion: %[1]T %[1]v", v)
+}
 
 // Longdate
 func convertLongdateToTime(longdate int64) time.Time {

@@ -71,8 +71,8 @@ type ParameterField struct {
 	fieldName        string
 	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
 	offset           uint32
-	fraction         int16
 	length           int16
+	fraction         int16
 	parameterOptions parameterOptions
 	tc               typeCode
 	mode             parameterMode
@@ -90,7 +90,9 @@ func (f *ParameterField) String() string {
 }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(v interface{}) (interface{}, error) { return f.ft.convert(v) }
+func (f *ParameterField) Convert(v interface{}) (interface{}, error) {
+	return f.ft.convert(v, int(f.length), int(f.fraction))
+}
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
@@ -151,6 +153,40 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	dec.Skip(4) //filler
 }
 
+func (f *ParameterField) prmSize(v interface{}) int {
+	if v == nil && f.tc.supportNullValue() {
+		return 0
+	}
+	return f.ft.prmSize(v)
+}
+
+func (f *ParameterField) encodePrm(enc *encoding.Encoder, v interface{}) error {
+	encTc := f.tc.encTc()
+	if v == nil && f.tc.supportNullValue() {
+		enc.Byte(byte(encTc) | 0x80) // type code null value: set high bit
+		return nil
+	}
+	enc.Byte(byte(encTc)) // type code
+	return f.ft.encodePrm(enc, v)
+}
+
+func (f *ParameterField) decodeRes(dec *encoding.Decoder) (interface{}, error) {
+	return f.ft.decodeRes(dec)
+}
+
+/*
+decode parameter
+- currently not used
+- type code is first byte (see encodePrm)
+*/
+func (f *ParameterField) decodePrm(dec *encoding.Decoder) (interface{}, error) {
+	tc := typeCode(dec.Byte())
+	if tc&0x80 != 0 { // high bit set -> null value
+		return nil, nil
+	}
+	return f.ft.decodePrm(dec)
+}
+
 // parameter metadata
 type parameterMetadata struct {
 	parameterFields []*ParameterField
@@ -201,7 +237,7 @@ func (p *inputParameters) size() int {
 	for i, arg := range p.args {
 		// mass insert
 		f := p.inputFields[i%cnt]
-		size += prmSize(f.tc, arg)
+		size += f.prmSize(arg)
 	}
 	return size
 }
@@ -226,7 +262,8 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 	for i, arg := range p.args {
 		//mass insert
 		f := p.inputFields[i%cnt]
-		if err := encodePrm(enc, f.tc, f.ft, arg); err != nil {
+
+		if err := f.encodePrm(enc, arg); err != nil {
 			return err
 		}
 	}
@@ -249,9 +286,9 @@ func (p *outputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 	p.fieldValues = resizeFieldValues(numArg*cols, p.fieldValues)
 
 	for i := 0; i < numArg; i++ {
-		for j, field := range p.outputFields {
+		for j, f := range p.outputFields {
 			var err error
-			if p.fieldValues[i*cols+j], err = decodeRes(dec, field.tc); err != nil {
+			if p.fieldValues[i*cols+j], err = f.decodeRes(dec); err != nil {
 				return err
 			}
 		}
