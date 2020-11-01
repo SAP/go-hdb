@@ -6,8 +6,10 @@ package encoding
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
+	"math/big"
 
 	"github.com/SAP/go-hdb/internal/unicode"
 	"golang.org/x/text/transform"
@@ -97,7 +99,7 @@ func (d *Decoder) Byte() byte { // ReadB as sig differs from ReadByte (vet issue
 	return d.b[0]
 }
 
-// Bytes reads and returns a byte slice.
+// Bytes reads into a byte slice.
 func (d *Decoder) Bytes(p []byte) {
 	if d.err != nil {
 		return
@@ -246,6 +248,63 @@ func (d *Decoder) Float64() float64 {
 	}
 	bits := binary.LittleEndian.Uint64(d.b[:8])
 	return math.Float64frombits(bits)
+}
+
+// Decimal reads and returns a decimal.
+func (d *Decoder) Decimal() (*big.Int, bool, int) { // m, neg, exp
+	const decimalSize = 16
+
+	b := d.b[:decimalSize]
+
+	var n int
+	n, d.err = io.ReadFull(d.rd, b)
+	d.cnt += n
+	if d.err != nil {
+		return nil, false, 0
+	}
+
+	if (b[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+		return nil, false, 0
+	}
+
+	if (b[15] & 0x60) == 0x60 {
+		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", d.b[:decimalSize])
+		return nil, false, 0
+	}
+
+	neg := (b[15] & 0x80) != 0
+	exp := int((((uint16(b[15])<<8)|uint16(b[14]))<<1)>>2) - dec128Bias
+
+	b14 := b[14]  // save b[14]
+	b[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
+
+	//most significand byte
+	msb := 14
+	for msb > 0 {
+		if b[msb] != 0 {
+			break
+		}
+		msb--
+	}
+
+	//calc number of words
+	numWords := (msb / _S) + 1
+	ws := make([]big.Word, numWords)
+
+	k := numWords - 1
+	w := big.Word(0)
+	for i := msb; i >= 0; i-- {
+		w |= big.Word(b[i])
+		if k*_S == i {
+			ws[k] = w
+			k--
+			w = 0
+		}
+		w <<= 8
+	}
+	b[14] = b14 // restore b[14]
+
+	return new(big.Int).SetBits(ws), neg, exp
 }
 
 // CESU8Bytes reads a size CESU-8 encoded byte sequence and returns an UTF-8 byte slice.

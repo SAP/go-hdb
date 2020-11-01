@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"reflect"
 	"time"
 
@@ -28,6 +29,9 @@ const (
 	maxReal     = math.MaxFloat32
 	maxDouble   = math.MaxFloat64
 )
+
+// MaxDecimal is the maximal decimal value.
+var MaxDecimal = new(big.Int).SetBytes([]byte{0x01, 0xED, 0x09, 0xBE, 0xAD, 0x87, 0xC0, 0x37, 0x8D, 0x8E, 0x63, 0xFF, 0xFF, 0xFF, 0xFF})
 
 // string / binary length indicators
 const (
@@ -231,12 +235,12 @@ func (ft _decimalType) convert(v interface{}, size, frac int) (interface{}, erro
 	return convertDecimal(ft, v)
 }
 
-// TODO: decimal
-func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
+// TODO: decimal check min max values
+func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
 	if v == nil {
 		return nil, nil
 	}
-	if v, ok := v.([]byte); ok {
+	if v, ok := v.(*big.Rat); ok {
 		return v, nil
 	}
 	return nil, fmt.Errorf("unsupported decimal conversion: %[1]T %[1]v", v)
@@ -479,14 +483,23 @@ func asTime(v interface{}) time.Time {
 }
 
 func (ft _decimalType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	p, ok := v.([]byte)
+	r, ok := v.(*big.Rat)
 	if !ok {
 		panic("invalid decimal value") // should never happen
 	}
-	if len(p) != decimalFieldSize {
-		return fmt.Errorf("invalid argument length %d - expected %d", len(p), decimalFieldSize)
+
+	var m big.Int
+	neg, exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
 	}
-	e.Bytes(p)
+
+	if df&dfUnderflow != 0 { // set to zero
+		e.Decimal(natZero, false, 0)
+	} else {
+		e.Decimal(&m, neg, exp)
+	}
 	return nil
 }
 
@@ -753,12 +766,11 @@ func (_secondtimeType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 }
 
 func (_decimalType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	b := make([]byte, decimalFieldSize)
-	d.Bytes(b)
-	if (b[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+	m, neg, exp := d.Decimal()
+	if m == nil {
 		return nil, nil
 	}
-	return b, nil
+	return convertDecimalToRat(m, neg, exp)
 }
 func (ft _decimalType) decodePrm(d *encoding.Decoder) (interface{}, error) { return ft.decodeRes(d) }
 

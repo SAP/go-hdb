@@ -2,15 +2,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver
+package protocol
 
 import (
+	"math"
 	"math/big"
 	"testing"
 )
 
+const lg10 = math.Ln10 / math.Ln2 // ~log2(10)
+
 func testDecimalInfo(t *testing.T) {
-	t.Logf("maximum decimal value %v", maxDecimal)
+	t.Logf("maximum decimal value %v", MaxDecimal)
 	t.Logf("~log2(10): %f", lg10)
 }
 
@@ -61,7 +64,7 @@ func testConvertRat(t *testing.T) {
 		cmp *big.Int
 		neg bool
 		exp int
-		df  decFlags
+		df  byte
 	}{
 		{new(big.Rat).SetFrac64(0, 1), 3, -2, 2, new(big.Int).SetInt64(0), false, 0, 0},                              //convert 0
 		{new(big.Rat).SetFrac64(1, 1), 3, -2, 2, new(big.Int).SetInt64(1), false, 0, 0},                              //convert 1

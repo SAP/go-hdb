@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
+	"math/bits"
 	"reflect"
 	"strconv"
 	"time"
@@ -21,6 +23,9 @@ var ErrIntegerOutOfRange = errors.New("integer out of range error")
 
 // ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
+
+// ErrDecimalOutOfRange means that a big.Rat exceeds the size of hdb decimal fields.
+var ErrDecimalOutOfRange = errors.New("decimal out of range error")
 
 /*
 Conversion routines hdb parameters
@@ -227,6 +232,199 @@ func convertBytes(v interface{}) (interface{}, error) {
 		return bv.Interface().([]byte), nil
 	}
 	return nil, fmt.Errorf("unsupported bytes conversion: %[1]T %[1]v", v)
+}
+
+// decimals
+const _S = bits.UintSize / 8 // word size in bytes
+
+const (
+	// http://en.wikipedia.org/wiki/Decimal128_floating-point_format
+	dec128Digits = 34
+	dec128Bias   = 6176
+	dec128MinExp = -6176
+	dec128MaxExp = 6111
+)
+
+// const (
+// 	decimalSize = 16 //number of bytes
+// )
+
+var (
+	natZero = big.NewInt(0)
+	natOne  = big.NewInt(1)
+	natTen  = big.NewInt(10)
+)
+
+var nat = []*big.Int{
+	natOne,                  //10^0
+	natTen,                  //10^1
+	big.NewInt(100),         //10^2
+	big.NewInt(1000),        //10^3
+	big.NewInt(10000),       //10^4
+	big.NewInt(100000),      //10^5
+	big.NewInt(1000000),     //10^6
+	big.NewInt(10000000),    //10^7
+	big.NewInt(100000000),   //10^8
+	big.NewInt(1000000000),  //10^9
+	big.NewInt(10000000000), //10^10
+}
+
+// decimal flag
+const (
+	dfNotExact byte = 1 << iota
+	dfOverflow
+	dfUnderflow
+)
+
+func convertDecimalToRat(m *big.Int, neg bool, exp int) (*big.Rat, error) {
+	if m == nil {
+		return nil, nil
+	}
+
+	v := new(big.Rat).SetInt(m)
+	p := v.Num()
+	q := v.Denom()
+
+	switch {
+	case exp < 0:
+		q.Set(exp10(exp * -1))
+	case exp == 0:
+		q.Set(natOne)
+	case exp > 0:
+		p.Mul(p, exp10(exp))
+		q.Set(natOne)
+	}
+
+	if neg {
+		v.Neg(v)
+	}
+	return v, nil
+}
+
+func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (bool, int, byte) {
+
+	neg := x.Sign() < 0 //store sign
+
+	if x.Num().Cmp(natZero) == 0 { // zero
+		m.Set(natZero)
+		return neg, 0, 0
+	}
+
+	var tmp big.Rat
+
+	c := (&tmp).Abs(x) // copy && abs
+	a := c.Num()
+	b := c.Denom()
+
+	exp, shift := 0, 0
+
+	if c.IsInt() {
+		exp = digits10(a) - 1
+	} else {
+		shift = digits10(a) - digits10(b)
+		switch {
+		case shift < 0:
+			a.Mul(a, exp10(shift*-1))
+		case shift > 0:
+			b.Mul(b, exp10(shift))
+		}
+		if a.Cmp(b) == -1 {
+			exp = shift - 1
+		} else {
+			exp = shift
+		}
+	}
+
+	var df byte
+
+	switch {
+	default:
+		exp = max(exp-digits+1, minExp)
+	case exp < minExp:
+		df |= dfUnderflow
+		exp = exp - digits + 1
+	}
+
+	if exp > maxExp {
+		df |= dfOverflow
+	}
+
+	shift = exp - shift
+	switch {
+	case shift < 0:
+		a.Mul(a, exp10(shift*-1))
+	case exp > 0:
+		b.Mul(b, exp10(shift))
+	}
+
+	m.QuoRem(a, b, a) // reuse a as rest
+	if a.Cmp(natZero) != 0 {
+		// round (business >= 0.5 up)
+		df |= dfNotExact
+		if a.Add(a, a).Cmp(b) >= 0 {
+			m.Add(m, natOne)
+			if m.Cmp(exp10(digits)) == 0 {
+				shift := min(digits, maxExp-exp)
+				if shift < 1 { // overflow -> shift one at minimum
+					df |= dfOverflow
+					shift = 1
+				}
+				m.Set(exp10(digits - shift))
+				exp += shift
+			}
+		}
+	}
+
+	// norm
+	for exp < maxExp {
+		a.QuoRem(m, natTen, b) // reuse a, b
+		if b.Cmp(natZero) != 0 {
+			break
+		}
+		m.Set(a)
+		exp++
+	}
+
+	return neg, exp, df
+}
+
+// performance: tested with reference work variable
+// - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
+func exp10(n int) *big.Int {
+	if n < len(nat) {
+		return nat[n]
+	}
+	r := big.NewInt(int64(n))
+	return r.Exp(natTen, r, nil)
+}
+
+func digits10(p *big.Int) int {
+	k := p.BitLen() // 2^k <= p < 2^(k+1) - 1
+	//i := int(float64(k) / lg10) //minimal digits base 10
+	i := k * 100 / 332
+	if i < 1 {
+		i = 1
+	}
+
+	for ; ; i++ {
+		if p.Cmp(exp10(i)) < 0 {
+			return i
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Longdate

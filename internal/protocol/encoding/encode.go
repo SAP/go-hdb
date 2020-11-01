@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"math/big"
 
 	"github.com/SAP/go-hdb/internal/unicode"
 	"golang.org/x/text/transform"
@@ -19,7 +20,7 @@ const writeScratchSize = 4096
 type Encoder struct {
 	wr  io.Writer
 	err error
-	b   []byte // scratch buffer (min 8 Bytes)
+	b   []byte // scratch buffer (min 15 Bytes - Decimal)
 	tr  transform.Transformer
 }
 
@@ -169,6 +170,34 @@ func (e *Encoder) Float64(f float64) {
 	bits := math.Float64bits(f)
 	binary.LittleEndian.PutUint64(e.b[:8], bits)
 	e.wr.Write(e.b[:8])
+}
+
+// Decimal writes a decimal value.
+func (e *Encoder) Decimal(m *big.Int, neg bool, exp int) {
+	// little endian bigint words (significand) -> little endian db decimal format
+	j := 0
+	for _, d := range m.Bits() {
+		for i := 0; i < _S; i++ {
+			e.b[j] = byte(d)
+			d >>= 8
+			j++
+		}
+	}
+
+	// clear scratch buffer
+	for i := j; i < decSize; i++ {
+		e.b[i] = 0
+	}
+
+	exp += dec128Bias
+	e.b[14] |= (byte(exp) << 1)
+	e.b[15] = byte(uint16(exp) >> 7)
+
+	if neg {
+		e.b[15] |= 0x80
+	}
+
+	e.wr.Write(e.b[:decSize])
 }
 
 // String writes a string.

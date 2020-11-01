@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/SAP/go-hdb/driver/drivertest"
+	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 func testDataType(db *sql.DB, column drivertest.HDBColumn, check func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool, testData []interface{}, t *testing.T) {
@@ -273,7 +274,7 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(1, 10)),
 		(*Decimal)(big.NewRat(-1, 10)),
 		(*Decimal)(big.NewRat(1, 1000)),
-		(*Decimal)(new(big.Rat).SetInt(maxDecimal)),
+		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
 		(*Decimal)(big.NewRat(34, 10)),
