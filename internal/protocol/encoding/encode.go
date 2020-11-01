@@ -173,7 +173,7 @@ func (e *Encoder) Float64(f float64) {
 }
 
 // Decimal writes a decimal value.
-func (e *Encoder) Decimal(m *big.Int, neg bool, exp int) {
+func (e *Encoder) Decimal(m *big.Int, exp int) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
@@ -193,7 +193,7 @@ func (e *Encoder) Decimal(m *big.Int, neg bool, exp int) {
 	e.b[14] |= (byte(exp) << 1)
 	e.b[15] = byte(uint16(exp) >> 7)
 
-	if neg {
+	if m.Sign() == -1 {
 		e.b[15] |= 0x80
 	}
 

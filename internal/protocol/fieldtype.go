@@ -213,8 +213,12 @@ func (ft _doubleType) convert(v interface{}, size, frac int) (interface{}, error
 	return convertFloat(v, maxDouble)
 }
 
-func (ft _dateType) convert(v interface{}, size, frac int) (interface{}, error) { return convertTime(v) }
-func (ft _timeType) convert(v interface{}, size, frac int) (interface{}, error) { return convertTime(v) }
+func (ft _dateType) convert(v interface{}, size, frac int) (interface{}, error) {
+	return convertTime(v)
+}
+func (ft _timeType) convert(v interface{}, size, frac int) (interface{}, error) {
+	return convertTime(v)
+}
 func (ft _timestampType) convert(v interface{}, size, frac int) (interface{}, error) {
 	return convertTime(v)
 }
@@ -249,7 +253,9 @@ func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
 // fixed8
 //func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
 
-func (ft _varType) convert(v interface{}, size, frac int) (interface{}, error) { return convertBytes(v) }
+func (ft _varType) convert(v interface{}, size, frac int) (interface{}, error) {
+	return convertBytes(v)
+}
 func (ft _alphaType) convert(v interface{}, size, frac int) (interface{}, error) {
 	return convertBytes(v)
 }
@@ -489,16 +495,16 @@ func (ft _decimalType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	}
 
 	var m big.Int
-	neg, exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
+	exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
 
 	if df&dfOverflow != 0 {
 		return ErrDecimalOutOfRange
 	}
 
 	if df&dfUnderflow != 0 { // set to zero
-		e.Decimal(natZero, false, 0)
+		e.Decimal(natZero, 0)
 	} else {
-		e.Decimal(&m, neg, exp)
+		e.Decimal(&m, exp)
 	}
 	return nil
 }
@@ -766,11 +772,11 @@ func (_secondtimeType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 }
 
 func (_decimalType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	m, neg, exp := d.Decimal()
+	m, exp := d.Decimal()
 	if m == nil {
 		return nil, nil
 	}
-	return convertDecimalToRat(m, neg, exp)
+	return convertDecimalToRat(m, exp)
 }
 func (ft _decimalType) decodePrm(d *encoding.Decoder) (interface{}, error) { return ft.decodeRes(d) }
 

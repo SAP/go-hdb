@@ -251,7 +251,7 @@ func (d *Decoder) Float64() float64 {
 }
 
 // Decimal reads and returns a decimal.
-func (d *Decoder) Decimal() (*big.Int, bool, int) { // m, neg, exp
+func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
 	const decimalSize = 16
 
 	b := d.b[:decimalSize]
@@ -260,16 +260,16 @@ func (d *Decoder) Decimal() (*big.Int, bool, int) { // m, neg, exp
 	n, d.err = io.ReadFull(d.rd, b)
 	d.cnt += n
 	if d.err != nil {
-		return nil, false, 0
+		return nil, 0
 	}
 
 	if (b[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
-		return nil, false, 0
+		return nil, 0
 	}
 
 	if (b[15] & 0x60) == 0x60 {
 		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", d.b[:decimalSize])
-		return nil, false, 0
+		return nil, 0
 	}
 
 	neg := (b[15] & 0x80) != 0
@@ -304,7 +304,11 @@ func (d *Decoder) Decimal() (*big.Int, bool, int) { // m, neg, exp
 	}
 	b[14] = b14 // restore b[14]
 
-	return new(big.Int).SetBits(ws), neg, exp
+	m := new(big.Int).SetBits(ws)
+	if neg {
+		m = m.Neg(m)
+	}
+	return m, exp
 }
 
 // CESU8Bytes reads a size CESU-8 encoded byte sequence and returns an UTF-8 byte slice.

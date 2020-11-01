@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"math/bits"
 	"reflect"
 	"strconv"
 	"time"
@@ -235,19 +234,13 @@ func convertBytes(v interface{}) (interface{}, error) {
 }
 
 // decimals
-const _S = bits.UintSize / 8 // word size in bytes
-
 const (
 	// http://en.wikipedia.org/wiki/Decimal128_floating-point_format
 	dec128Digits = 34
-	dec128Bias   = 6176
+	// 	dec128Bias   = 6176
 	dec128MinExp = -6176
 	dec128MaxExp = 6111
 )
-
-// const (
-// 	decimalSize = 16 //number of bytes
-// )
 
 var (
 	natZero = big.NewInt(0)
@@ -256,17 +249,17 @@ var (
 )
 
 var nat = []*big.Int{
-	natOne,                  //10^0
-	natTen,                  //10^1
-	big.NewInt(100),         //10^2
-	big.NewInt(1000),        //10^3
-	big.NewInt(10000),       //10^4
-	big.NewInt(100000),      //10^5
-	big.NewInt(1000000),     //10^6
-	big.NewInt(10000000),    //10^7
-	big.NewInt(100000000),   //10^8
-	big.NewInt(1000000000),  //10^9
-	big.NewInt(10000000000), //10^10
+	natOne,           //10^0
+	natTen,           //10^1
+	big.NewInt(1e2),  //10^2
+	big.NewInt(1e3),  //10^3
+	big.NewInt(1e4),  //10^4
+	big.NewInt(1e5),  //10^5
+	big.NewInt(1e6),  //10^6
+	big.NewInt(1e7),  //10^7
+	big.NewInt(1e8),  //10^8
+	big.NewInt(1e9),  //10^9
+	big.NewInt(1e10), //10^10
 }
 
 // decimal flag
@@ -276,7 +269,7 @@ const (
 	dfUnderflow
 )
 
-func convertDecimalToRat(m *big.Int, neg bool, exp int) (*big.Rat, error) {
+func convertDecimalToRat(m *big.Int, exp int) (*big.Rat, error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -294,25 +287,18 @@ func convertDecimalToRat(m *big.Int, neg bool, exp int) (*big.Rat, error) {
 		p.Mul(p, exp10(exp))
 		q.Set(natOne)
 	}
-
-	if neg {
-		v.Neg(v)
-	}
 	return v, nil
 }
 
-func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (bool, int, byte) {
-
-	neg := x.Sign() < 0 //store sign
-
+func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (int, byte) {
 	if x.Num().Cmp(natZero) == 0 { // zero
 		m.Set(natZero)
-		return neg, 0, 0
+		return 0, 0
 	}
 
 	var tmp big.Rat
 
-	c := (&tmp).Abs(x) // copy && abs
+	c := (&tmp).Set(x) // copy
 	a := c.Num()
 	b := c.Denom()
 
@@ -385,7 +371,7 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (bo
 		exp++
 	}
 
-	return neg, exp, df
+	return exp, df
 }
 
 // performance: tested with reference work variable
