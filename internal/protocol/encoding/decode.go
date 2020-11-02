@@ -252,9 +252,7 @@ func (d *Decoder) Float64() float64 {
 
 // Decimal reads and returns a decimal.
 func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
-	const decimalSize = 16
-
-	b := d.b[:decimalSize]
+	b := d.b[:decSize]
 
 	var n int
 	n, d.err = io.ReadFull(d.rd, b)
@@ -268,14 +266,14 @@ func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
 	}
 
 	if (b[15] & 0x60) == 0x60 {
-		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", d.b[:decimalSize])
+		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", d.b[:decSize])
 		return nil, 0
 	}
 
 	neg := (b[15] & 0x80) != 0
 	exp := int((((uint16(b[15])<<8)|uint16(b[14]))<<1)>>2) - dec128Bias
 
-	b14 := b[14]  // save b[14]
+	// b14 := b[14]  // save b[14]
 	b[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
 
 	//most significand byte
@@ -302,13 +300,59 @@ func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
 		}
 		w <<= 8
 	}
-	b[14] = b14 // restore b[14]
+	// b[14] = b14 // restore b[14]
 
 	m := new(big.Int).SetBits(ws)
 	if neg {
 		m = m.Neg(m)
 	}
 	return m, exp
+}
+
+// Fixed reads and returns a fixed decimal.
+func (d *Decoder) Fixed(size int) *big.Int { // m, exp
+	b := d.b[:size]
+
+	var n int
+	n, d.err = io.ReadFull(d.rd, b)
+	d.cnt += n
+	if d.err != nil {
+		return nil
+	}
+
+	neg := (b[size-1] & 0x80) != 0
+	b[size-1] &= ^uint8(0x80) // clear sign bit
+
+	//most significand byte
+	msb := size - 1
+	for msb > 0 {
+		if b[msb] != 0 {
+			break
+		}
+		msb--
+	}
+
+	//calc number of words
+	numWords := (msb / _S) + 1
+	ws := make([]big.Word, numWords)
+
+	k := numWords - 1
+	w := big.Word(0)
+	for i := msb; i >= 0; i-- {
+		w |= big.Word(b[i])
+		if k*_S == i {
+			ws[k] = w
+			k--
+			w = 0
+		}
+		w <<= 8
+	}
+
+	m := new(big.Int).SetBits(ws)
+	if neg {
+		m = m.Neg(m)
+	}
+	return m
 }
 
 // CESU8Bytes reads a size CESU-8 encoded byte sequence and returns an UTF-8 byte slice.

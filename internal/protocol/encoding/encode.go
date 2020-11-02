@@ -174,11 +174,13 @@ func (e *Encoder) Float64(f float64) {
 
 // Decimal writes a decimal value.
 func (e *Encoder) Decimal(m *big.Int, exp int) {
+	b := e.b[:decSize]
+
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
 		for i := 0; i < _S; i++ {
-			e.b[j] = byte(d)
+			b[j] = byte(d)
 			d >>= 8
 			j++
 		}
@@ -186,18 +188,44 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 
 	// clear scratch buffer
 	for i := j; i < decSize; i++ {
-		e.b[i] = 0
+		b[i] = 0
 	}
 
 	exp += dec128Bias
-	e.b[14] |= (byte(exp) << 1)
-	e.b[15] = byte(uint16(exp) >> 7)
+	b[14] |= (byte(exp) << 1)
+	b[15] = byte(uint16(exp) >> 7)
 
 	if m.Sign() == -1 {
-		e.b[15] |= 0x80
+		b[15] |= 0x80
 	}
 
-	e.wr.Write(e.b[:decSize])
+	e.wr.Write(b)
+}
+
+// Fixed writes a fidex decimal value.
+func (e *Encoder) Fixed(m *big.Int, size int) {
+	b := e.b[:size]
+
+	// little endian bigint words (significand) -> little endian db decimal format
+	j := 0
+	for _, d := range m.Bits() {
+		for i := 0; i < _S; i++ {
+			b[j] = byte(d)
+			d >>= 8
+			j++
+		}
+	}
+
+	// clear scratch buffer
+	for i := j; i < size; i++ {
+		b[i] = 0
+	}
+
+	if m.Sign() == -1 {
+		b[size-1] |= 0x80
+	}
+
+	e.wr.Write(b)
 }
 
 // String writes a string.

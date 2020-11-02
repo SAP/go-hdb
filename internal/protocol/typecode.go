@@ -181,7 +181,7 @@ func (tc typeCode) typeName() string {
 	return strings.ToUpper(tc.String()[2:])
 }
 
-func (tc typeCode) fieldType() fieldType {
+func (tc typeCode) fieldType(length, fraction int) fieldType {
 	// performance: use switch instead of map
 	switch tc {
 	case tcBoolean:
