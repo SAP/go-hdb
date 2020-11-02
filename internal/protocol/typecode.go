@@ -229,11 +229,11 @@ func (tc typeCode) fieldType(length, fraction int) fieldType {
 	case tcBintext: // ?? lobCESU8Type
 		return lobVarType
 	case tcFixed8:
-		return fixed8Type // used for decimals(x,y) 2^63 - 1 (int64)
+		return _fixed8Type{prec: length, scale: fraction} // used for decimals(x,y) 2^63 - 1 (int64)
 	case tcFixed12:
-		return fixed12Type // used for decimals(x,y) 2^96 - 1 (int96)
+		return _fixed12Type{prec: length, scale: fraction} // used for decimals(x,y) 2^96 - 1 (int96)
 	case tcFixed16:
-		return fixed16Type // used for decimals(x,y) 2^63 - 1 (int128)
+		return _fixed16Type{prec: length, scale: fraction} // used for decimals(x,y) 2^63 - 1 (int128)
 	default:
 		panic(fmt.Sprintf("Missing FieldType for typeCode %s", tc))
 	}

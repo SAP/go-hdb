@@ -142,13 +142,13 @@ func (f *ParameterField) name() string {
 func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
-	f.ft = f.tc.fieldType()
 	f.mode = parameterMode(dec.Int8())
 	dec.Skip(1) //filler
 	f.offset = dec.Uint32()
 	f.length = dec.Int16()
 	f.fraction = dec.Int16()
 	dec.Skip(4) //filler
+	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
 func (f *ParameterField) prmSize(v interface{}) int {

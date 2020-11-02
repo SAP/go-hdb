@@ -374,6 +374,42 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 	return exp, df
 }
 
+func convertFixedToRat(m *big.Int, exp int) (*big.Rat, error) {
+	if m == nil {
+		return nil, nil
+	}
+
+	v := new(big.Rat).SetInt(m)
+	q := v.Denom()
+
+	switch {
+	case exp < 0:
+		return nil, fmt.Errorf("invalid exp: %d", exp)
+	case exp == 0: // nothing to do
+	case exp > 0:
+		q.Mul(q, exp10(exp))
+	}
+	return v, nil
+}
+
+func convertRatToFixed(r *big.Rat, m *big.Int, exp int) error {
+	var tmp big.Rat
+
+	c := (&tmp).Set(r) // copy
+	p := c.Num()
+
+	// TODO ROUNDING
+	switch {
+	case exp < 0:
+		return fmt.Errorf("invalid exp: %d", exp)
+	case exp == 0: // nothing to do
+	case exp > 0:
+		p.Mul(p, exp10(exp))
+	}
+	m.Set(c.Num())
+	return nil
+}
+
 // performance: tested with reference work variable
 // - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
 func exp10(n int) *big.Int {

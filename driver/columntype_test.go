@@ -29,8 +29,8 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 	)
 
 	testColumnTypeData := []struct {
-		sqlType    string
-		size, frac int64
+		sqlType          string
+		length, fraction int64
 
 		varLength   bool
 		decimalType bool
@@ -48,9 +48,9 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 		{"integer", 0, 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
 		{"bigint", 0, 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
 		{"decimal", 0, 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // decimal
-		{"decimal", 18, 2, false, true, "DECIMAL", 18, 2, true, p.DtDecimal.ScanType(), testDecimal},    // fixed8
-		{"decimal", 28, 4, false, true, "DECIMAL", 28, 4, true, p.DtDecimal.ScanType(), testDecimal},    // fixed12
-		{"decimal", 38, 8, false, true, "DECIMAL", 38, 8, true, p.DtDecimal.ScanType(), testDecimal},    // fixed16
+		//		{"decimal", 18, 2, false, true, "DECIMAL", 18, 2, true, p.DtDecimal.ScanType(), testDecimal},    // fixed8
+		//		{"decimal", 28, 4, false, true, "DECIMAL", 28, 4, true, p.DtDecimal.ScanType(), testDecimal},    // fixed12
+		//		{"decimal", 38, 8, false, true, "DECIMAL", 38, 8, true, p.DtDecimal.ScanType(), testDecimal},    // fixed16
 		{"real", 0, 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
 		{"double", 0, 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
 		{"char", 30, 0, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
@@ -93,9 +93,9 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 
 		createSQL.WriteString(fmt.Sprintf("X%d %s", i, td.sqlType))
 		switch {
-		case td.size != 0 && td.scale != 0:
-			createSQL.WriteString(fmt.Sprintf("(%d, %d)", td.size, td.scale))
-		case td.size != 0:
+		case td.length != 0 && td.fraction != 0:
+			createSQL.WriteString(fmt.Sprintf("(%d, %d)", td.length, td.fraction))
+		case td.length != 0:
 			createSQL.WriteString(fmt.Sprintf("(%d)", td.length))
 		}
 		if !td.nullable {

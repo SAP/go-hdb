@@ -117,7 +117,6 @@ func (f *resultField) name() string { return f.columnDisplayName }
 func (f *resultField) decode(dec *encoding.Decoder) {
 	f.columnOptions = columnOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
-	f.ft = f.tc.fieldType()
 	f.fraction = dec.Int16()
 	f.length = dec.Int16()
 	dec.Skip(2) //filler
@@ -125,6 +124,7 @@ func (f *resultField) decode(dec *encoding.Decoder) {
 	f.schemaNameOffset = dec.Uint32()
 	f.columnNameOffset = dec.Uint32()
 	f.columnDisplayNameOffset = dec.Uint32()
+	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
 func (f *resultField) decodeRes(dec *encoding.Decoder) (interface{}, error) {
