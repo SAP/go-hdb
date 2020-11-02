@@ -29,8 +29,8 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 	)
 
 	testColumnTypeData := []struct {
-		sqlType string
-		length  int64
+		sqlType    string
+		size, frac int64
 
 		varLength   bool
 		decimalType bool
@@ -43,38 +43,41 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 
 		value interface{}
 	}{
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), 1},
-		{"smallint", 0, false, false, "SMALLINT", 0, 0, true, p.DtSmallint.ScanType(), 42},
-		{"integer", 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
-		{"bigint", 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
-		{"decimal", 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal},
-		{"real", 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
-		{"double", 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
-		{"char", 30, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"nchar", 20, true, false, "NCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"nvarchar", 20, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"binary", 10, true, false, "BINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
-		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
-		{"date", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"time", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"timestamp", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"clob", 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"nclob", 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"blob", 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"boolean", 0, false, false, dataType("BOOLEAN", dfv), 0, 0, true, scanType(p.DtBoolean.ScanType(), dfv), false},
-		{"smalldecimal", 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
+		{"tinyint", 0, 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), 1},
+		{"smallint", 0, 0, false, false, "SMALLINT", 0, 0, true, p.DtSmallint.ScanType(), 42},
+		{"integer", 0, 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
+		{"bigint", 0, 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
+		{"decimal", 0, 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // decimal
+		{"decimal", 18, 2, false, true, "DECIMAL", 18, 2, true, p.DtDecimal.ScanType(), testDecimal},    // fixed8
+		{"decimal", 28, 4, false, true, "DECIMAL", 28, 4, true, p.DtDecimal.ScanType(), testDecimal},    // fixed12
+		{"decimal", 38, 8, false, true, "DECIMAL", 38, 8, true, p.DtDecimal.ScanType(), testDecimal},    // fixed16
+		{"real", 0, 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
+		{"double", 0, 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
+		{"char", 30, 0, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"varchar", 30, 0, true, false, "VARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"nchar", 20, 0, true, false, "NCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"nvarchar", 20, 0, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{"binary", 10, 0, true, false, "BINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+		{"varbinary", 10, 0, true, false, "VARBINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+		{"date", 0, 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"time", 0, 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"timestamp", 0, 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"clob", 0, 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"nclob", 0, 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"blob", 0, 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{"boolean", 0, 0, false, false, dataType("BOOLEAN", dfv), 0, 0, true, scanType(p.DtBoolean.ScanType(), dfv), false},
+		{"smalldecimal", 0, 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
 		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},             // hdb gives NCLOB back - not TEXT
-		{"shorttext", 15, true, false, dataType("SHORTTEXT", dfv), 0, 0, true, p.DtString.ScanType(), testString},
-		{"alphanum", 15, true, false, dataType("ALPHANUM", dfv), 0, 0, true, p.DtString.ScanType(), testString},
-		{"longdate", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"seconddate", 0, false, false, dataType("SECONDDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"daydate", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"secondtime", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"shorttext", 15, 0, true, false, dataType("SHORTTEXT", dfv), 0, 0, true, p.DtString.ScanType(), testString},
+		{"alphanum", 15, 0, true, false, dataType("ALPHANUM", dfv), 0, 0, true, p.DtString.ScanType(), testString},
+		{"longdate", 0, 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"seconddate", 0, 0, false, false, dataType("SECONDDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"daydate", 0, 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+		{"secondtime", 0, 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
 
 		// not nullable
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, p.DtTinyint.ScanType(), 42},
-		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, p.DtString.ScanType(), testString},
+		{"tinyint", 0, 0, false, false, "TINYINT", 0, 0, false, p.DtTinyint.ScanType(), 42},
+		{"nvarchar", 25, 0, true, false, "NVARCHAR", 0, 0, false, p.DtString.ScanType(), testString},
 	}
 
 	// text is only supported for column table
@@ -89,7 +92,10 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 		}
 
 		createSQL.WriteString(fmt.Sprintf("X%d %s", i, td.sqlType))
-		if td.length != 0 {
+		switch {
+		case td.size != 0 && td.scale != 0:
+			createSQL.WriteString(fmt.Sprintf("(%d, %d)", td.size, td.scale))
+		case td.size != 0:
 			createSQL.WriteString(fmt.Sprintf("(%d)", td.length))
 		}
 		if !td.nullable {

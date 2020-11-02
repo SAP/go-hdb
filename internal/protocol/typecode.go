@@ -102,7 +102,7 @@ func (tc typeCode) isIntegerType() bool {
 }
 
 func (tc typeCode) isDecimalType() bool {
-	return tc == tcSmalldecimal || tc == tcDecimal
+	return tc == tcSmalldecimal || tc == tcDecimal || tc == tcFixed8 || tc == tcFixed12 || tc == tcFixed12
 }
 
 //
@@ -160,7 +160,7 @@ func (tc typeCode) dataType() DataType {
 		return DtTime
 	case tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
 		return DtTime
-	case tcDecimal:
+	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
 		return DtDecimal
 	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcTableRef:
 		return DtString
@@ -228,8 +228,12 @@ func (tc typeCode) fieldType() fieldType {
 		return lobCESU8Type
 	case tcBintext: // ?? lobCESU8Type
 		return lobVarType
-		//	case tcFixed8:
-		//		return fixed8Type // used for decimals(x,y) 2^63 - 1
+	case tcFixed8:
+		return fixed8Type // used for decimals(x,y) 2^63 - 1 (int64)
+	case tcFixed12:
+		return fixed12Type // used for decimals(x,y) 2^96 - 1 (int96)
+	case tcFixed16:
+		return fixed16Type // used for decimals(x,y) 2^63 - 1 (int128)
 	default:
 		panic(fmt.Sprintf("Missing FieldType for typeCode %s", tc))
 	}

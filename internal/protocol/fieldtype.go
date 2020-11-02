@@ -112,6 +112,8 @@ var (
 	secondtimeType = _secondtimeType{}
 	decimalType    = _decimalType{}
 	fixed8Type     = _fixed8Type{}
+	fixed12Type    = _fixed12Type{}
+	fixed16Type    = _fixed16Type{}
 	varType        = _varType{}
 	alphaType      = _alphaType{}
 	cesu8Type      = _cesu8Type{}
@@ -135,6 +137,8 @@ type _daydateType struct{}
 type _secondtimeType struct{}
 type _decimalType struct{}
 type _fixed8Type struct{}
+type _fixed12Type struct{}
+type _fixed16Type struct{}
 type _varType struct{}
 type _alphaType struct{}
 type _cesu8Type struct{}
