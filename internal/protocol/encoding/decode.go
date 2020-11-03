@@ -252,36 +252,33 @@ func (d *Decoder) Float64() float64 {
 
 // Decimal reads and returns a decimal.
 func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
-	b := d.b[:decSize]
+	bs := d.b[:decSize]
 
 	var n int
-	n, d.err = io.ReadFull(d.rd, b)
+	n, d.err = io.ReadFull(d.rd, bs)
 	d.cnt += n
 	if d.err != nil {
 		return nil, 0
 	}
 
-	if (b[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+	if (bs[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
 		return nil, 0
 	}
 
-	if (b[15] & 0x60) == 0x60 {
-		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", d.b[:decSize])
+	if (bs[15] & 0x60) == 0x60 {
+		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", bs)
 		return nil, 0
 	}
 
-	neg := (b[15] & 0x80) != 0
-	exp := int((((uint16(b[15])<<8)|uint16(b[14]))<<1)>>2) - dec128Bias
+	neg := (bs[15] & 0x80) != 0
+	exp := int((((uint16(bs[15])<<8)|uint16(bs[14]))<<1)>>2) - dec128Bias
 
 	// b14 := b[14]  // save b[14]
-	b[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
+	bs[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
 
 	//most significand byte
 	msb := 14
-	for msb > 0 {
-		if b[msb] != 0 {
-			break
-		}
+	for msb > 0 && bs[msb] == 0 {
 		msb--
 	}
 
@@ -289,18 +286,10 @@ func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
 	numWords := (msb / _S) + 1
 	ws := make([]big.Word, numWords)
 
-	k := numWords - 1
-	w := big.Word(0)
-	for i := msb; i >= 0; i-- {
-		w |= big.Word(b[i])
-		if k*_S == i {
-			ws[k] = w
-			k--
-			w = 0
-		}
-		w <<= 8
+	bs = bs[:msb+1]
+	for i, b := range bs {
+		ws[i/_S] |= (big.Word(b) << (i % _S * 8))
 	}
-	// b[14] = b14 // restore b[14]
 
 	m := new(big.Int).SetBits(ws)
 	if neg {
@@ -311,26 +300,20 @@ func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
 
 // Fixed reads and returns a fixed decimal.
 func (d *Decoder) Fixed(size int) *big.Int { // m, exp
-	b := d.b[:size]
+	bs := d.b[:size]
 
 	var n int
-	n, d.err = io.ReadFull(d.rd, b)
+	n, d.err = io.ReadFull(d.rd, bs)
 	d.cnt += n
 	if d.err != nil {
 		return nil
 	}
 
-	neg := (b[size-1] & 0x80) != 0
-	// if neg {
-	// 	twosComplement(b)
-	// }
+	neg := (bs[size-1] & 0x80) != 0 // is negative number (2s complement)
 
 	//most significand byte
 	msb := size - 1
-	for msb > 0 {
-		if b[msb] != 0 {
-			break
-		}
+	for msb > 0 && bs[msb] == 0 {
 		msb--
 	}
 
@@ -338,33 +321,20 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	numWords := (msb / _S) + 1
 	ws := make([]big.Word, numWords)
 
-	k := numWords - 1
-	w := big.Word(0)
-	for i := msb; i >= 0; i-- {
-		w |= big.Word(b[i])
-		if k*_S == i {
-			ws[k] = w
-			k--
-			w = 0
+	bs = bs[:msb+1]
+	for i, b := range bs {
+		// if negative: invert byte (2s complement)
+		if neg {
+			b = ^b
 		}
-		w <<= 8
+		ws[i/_S] |= (big.Word(b) << (i % _S * 8))
 	}
 
 	m := new(big.Int).SetBits(ws)
 
 	if neg {
-		// 2s complement
-		bits := m.Bits()
-		// - invert all bits
-		for i := 0; i < len(bits); i++ {
-			bits[i] = ^bits[i]
-		}
-		// - add 1
-		m.Add(m, natOne)
-		m.Neg(m)
-
-		m.BitLen()
-
+		m.Add(m, natOne) // 2s complement - add 1
+		m.Neg(m)         // set sign
 	}
 	return m
 }

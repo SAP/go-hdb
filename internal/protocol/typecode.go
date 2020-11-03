@@ -102,7 +102,7 @@ func (tc typeCode) isIntegerType() bool {
 }
 
 func (tc typeCode) isDecimalType() bool {
-	return tc == tcSmalldecimal || tc == tcDecimal || tc == tcFixed8 || tc == tcFixed12 || tc == tcFixed12
+	return tc == tcSmalldecimal || tc == tcDecimal || tc == tcFixed8 || tc == tcFixed12 || tc == tcFixed16
 }
 
 //
