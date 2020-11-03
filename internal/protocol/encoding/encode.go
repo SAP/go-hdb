@@ -222,9 +222,8 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 	}
 
 	if m.Sign() == -1 {
-		b[size-1] |= 0x80
+		twosComplement(b)
 	}
-
 	e.wr.Write(b)
 }
 

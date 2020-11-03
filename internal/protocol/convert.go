@@ -378,35 +378,26 @@ func convertFixedToRat(m *big.Int, exp int) (*big.Rat, error) {
 	if m == nil {
 		return nil, nil
 	}
-
-	v := new(big.Rat).SetInt(m)
-	q := v.Denom()
-
-	switch {
-	case exp < 0:
+	if exp < 0 {
 		return nil, fmt.Errorf("invalid exp: %d", exp)
-	case exp == 0: // nothing to do
-	case exp > 0:
-		q.Mul(q, exp10(exp))
 	}
-	return v, nil
+	q := exp10(exp)
+	return new(big.Rat).SetFrac(m, q), nil
 }
 
 func convertRatToFixed(r *big.Rat, m *big.Int, exp int) error {
+	if exp < 0 {
+		return fmt.Errorf("invalid exp: %d", exp)
+	}
+
 	var tmp big.Rat
 
-	c := (&tmp).Set(r) // copy
-	p := c.Num()
+	m.Set(r.Num())
+	m.Mul(m, exp10(exp))
 
-	// TODO ROUNDING
-	switch {
-	case exp < 0:
-		return fmt.Errorf("invalid exp: %d", exp)
-	case exp == 0: // nothing to do
-	case exp > 0:
-		p.Mul(p, exp10(exp))
-	}
-	m.Set(c.Num())
+	t := (&tmp).SetFrac(m, r.Denom()) // norm
+	// TODO rounding
+	m.Set(t.Num())
 	return nil
 }
 

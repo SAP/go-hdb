@@ -502,7 +502,7 @@ func (ft _fixed12Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 }
 
 func (ft _fixed16Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	return encodeFixed(e, v, fixed12FieldSize, ft.prec, ft.scale)
+	return encodeFixed(e, v, fixed16FieldSize, ft.prec, ft.scale)
 }
 
 func encodeFixed(e *encoding.Encoder, v interface{}, size, prec, scale int) error {
@@ -799,13 +799,13 @@ func (ft _fixed12Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
 		return nil, nil
 	}
-	return decodeFixed(d, fixed8FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, fixed12FieldSize, ft.prec, ft.scale)
 }
 func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
 		return nil, nil
 	}
-	return decodeFixed(d, fixed8FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, fixed16FieldSize, ft.prec, ft.scale)
 }
 
 func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error) {

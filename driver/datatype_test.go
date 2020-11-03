@@ -28,88 +28,138 @@ import (
 	// p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-func testDataType(db *sql.DB, column drivertest.HDBColumn, check func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool, testData []interface{}, t *testing.T) {
+// test run condition constants
+const (
+	trcNone = iota
+	trcOnly
+	trcSince
+)
 
-	table := RandomIdentifier(fmt.Sprintf("%s_", column.Name()))
+type dataTypeTest struct {
+	dfv              int
+	cond             int
+	sqlType          string
+	length, fraction int
+	check            func(in, out interface{}, test *dataTypeTest, t *testing.T) bool
+	data             []interface{}
+}
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", table, column.Column())); err != nil {
-		t.Fatal(err)
+func (t *dataTypeTest) checkRun(dfv int) bool {
+	switch t.cond {
+	default:
+		return true
+	case trcOnly:
+		return t.dfv == dfv
+	case trcSince:
+		return t.dfv <= dfv
 	}
+}
 
-	// use trancactions:
-	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
+func (t *dataTypeTest) name() string {
+	switch {
+	case t.length != 0 && t.fraction != 0:
+		return fmt.Sprintf("%s_%d_%d", t.sqlType, t.length, t.fraction)
+	case t.length != 0:
+		return fmt.Sprintf("%s_%d", t.sqlType, t.length)
+	default:
+		return t.sqlType
 	}
+}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(?, ?)", table))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i, in := range testData {
-
-		switch in := in.(type) {
-		case Lob:
-			if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
-				t.Fatal(err)
-			}
-		case NullLob:
-			if _, err := in.Lob.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		if _, err := stmt.Exec(in, i); err != nil {
-			t.Fatalf("%d - %s", i, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-
-	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", table))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	i := 0
-	for rows.Next() {
-
-		in := testData[i]
-		outRef := reflect.New(reflect.TypeOf(in)).Interface()
-
-		switch outRef := outRef.(type) {
-		case *NullDecimal:
-			outRef.Decimal = (*Decimal)(new(big.Rat))
-		case *Lob:
-			outRef.SetWriter(new(bytes.Buffer))
-		case *NullLob:
-			outRef.Lob = new(Lob).SetWriter(new(bytes.Buffer))
-		}
-
-		if err := rows.Scan(outRef, &i); err != nil {
-			log.Fatal(err)
-		}
-		outVal := reflect.ValueOf(outRef).Elem().Interface()
-
-		if !check(in, outVal, column, t) {
-			t.Fatalf("%d value %v - expected %v", i, outVal, in)
-		}
-		i++
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
-	}
-	if i != len(testData) {
-		t.Fatalf("rows %d - expected %d", i, len(testData))
+func (t *dataTypeTest) column() string {
+	switch {
+	case t.length != 0 && t.fraction != 0:
+		return fmt.Sprintf("%s(%d, %d)", t.sqlType, t.length, t.fraction)
+	case t.length != 0:
+		return fmt.Sprintf("%s(%d)", t.sqlType, t.length)
+	default:
+		return t.sqlType
 	}
 }
 
 func TestDataType(t *testing.T) {
+
+	testDataType := func(db *sql.DB, test *dataTypeTest, t *testing.T) {
+
+		table := RandomIdentifier(fmt.Sprintf("%s_", test.name()))
+
+		if _, err := db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", table, test.column())); err != nil {
+			t.Fatal(err)
+		}
+
+		// use trancactions:
+		// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(?, ?)", table))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i, in := range test.data {
+
+			switch in := in.(type) {
+			case Lob:
+				if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
+					t.Fatal(err)
+				}
+			case NullLob:
+				if _, err := in.Lob.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if _, err := stmt.Exec(in, i); err != nil {
+				t.Fatalf("%d - %s", i, err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+
+		rows, err := db.Query(fmt.Sprintf("select * from %s order by i", table))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		i := 0
+		for rows.Next() {
+
+			in := test.data[i]
+			outRef := reflect.New(reflect.TypeOf(in)).Interface()
+
+			switch outRef := outRef.(type) {
+			case *NullDecimal:
+				outRef.Decimal = (*Decimal)(new(big.Rat))
+			case *Lob:
+				outRef.SetWriter(new(bytes.Buffer))
+			case *NullLob:
+				outRef.Lob = new(Lob).SetWriter(new(bytes.Buffer))
+			}
+
+			if err := rows.Scan(outRef, &i); err != nil {
+				log.Fatal(err)
+			}
+			outVal := reflect.ValueOf(outRef).Elem().Interface()
+
+			if !test.check(in, outVal, test, t) {
+				t.Fatalf("%d value %v - expected %v", i, outVal, in)
+			}
+			i++
+		}
+		if err := rows.Err(); err != nil {
+			log.Fatal(err)
+		}
+		if i != len(test.data) {
+			t.Fatalf("rows %d - expected %d", i, len(test.data))
+		}
+	}
+
 	type testLobFile struct {
 		content []byte
 		isASCII bool
@@ -267,13 +317,13 @@ func TestDataType(t *testing.T) {
 
 	var decimalTestData = []interface{}{
 		(*Decimal)(big.NewRat(0, 1)),
-		//(*Decimal)(big.NewRat(1, 1)),
+		(*Decimal)(big.NewRat(1, 1)),
 		//(*Decimal)(big.NewRat(-1, 1)),
-		//(*Decimal)(big.NewRat(10, 1)),
-		//(*Decimal)(big.NewRat(1000, 1)),
-		//(*Decimal)(big.NewRat(1, 10)),
+		(*Decimal)(big.NewRat(10, 1)),
+		(*Decimal)(big.NewRat(1000, 1)),
+		(*Decimal)(big.NewRat(1, 10)),
 		//(*Decimal)(big.NewRat(-1, 10)),
-		//(*Decimal)(big.NewRat(1, 1000)),
+		(*Decimal)(big.NewRat(1, 1000)),
 		//		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
@@ -289,7 +339,7 @@ func TestDataType(t *testing.T) {
 		sql.NullBool{Valid: true, Bool: false},
 	}
 
-	checkInt := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkInt := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullInt64); ok {
 			in := in.(sql.NullInt64)
 			return in.Valid == out.Valid && (!in.Valid || in.Int64 == out.Int64)
@@ -297,7 +347,7 @@ func TestDataType(t *testing.T) {
 		return in == out
 	}
 
-	checkFloat := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkFloat := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullFloat64); ok {
 			in := in.(sql.NullFloat64)
 			return in.Valid == out.Valid && (!in.Valid || in.Float64 == out.Float64)
@@ -317,7 +367,7 @@ func TestDataType(t *testing.T) {
 		return true
 	}
 
-	checkFixString := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkFixString := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullString); ok {
 			in := in.(sql.NullString)
 			return in.Valid == out.Valid && (!in.Valid || compareStringFixSize(in.String, out.String))
@@ -325,7 +375,7 @@ func TestDataType(t *testing.T) {
 		return compareStringFixSize(in.(string), out.(string))
 	}
 
-	checkString := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkString := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullString); ok {
 			in := in.(sql.NullString)
 			return in.Valid == out.Valid && (!in.Valid || in.String == out.String)
@@ -345,7 +395,7 @@ func TestDataType(t *testing.T) {
 		return true
 	}
 
-	checkFixBytes := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkFixBytes := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(NullBytes); ok {
 			in := in.(NullBytes)
 			return in.Valid == out.Valid && (!in.Valid || compareBytesFixSize(in.Bytes, out.Bytes))
@@ -353,7 +403,7 @@ func TestDataType(t *testing.T) {
 		return compareBytesFixSize(in.([]byte), out.([]byte))
 	}
 
-	checkBytes := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkBytes := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(NullBytes); ok {
 			in := in.(NullBytes)
 			return in.Valid == out.Valid && (!in.Valid || bytes.Equal(in.Bytes, out.Bytes))
@@ -386,7 +436,7 @@ func TestDataType(t *testing.T) {
 		return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
 	}
 
-	checkDate := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkDate := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullTime); ok {
 			in := in.(sql.NullTime)
 			return in.Valid == out.Valid && (!in.Valid || equalDate(in.Time.UTC(), out.Time))
@@ -394,7 +444,7 @@ func TestDataType(t *testing.T) {
 		return equalDate(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	checkTime := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkTime := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullTime); ok {
 			in := in.(sql.NullTime)
 			return in.Valid == out.Valid && (!in.Valid || equalTime(in.Time.UTC(), out.Time))
@@ -402,7 +452,7 @@ func TestDataType(t *testing.T) {
 		return equalTime(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	checkDateTime := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkDateTime := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullTime); ok {
 			in := in.(sql.NullTime)
 			return in.Valid == out.Valid && (!in.Valid || equalDateTime(in.Time.UTC(), out.Time))
@@ -410,7 +460,7 @@ func TestDataType(t *testing.T) {
 		return equalDateTime(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	checkTimestamp := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkTimestamp := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullTime); ok {
 			in := in.(sql.NullTime)
 			return in.Valid == out.Valid && (!in.Valid || equalTimestamp(in.Time.UTC(), out.Time))
@@ -418,7 +468,7 @@ func TestDataType(t *testing.T) {
 		return equalTimestamp(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	checkLongdate := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkLongdate := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullTime); ok {
 			in := in.(sql.NullTime)
 			return in.Valid == out.Valid && (!in.Valid || equalLongdate(in.Time.UTC(), out.Time))
@@ -426,7 +476,7 @@ func TestDataType(t *testing.T) {
 		return equalLongdate(in.(time.Time).UTC(), out.(time.Time))
 	}
 
-	checkDecimal := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkDecimal := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(NullDecimal); ok {
 			in := in.(NullDecimal)
 			return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0)
@@ -434,7 +484,7 @@ func TestDataType(t *testing.T) {
 		return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0
 	}
 
-	checkBoolean := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkBoolean := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullBool); ok {
 			in := in.(sql.NullBool)
 			return in.Valid == out.Valid && (!in.Valid || in.Bool == out.Bool)
@@ -512,7 +562,7 @@ func TestDataType(t *testing.T) {
 		return true
 	}
 
-	checkLob := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkLob := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(NullLob); ok {
 			in := in.(NullLob)
 			return in.Valid == out.Valid && (!in.Valid || compareLob(*in.Lob, *out.Lob, t))
@@ -539,19 +589,15 @@ func TestDataType(t *testing.T) {
 		return strconv.FormatUint(i, 10)
 	}
 
-	checkAlphanumVarchar := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
-		sizeColumn, ok := column.(*drivertest.SizeColumn)
-		if !ok {
-			t.Fatal(fmt.Errorf("invalid column type %[1]T %[1]v", column))
-		}
+	checkAlphanumVarchar := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullString); ok {
 			in := in.(sql.NullString)
-			return in.Valid == out.Valid && (!in.Valid || formatAlphanumVarchar(in.String, sizeColumn.Size()) == out.String)
+			return in.Valid == out.Valid && (!in.Valid || formatAlphanumVarchar(in.String, test.length) == out.String)
 		}
-		return formatAlphanumVarchar(in.(string), sizeColumn.Size()) == out.(string)
+		return formatAlphanumVarchar(in.(string), test.length) == out.(string)
 	}
 
-	checkAlphanum := func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool {
+	checkAlphanum := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
 		if out, ok := out.(sql.NullString); ok {
 			in := in.(sql.NullString)
 			return in.Valid == out.Valid && (!in.Valid || formatAlphanum(in.String) == out.String)
@@ -559,37 +605,21 @@ func TestDataType(t *testing.T) {
 		return formatAlphanum(in.(string)) == out.(string)
 	}
 
-	baselineTests := []struct {
-		column   drivertest.HDBColumn
-		check    func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool
-		testData []interface{}
-	}{
-		{drivertest.HDBTimestamp, checkTimestamp, timeTestData},
-		{drivertest.HDBLongdate, checkTimestamp, timeTestData},
-		{drivertest.NewSizeColumn(drivertest.DtAlphanum, 20), checkAlphanumVarchar, alphanumTestData},
-	}
+	tests := []*dataTypeTest{
+		{DfvLevel1, trcOnly, "timestamp", 0, 0, checkTimestamp, timeTestData},
+		{DfvLevel1, trcOnly, "longdate", 0, 0, checkTimestamp, timeTestData},
+		{DfvLevel1, trcOnly, "alphanum", 20, 0, checkAlphanumVarchar, alphanumTestData},
 
-	nonBaselineTests := []struct {
-		column   drivertest.HDBColumn
-		check    func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool
-		testData []interface{}
-	}{
-		{drivertest.HDBTimestamp, checkLongdate, timeTestData},
-		{drivertest.HDBLongdate, checkLongdate, timeTestData},
-		{drivertest.NewSizeColumn(drivertest.DtAlphanum, 20), checkAlphanum, alphanumTestData},
-	}
+		{DfvLevel2, trcSince, "timestamp", 0, 0, checkLongdate, timeTestData},
+		{DfvLevel2, trcSince, "longdate", 0, 0, checkLongdate, timeTestData},
+		{DfvLevel2, trcSince, "alphanum", 20, 0, checkAlphanum, alphanumTestData},
 
-	commonTests := []struct {
-		column   drivertest.HDBColumn
-		check    func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool
-		testData []interface{}
-	}{
-		{drivertest.HDBTinyint, checkInt, tinyintTestData},
-		{drivertest.HDBSmallint, checkInt, smallintTestData},
-		{drivertest.HDBInteger, checkInt, integerTestData},
-		{drivertest.HDBBigint, checkInt, bigintTestData},
-		{drivertest.HDBReal, checkFloat, realTestData},
-		{drivertest.HDBDouble, checkFloat, doubleTestData},
+		{DfvLevel1, trcSince, "tinyint", 0, 0, checkInt, tinyintTestData},
+		{DfvLevel1, trcSince, "smallint", 0, 0, checkInt, smallintTestData},
+		{DfvLevel1, trcSince, "integer", 0, 0, checkInt, integerTestData},
+		{DfvLevel1, trcSince, "bigint", 0, 0, checkInt, bigintTestData},
+		{DfvLevel1, trcSince, "real", 0, 0, checkFloat, realTestData},
+		{DfvLevel1, trcSince, "double", 0, 0, checkFloat, doubleTestData},
 		/*
 		 using unicode (CESU-8) data for char HDB
 		 - successful insert into table
@@ -598,35 +628,28 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		{drivertest.NewSizeColumn(drivertest.DtChar, 40), checkFixString, asciiStringTestData},
-		{drivertest.NewSizeColumn(drivertest.DtVarchar, 40), checkString, stringTestData},
-		{drivertest.NewSizeColumn(drivertest.DtNchar, 20), checkFixString, stringTestData},
-		{drivertest.NewSizeColumn(drivertest.DtNvarchar, 20), checkString, stringTestData},
-		{drivertest.NewSizeColumn(drivertest.DtBinary, 20), checkFixBytes, binaryTestData},
-		{drivertest.NewSizeColumn(drivertest.DtVarbinary, 20), checkBytes, binaryTestData},
-		{drivertest.HDBDate, checkDate, timeTestData},
-		{drivertest.HDBTime, checkTime, timeTestData},
-		{drivertest.HDBSeconddate, checkDateTime, timeTestData},
-		{drivertest.HDBDaydate, checkDate, timeTestData},
-		{drivertest.HDBSecondtime, checkTime, timeTestData},
-		{drivertest.NewPrecScalColumn(drivertest.DtDecimal, 0, 0), checkDecimal, decimalTestData},  // floating point decimal number
-		{drivertest.NewPrecScalColumn(drivertest.DtDecimal, 18, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
-		// {drivertest.NewPrecScalColumn(drivertest.DtDecimal, 19, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
-		// {drivertest.NewPrecScalColumn(drivertest.DtDecimal, 29, 2), checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
-		{drivertest.HDBBoolean, checkBoolean, booleanTestData},
-		{drivertest.HDBClob, checkLob, lobTestData(true)},
-		{drivertest.HDBNclob, checkLob, lobTestData(false)},
-		{drivertest.HDBBlob, checkLob, lobTestData(false)},
-	}
+		{DfvLevel1, trcSince, "char", 40, 0, checkFixString, asciiStringTestData},
+		{DfvLevel1, trcSince, "varchar", 40, 0, checkString, stringTestData},
+		{DfvLevel1, trcSince, "nchar", 20, 0, checkFixString, stringTestData},
+		{DfvLevel1, trcSince, "nvarchar", 20, 0, checkString, stringTestData},
+		{DfvLevel1, trcSince, "binary", 20, 0, checkFixBytes, binaryTestData},
+		{DfvLevel1, trcSince, "varbinary", 20, 0, checkBytes, binaryTestData},
+		{DfvLevel1, trcSince, "date", 0, 0, checkDate, timeTestData},
+		{DfvLevel1, trcSince, "time", 0, 0, checkTime, timeTestData},
+		{DfvLevel1, trcSince, "seconddate", 0, 0, checkDateTime, timeTestData},
+		{DfvLevel1, trcSince, "daydate", 0, 0, checkDate, timeTestData},
+		{DfvLevel1, trcSince, "secondtime", 0, 0, checkTime, timeTestData},
+		{DfvLevel1, trcSince, "decimal", 0, 0, checkDecimal, decimalTestData},  // floating point decimal number
+		{DfvLevel1, trcSince, "decimal", 18, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
+		{DfvLevel1, trcSince, "decimal", 28, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
+		{DfvLevel1, trcSince, "decimal", 38, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
+		{DfvLevel1, trcSince, "boolean", 0, 0, checkBoolean, booleanTestData},
+		{DfvLevel1, trcSince, "clob", 0, 0, checkLob, lobTestData(true)},
+		{DfvLevel1, trcSince, "nclob", 0, 0, checkLob, lobTestData(false)},
+		{DfvLevel1, trcSince, "blob", 0, 0, checkLob, lobTestData(false)},
 
-	extendedTests := []struct {
-		sinceDfv int
-		column   drivertest.HDBColumn
-		check    func(in, out interface{}, column drivertest.HDBColumn, t *testing.T) bool
-		testData []interface{}
-	}{
-		{DfvLevel4, drivertest.HDBText, checkLob, lobTestData(false)},
-		{DfvLevel6, drivertest.HDBBintext, checkLob, lobTestData(true)},
+		{DfvLevel4, trcSince, "text", 0, 0, checkLob, lobTestData(false)},
+		{DfvLevel6, trcSince, "bintext", 0, 0, checkLob, lobTestData(true)},
 	}
 
 	var testSet map[int]bool
@@ -649,32 +672,10 @@ func TestDataType(t *testing.T) {
 			defer db.Close()
 
 			// common test
-			for _, test := range commonTests {
-				t.Run(test.column.Name(), func(t *testing.T) {
-					testDataType(db, test.column, test.check, test.testData, t)
-				})
-			}
-
-			switch dfv {
-			case DfvLevel1:
-				for _, test := range baselineTests {
-					t.Run(test.column.Name(), func(t *testing.T) {
-						testDataType(db, test.column, test.check, test.testData, t)
-					})
-				}
-			default:
-				for _, test := range nonBaselineTests {
-					t.Run(test.column.Name(), func(t *testing.T) {
-						testDataType(db, test.column, test.check, test.testData, t)
-					})
-				}
-
-			}
-
-			for _, test := range extendedTests {
-				if dfv >= test.sinceDfv {
-					t.Run(test.column.Name(), func(t *testing.T) {
-						testDataType(db, test.column, test.check, test.testData, t)
+			for _, test := range tests {
+				if test.checkRun(dfv) {
+					t.Run(test.name(), func(t *testing.T) {
+						testDataType(db, test, t)
 					})
 				}
 			}

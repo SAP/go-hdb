@@ -321,7 +321,9 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	}
 
 	neg := (b[size-1] & 0x80) != 0
-	b[size-1] &= ^uint8(0x80) // clear sign bit
+	if neg {
+		twosComplement(b)
+	}
 
 	//most significand byte
 	msb := size - 1
