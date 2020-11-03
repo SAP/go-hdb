@@ -321,9 +321,9 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	}
 
 	neg := (b[size-1] & 0x80) != 0
-	if neg {
-		twosComplement(b)
-	}
+	// if neg {
+	// 	twosComplement(b)
+	// }
 
 	//most significand byte
 	msb := size - 1
@@ -351,8 +351,20 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	}
 
 	m := new(big.Int).SetBits(ws)
+
 	if neg {
-		m = m.Neg(m)
+		// 2s complement
+		bits := m.Bits()
+		// - invert all bits
+		for i := 0; i < len(bits); i++ {
+			bits[i] = ^bits[i]
+		}
+		// - add 1
+		m.Add(m, natOne)
+		m.Neg(m)
+
+		m.BitLen()
+
 	}
 	return m
 }

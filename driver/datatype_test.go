@@ -318,11 +318,11 @@ func TestDataType(t *testing.T) {
 	var decimalTestData = []interface{}{
 		(*Decimal)(big.NewRat(0, 1)),
 		(*Decimal)(big.NewRat(1, 1)),
-		//(*Decimal)(big.NewRat(-1, 1)),
+		(*Decimal)(big.NewRat(-1, 1)),
 		(*Decimal)(big.NewRat(10, 1)),
 		(*Decimal)(big.NewRat(1000, 1)),
 		(*Decimal)(big.NewRat(1, 10)),
-		//(*Decimal)(big.NewRat(-1, 10)),
+		(*Decimal)(big.NewRat(-1, 10)),
 		(*Decimal)(big.NewRat(1, 1000)),
 		//		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),

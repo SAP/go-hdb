@@ -5,6 +5,7 @@
 package encoding
 
 import (
+	"math/big"
 	"math/bits"
 )
 
@@ -13,33 +14,49 @@ const _S = bits.UintSize / 8 // word size in bytes
 const dec128Bias = 6176
 const decSize = 16
 
+var natOne = big.NewInt(1)
+
 /*
 two's complement 'in-place' of
 - 'integer' with len(b) bytes
 - little-endian lsbyte: b[0]; msbyte: b[len(b)-1]
-- 'integer' != 0 (no 2s coplement of zero value)
 
 Algorithm:
 - loop from lsbit to msbit
 - keep all bits until bit pos i is found where bit[i] = 1
   - then invert all bits with bit[j], j > i
 */
-func twosComplement(b []byte) {
+func twosComplement(bs []byte) {
 
 	i := 0
-	l := len(b)
+	l := len(bs)
 
-	for i < l && b[i] == 0 {
+	for i < l && bs[i] == 0 {
 		i++
 	}
-	// i < l
+	if i == l { // zero value -> done
+		return
+	}
 
-	// byte magic - do it
+	// find first '1' position in bs[i]
+	b := bs[i]
+	p := 0
+	m := byte(1)
+	for p < 8 && b&m != m {
+		p++
+		m <<= 1
+	}
+	p++
+
+	bs[i] = ^bs[i]                // invert byte
+	bs[i] = (bs[i] >> p) << p     // delete non invert relevant part
+	b = (b << (8 - p)) >> (8 - p) // delete revert relevant part
+	bs[i] |= b                    // combine
 
 	i++
 	// rest of bytes get inverted
 	for i < l {
-		b[i] ^= b[i]
+		bs[i] = ^bs[i]
 		i++
 	}
 }

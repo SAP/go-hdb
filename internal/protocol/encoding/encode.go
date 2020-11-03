@@ -206,6 +206,23 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 func (e *Encoder) Fixed(m *big.Int, size int) {
 	b := e.b[:size]
 
+	neg := m.Sign() == -1
+	fill := byte(0)
+
+	if neg {
+		// make positive
+		m.Neg(m)
+		// 2s complement
+		bits := m.Bits()
+		// - invert all bits
+		for i := 0; i < len(bits); i++ {
+			bits[i] = ^bits[i]
+		}
+		// - add 1
+		m.Add(m, natOne)
+		fill = 0xff
+	}
+
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
@@ -218,12 +235,9 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 
 	// clear scratch buffer
 	for i := j; i < size; i++ {
-		b[i] = 0
+		b[i] = fill
 	}
 
-	if m.Sign() == -1 {
-		twosComplement(b)
-	}
 	e.wr.Write(b)
 }
 
