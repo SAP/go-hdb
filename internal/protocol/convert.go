@@ -248,18 +248,15 @@ var (
 	natTen  = big.NewInt(10)
 )
 
-var nat = []*big.Int{
-	natOne,           //10^0
-	natTen,           //10^1
-	big.NewInt(1e2),  //10^2
-	big.NewInt(1e3),  //10^3
-	big.NewInt(1e4),  //10^4
-	big.NewInt(1e5),  //10^5
-	big.NewInt(1e6),  //10^6
-	big.NewInt(1e7),  //10^7
-	big.NewInt(1e8),  //10^8
-	big.NewInt(1e9),  //10^9
-	big.NewInt(1e10), //10^10
+const maxNatExp10 = 38 // maximal fixed decimal precision
+
+var natExp10 = make([]*big.Int, maxNatExp10)
+
+func init() {
+	natExp10[0], natExp10[1] = natOne, natTen
+	for i := 2; i < maxNatExp10; i++ {
+		natExp10[i] = new(big.Int).Mul(natExp10[i-1], natTen)
+	}
 }
 
 // decimal flag
@@ -269,9 +266,9 @@ const (
 	dfUnderflow
 )
 
-func convertDecimalToRat(m *big.Int, exp int) (*big.Rat, error) {
+func convertDecimalToRat(m *big.Int, exp int) *big.Rat {
 	if m == nil {
-		return nil, nil
+		return nil
 	}
 
 	v := new(big.Rat).SetInt(m)
@@ -287,7 +284,7 @@ func convertDecimalToRat(m *big.Int, exp int) (*big.Rat, error) {
 		p.Mul(p, exp10(exp))
 		q.Set(natOne)
 	}
-	return v, nil
+	return v
 }
 
 func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (int, byte) {
@@ -374,38 +371,47 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 	return exp, df
 }
 
-func convertFixedToRat(m *big.Int, exp int) (*big.Rat, error) {
+func convertFixedToRat(m *big.Int, scale int) *big.Rat {
 	if m == nil {
-		return nil, nil
+		return nil
 	}
-	if exp < 0 {
-		return nil, fmt.Errorf("invalid exp: %d", exp)
+	if scale < 0 {
+		panic(fmt.Sprintf("fixed: invalid scale: %d", scale))
 	}
-	q := exp10(exp)
-	return new(big.Rat).SetFrac(m, q), nil
+	q := exp10(scale)
+	return new(big.Rat).SetFrac(m, q)
 }
 
-func convertRatToFixed(r *big.Rat, m *big.Int, exp int) error {
-	if exp < 0 {
-		return fmt.Errorf("invalid exp: %d", exp)
+func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
+	if scale < 0 {
+		panic(fmt.Sprintf("fixed: invalid scale: %d", scale))
 	}
+
+	var df byte
 
 	var tmp big.Rat
 
 	m.Set(r.Num())
-	m.Mul(m, exp10(exp))
+	m.Mul(m, exp10(scale))
 
 	t := (&tmp).SetFrac(m, r.Denom()) // norm
+	// round (business >= 0.5 up)
+	// if t.
+
 	// TODO rounding
 	m.Set(t.Num())
-	return nil
+
+	if m.Cmp(exp10(prec)) >= 0 {
+		df |= dfOverflow
+	}
+	return df
 }
 
 // performance: tested with reference work variable
 // - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
 func exp10(n int) *big.Int {
-	if n < len(nat) {
-		return nat[n]
+	if n < len(natExp10) {
+		return natExp10[n]
 	}
 	r := big.NewInt(int64(n))
 	return r.Exp(natTen, r, nil)

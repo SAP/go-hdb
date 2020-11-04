@@ -512,7 +512,12 @@ func encodeFixed(e *encoding.Encoder, v interface{}, size, prec, scale int) erro
 	}
 
 	var m big.Int
-	convertRatToFixed(r, &m, scale)
+	df := convertRatToFixed(r, &m, prec, scale)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
+	}
+
 	e.Fixed(&m, size)
 	return nil
 }
@@ -788,7 +793,7 @@ func (_decimalType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if m == nil {
 		return nil, nil
 	}
-	return convertDecimalToRat(m, exp)
+	return convertDecimalToRat(m, exp), nil
 }
 
 func (ft _fixed8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
@@ -815,7 +820,7 @@ func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error
 	if m == nil {
 		return nil, nil
 	}
-	return convertFixedToRat(m, scale)
+	return convertFixedToRat(m, scale), nil
 }
 
 func (_varType) decodeRes(d *encoding.Decoder) (interface{}, error) {
