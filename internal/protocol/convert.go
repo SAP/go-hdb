@@ -389,17 +389,28 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 
 	var df byte
 
-	var tmp big.Rat
-
 	m.Set(r.Num())
 	m.Mul(m, exp10(scale))
 
-	t := (&tmp).SetFrac(m, r.Denom()) // norm
-	// round (business >= 0.5 up)
-	// if t.
+	var tmp big.Rat
 
-	// TODO rounding
-	m.Set(t.Num())
+	c := (&tmp).SetFrac(m, r.Denom()) // norm
+	a := c.Num()
+	b := c.Denom()
+
+	if b.Cmp(natZero) == 0 { //
+		m.Set(a)
+		return df
+	}
+
+	m.QuoRem(a, b, a) // reuse a as rest
+	if a.Cmp(natZero) != 0 {
+		// round (business >= 0.5 up)
+		df |= dfNotExact
+		if a.Add(a, a).Cmp(b) >= 0 {
+			m.Add(m, natOne)
+		}
+	}
 
 	if m.Cmp(exp10(prec)) >= 0 {
 		df |= dfOverflow
