@@ -114,7 +114,8 @@ func testConvertRatToFixed(t *testing.T) {
 
 		{new(big.Rat).SetFrac64(100, 10), 1, 0, new(big.Int).SetInt64(10), dfOverflow}, // convert 10 - should overflow
 
-		{new(big.Rat).SetFrac64(1, 2), 1, 0, new(big.Int).SetInt64(1), dfNotExact}, // convert 1/2 - should round to 1
+		{new(big.Rat).SetFrac64(1, 2), 1, 0, new(big.Int).SetInt64(1), dfNotExact},        // convert 1/2 - should round to 1
+		{new(big.Rat).SetFrac64(4999, 10000), 1, 0, new(big.Int).SetInt64(0), dfNotExact}, // convert 0,4999 - should round to 0
 
 		// {new(big.Rat).SetFrac64(1, 1), 3, -2, 2, new(big.Int).SetInt64(1), 0, 0},                              // convert 1
 		// {new(big.Rat).SetFrac64(1, 10), 3, -2, 2, new(big.Int).SetInt64(1), -1, 0},                            // convert 1/10
