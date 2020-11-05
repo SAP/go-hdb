@@ -24,15 +24,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/SAP/go-hdb/driver/drivertest"
-	// p "github.com/SAP/go-hdb/internal/protocol"
-)
-
-// test run condition constants
-const (
-	trcNone = iota
-	trcOnly
-	trcSince
+	dt "github.com/SAP/go-hdb/driver/drivertest"
+	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 type dataTypeTest struct {
@@ -48,10 +41,10 @@ func (t *dataTypeTest) checkRun(dfv int) bool {
 	switch t.cond {
 	default:
 		return true
-	case trcOnly:
-		return t.dfv == dfv
-	case trcSince:
-		return t.dfv <= dfv
+	case dt.CondEQ:
+		return dfv == t.dfv
+	case dt.CondGE:
+		return dfv >= t.dfv
 	}
 }
 
@@ -324,7 +317,7 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(1, 10)),
 		(*Decimal)(big.NewRat(-1, 10)),
 		(*Decimal)(big.NewRat(1, 1000)),
-		//		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
+		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
 		(*Decimal)(big.NewRat(34, 10)),
@@ -606,20 +599,20 @@ func TestDataType(t *testing.T) {
 	}
 
 	tests := []*dataTypeTest{
-		{DfvLevel1, trcOnly, "timestamp", 0, 0, checkTimestamp, timeTestData},
-		{DfvLevel1, trcOnly, "longdate", 0, 0, checkTimestamp, timeTestData},
-		{DfvLevel1, trcOnly, "alphanum", 20, 0, checkAlphanumVarchar, alphanumTestData},
+		{DfvLevel1, dt.CondEQ, "timestamp", 0, 0, checkTimestamp, timeTestData},
+		{DfvLevel1, dt.CondEQ, "longdate", 0, 0, checkTimestamp, timeTestData},
+		{DfvLevel1, dt.CondEQ, "alphanum", 20, 0, checkAlphanumVarchar, alphanumTestData},
 
-		{DfvLevel2, trcSince, "timestamp", 0, 0, checkLongdate, timeTestData},
-		{DfvLevel2, trcSince, "longdate", 0, 0, checkLongdate, timeTestData},
-		{DfvLevel2, trcSince, "alphanum", 20, 0, checkAlphanum, alphanumTestData},
+		{DfvLevel2, dt.CondGE, "timestamp", 0, 0, checkLongdate, timeTestData},
+		{DfvLevel2, dt.CondGE, "longdate", 0, 0, checkLongdate, timeTestData},
+		{DfvLevel2, dt.CondGE, "alphanum", 20, 0, checkAlphanum, alphanumTestData},
 
-		{DfvLevel1, trcSince, "tinyint", 0, 0, checkInt, tinyintTestData},
-		{DfvLevel1, trcSince, "smallint", 0, 0, checkInt, smallintTestData},
-		{DfvLevel1, trcSince, "integer", 0, 0, checkInt, integerTestData},
-		{DfvLevel1, trcSince, "bigint", 0, 0, checkInt, bigintTestData},
-		{DfvLevel1, trcSince, "real", 0, 0, checkFloat, realTestData},
-		{DfvLevel1, trcSince, "double", 0, 0, checkFloat, doubleTestData},
+		{DfvLevel1, dt.CondGE, "tinyint", 0, 0, checkInt, tinyintTestData},
+		{DfvLevel1, dt.CondGE, "smallint", 0, 0, checkInt, smallintTestData},
+		{DfvLevel1, dt.CondGE, "integer", 0, 0, checkInt, integerTestData},
+		{DfvLevel1, dt.CondGE, "bigint", 0, 0, checkInt, bigintTestData},
+		{DfvLevel1, dt.CondGE, "real", 0, 0, checkFloat, realTestData},
+		{DfvLevel1, dt.CondGE, "double", 0, 0, checkFloat, doubleTestData},
 		/*
 		 using unicode (CESU-8) data for char HDB
 		 - successful insert into table
@@ -628,28 +621,29 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		{DfvLevel1, trcSince, "char", 40, 0, checkFixString, asciiStringTestData},
-		{DfvLevel1, trcSince, "varchar", 40, 0, checkString, stringTestData},
-		{DfvLevel1, trcSince, "nchar", 20, 0, checkFixString, stringTestData},
-		{DfvLevel1, trcSince, "nvarchar", 20, 0, checkString, stringTestData},
-		{DfvLevel1, trcSince, "binary", 20, 0, checkFixBytes, binaryTestData},
-		{DfvLevel1, trcSince, "varbinary", 20, 0, checkBytes, binaryTestData},
-		{DfvLevel1, trcSince, "date", 0, 0, checkDate, timeTestData},
-		{DfvLevel1, trcSince, "time", 0, 0, checkTime, timeTestData},
-		{DfvLevel1, trcSince, "seconddate", 0, 0, checkDateTime, timeTestData},
-		{DfvLevel1, trcSince, "daydate", 0, 0, checkDate, timeTestData},
-		{DfvLevel1, trcSince, "secondtime", 0, 0, checkTime, timeTestData},
-		{DfvLevel1, trcSince, "decimal", 0, 0, checkDecimal, decimalTestData},  // floating point decimal number
-		{DfvLevel1, trcSince, "decimal", 18, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
-		{DfvLevel1, trcSince, "decimal", 28, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
-		{DfvLevel1, trcSince, "decimal", 38, 3, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
-		{DfvLevel1, trcSince, "boolean", 0, 0, checkBoolean, booleanTestData},
-		{DfvLevel1, trcSince, "clob", 0, 0, checkLob, lobTestData(true)},
-		{DfvLevel1, trcSince, "nclob", 0, 0, checkLob, lobTestData(false)},
-		{DfvLevel1, trcSince, "blob", 0, 0, checkLob, lobTestData(false)},
+		{DfvLevel1, dt.CondGE, "char", 40, 0, checkFixString, asciiStringTestData},
+		{DfvLevel1, dt.CondGE, "varchar", 40, 0, checkString, stringTestData},
+		{DfvLevel1, dt.CondGE, "nchar", 20, 0, checkFixString, stringTestData},
+		{DfvLevel1, dt.CondGE, "nvarchar", 20, 0, checkString, stringTestData},
+		{DfvLevel1, dt.CondGE, "binary", 20, 0, checkFixBytes, binaryTestData},
+		{DfvLevel1, dt.CondGE, "varbinary", 20, 0, checkBytes, binaryTestData},
+		{DfvLevel1, dt.CondGE, "date", 0, 0, checkDate, timeTestData},
+		{DfvLevel1, dt.CondGE, "time", 0, 0, checkTime, timeTestData},
+		{DfvLevel1, dt.CondGE, "seconddate", 0, 0, checkDateTime, timeTestData},
+		{DfvLevel1, dt.CondGE, "daydate", 0, 0, checkDate, timeTestData},
+		{DfvLevel1, dt.CondGE, "secondtime", 0, 0, checkTime, timeTestData},
+		{DfvLevel1, dt.CondGE, "decimal", 0, 0, checkDecimal, decimalTestData}, // floating point decimal number
+		{DfvLevel1, dt.CondGE, "boolean", 0, 0, checkBoolean, booleanTestData},
+		{DfvLevel1, dt.CondGE, "clob", 0, 0, checkLob, lobTestData(true)},
+		{DfvLevel1, dt.CondGE, "nclob", 0, 0, checkLob, lobTestData(false)},
+		{DfvLevel1, dt.CondGE, "blob", 0, 0, checkLob, lobTestData(false)},
 
-		{DfvLevel4, trcSince, "text", 0, 0, checkLob, lobTestData(false)},
-		{DfvLevel6, trcSince, "bintext", 0, 0, checkLob, lobTestData(true)},
+		{DfvLevel4, dt.CondGE, "text", 0, 0, checkLob, lobTestData(false)},
+		{DfvLevel6, dt.CondGE, "bintext", 0, 0, checkLob, lobTestData(true)},
+
+		{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
+		{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
+		{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
 	}
 
 	var testSet map[int]bool
@@ -659,7 +653,7 @@ func TestDataType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
+	connector, err := NewConnector(dt.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,8 +664,6 @@ func TestDataType(t *testing.T) {
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
 			defer db.Close()
-
-			// common test
 			for _, test := range tests {
 				if test.checkRun(dfv) {
 					t.Run(test.name(), func(t *testing.T) {
