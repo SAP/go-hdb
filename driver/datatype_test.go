@@ -653,24 +653,28 @@ func TestDataType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := NewConnector(dt.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	for dfv := range testSet {
-		name := fmt.Sprintf("dfv %d", dfv)
-		t.Run(name, func(t *testing.T) {
-			connector.SetDfv(dfv)
-			db := sql.OpenDB(connector)
-			defer db.Close()
-			for _, test := range tests {
-				if test.checkRun(dfv) {
-					t.Run(test.name(), func(t *testing.T) {
-						testDataType(db, test, t)
-					})
+		func(dfv int) { // new dfv to run in parallel
+			name := fmt.Sprintf("dfv %d", dfv)
+			t.Run(name, func(t *testing.T) {
+				t.Parallel() // run in parallel to speed up
+
+				connector, err := NewConnector(dt.DefaultAttrs())
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-		})
+				connector.SetDfv(dfv)
+				db := sql.OpenDB(connector)
+				defer db.Close()
+
+				for _, test := range tests {
+					if test.checkRun(dfv) {
+						t.Run(test.name(), func(t *testing.T) {
+							testDataType(db, test, t)
+						})
+					}
+				}
+			})
+		}(dfv)
 	}
 }
