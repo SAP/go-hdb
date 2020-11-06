@@ -316,7 +316,7 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(1000, 1)),
 		(*Decimal)(big.NewRat(1, 10)),
 		(*Decimal)(big.NewRat(-1, 10)),
-		(*Decimal)(big.NewRat(1, 1000)),
+		(*Decimal)(big.NewRat(1, 100)),
 		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
