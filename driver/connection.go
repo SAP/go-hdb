@@ -777,7 +777,33 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 	}
 }
 
-func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
+func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	numArg := len(nvargs)
+	switch {
+	case s.bulk:
+		flush := s.flush
+		s.flush = false
+		if numArg != 0 && numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		return s.execBulk(ctx, nvargs, flush)
+	case s.many:
+		s.many = false
+		if numArg != 1 {
+			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
+		}
+		return s.execMany(ctx, &nvargs[0])
+	default:
+		if numArg != s.pr.NumField() {
+			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
+		}
+		args := smallArgsPool.getNVArgs(nvargs)
+		defer smallArgsPool.put(args)
+		return s.exec(ctx, args)
+	}
+}
+
+func (s *stmt) exec(ctx context.Context, args []interface{}) (r driver.Result, err error) {
 	c := s.conn
 
 	if err := c.tryLock(0); err != nil {
@@ -790,16 +816,16 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r d
 	}
 
 	if s.trace {
-		if len(nvargs) > maxNumTraceArg {
-			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, nvargs[:maxNumTraceArg])
+		if len(args) > maxNumTraceArg {
+			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, args[:maxNumTraceArg])
 		} else {
-			sqltrace.Tracef("%s %v", s.query, nvargs)
+			sqltrace.Tracef("%s %v", s.query, args)
 		}
 	}
 
 	done := make(chan struct{})
 	go func() {
-		r, err = s.exec_(c, nvargs)
+		r, err = c.session.Exec(s.pr, args, !c.inTx)
 		close(done)
 	}()
 
@@ -810,36 +836,9 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r d
 	case <-done:
 		return r, err
 	}
-
 }
 
-func (s *stmt) exec_(c *Conn, nvargs []driver.NamedValue) (driver.Result, error) {
-	numArg := len(nvargs)
-	switch {
-	case s.bulk:
-		flush := s.flush
-		s.flush = false
-		if numArg != 0 && numArg != s.pr.NumField() {
-			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
-		}
-		return s.execBulk(c, nvargs, flush)
-	case s.many:
-		s.many = false
-		if numArg != 1 {
-			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
-		}
-		return s.execMany(c, &nvargs[0])
-	default:
-		if numArg != s.pr.NumField() {
-			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.NumField())
-		}
-		args := smallArgsPool.getNVArgs(nvargs)
-		defer smallArgsPool.put(args)
-		return c.session.Exec(s.pr, args, !c.inTx)
-	}
-}
-
-func (s *stmt) execBulk(c *Conn, nvargs []driver.NamedValue, flush bool) (r driver.Result, err error) {
+func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush bool) (r driver.Result, err error) {
 	numArg := len(nvargs)
 
 	switch numArg {
@@ -863,7 +862,7 @@ func (s *stmt) execBulk(c *Conn, nvargs []driver.NamedValue, flush bool) (r driv
 	}
 
 	// flush
-	r, err = c.session.Exec(s.pr, s.args, !c.inTx)
+	r, err = s.exec(ctx, s.args)
 	s.args = s.args[:0]
 	s.numBulk = 0
 	return
@@ -986,7 +985,7 @@ func min(a, b int) int {
 Non 'atomic' (transactional) operation due to the split in packages (maxBulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.
 */
-func (s *stmt) execMany(c *Conn, nvarg *driver.NamedValue) (driver.Result, error) {
+func (s *stmt) execMany(ctx context.Context, nvarg *driver.NamedValue) (driver.Result, error) {
 
 	if len(s.args) != 0 {
 		return driver.ResultNoRows, fmt.Errorf("execMany: not flushed entries: %d)", len(s.args))
@@ -1025,7 +1024,7 @@ func (s *stmt) execMany(c *Conn, nvarg *driver.NamedValue) (driver.Result, error
 		}
 
 		// flush
-		r, err := c.session.Exec(s.pr, args, !c.inTx)
+		r, err := s.exec(ctx, args)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
 		}
