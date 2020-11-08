@@ -25,7 +25,6 @@ import (
 	"unicode/utf8"
 
 	dt "github.com/SAP/go-hdb/driver/drivertest"
-	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
 type dataTypeTest struct {
@@ -317,7 +316,6 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(1, 10)),
 		(*Decimal)(big.NewRat(-1, 10)),
 		(*Decimal)(big.NewRat(1, 100)),
-		(*Decimal)(new(big.Rat).SetInt(p.MaxDecimal)),
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
 		(*Decimal)(big.NewRat(34, 10)),

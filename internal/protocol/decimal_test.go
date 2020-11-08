@@ -9,10 +9,6 @@ import (
 	"testing"
 )
 
-func testDecimalInfo(t *testing.T) {
-	t.Logf("maximum decimal value %v", MaxDecimal)
-}
-
 func testDigits10(t *testing.T) {
 	testData := []struct {
 		x      *big.Int
@@ -138,7 +134,6 @@ func TestDecimal(t *testing.T) {
 		name string
 		fct  func(t *testing.T)
 	}{
-		{"decimalInfo", testDecimalInfo},
 		{"digits10", testDigits10},
 		{"convertRatToDecimal", testConvertRatToDecimal},
 		{"convertRatToFixed", testConvertRatToFixed},

@@ -30,9 +30,6 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
-// MaxDecimal is the maximal decimal value.
-var MaxDecimal = new(big.Int).SetBytes([]byte{0x01, 0xED, 0x09, 0xBE, 0xAD, 0x87, 0xC0, 0x37, 0x8D, 0x8E, 0x63, 0xFF, 0xFF, 0xFF, 0xFF})
-
 // string / binary length indicators
 const (
 	bytesLenIndNullValue byte = 255
@@ -88,6 +85,12 @@ const (
 )
 
 type fieldType interface {
+	/*
+		statements:
+		- first parameter could be many
+		- so the check needs to 'fail fast'
+		- fmt.Errorf is too slow because contructor formats the error -> use ConvertError
+	*/
 	convert(v interface{}) (interface{}, error)
 	prmSize(v interface{}) int
 	encodePrm(e *encoding.Encoder, v interface{}) error
@@ -133,15 +136,9 @@ type _seconddateType struct{}
 type _daydateType struct{}
 type _secondtimeType struct{}
 type _decimalType struct{}
-type _fixed8Type struct {
-	prec, scale int
-}
-type _fixed12Type struct {
-	prec, scale int
-}
-type _fixed16Type struct {
-	prec, scale int
-}
+type _fixed8Type struct{ prec, scale int }
+type _fixed12Type struct{ prec, scale int }
+type _fixed16Type struct{ prec, scale int }
 type _varType struct{}
 type _alphaType struct{}
 type _cesu8Type struct{}
@@ -200,54 +197,48 @@ func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
 // convert
-func (ft _booleanType) convert(v interface{}) (interface{}, error) { return convertBool(v) }
+func (ft _booleanType) convert(v interface{}) (interface{}, error) { return convertBool(ft, v) }
 
 func (ft _tinyintType) convert(v interface{}) (interface{}, error) {
-	return convertInteger(v, minTinyint, maxTinyint)
+	return convertInteger(ft, v, minTinyint, maxTinyint)
 }
 func (ft _smallintType) convert(v interface{}) (interface{}, error) {
-	return convertInteger(v, minSmallint, maxSmallint)
+	return convertInteger(ft, v, minSmallint, maxSmallint)
 }
 func (ft _integerType) convert(v interface{}) (interface{}, error) {
-	return convertInteger(v, minInteger, maxInteger)
+	return convertInteger(ft, v, minInteger, maxInteger)
 }
 func (ft _bigintType) convert(v interface{}) (interface{}, error) {
-	return convertInteger(v, minBigint, maxBigint)
+	return convertInteger(ft, v, minBigint, maxBigint)
 }
 
-func (ft _realType) convert(v interface{}) (interface{}, error)   { return convertFloat(v, maxReal) }
-func (ft _doubleType) convert(v interface{}) (interface{}, error) { return convertFloat(v, maxDouble) }
+func (ft _realType) convert(v interface{}) (interface{}, error) {
+	return convertFloat(ft, v, maxReal)
+}
+func (ft _doubleType) convert(v interface{}) (interface{}, error) {
+	return convertFloat(ft, v, maxDouble)
+}
 
-func (ft _dateType) convert(v interface{}) (interface{}, error)       { return convertTime(v) }
-func (ft _timeType) convert(v interface{}) (interface{}, error)       { return convertTime(v) }
-func (ft _timestampType) convert(v interface{}) (interface{}, error)  { return convertTime(v) }
-func (ft _longdateType) convert(v interface{}) (interface{}, error)   { return convertTime(v) }
-func (ft _seconddateType) convert(v interface{}) (interface{}, error) { return convertTime(v) }
-func (ft _daydateType) convert(v interface{}) (interface{}, error)    { return convertTime(v) }
-func (ft _secondtimeType) convert(v interface{}) (interface{}, error) { return convertTime(v) }
+func (ft _dateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
+func (ft _timeType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
+func (ft _timestampType) convert(v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _longdateType) convert(v interface{}) (interface{}, error)   { return convertTime(ft, v) }
+func (ft _seconddateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
+func (ft _daydateType) convert(v interface{}) (interface{}, error)    { return convertTime(ft, v) }
+func (ft _secondtimeType) convert(v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
 
 func (ft _decimalType) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
 func (ft _fixed8Type) convert(v interface{}) (interface{}, error)  { return convertDecimal(ft, v) }
 func (ft _fixed12Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
 func (ft _fixed16Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
 
-// TODO: decimal check min max values
-func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
-	if v == nil {
-		return nil, nil
-	}
-	if v, ok := v.(*big.Rat); ok {
-		return v, nil
-	}
-	return nil, fmt.Errorf("unsupported decimal conversion: %[1]T %[1]v", v)
-}
-
-// fixed8
-//func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
-
-func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(v) }
-func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(v) }
-func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(v) }
+func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
+func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
+func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 
 func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v) }
 func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v) }
@@ -269,7 +260,7 @@ func convertLob(ft fieldType, v interface{}) (driver.Value, error) {
 	case ReadProvider:
 		return v.Reader(), nil
 	default:
-		return nil, fmt.Errorf("unsupported lob conversion: %[1]T %[1]v", v)
+		return nil, newConvertError(ft, v, nil)
 	}
 }
 

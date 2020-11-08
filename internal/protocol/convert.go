@@ -26,12 +26,29 @@ var ErrFloatOutOfRange = errors.New("float out of range error")
 // ErrDecimalOutOfRange means that a big.Rat exceeds the size of hdb decimal fields.
 var ErrDecimalOutOfRange = errors.New("decimal out of range error")
 
+// A ConvertError is returned by conversion methods if a go datatype to hdb datatype conversion fails.
+type ConvertError struct {
+	err error
+	ft  fieldType
+	v   interface{}
+}
+
+func (e *ConvertError) Error() string {
+	return fmt.Sprintf("unsupported %[1]s conversion: %[2]T %[2]v", e.ft, e.v)
+}
+
+// Unwrap returns the nested error.
+func (e *ConvertError) Unwrap() error { return e.err }
+func newConvertError(ft fieldType, v interface{}, err error) *ConvertError {
+	return &ConvertError{ft: ft, v: v, err: err}
+}
+
 /*
 Conversion routines hdb parameters
 - return value is interface{} to avoid allocations in case
   parameter is already of target type
 */
-func convertBool(v interface{}) (interface{}, error) {
+func convertBool(ft fieldType, v interface{}) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -54,7 +71,7 @@ func convertBool(v interface{}) (interface{}, error) {
 	case reflect.String:
 		b, err := strconv.ParseBool(rv.String())
 		if err != nil {
-			return nil, err
+			return nil, newConvertError(ft, v, err)
 		}
 		return b, nil
 	case reflect.Ptr:
@@ -62,16 +79,16 @@ func convertBool(v interface{}) (interface{}, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertBool(rv.Elem().Interface())
+		return convertBool(ft, rv.Elem().Interface())
 	}
 
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertBool(rv.Convert(stringReflectType).Interface())
+		return convertBool(ft, rv.Convert(stringReflectType).Interface())
 	}
-	return nil, fmt.Errorf("unsupported bool conversion: %[1]T %[1]v", v)
+	return nil, newConvertError(ft, v, nil)
 }
 
-func convertInteger(v interface{}, min, max int64) (interface{}, error) {
+func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -84,16 +101,16 @@ func convertInteger(v interface{}, min, max int64) (interface{}, error) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
 		if i64 > max || i64 < min {
-			return nil, ErrIntegerOutOfRange
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
 		}
 		return v, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u64 := rv.Uint()
 		if u64 >= 1<<63 {
-			return nil, ErrUint64OutOfRange
+			return nil, newConvertError(ft, v, ErrUint64OutOfRange)
 		}
 		if int64(u64) > max || int64(u64) < min {
-			return nil, ErrIntegerOutOfRange
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
 		}
 		return v, nil
 	// conversions with allocations (return i64)
@@ -101,19 +118,19 @@ func convertInteger(v interface{}, min, max int64) (interface{}, error) {
 		f64 := rv.Float()
 		i64 := int64(f64)
 		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
-			return nil, fmt.Errorf("unsupported integer conversion: %[1]T %[1]v", v)
+			return nil, newConvertError(ft, v, nil)
 		}
 		if i64 > max || i64 < min {
-			return nil, ErrIntegerOutOfRange
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
 	case reflect.String:
 		i64, err := strconv.ParseInt(rv.String(), 10, 64)
 		if err != nil {
-			return nil, err
+			return nil, newConvertError(ft, v, err)
 		}
 		if i64 > max || i64 < min {
-			return nil, ErrIntegerOutOfRange
+			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
 	// pointer
@@ -122,16 +139,16 @@ func convertInteger(v interface{}, min, max int64) (interface{}, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertInteger(rv.Elem().Interface(), min, max)
+		return convertInteger(ft, rv.Elem().Interface(), min, max)
 	}
 	// last resort (try via string)
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertInteger(rv.Convert(stringReflectType).Interface(), min, max)
+		return convertInteger(ft, rv.Convert(stringReflectType).Interface(), min, max)
 	}
-	return nil, fmt.Errorf("unsupported integer conversion: %[1]T %[1]v", v)
+	return nil, newConvertError(ft, v, nil)
 }
 
-func convertFloat(v interface{}, max float64) (interface{}, error) {
+func convertFloat(ft fieldType, v interface{}, max float64) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -141,17 +158,17 @@ func convertFloat(v interface{}, max float64) (interface{}, error) {
 	// conversions without allocations (return v)
 	case reflect.Float32, reflect.Float64:
 		if math.Abs(rv.Float()) > max {
-			return nil, ErrFloatOutOfRange
+			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
 		}
 		return v, nil
 	// conversions with allocations (return f64)
 	case reflect.String:
 		f64, err := strconv.ParseFloat(rv.String(), 64)
 		if err != nil {
-			return nil, err
+			return nil, newConvertError(ft, v, err)
 		}
 		if math.Abs(f64) > max {
-			return nil, ErrFloatOutOfRange
+			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
 		}
 		return f64, nil
 	// pointer
@@ -160,16 +177,16 @@ func convertFloat(v interface{}, max float64) (interface{}, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertFloat(rv.Elem().Interface(), max)
+		return convertFloat(ft, rv.Elem().Interface(), max)
 	}
 	// last resort (try via string)
 	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertFloat(rv.Convert(stringReflectType).Interface(), max)
+		return convertFloat(ft, rv.Convert(stringReflectType).Interface(), max)
 	}
-	return nil, fmt.Errorf("unsupported float conversion: %[1]T %[1]v", v)
+	return nil, newConvertError(ft, v, nil)
 }
 
-func convertTime(v interface{}) (interface{}, error) {
+func convertTime(ft fieldType, v interface{}) (interface{}, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -185,17 +202,38 @@ func convertTime(v interface{}) (interface{}, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertTime(rv.Elem().Interface())
+		return convertTime(ft, rv.Elem().Interface())
 	}
 
 	if rv.Type().ConvertibleTo(timeReflectType) {
 		tv := rv.Convert(timeReflectType)
 		return tv.Interface().(time.Time), nil
 	}
-	return nil, fmt.Errorf("unsupported time conversion: %[1]T %[1]v", v)
+	return nil, newConvertError(ft, v, nil)
 }
 
-func convertBytes(v interface{}) (interface{}, error) {
+/*
+Currently the min, max check is done during encoding, as the check is expensive and
+we want to avoid doing the conversion twice (convert + encode).
+These checks could be done in convert only, but then we would need a
+struct{m *big.Int, exp int} for decimals as intermediate format.
+
+We would be able to accept other datatypes as well, like
+int??, *big.Int, string, ...
+but as the user needs to use Decimal anyway (scan), we go with
+*big.Rat only for the time being.
+*/
+func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
+	if v == nil {
+		return nil, nil
+	}
+	if v, ok := v.(*big.Rat); ok {
+		return v, nil
+	}
+	return nil, newConvertError(ft, v, nil)
+}
+
+func convertBytes(ft fieldType, v interface{}) (interface{}, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -223,14 +261,14 @@ func convertBytes(v interface{}) (interface{}, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertBytes(rv.Elem().Interface())
+		return convertBytes(ft, rv.Elem().Interface())
 	}
 
 	if rv.Type().ConvertibleTo(bytesReflectType) {
 		bv := rv.Convert(bytesReflectType)
 		return bv.Interface().([]byte), nil
 	}
-	return nil, fmt.Errorf("unsupported bytes conversion: %[1]T %[1]v", v)
+	return nil, newConvertError(ft, v, nil)
 }
 
 // decimals
