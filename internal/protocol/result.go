@@ -51,18 +51,20 @@ func newResultFields(size int) []*resultField {
 
 // resultField contains database field attributes for result fields.
 type resultField struct {
+	// field alignment
 	tableName               string
 	schemaName              string
 	columnName              string
 	columnDisplayName       string
-	columnOptions           columnOptions
-	tc                      typeCode
-	fraction                int16
-	length                  int16
+	ft                      fieldType // avoid tc.fieldType() calls
 	tableNameOffset         uint32
 	schemaNameOffset        uint32
 	columnNameOffset        uint32
 	columnDisplayNameOffset uint32
+	length                  int16
+	fraction                int16
+	columnOptions           columnOptions
+	tc                      typeCode
 }
 
 // String implements the Stringer interface.
@@ -122,6 +124,11 @@ func (f *resultField) decode(dec *encoding.Decoder) {
 	f.schemaNameOffset = dec.Uint32()
 	f.columnNameOffset = dec.Uint32()
 	f.columnDisplayNameOffset = dec.Uint32()
+	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
+}
+
+func (f *resultField) decodeRes(dec *encoding.Decoder) (interface{}, error) {
+	return f.ft.decodeRes(dec)
 }
 
 //resultset metadata
@@ -177,9 +184,9 @@ func (r *resultset) decode(dec *encoding.Decoder, ph *partHeader) error {
 	r.fieldValues = resizeFieldValues(numArg*cols, r.fieldValues)
 
 	for i := 0; i < numArg; i++ {
-		for j, field := range r.resultFields {
+		for j, f := range r.resultFields {
 			var err error
-			if r.fieldValues[i*cols+j], err = decodeRes(dec, field.tc); err != nil {
+			if r.fieldValues[i*cols+j], err = f.decodeRes(dec); err != nil {
 				return err
 			}
 		}

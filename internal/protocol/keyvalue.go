@@ -21,11 +21,11 @@ func (kv keyValues) size() int {
 
 func (kv keyValues) decode(dec *encoding.Decoder, cnt int) {
 	for i := 0; i < cnt; i++ {
-		k, err := cesu8Type.decode(dec)
+		k, err := cesu8Type.decodeRes(dec)
 		if err != nil {
 			plog.Fatalf(err.Error())
 		}
-		v, err := cesu8Type.decode(dec)
+		v, err := cesu8Type.decodeRes(dec)
 		if err != nil {
 			plog.Fatalf(err.Error())
 		}

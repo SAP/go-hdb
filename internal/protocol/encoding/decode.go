@@ -6,8 +6,10 @@ package encoding
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
+	"math/big"
 
 	"github.com/SAP/go-hdb/internal/unicode"
 	"golang.org/x/text/transform"
@@ -97,7 +99,7 @@ func (d *Decoder) Byte() byte { // ReadB as sig differs from ReadByte (vet issue
 	return d.b[0]
 }
 
-// Bytes reads and returns a byte slice.
+// Bytes reads into a byte slice.
 func (d *Decoder) Bytes(p []byte) {
 	if d.err != nil {
 		return
@@ -246,6 +248,95 @@ func (d *Decoder) Float64() float64 {
 	}
 	bits := binary.LittleEndian.Uint64(d.b[:8])
 	return math.Float64frombits(bits)
+}
+
+// Decimal reads and returns a decimal.
+func (d *Decoder) Decimal() (*big.Int, int) { // m, exp
+	bs := d.b[:decSize]
+
+	var n int
+	n, d.err = io.ReadFull(d.rd, bs)
+	d.cnt += n
+	if d.err != nil {
+		return nil, 0
+	}
+
+	if (bs[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+		return nil, 0
+	}
+
+	if (bs[15] & 0x60) == 0x60 {
+		d.err = fmt.Errorf("decimal: format (infinity, nan, ...) not supported : %v", bs)
+		return nil, 0
+	}
+
+	neg := (bs[15] & 0x80) != 0
+	exp := int((((uint16(bs[15])<<8)|uint16(bs[14]))<<1)>>2) - dec128Bias
+
+	// b14 := b[14]  // save b[14]
+	bs[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
+
+	//most significand byte
+	msb := 14
+	for msb > 0 && bs[msb] == 0 {
+		msb--
+	}
+
+	//calc number of words
+	numWords := (msb / _S) + 1
+	ws := make([]big.Word, numWords)
+
+	bs = bs[:msb+1]
+	for i, b := range bs {
+		ws[i/_S] |= (big.Word(b) << (i % _S * 8))
+	}
+
+	m := new(big.Int).SetBits(ws)
+	if neg {
+		m = m.Neg(m)
+	}
+	return m, exp
+}
+
+// Fixed reads and returns a fixed decimal.
+func (d *Decoder) Fixed(size int) *big.Int { // m, exp
+	bs := d.b[:size]
+
+	var n int
+	n, d.err = io.ReadFull(d.rd, bs)
+	d.cnt += n
+	if d.err != nil {
+		return nil
+	}
+
+	neg := (bs[size-1] & 0x80) != 0 // is negative number (2s complement)
+
+	//most significand byte
+	msb := size - 1
+	for msb > 0 && bs[msb] == 0 {
+		msb--
+	}
+
+	//calc number of words
+	numWords := (msb / _S) + 1
+	ws := make([]big.Word, numWords)
+
+	bs = bs[:msb+1]
+	for i, b := range bs {
+		// if negative: invert byte (2s complement)
+		if neg {
+			b = ^b
+		}
+		ws[i/_S] |= (big.Word(b) << (i % _S * 8))
+	}
+
+	m := new(big.Int).SetBits(ws)
+
+	if neg {
+		m.Add(m, natOne) // 2s complement - add 1
+		m.Neg(m)         // set sign
+	}
+	return m
 }
 
 // CESU8Bytes reads a size CESU-8 encoded byte sequence and returns an UTF-8 byte slice.

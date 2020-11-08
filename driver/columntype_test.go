@@ -12,15 +12,153 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/drivertest"
+	dt "github.com/SAP/go-hdb/driver/drivertest"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-func testColumnType(connector *Connector, dataType func(string, int) string, scanType func(reflect.Type, int) reflect.Type, dfv int, t *testing.T) {
+type columnTypeTest struct {
+	dfv  int
+	cond int
+
+	sqlType          string
+	length, fraction int64
+
+	varLength   bool
+	decimalType bool
+
+	typeName  string
+	precision int64
+	scale     int64
+	nullable  bool
+	scanType  reflect.Type
+
+	value interface{}
+}
+
+func (t *columnTypeTest) checkRun(dfv int) bool {
+	switch t.cond {
+	default:
+		return true
+	case dt.CondEQ:
+		return dfv == t.dfv
+	case dt.CondGE:
+		return dfv >= t.dfv
+	case dt.CondLT:
+		return dfv < t.dfv
+	}
+}
+
+func (t *columnTypeTest) name() string {
+	var nullable string
+	if !t.nullable {
+		nullable = "_notNull"
+	}
+	switch {
+	case t.length != 0 && t.fraction != 0:
+		return fmt.Sprintf("%s_%d_%d%s", t.sqlType, t.length, t.fraction, nullable)
+	case t.length != 0:
+		return fmt.Sprintf("%s_%d%s", t.sqlType, t.length, nullable)
+	default:
+		return fmt.Sprintf("%s%s", t.sqlType, nullable)
+	}
+}
+
+func (t *columnTypeTest) column() string {
+	var notNull string
+	if !t.nullable {
+		notNull = " not null"
+	}
+	switch {
+	case t.length != 0 && t.fraction != 0:
+		return fmt.Sprintf("%s(%d, %d)%s", t.sqlType, t.length, t.fraction, notNull)
+	case t.length != 0:
+		return fmt.Sprintf("%s(%d)%s", t.sqlType, t.length, notNull)
+	default:
+		return fmt.Sprintf("%s%s", t.sqlType, notNull)
+	}
+}
+
+func TestColumnType(t *testing.T) {
+
+	testColumnType := func(db *sql.DB, test *columnTypeTest, t *testing.T) {
+		table := RandomIdentifier(fmt.Sprintf("%s_", test.name()))
+
+		// some data types are only valid for column tables
+		// e.g. text
+		if _, err := db.Exec(fmt.Sprintf("create column table %s (x %s)", table, test.column())); err != nil {
+			t.Fatal(err)
+		}
+
+		// use trancactions:
+		// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := tx.Exec(fmt.Sprintf("insert into %s values (?)", table), test.value); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+
+		rows, err := db.Query(fmt.Sprintf("select * from %s", table))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		cts, err := rows.ColumnTypes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ct := cts[0]
+
+		if test.typeName != ct.DatabaseTypeName() {
+			t.Fatalf("sql type %s type name %s - expected %s", test.sqlType, ct.DatabaseTypeName(), test.typeName)
+		}
+
+		length, ok := ct.Length()
+		if test.varLength != ok {
+			t.Fatalf("sql type %s variable length %t - expected %t", test.sqlType, ok, test.varLength)
+		}
+		if test.varLength {
+			if test.length != length {
+				t.Fatalf("sql type %s length %d - expected %d", test.sqlType, length, test.length)
+			}
+		}
+
+		precision, scale, ok := ct.DecimalSize()
+		if test.decimalType != ok {
+			t.Fatalf("sql type %s decimal %t - expected %t", test.sqlType, ok, test.decimalType)
+		}
+		if test.decimalType {
+			if test.precision != precision {
+				t.Fatalf("sql type %s precision %d - expected %d", test.sqlType, precision, test.precision)
+			}
+			if test.scale != scale {
+				t.Fatalf("sql type %s scale %d - expected %d", test.sqlType, scale, test.scale)
+			}
+		}
+
+		nullable, ok := ct.Nullable()
+		if !ok {
+			t.Fatalf("sql type %s - nullable info is expected to be provided", test.sqlType)
+		}
+		if test.nullable != nullable {
+			t.Fatalf("sql type %s nullable %t - expected %t", test.sqlType, nullable, test.nullable)
+		}
+
+		if ct.ScanType() != test.scanType {
+			t.Fatalf("sql type %s scan type %v - expected %v", test.sqlType, ct.ScanType(), test.scanType)
+		}
+	}
+
 	var (
 		testTime    = time.Now()
 		testDecimal = (*Decimal)(big.NewRat(1, 1))
@@ -28,192 +166,68 @@ func testColumnType(connector *Connector, dataType func(string, int) string, sca
 		testBinary  = []byte{0x00, 0x01, 0x02}
 	)
 
-	testColumnTypeData := []struct {
-		sqlType string
-		length  int64
+	tests := []*columnTypeTest{
+		{DfvLevel1, dt.CondGE, "tinyint", 0, 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), 1},
+		{DfvLevel1, dt.CondGE, "smallint", 0, 0, false, false, "SMALLINT", 0, 0, true, p.DtSmallint.ScanType(), 42},
+		{DfvLevel1, dt.CondGE, "integer", 0, 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
+		{DfvLevel1, dt.CondGE, "bigint", 0, 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
+		{DfvLevel1, dt.CondGE, "decimal", 0, 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // decimal
 
-		varLength   bool
-		decimalType bool
+		{DfvLevel8, dt.CondLT, "decimal", 18, 2, false, true, "DECIMAL", 18, 2, true, p.DtDecimal.ScanType(), testDecimal}, // decimal(p,q)
+		{DfvLevel8, dt.CondLT, "decimal", 28, 4, false, true, "DECIMAL", 28, 4, true, p.DtDecimal.ScanType(), testDecimal}, // decimal(p,q)
+		{DfvLevel8, dt.CondLT, "decimal", 38, 8, false, true, "DECIMAL", 38, 8, true, p.DtDecimal.ScanType(), testDecimal}, // decimal(p,q)
 
-		typeName  string
-		precision int64
-		scale     int64
-		nullable  bool
-		scanType  reflect.Type
+		{DfvLevel8, dt.CondGE, "decimal", 18, 2, false, true, "FIXED8", 18, 2, true, p.DtDecimal.ScanType(), testDecimal},  // decimal(p,q) - fixed8
+		{DfvLevel8, dt.CondGE, "decimal", 28, 4, false, true, "FIXED12", 28, 4, true, p.DtDecimal.ScanType(), testDecimal}, // decimal(p,q) - fixed12
+		{DfvLevel8, dt.CondGE, "decimal", 38, 8, false, true, "FIXED16", 38, 8, true, p.DtDecimal.ScanType(), testDecimal}, // decimal(p,q) - fixed16
 
-		value interface{}
-	}{
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), 1},
-		{"smallint", 0, false, false, "SMALLINT", 0, 0, true, p.DtSmallint.ScanType(), 42},
-		{"integer", 0, false, false, "INTEGER", 0, 0, true, p.DtInteger.ScanType(), 4711},
-		{"bigint", 0, false, false, "BIGINT", 0, 0, true, p.DtBigint.ScanType(), 68000},
-		{"decimal", 0, false, true, "DECIMAL", 34, 32767, true, p.DtDecimal.ScanType(), testDecimal},
-		{"real", 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
-		{"double", 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
-		{"char", 30, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"varchar", 30, true, false, "VARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"nchar", 20, true, false, "NCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"nvarchar", 20, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
-		{"binary", 10, true, false, "BINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
-		{"varbinary", 10, true, false, "VARBINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
-		{"date", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"time", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"timestamp", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"clob", 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"nclob", 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"blob", 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{"boolean", 0, false, false, dataType("BOOLEAN", dfv), 0, 0, true, scanType(p.DtBoolean.ScanType(), dfv), false},
-		{"smalldecimal", 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
+		{DfvLevel1, dt.CondGE, "real", 0, 0, false, false, "REAL", 0, 0, true, p.DtReal.ScanType(), 1.0},
+		{DfvLevel1, dt.CondGE, "double", 0, 0, false, false, "DOUBLE", 0, 0, true, p.DtDouble.ScanType(), 3.14},
+		{DfvLevel1, dt.CondGE, "char", 30, 0, true, false, "CHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel1, dt.CondGE, "varchar", 30, 0, true, false, "VARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel1, dt.CondGE, "nchar", 20, 0, true, false, "NCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel1, dt.CondGE, "nvarchar", 20, 0, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel1, dt.CondGE, "binary", 10, 0, true, false, "BINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+		{DfvLevel1, dt.CondGE, "varbinary", 10, 0, true, false, "VARBINARY", 0, 0, true, p.DtBytes.ScanType(), testBinary},
+
+		{DfvLevel3, dt.CondLT, "date", 0, 0, false, false, "DATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondLT, "time", 0, 0, false, false, "TIME", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondLT, "timestamp", 0, 0, false, false, "TIMESTAMP", 0, 0, true, p.DtTime.ScanType(), testTime},
+
+		{DfvLevel3, dt.CondGE, "date", 0, 0, false, false, "DAYDATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondGE, "time", 0, 0, false, false, "SECONDTIME", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondGE, "timestamp", 0, 0, false, false, "LONGDATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+
+		{DfvLevel3, dt.CondLT, "longdate", 0, 0, false, false, "TIMESTAMP", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondLT, "seconddate", 0, 0, false, false, "TIMESTAMP", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondLT, "daydate", 0, 0, false, false, "DATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondLT, "secondtime", 0, 0, false, false, "TIME", 0, 0, true, p.DtTime.ScanType(), testTime},
+
+		{DfvLevel3, dt.CondGE, "longdate", 0, 0, false, false, "LONGDATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondGE, "seconddate", 0, 0, false, false, "SECONDDATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondGE, "daydate", 0, 0, false, false, "DAYDATE", 0, 0, true, p.DtTime.ScanType(), testTime},
+		{DfvLevel3, dt.CondGE, "secondtime", 0, 0, false, false, "SECONDTIME", 0, 0, true, p.DtTime.ScanType(), testTime},
+
+		{DfvLevel1, dt.CondGE, "clob", 0, 0, false, false, "CLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{DfvLevel1, dt.CondGE, "nclob", 0, 0, false, false, "NCLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+		{DfvLevel1, dt.CondGE, "blob", 0, 0, false, false, "BLOB", 0, 0, true, p.DtLob.ScanType(), new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+
+		{DfvLevel7, dt.CondLT, "boolean", 0, 0, false, false, "TINYINT", 0, 0, true, p.DtTinyint.ScanType(), false},
+
+		{DfvLevel7, dt.CondGE, "boolean", 0, 0, false, false, "BOOLEAN", 0, 0, true, p.DtBoolean.ScanType(), false},
+
+		{DfvLevel1, dt.CondGE, "smalldecimal", 0, 0, false, true, "DECIMAL", 16, 32767, true, p.DtDecimal.ScanType(), testDecimal}, // hdb gives DECIMAL back - not SMALLDECIMAL
 		//{"text", 0, false, false, "NCLOB", 0, 0, true, testLob},             // hdb gives NCLOB back - not TEXT
-		{"shorttext", 15, true, false, dataType("SHORTTEXT", dfv), 0, 0, true, p.DtString.ScanType(), testString},
-		{"alphanum", 15, true, false, dataType("ALPHANUM", dfv), 0, 0, true, p.DtString.ScanType(), testString},
-		{"longdate", 0, false, false, dataType("LONGDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"seconddate", 0, false, false, dataType("SECONDDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"daydate", 0, false, false, dataType("DAYDATE", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
-		{"secondtime", 0, false, false, dataType("SECONDTIME", dfv), 0, 0, true, p.DtTime.ScanType(), testTime},
+
+		{DfvLevel3, dt.CondLT, "shorttext", 15, 0, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel3, dt.CondLT, "alphanum", 15, 0, true, false, "NVARCHAR", 0, 0, true, p.DtString.ScanType(), testString},
+
+		{DfvLevel3, dt.CondGE, "shorttext", 15, 0, true, false, "SHORTTEXT", 0, 0, true, p.DtString.ScanType(), testString},
+		{DfvLevel3, dt.CondGE, "alphanum", 15, 0, true, false, "ALPHANUM", 0, 0, true, p.DtString.ScanType(), testString},
 
 		// not nullable
-		{"tinyint", 0, false, false, "TINYINT", 0, 0, false, p.DtTinyint.ScanType(), 42},
-		{"nvarchar", 25, true, false, "NVARCHAR", 0, 0, false, p.DtString.ScanType(), testString},
-	}
-
-	// text is only supported for column table
-	var createSQL bytes.Buffer
-	table := RandomIdentifier("testColumnType_")
-
-	createSQL.WriteString(fmt.Sprintf("create column table %s (", table)) // some data types are only valid for column tables
-	for i, td := range testColumnTypeData {
-
-		if i != 0 {
-			createSQL.WriteString(",")
-		}
-
-		createSQL.WriteString(fmt.Sprintf("X%d %s", i, td.sqlType))
-		if td.length != 0 {
-			createSQL.WriteString(fmt.Sprintf("(%d)", td.length))
-		}
-		if !td.nullable {
-			createSQL.WriteString(" not null")
-		}
-	}
-	createSQL.WriteString(")")
-
-	db := sql.OpenDB(connector)
-	defer db.Close()
-
-	if _, err := db.Exec(createSQL.String()); err != nil {
-		t.Fatal(err)
-	}
-
-	args := make([]interface{}, len(testColumnTypeData))
-	for i, td := range testColumnTypeData {
-		args[i] = td.value
-	}
-
-	prms := strings.Repeat("?,", len(testColumnTypeData)-1) + "?"
-
-	// use trancactions:
-	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := tx.Exec(fmt.Sprintf("insert into %s values (%s)", table, prms), args...); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-
-	rows, err := db.Query(fmt.Sprintf("select * from %s", table))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	cts, err := rows.ColumnTypes()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i, td := range testColumnTypeData {
-
-		ct := cts[i]
-
-		if td.typeName != ct.DatabaseTypeName() {
-			t.Fatalf("index %d sql type %s type name %s - expected %s", i, td.sqlType, ct.DatabaseTypeName(), td.typeName)
-		}
-
-		length, ok := ct.Length()
-		if td.varLength != ok {
-			t.Fatalf("index %d sql type %s variable length %t - expected %t", i, td.sqlType, ok, td.varLength)
-		}
-		if td.length != length {
-			t.Fatalf("index %d sql type %s length %d - expected %d", i, td.sqlType, length, td.length)
-		}
-
-		precision, scale, ok := ct.DecimalSize()
-		if td.decimalType != ok {
-			t.Fatalf("index %d sql type %s decimal %t - expected %t", i, td.sqlType, ok, td.decimalType)
-		}
-		if td.precision != precision {
-			t.Fatalf("index %d sql type %s precision %d - expected %d", i, td.sqlType, precision, td.precision)
-		}
-		if td.scale != scale {
-			t.Fatalf("index %d sql type %s scale %d - expected %d", i, td.sqlType, scale, td.scale)
-		}
-
-		nullable, ok := ct.Nullable()
-		if !ok {
-			t.Fatalf("index %d sql type %s - nullable info is expected to be provided", i, td.sqlType)
-		}
-		if td.nullable != nullable {
-			t.Fatalf("index %d sql type %s nullable %t - expected %t", i, td.sqlType, nullable, td.nullable)
-		}
-
-		if ct.ScanType() != td.scanType {
-			t.Fatalf("index %d sql type %s scan type %v - expected %v", i, td.sqlType, ct.ScanType(), td.scanType)
-		}
-	}
-}
-
-func TestColumnType(t *testing.T) {
-	dataType := func(dt string, dfv int) string {
-		switch {
-		case dfv < DfvLevel3:
-			switch dt {
-			case "DAYDATE":
-				return "DATE"
-			case "SECONDTIME":
-				return "TIME"
-			case "LONGDATE", "SECONDDATE":
-				return "TIMESTAMP"
-			case "SHORTTEXT", "ALPHANUM":
-				return "NVARCHAR"
-			}
-			fallthrough
-		case dfv < DfvLevel7:
-			switch dt {
-			case "BOOLEAN":
-				return "TINYINT"
-			}
-			// fallthrough
-		}
-		return dt
-	}
-
-	scanType := func(rt reflect.Type, dfv int) reflect.Type {
-		switch {
-		case dfv < DfvLevel7:
-			switch rt {
-			case p.DtBoolean.ScanType():
-				return p.DtTinyint.ScanType()
-			}
-			// fallthrough
-		}
-		return rt
+		{DfvLevel1, dt.CondGE, "tinyint", 0, 0, false, false, "TINYINT", 0, 0, false, p.DtTinyint.ScanType(), 42},
+		{DfvLevel1, dt.CondGE, "nvarchar", 25, 0, true, false, "NVARCHAR", 0, 0, false, p.DtString.ScanType(), testString},
 	}
 
 	var testSet map[int]bool
@@ -223,16 +237,28 @@ func TestColumnType(t *testing.T) {
 		testSet = supportedDfvs
 	}
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _dfv := range testSet {
+		func(dfv int) { // new dfv to run in parallel
+			name := fmt.Sprintf("dfv %d", dfv)
+			t.Run(name, func(t *testing.T) {
+				t.Parallel() // run in parallel to speed up
 
-	for dfv := range testSet {
-		name := fmt.Sprintf("dfv_%d", dfv)
-		t.Run(name, func(t *testing.T) {
-			connector.SetDfv(dfv)
-			testColumnType(connector, dataType, scanType, dfv, t)
-		})
+				connector, err := NewConnector(dt.DefaultAttrs())
+				if err != nil {
+					t.Fatal(err)
+				}
+				connector.SetDfv(dfv)
+				db := sql.OpenDB(connector)
+				defer db.Close()
+
+				for _, test := range tests {
+					if test.checkRun(dfv) {
+						t.Run(test.name(), func(t *testing.T) {
+							testColumnType(db, test, t)
+						})
+					}
+				}
+			})
+		}(_dfv)
 	}
 }

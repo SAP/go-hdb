@@ -974,6 +974,13 @@ func (s *stmt) newExecManyVariant(numField int, v interface{}) execManyer {
 	return execManyGenMatrix(reflect.ValueOf(v))
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 /*
 Non 'atomic' (transactional) operation due to the split in packages (maxBulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.

@@ -5,11 +5,17 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.3 (upgrade urgency: low)
+
+- Reset the default Data Format Version to '8'
+- Full support of Data Format Version 8 fixed decimals data types Fixed8, Fixed12 and Fixed16
+
 Release 0.102.2 (upgrade urgency: high)
 
 - Fixed go-hdb 'panic' using DECIMAL fields with precision and scale specified
+- Downgrade Data Format Version from '8' to '6'
 
-Release 0.102.1 (need to upgrade: no)
+Release 0.102.1 (upgrade urgency: low)
 
 - Fixed some report card issues
 
@@ -27,7 +33,7 @@ Release 0.102.1 (need to upgrade: no)
 
 #### Incompatibilities
 
-- some minor type incompatibilities most users should not be affected of
+- Some minor type incompatibilities most users should not be affected of
 
 ## Release 0.101
 

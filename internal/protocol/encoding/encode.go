@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"math/big"
 
 	"github.com/SAP/go-hdb/internal/unicode"
 	"golang.org/x/text/transform"
@@ -19,7 +20,7 @@ const writeScratchSize = 4096
 type Encoder struct {
 	wr  io.Writer
 	err error
-	b   []byte // scratch buffer (min 8 Bytes)
+	b   []byte // scratch buffer (min 15 Bytes - Decimal)
 	tr  transform.Transformer
 }
 
@@ -169,6 +170,75 @@ func (e *Encoder) Float64(f float64) {
 	bits := math.Float64bits(f)
 	binary.LittleEndian.PutUint64(e.b[:8], bits)
 	e.wr.Write(e.b[:8])
+}
+
+// Decimal writes a decimal value.
+func (e *Encoder) Decimal(m *big.Int, exp int) {
+	b := e.b[:decSize]
+
+	// little endian bigint words (significand) -> little endian db decimal format
+	j := 0
+	for _, d := range m.Bits() {
+		for i := 0; i < _S; i++ {
+			b[j] = byte(d)
+			d >>= 8
+			j++
+		}
+	}
+
+	// clear scratch buffer
+	for i := j; i < decSize; i++ {
+		b[i] = 0
+	}
+
+	exp += dec128Bias
+	b[14] |= (byte(exp) << 1)
+	b[15] = byte(uint16(exp) >> 7)
+
+	if m.Sign() == -1 {
+		b[15] |= 0x80
+	}
+
+	e.wr.Write(b)
+}
+
+// Fixed writes a fidex decimal value.
+func (e *Encoder) Fixed(m *big.Int, size int) {
+	b := e.b[:size]
+
+	neg := m.Sign() == -1
+	fill := byte(0)
+
+	if neg {
+		// make positive
+		m.Neg(m)
+		// 2s complement
+		bits := m.Bits()
+		// - invert all bits
+		for i := 0; i < len(bits); i++ {
+			bits[i] = ^bits[i]
+		}
+		// - add 1
+		m.Add(m, natOne)
+		fill = 0xff
+	}
+
+	// little endian bigint words (significand) -> little endian db decimal format
+	j := 0
+	for _, d := range m.Bits() {
+		for i := 0; i < _S; i++ {
+			b[j] = byte(d)
+			d >>= 8
+			j++
+		}
+	}
+
+	// clear scratch buffer
+	for i := j; i < size; i++ {
+		b[i] = fill
+	}
+
+	e.wr.Write(b)
 }
 
 // String writes a string.

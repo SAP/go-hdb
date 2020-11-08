@@ -6,12 +6,11 @@ package protocol
 
 import (
 	"database/sql/driver"
-	"errors"
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
@@ -31,16 +30,30 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
+// string / binary length indicators
+const (
+	bytesLenIndNullValue byte = 255
+	bytesLenIndSmall     byte = 245
+	bytesLenIndMedium    byte = 246
+	bytesLenIndBig       byte = 247
+)
+
+const (
+	realNullValue   uint32 = ^uint32(0)
+	doubleNullValue uint64 = ^uint64(0)
+)
+
+const (
+	booleanFalseValue   byte  = 0
+	booleanNullValue    byte  = 1
+	booleanTrueValue    byte  = 2
+	longdateNullValue   int64 = 3155380704000000001
+	seconddateNullValue int64 = 315538070401
+	daydateNullValue    int32 = 3652062
+	secondtimeNullValue int32 = 86402
+)
+
 type locatorID uint64 // byte[locatorIdSize]
-
-// ErrUint64OutOfRange means that a uint64 exceeds the size of a int64.
-var ErrUint64OutOfRange = errors.New("uint64 values with high bit set are not supported")
-
-// ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
-var ErrIntegerOutOfRange = errors.New("integer out of range error")
-
-// ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
-var ErrFloatOutOfRange = errors.New("float out of range error")
 
 var timeReflectType = reflect.TypeOf((*time.Time)(nil)).Elem()
 var bytesReflectType = reflect.TypeOf((*[]byte)(nil)).Elem()
@@ -64,89 +77,25 @@ const (
 	daydateFieldSize    = 4
 	secondtimeFieldSize = 4
 	decimalFieldSize    = 16
+	fixed8FieldSize     = 8
+	fixed12FieldSize    = 12
+	fixed16FieldSize    = 16
 
 	lobInputParametersSize = 9
 )
 
 type fieldType interface {
-	convert(interface{}) (interface{}, error)
-	prmSize(interface{}) int
-	encodePrm(*encoding.Encoder, interface{}) error
-}
-
-// can use decoder for parameter and result fields
-type commonDecoder interface {
-	decode(*encoding.Decoder) (interface{}, error)
-}
-
-// specific parameter decoder
-type prmDecoder interface {
-	decodePrm(*encoding.Decoder) (interface{}, error)
-}
-
-// specific result decoder
-type resDecoder interface {
-	decodeRes(*encoding.Decoder) (interface{}, error)
-}
-
-// parameter size
-func prmSize(tc typeCode, v interface{}) int {
-	if v == nil && tc.supportNullValue() {
-		return 0
-	}
-	return tc.fieldType().prmSize(v)
-}
-
-// encode parameter
-func encodePrm(e *encoding.Encoder, tc typeCode, ft fieldType, v interface{}) error {
-	encTc := tc.encTc()
-	if v == nil && tc.supportNullValue() {
-		e.Byte(byte(encTc) | 0x80) // type code null value: set high bit
-		return nil
-	}
-	e.Byte(byte(encTc)) // type code
-	return ft.encodePrm(e, v)
-}
-
-/*
-decode parameter
-- used for Sniffer
-- type code is first byte (see encodePrm)
-*/
-func decodePrm(d *encoding.Decoder) (typeCode, interface{}, error) {
-	tc := typeCode(d.Byte())
-	if tc&0x80 != 0 { // high bit set -> null value
-		return tc, nil, nil
-	}
-
-	ft := tc.fieldType()
-
-	switch ft := ft.(type) {
-	default:
-		panic("field type missing decoder")
-	case prmDecoder:
-		v, err := ft.decodePrm(d)
-		return tc, v, err
-	case commonDecoder:
-		v, err := ft.decode(d)
-		return tc, v, err
-	}
-}
-
-/*
-decode result
-*/
-func decodeRes(d *encoding.Decoder, tc typeCode) (interface{}, error) {
-	ft := tc.fieldType()
-
-	switch ft := ft.(type) {
-	default:
-		panic("field type missing decoder")
-	case resDecoder:
-		return ft.decodeRes(d)
-	case commonDecoder:
-		return ft.decode(d)
-	}
+	/*
+		statements:
+		- first parameter could be many
+		- so the check needs to 'fail fast'
+		- fmt.Errorf is too slow because contructor formats the error -> use ConvertError
+	*/
+	convert(v interface{}) (interface{}, error)
+	prmSize(v interface{}) int
+	encodePrm(e *encoding.Encoder, v interface{}) error
+	decodeRes(d *encoding.Decoder) (interface{}, error)
+	decodePrm(d *encoding.Decoder) (interface{}, error)
 }
 
 var (
@@ -187,6 +136,9 @@ type _seconddateType struct{}
 type _daydateType struct{}
 type _secondtimeType struct{}
 type _decimalType struct{}
+type _fixed8Type struct{ prec, scale int }
+type _fixed12Type struct{ prec, scale int }
+type _fixed16Type struct{ prec, scale int }
 type _varType struct{}
 type _alphaType struct{}
 type _cesu8Type struct{}
@@ -209,6 +161,9 @@ var (
 	_ fieldType = (*_daydateType)(nil)
 	_ fieldType = (*_secondtimeType)(nil)
 	_ fieldType = (*_decimalType)(nil)
+	_ fieldType = (*_fixed8Type)(nil)
+	_ fieldType = (*_fixed12Type)(nil)
+	_ fieldType = (*_fixed16Type)(nil)
 	_ fieldType = (*_varType)(nil)
 	_ fieldType = (*_alphaType)(nil)
 	_ fieldType = (*_cesu8Type)(nil)
@@ -216,23 +171,7 @@ var (
 	_ fieldType = (*_lobCESU8Type)(nil)
 )
 
-// A ConvertError is returned by conversion methods if a go datatype to hdb datatype conversion fails.
-type ConvertError struct {
-	err error
-	ft  fieldType
-	v   interface{}
-}
-
-func (e *ConvertError) Error() string {
-	return fmt.Sprintf("unsupported %[1]s conversion: %[2]T %[2]v", e.ft, e.v)
-}
-
-// Unwrap returns the nested error.
-func (e *ConvertError) Unwrap() error { return e.err }
-func newConvertError(ft fieldType, v interface{}, err error) *ConvertError {
-	return &ConvertError{ft: ft, v: v, err: err}
-}
-
+// stringer
 func (_booleanType) String() string    { return "booleanType" }
 func (_tinyintType) String() string    { return "tinyintType" }
 func (_smallintType) String() string   { return "smallintType" }
@@ -248,54 +187,17 @@ func (_seconddateType) String() string { return "seconddateType" }
 func (_daydateType) String() string    { return "daydateType" }
 func (_secondtimeType) String() string { return "secondtimeType" }
 func (_decimalType) String() string    { return "decimalType" }
+func (_fixed8Type) String() string     { return "fixed8Type" }
+func (_fixed12Type) String() string    { return "fixed12Type" }
+func (_fixed16Type) String() string    { return "fixed16Type" }
 func (_varType) String() string        { return "varType" }
 func (_alphaType) String() string      { return "alphaType" }
 func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
+// convert
 func (ft _booleanType) convert(v interface{}) (interface{}, error) { return convertBool(ft, v) }
-
-func convertBool(ft fieldType, v interface{}) (interface{}, error) {
-	if v == nil {
-		return v, nil
-	}
-
-	if v, ok := v.(bool); ok {
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-
-	case reflect.Bool:
-		return rv.Bool(), nil
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return rv.Int() != 0, nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return rv.Uint() != 0, nil
-	case reflect.Float32, reflect.Float64:
-		return rv.Float() != 0, nil
-	case reflect.String:
-		b, err := strconv.ParseBool(rv.String())
-		if err != nil {
-			return false, newConvertError(ft, v, nil)
-		}
-		return b, nil
-	case reflect.Ptr:
-		// indirect pointers
-		if rv.IsNil() {
-			return false, nil
-		}
-		return convertBool(ft, rv.Elem().Interface())
-	}
-
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertBool(ft, rv.Convert(stringReflectType).Interface())
-	}
-
-	return false, newConvertError(ft, v, nil)
-}
 
 func (ft _tinyintType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minTinyint, maxTinyint)
@@ -310,201 +212,33 @@ func (ft _bigintType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minBigint, maxBigint)
 }
 
-// integer types
-func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, error) {
-	if v == nil {
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	// conversions without allocations (return v)
-	case reflect.Bool:
-		return v, nil // return (no furhter check needed)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		i64 := rv.Int()
-		if i64 > max || i64 < min {
-			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
-		}
-		return v, nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		u64 := rv.Uint()
-		if u64 >= 1<<63 {
-			return 0, newConvertError(ft, v, ErrUint64OutOfRange)
-		}
-		if int64(u64) > max || int64(u64) < min {
-			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
-		}
-		return v, nil
-	// conversions with allocations (return i64)
-	case reflect.Float32, reflect.Float64:
-		f64 := rv.Float()
-		i64 := int64(f64)
-		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
-			return 0, newConvertError(ft, v, nil)
-		}
-		if i64 > max || i64 < min {
-			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
-		}
-		return i64, nil
-	case reflect.String:
-		i64, err := strconv.ParseInt(rv.String(), 10, 64)
-		if err != nil {
-			return 0, newConvertError(ft, v, nil)
-		}
-		if i64 > max || i64 < min {
-			return nil, newConvertError(ft, v, ErrIntegerOutOfRange)
-		}
-		return i64, nil
-	// pointer
-	case reflect.Ptr:
-		// indirect pointers
-		if rv.IsNil() {
-			return 0, nil
-		}
-		return convertInteger(ft, rv.Elem().Interface(), min, max)
-	}
-	// last resort (try via string)
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertInteger(ft, rv.Convert(stringReflectType).Interface(), min, max)
-	}
-	return 0, newConvertError(ft, v, nil)
+func (ft _realType) convert(v interface{}) (interface{}, error) {
+	return convertFloat(ft, v, maxReal)
 }
-
-func (ft _realType) convert(v interface{}) (interface{}, error) { return convertFloat(ft, v, maxReal) }
 func (ft _doubleType) convert(v interface{}) (interface{}, error) {
 	return convertFloat(ft, v, maxDouble)
 }
 
-// float types
-func convertFloat(ft fieldType, v interface{}, max float64) (driver.Value, error) {
-	if v == nil {
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	// conversions without allocations (return v)
-	case reflect.Float32, reflect.Float64:
-		if math.Abs(rv.Float()) > max {
-			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
-		}
-		return v, nil
-	// conversions with allocations (return f64)
-	case reflect.String:
-		f64, err := strconv.ParseFloat(rv.String(), 64)
-		if err != nil {
-			return 0, newConvertError(ft, v, nil)
-		}
-		if math.Abs(f64) > max {
-			return nil, newConvertError(ft, v, ErrFloatOutOfRange)
-		}
-		return f64, nil
-	// pointer
-	case reflect.Ptr:
-		// indirect pointers
-		if rv.IsNil() {
-			return 0, nil
-		}
-		return convertFloat(ft, rv.Elem().Interface(), max)
-	}
-	// last resort (try via string)
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertFloat(ft, rv.Convert(stringReflectType).Interface(), max)
-	}
-	return 0, newConvertError(ft, v, nil)
+func (ft _dateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
+func (ft _timeType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
+func (ft _timestampType) convert(v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
 }
-
-func (ft _dateType) convert(v interface{}) (interface{}, error)       { return convertTime(ft, v) }
-func (ft _timeType) convert(v interface{}) (interface{}, error)       { return convertTime(ft, v) }
-func (ft _timestampType) convert(v interface{}) (interface{}, error)  { return convertTime(ft, v) }
 func (ft _longdateType) convert(v interface{}) (interface{}, error)   { return convertTime(ft, v) }
 func (ft _seconddateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
 func (ft _daydateType) convert(v interface{}) (interface{}, error)    { return convertTime(ft, v) }
-func (ft _secondtimeType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
-
-// time
-func convertTime(ft fieldType, v interface{}) (driver.Value, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	if v, ok := v.(time.Time); ok {
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-
-	if rv.Kind() == reflect.Ptr {
-		// indirect pointers
-		if rv.IsNil() {
-			return nil, nil
-		}
-		return convertTime(ft, rv.Elem().Interface())
-	}
-
-	if rv.Type().ConvertibleTo(timeReflectType) {
-		tv := rv.Convert(timeReflectType)
-		return tv.Interface().(time.Time), nil
-	}
-	return nil, newConvertError(ft, v, nil)
+func (ft _secondtimeType) convert(v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
 }
 
 func (ft _decimalType) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
-
-// decimal
-func convertDecimal(ft fieldType, v interface{}) (driver.Value, error) {
-	if v == nil {
-		return nil, nil
-	}
-	if v, ok := v.([]byte); ok {
-		return v, nil
-	}
-	return nil, newConvertError(ft, v, nil)
-}
+func (ft _fixed8Type) convert(v interface{}) (interface{}, error)  { return convertDecimal(ft, v) }
+func (ft _fixed12Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
+func (ft _fixed16Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
 
 func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
 func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
-
-// bytes
-func convertBytes(ft fieldType, v interface{}) (driver.Value, error) {
-	if v == nil {
-		return v, nil
-	}
-
-	switch v := v.(type) {
-
-	case string, []byte:
-		return v, nil
-	}
-
-	rv := reflect.ValueOf(v)
-
-	switch rv.Kind() {
-
-	case reflect.String:
-		return rv.String(), nil
-
-	case reflect.Slice:
-		if rv.Type() == bytesReflectType {
-			return rv.Bytes(), nil
-		}
-
-	case reflect.Ptr:
-		// indirect pointers
-		if rv.IsNil() {
-			return nil, nil
-		}
-		return convertBytes(ft, rv.Elem().Interface())
-	}
-
-	if rv.Type().ConvertibleTo(bytesReflectType) {
-		bv := rv.Convert(bytesReflectType)
-		return bv.Interface().([]byte), nil
-	}
-	return nil, newConvertError(ft, v, nil)
-}
 
 func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v) }
 func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v) }
@@ -530,6 +264,7 @@ func convertLob(ft fieldType, v interface{}) (driver.Value, error) {
 	}
 }
 
+// prm size
 func (_booleanType) prmSize(interface{}) int    { return booleanFieldSize }
 func (_tinyintType) prmSize(interface{}) int    { return tinyintFieldSize }
 func (_smallintType) prmSize(interface{}) int   { return smallintFieldSize }
@@ -545,6 +280,9 @@ func (_seconddateType) prmSize(interface{}) int { return seconddateFieldSize }
 func (_daydateType) prmSize(interface{}) int    { return daydateFieldSize }
 func (_secondtimeType) prmSize(interface{}) int { return secondtimeFieldSize }
 func (_decimalType) prmSize(interface{}) int    { return decimalFieldSize }
+func (_fixed8Type) prmSize(interface{}) int     { return fixed8FieldSize }
+func (_fixed12Type) prmSize(interface{}) int    { return fixed12FieldSize }
+func (_fixed16Type) prmSize(interface{}) int    { return fixed16FieldSize }
 func (_lobVarType) prmSize(v interface{}) int   { return lobInputParametersSize }
 func (_lobCESU8Type) prmSize(v interface{}) int { return lobInputParametersSize }
 
@@ -585,74 +323,58 @@ func varBytesSize(size int) int {
 	}
 }
 
+// encode
 func (ft _booleanType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	if v == nil {
 		e.Byte(booleanNullValue)
 		return nil
 	}
-	switch v := v.(type) {
-	default:
-		return newConvertError(ft, v, nil)
-	case bool:
-		if v {
-			e.Byte(booleanTrueValue)
-		} else {
-			e.Byte(booleanFalseValue)
-		}
+	b, ok := v.(bool)
+	if !ok {
+		panic("invalid bool value") // should never happen
+	}
+	if b {
+		e.Byte(booleanTrueValue)
+	} else {
+		e.Byte(booleanFalseValue)
 	}
 	return nil
 }
 
 func (ft _tinyintType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	i, err := asInt64(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Byte(byte(i))
+	e.Byte(byte(asInt64(v)))
 	return nil
 }
 func (ft _smallintType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	i, err := asInt64(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int16(int16(i))
+	e.Int16(int16(asInt64(v)))
 	return nil
 }
 func (ft _integerType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	i, err := asInt64(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int32(int32(i))
+	e.Int32(int32(asInt64(v)))
 	return nil
 }
 func (ft _bigintType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	i, err := asInt64(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int64(i)
+	e.Int64(asInt64(v))
 	return nil
 }
 
-func asInt64(ft fieldType, v interface{}) (int64, error) {
+func asInt64(v interface{}) int64 {
 	switch v := v.(type) {
 	case bool:
 		if v {
-			return 1, nil
+			return 1
 		}
-		return 0, nil
+		return 0
 	}
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return rv.Int(), nil
+		return rv.Int()
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return int64(rv.Uint()), nil
+		return int64(rv.Uint())
 	default:
-		return 0, newConvertError(ft, v, nil)
+		panic("invalid bool value") // should never happen
 	}
 }
 
@@ -660,48 +382,36 @@ func (ft _realType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
 	case float32:
 		e.Float32(v)
-		return nil
 	case float64:
 		e.Float32(float32(v))
-		return nil
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid real value") // should never happen
 	}
+	return nil
 }
+
 func (ft _doubleType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
 	case float32:
 		e.Float64(float64(v))
-		return nil
 	case float64:
 		e.Float64(v)
-		return nil
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid double value") // should never happen
 	}
+	return nil
 }
 
 func (ft _dateType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	encodeDate(e, t)
+	encodeDate(e, asTime(v))
 	return nil
 }
 func (ft _timeType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	encodeTime(e, t)
+	encodeTime(e, asTime(v))
 	return nil
 }
 func (ft _timestampType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
+	t := asTime(v)
 	encodeDate(e, t)
 	encodeTime(e, t)
 	return nil
@@ -724,27 +434,15 @@ func encodeTime(e *encoding.Encoder, t time.Time) {
 }
 
 func (ft _longdateType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int64(convertTimeToLongdate(t))
+	e.Int64(convertTimeToLongdate(asTime(v)))
 	return nil
 }
 func (ft _seconddateType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int64(convertTimeToSeconddate(t))
+	e.Int64(convertTimeToSeconddate(asTime(v)))
 	return nil
 }
 func (ft _daydateType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int32(int32(convertTimeToDayDate(t)))
+	e.Int32(int32(convertTimeToDayDate(asTime(v))))
 	return nil
 }
 func (ft _secondtimeType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -752,32 +450,66 @@ func (ft _secondtimeType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		e.Int32(secondtimeNullValue)
 		return nil
 	}
-	t, err := asTime(ft, v)
-	if err != nil {
-		return err
-	}
-	e.Int32(int32(convertTimeToSecondtime(t)))
+	e.Int32(int32(convertTimeToSecondtime(asTime(v))))
 	return nil
 }
 
-func asTime(ft fieldType, v interface{}) (time.Time, error) {
+func asTime(v interface{}) time.Time {
 	t, ok := v.(time.Time)
 	if !ok {
-		return zeroTime, newConvertError(ft, v, nil)
+		panic("invalid time value") // should never happen
 	}
 	//store in utc
-	return t.UTC(), nil
+	return t.UTC()
 }
 
 func (ft _decimalType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	p, ok := v.([]byte)
+	r, ok := v.(*big.Rat)
 	if !ok {
-		return newConvertError(ft, v, nil)
+		panic("invalid decimal value") // should never happen
 	}
-	if len(p) != decimalFieldSize {
-		return fmt.Errorf("invalid argument length %d - expected %d", len(p), decimalFieldSize)
+
+	var m big.Int
+	exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
 	}
-	e.Bytes(p)
+
+	if df&dfUnderflow != 0 { // set to zero
+		e.Decimal(natZero, 0)
+	} else {
+		e.Decimal(&m, exp)
+	}
+	return nil
+}
+
+func (ft _fixed8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
+	return encodeFixed(e, v, fixed8FieldSize, ft.prec, ft.scale)
+}
+
+func (ft _fixed12Type) encodePrm(e *encoding.Encoder, v interface{}) error {
+	return encodeFixed(e, v, fixed12FieldSize, ft.prec, ft.scale)
+}
+
+func (ft _fixed16Type) encodePrm(e *encoding.Encoder, v interface{}) error {
+	return encodeFixed(e, v, fixed16FieldSize, ft.prec, ft.scale)
+}
+
+func encodeFixed(e *encoding.Encoder, v interface{}, size, prec, scale int) error {
+	r, ok := v.(*big.Rat)
+	if !ok {
+		panic("invalid decimal value") // should never happen
+	}
+
+	var m big.Int
+	df := convertRatToFixed(r, &m, prec, scale)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
+	}
+
+	e.Fixed(&m, size)
 	return nil
 }
 
@@ -788,7 +520,7 @@ func (ft _varType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	case string:
 		return encodeVarString(e, v)
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid var value") // should never happen
 	}
 }
 func (ft _alphaType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -833,7 +565,7 @@ func (ft _cesu8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 	case string:
 		return encodeCESU8String(e, v)
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid cesu8 value") // should never happen
 	}
 }
 
@@ -863,7 +595,7 @@ func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		descr := &lobInDescr{}
 		return encodeLobPrm(e, descr)
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid lob var value") // should never happen
 	}
 }
 
@@ -875,7 +607,7 @@ func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 		descr := &lobInDescr{}
 		return encodeLobPrm(e, descr)
 	default:
-		return newConvertError(ft, v, nil)
+		panic("invalid lob cesu8 value") // should never happen
 	}
 }
 
@@ -886,7 +618,27 @@ func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
 	return nil
 }
 
-func (_booleanType) decode(d *encoding.Decoder) (interface{}, error) {
+// field types for which decodePrm is same as decodeRes
+func (ft _booleanType) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
+func (ft _realType) decodePrm(d *encoding.Decoder) (interface{}, error)       { return ft.decodeRes(d) }
+func (ft _doubleType) decodePrm(d *encoding.Decoder) (interface{}, error)     { return ft.decodeRes(d) }
+func (ft _dateType) decodePrm(d *encoding.Decoder) (interface{}, error)       { return ft.decodeRes(d) }
+func (ft _timeType) decodePrm(d *encoding.Decoder) (interface{}, error)       { return ft.decodeRes(d) }
+func (ft _timestampType) decodePrm(d *encoding.Decoder) (interface{}, error)  { return ft.decodeRes(d) }
+func (ft _longdateType) decodePrm(d *encoding.Decoder) (interface{}, error)   { return ft.decodeRes(d) }
+func (ft _seconddateType) decodePrm(d *encoding.Decoder) (interface{}, error) { return ft.decodeRes(d) }
+func (ft _daydateType) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
+func (ft _secondtimeType) decodePrm(d *encoding.Decoder) (interface{}, error) { return ft.decodeRes(d) }
+func (ft _decimalType) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
+func (ft _fixed8Type) decodePrm(d *encoding.Decoder) (interface{}, error)     { return ft.decodeRes(d) }
+func (ft _fixed12Type) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
+func (ft _fixed16Type) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
+func (ft _varType) decodePrm(d *encoding.Decoder) (interface{}, error)        { return ft.decodeRes(d) }
+func (ft _alphaType) decodePrm(d *encoding.Decoder) (interface{}, error)      { return ft.decodeRes(d) }
+func (ft _cesu8Type) decodePrm(d *encoding.Decoder) (interface{}, error)      { return ft.decodeRes(d) }
+
+// decode
+func (_booleanType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	b := d.Byte()
 	switch b {
 	case booleanNullValue:
@@ -930,14 +682,14 @@ func (ft _bigintType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	return ft.decodePrm(d)
 }
 
-func (_realType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_realType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	v := d.Uint32()
 	if v == realNullValue {
 		return nil, nil
 	}
 	return float64(math.Float32frombits(v)), nil
 }
-func (_doubleType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_doubleType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	v := d.Uint64()
 	if v == doubleNullValue {
 		return nil, nil
@@ -945,14 +697,14 @@ func (_doubleType) decode(d *encoding.Decoder) (interface{}, error) {
 	return math.Float64frombits(v), nil
 }
 
-func (_dateType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_dateType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	year, month, day, null := decodeDate(d)
 	if null {
 		return nil, nil
 	}
 	return time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC), nil
 }
-func (_timeType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_timeType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	// time read gives only seconds (cut), no milliseconds
 	hour, min, sec, nsec, null := decodeTime(d)
 	if null {
@@ -960,7 +712,7 @@ func (_timeType) decode(d *encoding.Decoder) (interface{}, error) {
 	}
 	return time.Date(1, 1, 1, hour, min, sec, nsec, time.UTC), nil
 }
-func (_timestampType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_timestampType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	year, month, day, dateNull := decodeDate(d)
 	hour, min, sec, nsec, timeNull := decodeTime(d)
 	if dateNull || timeNull {
@@ -998,28 +750,28 @@ func decodeTime(d *encoding.Decoder) (int, int, int, int, bool) {
 	return int(hour), int(min), int(sec), nsec, null
 }
 
-func (_longdateType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_longdateType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	longdate := d.Int64()
 	if longdate == longdateNullValue {
 		return nil, nil
 	}
 	return convertLongdateToTime(longdate), nil
 }
-func (_seconddateType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_seconddateType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	seconddate := d.Int64()
 	if seconddate == seconddateNullValue {
 		return nil, nil
 	}
 	return convertSeconddateToTime(seconddate), nil
 }
-func (_daydateType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_daydateType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	daydate := d.Int32()
 	if daydate == daydateNullValue {
 		return nil, nil
 	}
 	return convertDaydateToTime(int64(daydate)), nil
 }
-func (_secondtimeType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_secondtimeType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	secondtime := d.Int32()
 	if secondtime == secondtimeNullValue {
 		return nil, nil
@@ -1027,16 +779,42 @@ func (_secondtimeType) decode(d *encoding.Decoder) (interface{}, error) {
 	return convertSecondtimeToTime(int(secondtime)), nil
 }
 
-func (_decimalType) decode(d *encoding.Decoder) (interface{}, error) {
-	b := make([]byte, decimalFieldSize)
-	d.Bytes(b)
-	if (b[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+func (_decimalType) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	m, exp := d.Decimal()
+	if m == nil {
 		return nil, nil
 	}
-	return b, nil
+	return convertDecimalToRat(m, exp), nil
 }
 
-func (_varType) decode(d *encoding.Decoder) (interface{}, error) {
+func (ft _fixed8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	if !d.Bool() { //null value
+		return nil, nil
+	}
+	return decodeFixed(d, fixed8FieldSize, ft.prec, ft.scale)
+}
+func (ft _fixed12Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	if !d.Bool() { //null value
+		return nil, nil
+	}
+	return decodeFixed(d, fixed12FieldSize, ft.prec, ft.scale)
+}
+func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	if !d.Bool() { //null value
+		return nil, nil
+	}
+	return decodeFixed(d, fixed16FieldSize, ft.prec, ft.scale)
+}
+
+func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error) {
+	m := d.Fixed(size)
+	if m == nil {
+		return nil, nil
+	}
+	return convertFixedToRat(m, scale), nil
+}
+
+func (_varType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {
 		return nil, nil
@@ -1045,7 +823,7 @@ func (_varType) decode(d *encoding.Decoder) (interface{}, error) {
 	d.Bytes(b)
 	return b, nil
 }
-func (_alphaType) decode(d *encoding.Decoder) (interface{}, error) {
+func (_alphaType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {
 		return nil, nil
@@ -1068,7 +846,7 @@ func (_alphaType) decode(d *encoding.Decoder) (interface{}, error) {
 		return b, nil
 	}
 }
-func (_cesu8Type) decode(d *encoding.Decoder) (interface{}, error) {
+func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {
 		return nil, nil
@@ -1100,9 +878,12 @@ func decodeLobPrm(d *encoding.Decoder) (interface{}, error) {
 	return nil, nil
 }
 
-// sniffer
-func (_lobVarType) decodePrm(d *encoding.Decoder) (interface{}, error)   { return decodeLobPrm(d) }
-func (_lobCESU8Type) decodePrm(d *encoding.Decoder) (interface{}, error) { return decodeLobPrm(d) }
+func (_lobVarType) decodePrm(d *encoding.Decoder) (interface{}, error) {
+	return decodeLobPrm(d)
+}
+func (_lobCESU8Type) decodePrm(d *encoding.Decoder) (interface{}, error) {
+	return decodeLobPrm(d)
+}
 
 func decodeLobRes(d *encoding.Decoder, isCharBased bool) (interface{}, error) {
 	descr := &lobOutDescr{isCharBased: isCharBased}
@@ -1121,7 +902,9 @@ func decodeLobRes(d *encoding.Decoder, isCharBased bool) (interface{}, error) {
 	return descr, nil
 }
 
-func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error) { return decodeLobRes(d, false) }
+func (_lobVarType) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	return decodeLobRes(d, false)
+}
 func (_lobCESU8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	return decodeLobRes(d, true)
 }
