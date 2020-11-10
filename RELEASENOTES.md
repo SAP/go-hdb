@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.4 (upgrade urgency: moderate)
+
+- Support stmt.Exec() for stored procedures with no or only input parameters
+
 Release 0.102.3 (upgrade urgency: low)
 
 - Reset the default Data Format Version to '8'

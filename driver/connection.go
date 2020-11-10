@@ -532,19 +532,21 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
+	qd, err := p.NewQueryDescr(query, c.scanner)
+	if err != nil {
+		return nil, err
+	}
+
 	if sqltrace.On() {
 		sqltrace.Traceln(query)
 	}
 
 	done := make(chan struct{})
 	go func() {
-		var qd *p.QueryDescr
-		qd, err = p.NewQueryDescr(query, c.scanner)
-		if err != nil {
-			goto done
-		}
+		/*
+			handle call procedure (qd.Kind() == p.QkCall) without parameters here as well
+		*/
 		r, err = c.session.ExecDirect(qd.Query(), !c.inTx)
-	done:
 		close(done)
 	}()
 
