@@ -384,6 +384,10 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		}
 	}
 
+	if len(outPrmFields) == 0 {
+		return nil, nil
+	}
+
 	// TODO release v1.0.0 - assign output parameters
 	return nil, fmt.Errorf("not implemented yet")
 	//return driver.ResultNoRows, nil
