@@ -18,19 +18,48 @@ import (
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
-func testCallEchoQueryRow(db *sql.DB, proc driver.Identifier, t *testing.T) {
-	const txt = "Hello World!"
+func testCallEcho(db *sql.DB, t *testing.T) {
+	const procEcho = `create procedure %[1]s (in idata nvarchar(25), out odata nvarchar(25))
+language SQLSCRIPT as
+begin
+    odata := idata;
+end
+`
 
-	var out string
+	testQueryRow := func(db *sql.DB, proc driver.Identifier, t *testing.T) {
+		const txt = "Hello World!"
 
-	if err := db.QueryRow(fmt.Sprintf("call %s(?, ?)", proc), txt).Scan(&out); err != nil {
+		var out string
+
+		if err := db.QueryRow(fmt.Sprintf("call %s(?, ?)", proc), txt).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+
+		if out != txt {
+			t.Fatalf("value %s - expected %s", out, txt)
+		}
+	}
+
+	// create procedure
+	proc := driver.RandomIdentifier("procEcho_")
+	if _, err := db.Exec(fmt.Sprintf(procEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
-	if out != txt {
-		t.Fatalf("value %s - expected %s", out, txt)
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
+	}{
+		{"QueryRow", testQueryRow},
+		// {"Query", testQuery}, // TODO
+		// {"Exec", testExec},   // TODO: output parameter
 	}
 
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(db, proc, t)
+		})
+	}
 }
 
 func testCallBlobEcho(db *sql.DB, t *testing.T) {
@@ -63,35 +92,6 @@ end
 
 	if out != txt {
 		t.Fatalf("value %s - expected %s", out, txt)
-	}
-}
-
-func testCallEcho(db *sql.DB, t *testing.T) {
-	const procEcho = `create procedure %[1]s (in idata nvarchar(25), out odata nvarchar(25))
-language SQLSCRIPT as
-begin
-    odata := idata;
-end
-`
-	// create procedure
-	proc := driver.RandomIdentifier("procEcho_")
-	if _, err := db.Exec(fmt.Sprintf(procEcho, proc)); err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []struct {
-		name string
-		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
-	}{
-		{"QueryRow", testCallEchoQueryRow},
-		//		{"Query", testCallEchoQuery},
-		//		{"Exec", testCallEchoExec},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, proc, t)
-		})
 	}
 }
 
@@ -229,23 +229,42 @@ end
 	}
 }
 
-func testCallNoOutQueryRow(db *sql.DB, proc driver.Identifier, t *testing.T) {
-	var out string
-	// as the procedure does not have out parameters a try to scan any value should return the right sql error: sql.ErrNoRows.
-	if err := db.QueryRow(fmt.Sprintf("call %s", proc)).Scan(&out); err != sql.ErrNoRows {
-		t.Fatalf("error %s - expected %s", err, sql.ErrNoRows)
-	}
-}
-
-func testCallNoOut(db *sql.DB, t *testing.T) {
-	const procNoOut = `create procedure %[1]s
+func testCallNoPrm(db *sql.DB, t *testing.T) {
+	const procNoPrm = `create procedure %[1]s
 language SQLSCRIPT as
 begin
 end
 `
+
+	testQueryRow := func(db *sql.DB, proc driver.Identifier, t *testing.T) {
+		var out string
+		// as the procedure does not have out parameters a try to scan any value should return the right sql error: sql.ErrNoRows.
+		if err := db.QueryRow(fmt.Sprintf("call %s", proc)).Scan(&out); err != sql.ErrNoRows {
+			t.Fatalf("error %s - expected %s", err, sql.ErrNoRows)
+		}
+	}
+
+	testQuery := func(db *sql.DB, proc driver.Identifier, t *testing.T) {
+		rows, err := db.Query(fmt.Sprintf("call %s", proc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		if rows.Next() { // shouldn't return any row
+			log.Fatal("number of rows needs to be 0")
+		}
+	}
+
+	testExec := func(db *sql.DB, proc driver.Identifier, t *testing.T) {
+		if _, err := db.Exec(fmt.Sprintf("call %s", proc)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// create procedure
-	proc := driver.RandomIdentifier("procNoOut_")
-	if _, err := db.Exec(fmt.Sprintf(procNoOut, proc)); err != nil {
+	proc := driver.RandomIdentifier("procNoPrm_")
+	if _, err := db.Exec(fmt.Sprintf(procNoPrm, proc)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -253,14 +272,101 @@ end
 		name string
 		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
 	}{
-		{"QueryRow", testCallNoOutQueryRow},
-		//		{"Query", testCallEchoQuery},
-		//		{"Exec", testCallEchoExec},
+		{"QueryRow", testQueryRow},
+		{"Query", testQuery},
+		{"Exec", testExec},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(db, proc, t)
+		})
+	}
+}
+
+func testCallNoOut(db *sql.DB, t *testing.T) {
+	const procNoOut = `create procedure %[1]s (in idata nvarchar(25))
+language SQLSCRIPT as
+begin
+	 insert into %[2]s values(idata);
+end
+`
+	const txt = "Hello World!"
+
+	createDBObjects := func() (driver.Identifier, driver.Identifier) {
+		// create table (stored procedure 'side effect')
+		table := driver.RandomIdentifier("tableNoOut_")
+		if _, err := db.Exec(fmt.Sprintf("create column table %s (x nvarchar(25))", table)); err != nil {
+			t.Fatal(err)
+		}
+		// create procedure
+		proc := driver.RandomIdentifier("procNoOut_")
+		if _, err := db.Exec(fmt.Sprintf(procNoOut, proc, table)); err != nil {
+			t.Fatal(err)
+		}
+		return proc, table
+	}
+
+	checkTable := func(table driver.Identifier) {
+		var out string
+		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		if out != txt {
+			t.Fatalf("value %s - expected %s", out, txt)
+		}
+	}
+
+	testQueryRow := func(db *sql.DB, t *testing.T) {
+		proc, table := createDBObjects()
+
+		var out string
+		// as the procedure does not have out parameters a try to scan any value should return the right sql error: sql.ErrNoRows.
+		if err := db.QueryRow(fmt.Sprintf("call %s(?)", proc), txt).Scan(&out); err != sql.ErrNoRows {
+			t.Fatalf("error %s - expected %s", err, sql.ErrNoRows)
+		}
+
+		checkTable(table)
+	}
+
+	testQuery := func(db *sql.DB, t *testing.T) {
+		proc, table := createDBObjects()
+
+		rows, err := db.Query(fmt.Sprintf("call %s(?)", proc), txt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		if rows.Next() { // shouldn't return any row
+			log.Fatal("number of rows needs to be 0")
+		}
+
+		checkTable(table)
+	}
+
+	testExec := func(db *sql.DB, t *testing.T) {
+		proc, table := createDBObjects()
+
+		if _, err := db.Exec(fmt.Sprintf("call %s(?)", proc), txt); err != nil {
+			t.Fatal(err)
+		}
+
+		checkTable(table)
+	}
+
+	tests := []struct {
+		name string
+		fct  func(db *sql.DB, t *testing.T)
+	}{
+		{"QueryRow", testQueryRow},
+		{"Query", testQuery},
+		{"Exec", testExec},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(db, t)
 		})
 	}
 }
@@ -273,6 +379,7 @@ func TestCall(t *testing.T) {
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
 		{"tableOut", testCallTableOut},
+		{"noPrm", testCallNoPrm},
 		{"noOut", testCallNoOut},
 	}
 

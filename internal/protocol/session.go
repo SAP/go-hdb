@@ -309,7 +309,7 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, ids, err := s.readCall(outPrmFields)
+	cr, ids, _, err := s.readCall(outPrmFields) // ignore numRow
 	if err != nil {
 		return nil, err
 	}
@@ -357,6 +357,11 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		}
 	}
 
+	// TODO release v1.0.0 - assign output parameters
+	if len(outPrmFields) != 0 {
+		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
+	}
+
 	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), newInputParameters(inPrmFields, inArgs)); err != nil {
 		return nil, err
 	}
@@ -364,11 +369,11 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 	/*
 		call without lob input parameters:
 		--> callResult output parameter values are set after read call
-		call with lob input parameters:
+		call with lob output parameters:
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, ids, err := s.readCall(outPrmFields)
+	cr, ids, numRow, err := s.readCall(outPrmFields)
 	if err != nil {
 		return nil, err
 	}
@@ -383,25 +388,27 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 			return nil, err
 		}
 	}
-
-	// TODO release v1.0.0 - assign output parameters
-	return nil, fmt.Errorf("not implemented yet")
-	//return driver.ResultNoRows, nil
+	return driver.RowsAffected(numRow), nil
 }
 
-func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locatorID, error) {
+func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locatorID, int64, error) {
 	cr := &callResult{session: s, outputFields: outputFields}
 
 	//var qrs []*QueryResult
 	var qr *queryResult
+	rows := &rowsAffected{}
 	var ids []locatorID
 	outPrms := &outputParameters{}
 	meta := &resultMetadata{}
 	resSet := &resultset{}
 	lobReply := &writeLobReply{}
+	var numRow int64
 
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
+		case pkRowsAffected:
+			s.pr.read(rows)
+			numRow = rows.total()
 		case pkOutputParameters:
 			outPrms.outputFields = cr.outputFields
 			s.pr.read(outPrms)
@@ -430,9 +437,9 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 			ids = lobReply.ids
 		}
 	}); err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
-	return cr, ids, nil
+	return cr, ids, numRow, nil
 }
 
 // Query executes a query.

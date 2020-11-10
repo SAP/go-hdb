@@ -1,14 +1,21 @@
+// SPDX-FileCopyrightText: 2014-2020 SAP SE
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
 	"database/sql"
 	"flag"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/SAP/go-hdb/driver"
 	hdbDriver "github.com/SAP/go-hdb/driver"
 )
+
+const envDSN = "GOHDBDSN"
 
 // ExampleBulkInsert inserts 1000 integer values into database table test.
 // Precondition: the test database table with one field of type integer must exist.
@@ -18,7 +25,9 @@ func main() {
 
 	flag.Parse()
 
-	db, err := sql.Open(driver.DriverName, "hdb://SYSTEM:Toor1234@192.168.178.107:39013")
+	dsn := os.Getenv(envDSN)
+
+	db, err := sql.Open(driver.DriverName, dsn)
 	if err != nil {
 		log.Fatal(err)
 	}

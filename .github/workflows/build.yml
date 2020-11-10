@@ -39,8 +39,10 @@ jobs:
     steps:
     
     - name: Install qemu-user
-      run: sudo apt-get -y install qemu-user    
-    
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install qemu-user
+
     - uses: actions/checkout@v2
     
     - name: Setup go
