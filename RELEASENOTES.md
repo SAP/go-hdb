@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.5 (upgrade urgency: moderate)
+
+- Early garbage collection of bulk / many attributes.
+- Fixed issue using cancelCtx in sql.DB statements.
+
 Release 0.102.4 (upgrade urgency: moderate)
 
 - Support stmt.Exec() for stored procedures with no or only input parameters
