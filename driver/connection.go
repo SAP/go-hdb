@@ -98,13 +98,17 @@ func init() {
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
+	// atomic access - alignment
+	canceled  int32
 	conn      net.Conn
 	timeout   time.Duration
 	lastError error // error bad connection
 	closed    bool
 }
 
-func (c *dbConn) isBad() bool { return c.lastError != nil || c.closed }
+func (c *dbConn) isBad() bool {
+	return c.lastError != nil
+}
 
 func (c *dbConn) deadline() (deadline time.Time) {
 	if c.timeout == 0 {
@@ -113,13 +117,28 @@ func (c *dbConn) deadline() (deadline time.Time) {
 	return time.Now().Add(c.timeout)
 }
 
-func (c *dbConn) Close() error {
+var (
+	errCancelled = errors.New("db connection is canceled")
+	errClosed    = errors.New("db connection is closed")
+)
+
+func (c *dbConn) cancel() {
+	atomic.StoreInt32(&c.canceled, 1)
+	c.lastError = errCancelled
+}
+
+func (c *dbConn) close() error {
 	c.closed = true
+	c.lastError = errClosed
 	return c.conn.Close()
 }
 
 // Read implements the io.Reader interface.
 func (c *dbConn) Read(b []byte) (n int, err error) {
+	// check if killed
+	if atomic.LoadInt32(&c.canceled) == 1 {
+		return 0, driver.ErrBadConn
+	}
 	//set timeout
 	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
 		goto retError
@@ -136,6 +155,10 @@ retError:
 
 // Write implements the io.Writer interface.
 func (c *dbConn) Write(b []byte) (n int, err error) {
+	// check if killed
+	if atomic.LoadInt32(&c.canceled) == 1 {
+		return 0, driver.ErrBadConn
+	}
 	//set timeout
 	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
 		goto retError
@@ -193,6 +216,15 @@ var (
 	_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
 	_ driver.NamedValueChecker  = (*Conn)(nil)
 	_ driver.SessionResetter    = (*Conn)(nil)
+)
+
+// connHook is a hook for testing.
+var connHook func(c *Conn, op int)
+
+// connection hook operations
+const (
+	choNone = iota
+	choStmtExec
 )
 
 // Conn is the implementation of the database/sql/driver Conn interface.
@@ -272,12 +304,6 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	return c, nil
 }
 
-// kill connection
-func (c *Conn) kill() {
-	dlog.Printf("Kill session %d", c.session.SessionID())
-	c.dbConn.Close()
-}
-
 func (c *Conn) pinger(d time.Duration, done <-chan struct{}) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
@@ -312,7 +338,7 @@ func (c *Conn) Ping(ctx context.Context) (err error) {
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return ctx.Err()
 	case <-done:
 		return err
@@ -381,7 +407,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addStmt(1) // increment number of statements.
@@ -400,8 +426,11 @@ func (c *Conn) Close() error {
 	// cleanup query cache
 	p.QueryResultCache.Cleanup(c.session)
 
-	c.session.Disconnect() // ignore error
-	return c.dbConn.Close()
+	// if isBad do not disconnect
+	if !c.dbConn.isBad() {
+		c.session.Disconnect() // ignore error
+	}
+	return c.dbConn.close()
 }
 
 // BeginTx implements the driver.ConnBeginTx interface.
@@ -442,7 +471,7 @@ func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addTx(1) // increment number of transactions.
@@ -506,7 +535,7 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(p.OnCloser); ok {
@@ -552,7 +581,7 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
@@ -709,6 +738,18 @@ func (s *callStmt) NumInput() int { return -1 }
 
 // stmt methods
 
+/*
+reset args
+- keep slice to avoid additional allocations but
+- free elements (GC)
+*/
+func (s *stmt) resetArgs() {
+	for i := 0; i < len(s.args); i++ {
+		s.args[i] = nil
+	}
+	s.args = s.args[:0]
+}
+
 func (s *stmt) Close() error {
 	c := s.conn
 
@@ -768,7 +809,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(p.OnCloser); ok {
@@ -817,6 +858,10 @@ func (s *stmt) exec(ctx context.Context, args []interface{}) (r driver.Result, e
 		return nil, driver.ErrBadConn
 	}
 
+	if connHook != nil {
+		connHook(c, choStmtExec)
+	}
+
 	if s.trace {
 		if len(args) > maxNumTraceArg {
 			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, args[:maxNumTraceArg])
@@ -833,7 +878,7 @@ func (s *stmt) exec(ctx context.Context, args []interface{}) (r driver.Result, e
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
@@ -865,7 +910,7 @@ func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush b
 
 	// flush
 	r, err = s.exec(ctx, s.args)
-	s.args = s.args[:0]
+	s.resetArgs()
 	s.numBulk = 0
 	return
 }
@@ -995,7 +1040,7 @@ func (s *stmt) execMany(ctx context.Context, nvarg *driver.NamedValue) (driver.R
 
 	numField := s.pr.NumField()
 
-	defer func() { s.args = s.args[:0] }() // reset args
+	defer func() { s.resetArgs() }() // reset args
 
 	var totalRowsAffected int64
 
@@ -1126,7 +1171,7 @@ func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue)
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(p.OnCloser); ok {
@@ -1168,7 +1213,7 @@ func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) 
 
 	select {
 	case <-ctx.Done():
-		c.kill()
+		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
 		return r, err
