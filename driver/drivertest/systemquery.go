@@ -101,6 +101,12 @@ func DropSchema(db *sql.DB, schema string) error {
 	return err
 }
 
+// DropTable drops a table from the database.
+func DropTable(db *sql.DB, schema, table string) error {
+	_, err := db.Exec(fmt.Sprintf("drop table %s.%s", strconv.Quote(schema), strconv.Quote(table)))
+	return err
+}
+
 // NumTablesInSchema returns the number of tables in a database schema.
 func NumTablesInSchema(db *sql.DB, schema string) (int, error) {
 	numTables := 0
@@ -119,9 +125,9 @@ func NumProcsInSchema(db *sql.DB, schema string) (int, error) {
 	return numProcs, nil
 }
 
-// QuerySchemasPrefix returns all schemas of a databasebase starting with prefix in name.
+// QuerySchemasPrefix returns all schemas of a database starting with prefix in name.
 func QuerySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
-	schemas := make([]string, 0)
+	names := make([]string, 0)
 
 	rows, err := db.Query(fmt.Sprintf("select schema_name from sys.schemas where schema_name like '%s_%%'", prefix))
 	if err != nil {
@@ -129,15 +135,38 @@ func QuerySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	}
 	defer rows.Close()
 
-	var schema string
+	var name string
 	for rows.Next() {
-		if err := rows.Scan(&schema); err != nil {
+		if err := rows.Scan(&name); err != nil {
 			return nil, err
 		}
-		schemas = append(schemas, schema)
+		names = append(names, name)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return schemas, nil
+	return names, nil
+}
+
+// QueryTablesPrefix returns all tables of a database starting with prefix in name.
+func QueryTablesPrefix(db *sql.DB, prefix string) ([]string, error) {
+	names := make([]string, 0)
+
+	rows, err := db.Query(fmt.Sprintf("select table_name from sys.tables where table_name like '%s_%%'", prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var name string
+	for rows.Next() {
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return names, nil
 }

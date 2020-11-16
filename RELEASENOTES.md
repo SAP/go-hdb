@@ -5,10 +5,15 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.6 (upgrade urgency: low)
+
+- 'execute many' is officially supported now (please see Example_manyInsert())
+- Some minor cleanups
+
 Release 0.102.5 (upgrade urgency: moderate)
 
 - Early garbage collection of bulk / many attributes.
-- Fixed issue using cancelCtx in sql.DB statements.
+- Fixed issue using context cancelCtx (context.WithCancel(...)) in sql.DB statements.
 
 Release 0.102.4 (upgrade urgency: moderate)
 
