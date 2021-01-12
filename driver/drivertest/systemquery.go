@@ -148,7 +148,7 @@ func QuerySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	return names, nil
 }
 
-// QueryTablePrefix returns all tables of a database starting with prefix in name.
+// QueryTablesPrefix returns all tables of a database starting with prefix in name.
 func QueryTablesPrefix(db *sql.DB, prefix string) ([]string, error) {
 	names := make([]string, 0)
 
