@@ -319,6 +319,7 @@ func TestDataType(t *testing.T) {
 		(*Decimal)(big.NewRat(15, 1)),
 		(*Decimal)(big.NewRat(4, 5)),
 		(*Decimal)(big.NewRat(34, 10)),
+		(*Decimal)(big.NewRat(1234567890123, 1)),
 		NullDecimal{Valid: false, Decimal: (*Decimal)(big.NewRat(1, 1))},
 		NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
 	}
@@ -640,7 +641,7 @@ func TestDataType(t *testing.T) {
 		{DfvLevel6, dt.CondGE, "bintext", 0, 0, checkLob, lobTestData(true)},
 
 		{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
-		{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
+		{DfvLevel8, dt.CondGE, "decimal", 23, 8, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
 		{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
 	}
 
