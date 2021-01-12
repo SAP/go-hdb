@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.7 (upgrade urgency: high)
+
+- Fixed go-hdb runtime error (index out of range) using DECIMAL fields with precision and scale specified
+
 Release 0.102.6 (upgrade urgency: low)
 
 - 'execute many' is officially supported now (please see Example_manyInsert())
