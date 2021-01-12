@@ -202,7 +202,7 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 	e.wr.Write(b)
 }
 
-// Fixed writes a fidex decimal value.
+// Fixed writes a fixed decimal value.
 func (e *Encoder) Fixed(m *big.Int, size int) {
 	b := e.b[:size]
 
@@ -226,7 +226,13 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
-		for i := 0; i < _S; i++ {
+		/*
+			check j < size as number of bytes in m.Bits words can exceed number of fixed size bytes
+			e.g. 64 bit architecture:
+			- two words equals 16 bytes but fixed size might be 12 bytes
+			- invariant: all 'skipped' bytes in most significant word are zero
+		*/
+		for i := 0; i < _S && j < size; i++ {
 			b[j] = byte(d)
 			d >>= 8
 			j++

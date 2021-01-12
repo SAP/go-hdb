@@ -307,21 +307,60 @@ func TestDataType(t *testing.T) {
 		sql.NullTime{Valid: true, Time: time.Now()},
 	}
 
-	var decimalTestData = []interface{}{
-		(*Decimal)(big.NewRat(0, 1)),
-		(*Decimal)(big.NewRat(1, 1)),
-		(*Decimal)(big.NewRat(-1, 1)),
-		(*Decimal)(big.NewRat(10, 1)),
-		(*Decimal)(big.NewRat(1000, 1)),
-		(*Decimal)(big.NewRat(1, 10)),
-		(*Decimal)(big.NewRat(-1, 10)),
-		(*Decimal)(big.NewRat(1, 100)),
-		(*Decimal)(big.NewRat(15, 1)),
-		(*Decimal)(big.NewRat(4, 5)),
-		(*Decimal)(big.NewRat(34, 10)),
-		NullDecimal{Valid: false, Decimal: (*Decimal)(big.NewRat(1, 1))},
-		NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
+	var (
+		natOne     = big.NewRat(1, 1)
+		natTen     = big.NewInt(10)
+		natHundret = big.NewRat(100, 1)
+	)
+
+	exp10 := func(n int) *big.Int {
+		r := big.NewInt(int64(n))
+		return r.Exp(natTen, r, nil)
 	}
+
+	maxValue := func(prec int) *big.Rat {
+		r := new(big.Rat).SetInt(exp10(prec))
+		r.Sub(r, natOne)
+		r.Quo(r, natHundret)
+		return r
+	}
+
+	minValue := func(prec int) *big.Rat {
+		max := maxValue(prec)
+		return max.Neg(max)
+	}
+
+	var (
+		fixed8MinValue  = (*Decimal)(minValue(18)) // min value Dec(18,2)
+		fixed8MaxValue  = (*Decimal)(maxValue(18)) // max value Dec(18,2)
+		fixed12MinValue = (*Decimal)(minValue(28)) // min value Dec(18,2)
+		fixed12MaxValue = (*Decimal)(maxValue(28)) // max value Dec(18,2)
+		fixed16MinValue = (*Decimal)(minValue(38)) // min value Dec(18,2)
+		fixed16MaxValue = (*Decimal)(maxValue(38)) // max value Dec(18,2)
+	)
+
+	var (
+		decimalTestData = []interface{}{
+			(*Decimal)(big.NewRat(0, 1)),
+			(*Decimal)(big.NewRat(1, 1)),
+			(*Decimal)(big.NewRat(-1, 1)),
+			(*Decimal)(big.NewRat(10, 1)),
+			(*Decimal)(big.NewRat(1000, 1)),
+			(*Decimal)(big.NewRat(1, 10)),
+			(*Decimal)(big.NewRat(-1, 10)),
+			(*Decimal)(big.NewRat(1, 100)),
+			(*Decimal)(big.NewRat(15, 1)),
+			(*Decimal)(big.NewRat(4, 5)),
+			(*Decimal)(big.NewRat(34, 10)),
+			fixed8MinValue,
+			fixed8MaxValue,
+
+			NullDecimal{Valid: false, Decimal: (*Decimal)(big.NewRat(1, 1))},
+			NullDecimal{Valid: true, Decimal: (*Decimal)(big.NewRat(1, 1))},
+		}
+		decimalFixed12TestData = append(decimalTestData, fixed12MinValue, fixed12MaxValue)
+		decimalFixed16TestData = append(decimalFixed12TestData, fixed16MinValue, fixed16MaxValue)
+	)
 
 	var booleanTestData = []interface{}{
 		true,
@@ -639,9 +678,9 @@ func TestDataType(t *testing.T) {
 		{DfvLevel4, dt.CondGE, "text", 0, 0, checkLob, lobTestData(false)},
 		{DfvLevel6, dt.CondGE, "bintext", 0, 0, checkLob, lobTestData(true)},
 
-		{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed8
-		{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed12
-		{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalTestData}, // precision, scale decimal number -fixed16
+		{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
+		{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
+		{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
 	}
 
 	var testSet map[int]bool
