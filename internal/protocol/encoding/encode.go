@@ -6,7 +6,6 @@ package encoding
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -205,14 +204,6 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 
 // Fixed writes a fixed decimal value.
 func (e *Encoder) Fixed(m *big.Int, size int) {
-
-	println("Size ", size)
-	println("len bits", len(m.Bits()))
-	println(m.String())
-	for _, d := range m.Bits() {
-		fmt.Printf("%x\n", d)
-	}
-
 	b := e.b[:size]
 
 	neg := m.Sign() == -1
@@ -235,6 +226,12 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
+		/*
+			check j < size as number of bytes in m.Bits words can exceed number of fixed size bytes
+			e.g. 64 bit architecture:
+			- two words equals 16 bytes but fixed size might be 12 bytes
+			- invariant: all 'skipped' bytes in most significant word are zero
+		*/
 		for i := 0; i < _S && j < size; i++ {
 			b[j] = byte(d)
 			d >>= 8
