@@ -5,6 +5,12 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.102.8 (upgrade urgency: low)
+
+- Added support of Go 1.6
+- Dropped support of Go language versions < Go 1.4
+- Deprecation of io/ioutil starting with Go 1.6
+
 Release 0.102.7 (upgrade urgency: high)
 
 - Fixed go-hdb runtime error (index out of range) using DECIMAL fields with precision and scale specified
@@ -76,7 +82,7 @@ Release 0.101.1
 
 Release 0.100.14
 
-- Added support of Go 1.3 again
+- Added support of Go 1.13 again
 
 Release 0.100.13
 

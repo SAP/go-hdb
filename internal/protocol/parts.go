@@ -25,11 +25,10 @@ type partDecodeEncoder interface {
 	partEncoder
 }
 
-// TODO: remove when 1.13 compatibility is finally removed
-// type partReadWriter interface {
-// 	partReader
-// 	partWriter
-// }
+type partReadWriter interface {
+	partReader
+	partWriter
+}
 
 type part interface {
 	String() string // should support Stringer interface

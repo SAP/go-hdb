@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/big"
@@ -184,7 +183,7 @@ func TestDataType(t *testing.T) {
 
 			walk := func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() && filter(info.Name()) {
-					content, err := ioutil.ReadFile(path)
+					content, err := _readFile(path)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -546,7 +545,7 @@ func TestDataType(t *testing.T) {
 		if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
 			t.Fatal(err)
 		}
-		content, err := ioutil.ReadAll(in.rd)
+		content, err := _readAll(in.rd)
 		if err != nil {
 			t.Fatal(err)
 			return false

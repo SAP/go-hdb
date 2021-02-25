@@ -11,7 +11,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -316,7 +315,7 @@ func (c *Connector) setDSN(dsn string) error {
 
 		case DSNTLSRootCAFile:
 			for _, fn := range v {
-				rootPEM, err := ioutil.ReadFile(fn)
+				rootPEM, err := _readFile(fn)
 				if err != nil {
 					return err
 				}
