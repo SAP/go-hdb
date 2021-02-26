@@ -780,7 +780,10 @@ func (_secondtimeType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 }
 
 func (_decimalType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	m, exp := d.Decimal()
+	m, exp, err := d.Decimal()
+	if err != nil {
+		return nil, err
+	}
 	if m == nil {
 		return nil, nil
 	}
@@ -851,7 +854,7 @@ func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if null {
 		return nil, nil
 	}
-	return d.CESU8Bytes(size), nil
+	return d.CESU8Bytes(size)
 }
 
 func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {

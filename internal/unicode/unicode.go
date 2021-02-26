@@ -95,5 +95,6 @@ func (t *cesu8ToUtf8Transformer) Transform(dst, src []byte, atEOF bool) (nDst, n
 			}
 		}
 	}
+	//return j, i, ErrInvalidCesu8
 	return j, i, nil
 }

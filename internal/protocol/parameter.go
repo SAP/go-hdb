@@ -206,7 +206,9 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 		names.insert(f.offset)
 	}
 
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 
 	for _, f := range m.parameterFields {
 		f.fieldName = names.name(f.offset)

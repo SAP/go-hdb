@@ -155,7 +155,9 @@ func (r *resultMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
 		names.insert(f.columnDisplayNameOffset)
 	}
 
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 
 	for _, f := range r.resultFields {
 		f.tableName = names.name(f.tableNameOffset)

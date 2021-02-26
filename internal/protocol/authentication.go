@@ -47,9 +47,10 @@ type _authShortBytes struct{}
 var authShortCESU8String = _authShortCESU8String{}
 var authShortBytes = _authShortBytes{}
 
-func (_authShortCESU8String) decode(dec *encoding.Decoder) string {
+func (_authShortCESU8String) decode(dec *encoding.Decoder) (string, error) {
 	size := dec.Byte()
-	return string(dec.CESU8Bytes(int(size)))
+	s, err := dec.CESU8Bytes(int(size))
+	return string(s), err
 }
 
 func (_authShortCESU8String) encode(enc *encoding.Encoder, s string) error {
@@ -132,7 +133,10 @@ func (r *authInitReq) size() int {
 
 func (r *authInitReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 	numPrm := int(dec.Int16())
-	r.username = authShortCESU8String.decode(dec)
+	var err error
+	if r.username, err = authShortCESU8String.decode(dec); err != nil {
+		return err
+	}
 	numMethod := (numPrm - 1) / 2
 	r.methods = make([]*authMethod, numMethod)
 	for i := 0; i < len(r.methods); i++ {
@@ -282,7 +286,10 @@ func (r *authFinalReq) decode(dec *encoding.Decoder, ph *partHeader) error {
 	if numPrm != 3 {
 		return fmt.Errorf("invalid number of parameters %d - expected %d", numPrm, 3)
 	}
-	r.username = authShortCESU8String.decode(dec)
+	var err error
+	if r.username, err = authShortCESU8String.decode(dec); err != nil {
+		return err
+	}
 	r.method = string(authShortBytes.decode(dec))
 	dec.Byte() // sub parameters
 	r.prms = &authClientProofReq{}
