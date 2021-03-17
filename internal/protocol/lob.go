@@ -80,10 +80,11 @@ var _ sessionSetter = (*lobOutDescr)(nil)
 
 /*
 TODO description
-lobOutDescr
+lobInDescr
 
 */
 type lobInDescr struct {
+	rd io.Reader
 	/*
 		currently no data is transformed for input parameters
 		--> opt == 0 (no data included)
@@ -95,6 +96,10 @@ type lobInDescr struct {
 	size int32
 	pos  int32
 	b    []byte // currently no data is transformed for input parameters
+}
+
+func newLobInDescr(rd io.Reader) *lobInDescr {
+	return &lobInDescr{rd: rd}
 }
 
 /*

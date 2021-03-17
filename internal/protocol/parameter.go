@@ -239,6 +239,9 @@ func (p *inputParameters) size() int {
 		f := p.inputFields[i%cnt]
 		size += f.prmSize(arg)
 	}
+
+	// lob input parameter handling
+
 	return size
 }
 
@@ -267,6 +270,9 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 			return err
 		}
 	}
+
+	//todo encode LOB content
+
 	return nil
 }
 

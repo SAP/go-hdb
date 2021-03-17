@@ -657,17 +657,14 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 	for i, arg := range args { // range over args (mass / bulk operation)
 		f := inPrmFields[i%numInPrmField]
 		if f.tc.isLob() {
-			rd, ok := arg.(io.Reader)
+			lobInDescr, ok := arg.(*lobInDescr)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", arg)
-			}
-			if f.tc.isCharBased() {
-				rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", arg)
 			}
 			if j >= len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			readers = append(readers, rd)
+			readers = append(readers, lobInDescr.rd)
 			descrs = append(descrs, &writeLobDescr{id: ids[j]})
 			j++
 		}

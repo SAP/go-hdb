@@ -13,7 +13,10 @@ import (
 	"reflect"
 	"time"
 
+	"golang.org/x/text/transform"
+
 	"github.com/SAP/go-hdb/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/internal/unicode"
 	"github.com/SAP/go-hdb/internal/unicode/cesu8"
 )
 
@@ -240,8 +243,8 @@ func (ft _varType) convert(v interface{}) (interface{}, error)   { return conver
 func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 
-func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v) }
-func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v) }
+func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v, false) }
+func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v, true) }
 
 // ReadProvider is the interface wrapping the Reader which provides an io.Reader.
 type ReadProvider interface {
@@ -249,19 +252,27 @@ type ReadProvider interface {
 }
 
 // Lob
-func convertLob(ft fieldType, v interface{}) (driver.Value, error) {
+func convertLob(ft fieldType, v interface{}, isCharBased bool) (driver.Value, error) {
 	if v == nil {
 		return v, nil
 	}
 
+	var rd io.Reader
+
 	switch v := v.(type) {
 	case io.Reader:
-		return v, nil
+		rd = v
 	case ReadProvider:
-		return v.Reader(), nil
+		rd = v.Reader()
 	default:
 		return nil, newConvertError(ft, v, nil)
 	}
+
+	if isCharBased {
+		rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
+	}
+
+	return newLobInDescr(rd), nil
 }
 
 // prm size
@@ -588,27 +599,19 @@ func encodeCESU8String(e *encoding.Encoder, s string) error {
 }
 
 func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	switch v := v.(type) {
-	case *lobInDescr:
-		return encodeLobPrm(e, v)
-	case io.Reader: //TODO check if keep
-		descr := &lobInDescr{}
-		return encodeLobPrm(e, descr)
-	default:
+	lobInDescr, ok := v.(*lobInDescr)
+	if !ok {
 		panic("invalid lob var value") // should never happen
 	}
+	return encodeLobPrm(e, lobInDescr)
 }
 
 func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	switch v := v.(type) {
-	case *lobInDescr:
-		return encodeLobPrm(e, v)
-	case io.Reader: //TODO check if keep
-		descr := &lobInDescr{}
-		return encodeLobPrm(e, descr)
-	default:
+	lobInDescr, ok := v.(*lobInDescr)
+	if !ok {
 		panic("invalid lob cesu8 value") // should never happen
 	}
+	return encodeLobPrm(e, lobInDescr)
 }
 
 func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
