@@ -98,7 +98,7 @@ func (d *lobInDescr) String() string {
 	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, d.b[:25])
 }
 
-func (d *lobInDescr) fetchNext(chunkSize int) error {
+func (d *lobInDescr) fetchNext(chunkSize int) (bool, error) {
 	if cap(d.b) < chunkSize {
 		d.b = make([]byte, chunkSize)
 	}
@@ -115,10 +115,10 @@ func (d *lobInDescr) fetchNext(chunkSize int) error {
 
 	d.opt = loDataincluded
 	if err != io.EOF && err != io.ErrUnexpectedEOF {
-		return err
+		return false, err
 	}
 	d.opt |= loLastdata
-	return nil
+	return true, nil
 }
 
 func (d *lobInDescr) setPos(pos int) { d.pos = pos }
@@ -180,7 +180,7 @@ func (d writeLobDescr) String() string {
 }
 
 func (d *writeLobDescr) fetchNext(chunkSize int) error {
-	if err := d.lobInDescr.fetchNext(chunkSize); err != nil {
+	if _, err := d.lobInDescr.fetchNext(chunkSize); err != nil {
 		return err
 	}
 	d.opt = d.lobInDescr.opt

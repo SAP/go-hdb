@@ -240,8 +240,101 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 	return pr, nil
 }
 
+// execSplit checks if an exec needs to be potentially splitted for piecewise LOB wrtiting.
+func execSplit(inputFields []*ParameterField, args []interface{}) bool {
+	// no args or only one row (no bulk) --> no need to split
+	if len(inputFields) == len(args) {
+		return false
+	}
+	// do we have a LOB field as part of the parameters
+	for _, f := range inputFields {
+		if f.tc.isLob() {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchFirstLobChunk reads the first LOB data ckunk.
+func fetchFirstLobChunk(args []interface{}) (bool, error) {
+	allLast := true
+	for _, arg := range args {
+		if lobInDescr, ok := arg.(*lobInDescr); ok {
+			last, err := lobInDescr.fetchNext(512) // TODO: size
+			if !last {
+				allLast = false
+			}
+			if err != nil {
+				return allLast, err
+			}
+		}
+	}
+	return allLast, nil
+}
+
 // Exec executes a sql statement.
 func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
+
+	/*
+		Bulk insert:
+		- ...
+
+
+		ausnahmen beschreiben
+		eigentlich funzt aber
+		nicht bei geo daten
+		nicht in HANA version 3
+
+		offizielle aussagen
+		- ...
+		- ...
+
+
+
+
+	*/
+
+	// no split needed
+	if !execSplit(pr.parameterFields, args) {
+		return s.exec(pr, args, commit)
+	}
+
+	// args need to be potentially splitted (piecewise LOB handling)
+	numColumns := len(pr.parameterFields)
+	numRows := len(args) / numColumns
+	totRowsAffected := int64(0)
+	lastFrom := 0
+
+	for i := 0; i < numRows; i++ { // row-by-row
+
+		from := i * numColumns
+		to := from + numColumns
+
+		allLast, err := fetchFirstLobChunk(args[from:to])
+		if err != nil {
+			return nil, err
+		}
+
+		/*
+			trigger server call (exec) if piecewise lob handling is needed
+			or we did reach the last row
+		*/
+		if !allLast || i == (numRows-1) {
+			r, err := s.exec(pr, args[lastFrom:to], commit)
+			if rowsAffected, err := r.RowsAffected(); err != nil {
+				totRowsAffected += rowsAffected
+			}
+			if err != nil {
+				return driver.RowsAffected(totRowsAffected), err
+			}
+			lastFrom = to
+		}
+	}
+	return driver.RowsAffected(totRowsAffected), nil
+}
+
+// exec executes an exec server call.
+func (s *Session) exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
 	inputParameters, err := newInputParameters(pr.parameterFields, args)
 	if err != nil {
 		return nil, err
@@ -253,13 +346,13 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 	rows := &rowsAffected{}
 	var ids []locatorID
 	lobReply := &writeLobReply{}
-	var numRow int64
+	var rowsAffected int64
 
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
 		case pkRowsAffected:
 			s.pr.read(rows)
-			numRow = rows.total()
+			rowsAffected = rows.total()
 		case pkWriteLobReply:
 			s.pr.read(lobReply)
 			ids = lobReply.ids
@@ -283,7 +376,7 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 	if fc == fcDDL {
 		return driver.ResultNoRows, nil
 	}
-	return driver.RowsAffected(numRow), nil
+	return driver.RowsAffected(rowsAffected), nil
 }
 
 // QueryCall executes a stored procecure (by Query).
@@ -302,6 +395,9 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 		}
 	}
 
+	if _, err := fetchFirstLobChunk(args); err != nil {
+		return nil, err
+	}
 	inputParameters, err := newInputParameters(inPrmFields, args)
 	if err != nil {
 		return nil, err
@@ -370,6 +466,9 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
 	}
 
+	if _, err := fetchFirstLobChunk(inArgs); err != nil {
+		return nil, err
+	}
 	inputParameters, err := newInputParameters(inPrmFields, inArgs)
 	if err != nil {
 		return nil, err
@@ -458,6 +557,9 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (driver.Rows, error) {
 	// allow e.g inserts as query -> handle commit like in exec
 
+	if _, err := fetchFirstLobChunk(args); err != nil {
+		return nil, err
+	}
 	inputParameters, err := newInputParameters(pr.parameterFields, args)
 	if err != nil {
 		return nil, err

@@ -223,18 +223,6 @@ type inputParameters struct {
 }
 
 func newInputParameters(inputFields []*ParameterField, args []interface{}) (*inputParameters, error) {
-
-	// TODO: split in bulk mode ....
-
-	// lob input parameter: fetch first data
-	for _, arg := range args {
-		if lobInDescr, ok := arg.(*lobInDescr); ok {
-			if err := lobInDescr.fetchNext(4096); err != nil { // TODO: size
-				// if err := lobInDescr.fetchNext(512); err != nil { // TODO: size
-				return nil, err
-			}
-		}
-	}
 	return &inputParameters{inputFields: inputFields, args: args}, nil
 }
 
@@ -244,38 +232,37 @@ func (p *inputParameters) String() string {
 
 func (p *inputParameters) size() int {
 	size := 0
-	cnt := len(p.inputFields)
-	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return 0
 	}
 
-	for i := 0; i < len(p.args)/cnt; i++ { // row-by-row
+	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
 
-		size += cnt
+		size += numColumns
 
-		for j := 0; j < cnt; j++ {
+		for j := 0; j < numColumns; j++ {
 			f := p.inputFields[j]
-			size += f.prmSize(p.args[i*cnt+j])
+			size += f.prmSize(p.args[i*numColumns+j])
 		}
 
 		// lob input parameter: set offset position of lob data
-		for j := 0; j < cnt; j++ {
-			if lobInDescr, ok := p.args[i*cnt+j].(*lobInDescr); ok {
+		for j := 0; j < numColumns; j++ {
+			if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
 				lobInDescr.setPos(size)
 				size += lobInDescr.size()
 			}
 		}
 	}
-
 	return size
 }
 
 func (p *inputParameters) numArg() int {
-	cnt := len(p.inputFields)
-	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return 0
 	}
-	return len(p.args) / cnt
+	return len(p.args) / numColumns
 }
 
 func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
@@ -285,27 +272,26 @@ func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 }
 
 func (p *inputParameters) encode(enc *encoding.Encoder) error {
-	cnt := len(p.inputFields)
-	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return nil
 	}
 
-	for i := 0; i < len(p.args)/cnt; i++ { // row-by-row
-		for j := 0; j < cnt; j++ {
+	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
+		for j := 0; j < numColumns; j++ {
 			//mass insert
 			f := p.inputFields[j]
-			if err := f.encodePrm(enc, p.args[i*cnt+j]); err != nil {
+			if err := f.encodePrm(enc, p.args[i*numColumns+j]); err != nil {
 				return err
 			}
 		}
 		// lob input parameter: write data
-		for j := 0; j < cnt; j++ {
-			if lobInDescr, ok := p.args[i*cnt+j].(*lobInDescr); ok {
+		for j := 0; j < numColumns; j++ {
+			if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
 				lobInDescr.writeFirst(enc)
 			}
 		}
 	}
-
 	return nil
 }
 
