@@ -242,7 +242,11 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 
 // Exec executes a sql statement.
 func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
-	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+	inputParameters, err := newInputParameters(pr.parameterFields, args)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -298,7 +302,11 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 		}
 	}
 
-	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), newInputParameters(inPrmFields, args)); err != nil {
+	inputParameters, err := newInputParameters(inPrmFields, args)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -362,7 +370,11 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
 	}
 
-	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), newInputParameters(inPrmFields, inArgs)); err != nil {
+	inputParameters, err := newInputParameters(inPrmFields, inArgs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -445,7 +457,12 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 // Query executes a query.
 func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (driver.Rows, error) {
 	// allow e.g inserts as query -> handle commit like in exec
-	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+
+	inputParameters, err := newInputParameters(pr.parameterFields, args)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 

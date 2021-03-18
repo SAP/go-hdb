@@ -616,8 +616,8 @@ func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 
 func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
 	e.Byte(byte(descr.opt))
-	e.Int32(descr.size)
-	e.Int32(descr.pos)
+	e.Int32(int32(len(descr.b)))
+	e.Int32(int32(descr.pos))
 	return nil
 }
 
@@ -879,8 +879,8 @@ func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {
 func decodeLobPrm(d *encoding.Decoder) (interface{}, error) {
 	descr := &lobInDescr{}
 	descr.opt = lobOptions(d.Byte())
-	descr.size = d.Int32()
-	descr.pos = d.Int32()
+	descr._size = int(d.Int32())
+	descr.pos = int(d.Int32())
 	return nil, nil
 }
 

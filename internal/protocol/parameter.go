@@ -222,8 +222,19 @@ type inputParameters struct {
 	args        []interface{}
 }
 
-func newInputParameters(inputFields []*ParameterField, args []interface{}) *inputParameters {
-	return &inputParameters{inputFields: inputFields, args: args}
+func newInputParameters(inputFields []*ParameterField, args []interface{}) (*inputParameters, error) {
+
+	// TODO: split in bulk mode ....
+
+	// lob input parameter: fetch first data
+	for _, arg := range args {
+		if lobInDescr, ok := arg.(*lobInDescr); ok {
+			if err := lobInDescr.fetchFirst(512); err != nil { // TODO: size
+				return nil, err
+			}
+		}
+	}
+	return &inputParameters{inputFields: inputFields, args: args}, nil
 }
 
 func (p *inputParameters) String() string {
@@ -231,16 +242,29 @@ func (p *inputParameters) String() string {
 }
 
 func (p *inputParameters) size() int {
-	size := len(p.args)
+	size := 0
 	cnt := len(p.inputFields)
-
-	for i, arg := range p.args {
-		// mass insert
-		f := p.inputFields[i%cnt]
-		size += f.prmSize(arg)
+	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+		return 0
 	}
 
-	// lob input parameter handling
+	for i := 0; i < len(p.args)/cnt; i++ { // row-by-row
+
+		size += cnt
+
+		for j := 0; j < cnt; j++ {
+			f := p.inputFields[j]
+			size += f.prmSize(p.args[i*cnt+j])
+		}
+
+		// lob input parameter: set offset position of lob data
+		for j := 0; j < cnt; j++ {
+			if lobInDescr, ok := p.args[i*cnt+j].(*lobInDescr); ok {
+				lobInDescr.setPos(size)
+				size += lobInDescr.size()
+			}
+		}
+	}
 
 	return size
 }
@@ -261,17 +285,25 @@ func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 
 func (p *inputParameters) encode(enc *encoding.Encoder) error {
 	cnt := len(p.inputFields)
-
-	for i, arg := range p.args {
-		//mass insert
-		f := p.inputFields[i%cnt]
-
-		if err := f.encodePrm(enc, arg); err != nil {
-			return err
-		}
+	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+		return nil
 	}
 
-	//todo encode LOB content
+	for i := 0; i < len(p.args)/cnt; i++ { // row-by-row
+		for j := 0; j < cnt; j++ {
+			//mass insert
+			f := p.inputFields[j]
+			if err := f.encodePrm(enc, p.args[i*cnt+j]); err != nil {
+				return err
+			}
+		}
+		// lob input parameter: write data
+		for j := 0; j < cnt; j++ {
+			if lobInDescr, ok := p.args[i*cnt+j].(*lobInDescr); ok {
+				lobInDescr.writeFirst(enc)
+			}
+		}
+	}
 
 	return nil
 }

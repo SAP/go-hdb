@@ -92,14 +92,37 @@ type lobInDescr struct {
 		--> pos == 0
 		--> b == nil
 	*/
-	opt  lobOptions
-	size int32
-	pos  int32
-	b    []byte // currently no data is transformed for input parameters
+	opt   lobOptions
+	_size int
+	pos   int
+	b     []byte // currently no data is transformed for input parameters
 }
 
 func newLobInDescr(rd io.Reader) *lobInDescr {
 	return &lobInDescr{rd: rd}
+}
+
+func (d *lobInDescr) fetchFirst(chunkSize int) error {
+	d.b = make([]byte, chunkSize)
+	var err error
+	d._size, err = d.rd.Read(d.b)
+	d.b = d.b[:d._size]
+	if err != nil && err != io.EOF {
+		return err
+	}
+	d.opt = loDataincluded
+	if err == io.EOF {
+		d.opt |= loLastdata
+	}
+	return nil
+}
+
+func (d *lobInDescr) setPos(pos int) { d.pos = pos }
+
+func (d *lobInDescr) size() int { return d._size }
+
+func (d *lobInDescr) writeFirst(enc *encoding.Encoder) {
+	enc.Bytes(d.b)
 }
 
 /*
