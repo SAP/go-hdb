@@ -81,29 +81,24 @@ var _ sessionSetter = (*lobOutDescr)(nil)
 /*
 TODO description
 lobInDescr
-
 */
 type lobInDescr struct {
-	rd io.Reader
-	/*
-		currently no data is transformed for input parameters
-		--> opt == 0 (no data included)
-		--> size == 0
-		--> pos == 0
-		--> b == nil
-	*/
+	rd    io.Reader
 	opt   lobOptions
 	_size int
 	pos   int
-	b     []byte // currently no data is transformed for input parameters
+	b     []byte
 }
 
 func newLobInDescr(rd io.Reader) *lobInDescr {
 	return &lobInDescr{rd: rd}
 }
 
-func (d *lobInDescr) fetchFirst(chunkSize int) error {
-	d.b = make([]byte, chunkSize)
+func (d *lobInDescr) fetchNext(chunkSize int) error {
+	if cap(d.b) < chunkSize {
+		d.b = make([]byte, chunkSize)
+	}
+	d.b = d.b[:chunkSize]
 	var err error
 	d._size, err = d.rd.Read(d.b)
 	d.b = d.b[:d._size]
@@ -164,14 +159,25 @@ write lobs:
 
 // descriptor for writes (lob -> db)
 type writeLobDescr struct {
-	id  locatorID
-	opt lobOptions
-	ofs int64
-	b   []byte
+	lobInDescr *lobInDescr
+	id         locatorID
+	opt        lobOptions
+	ofs        int64
+	b          []byte
 }
 
 func (d writeLobDescr) String() string {
 	return fmt.Sprintf("id %d options %s offset %d bytes %v", d.id, d.opt, d.ofs, d.b)
+}
+
+func (d *writeLobDescr) fetchNext(chunkSize int) error {
+	if err := d.lobInDescr.fetchNext(chunkSize); err != nil {
+		return err
+	}
+	d.opt = d.lobInDescr.opt
+	d.ofs = -1 //offset (-1 := append)
+	d.b = d.lobInDescr.b
+	return nil
 }
 
 // sniffer

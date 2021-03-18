@@ -665,7 +665,6 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []interface{}) error {
 	chunkSize := s.cfg.LobChunkSize
 
-	readers := make([]io.Reader, 0, len(ids))
 	descrs := make([]*writeLobDescr, 0, len(ids))
 
 	numInPrmField := len(inPrmFields)
@@ -681,8 +680,7 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 			if j >= len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			readers = append(readers, lobInDescr.rd)
-			descrs = append(descrs, &writeLobDescr{id: ids[j]})
+			descrs = append(descrs, &writeLobDescr{lobInDescr: lobInDescr, id: ids[j]})
 			j++
 		}
 	}
@@ -701,18 +699,8 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 		}
 
 		// TODO check total size limit
-		for i, descr := range descrs {
-			descr.b = make([]byte, chunkSize)
-			size, err := readers[i].Read(descr.b)
-			descr.b = descr.b[:size]
-			if err != nil && err != io.EOF {
-				return err
-			}
-			descr.ofs = -1 //offset (-1 := append)
-			descr.opt = loDataincluded
-			if err == io.EOF {
-				descr.opt |= loLastdata
-			}
+		for _, descr := range descrs {
+			descr.fetchNext(chunkSize)
 		}
 
 		writeLobRequest.descrs = descrs
@@ -738,17 +726,15 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 			return err
 		}
 
-		// remove done descr and readers
+		// remove done descr
 		j := 0
-		for i, descr := range descrs {
+		for _, descr := range descrs {
 			if !descr.opt.isLastData() {
 				descrs[j] = descr
-				readers[j] = readers[i]
 				j++
 			}
 		}
 		descrs = descrs[:j]
-		readers = readers[:j]
 	}
 	return nil
 }

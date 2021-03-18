@@ -229,7 +229,7 @@ func newInputParameters(inputFields []*ParameterField, args []interface{}) (*inp
 	// lob input parameter: fetch first data
 	for _, arg := range args {
 		if lobInDescr, ok := arg.(*lobInDescr); ok {
-			if err := lobInDescr.fetchFirst(512); err != nil { // TODO: size
+			if err := lobInDescr.fetchNext(512); err != nil { // TODO: size
 				return nil, err
 			}
 		}
