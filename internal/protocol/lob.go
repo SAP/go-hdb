@@ -94,21 +94,30 @@ func newLobInDescr(rd io.Reader) *lobInDescr {
 	return &lobInDescr{rd: rd}
 }
 
+func (d *lobInDescr) String() string {
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, d.b[:25])
+}
+
 func (d *lobInDescr) fetchNext(chunkSize int) error {
 	if cap(d.b) < chunkSize {
 		d.b = make([]byte, chunkSize)
 	}
 	d.b = d.b[:chunkSize]
+
 	var err error
-	d._size, err = d.rd.Read(d.b)
+	/*
+		We need to guarantee, that a max amount of data is read to prevent
+		piece wise LOB writing when avoidable
+		--> ReadFull
+	*/
+	d._size, err = io.ReadFull(d.rd, d.b)
 	d.b = d.b[:d._size]
-	if err != nil && err != io.EOF {
+
+	d.opt = loDataincluded
+	if err != io.EOF && err != io.ErrUnexpectedEOF {
 		return err
 	}
-	d.opt = loDataincluded
-	if err == io.EOF {
-		d.opt |= loLastdata
-	}
+	d.opt |= loLastdata
 	return nil
 }
 

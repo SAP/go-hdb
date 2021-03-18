@@ -663,6 +663,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []interface{}) error {
+
 	chunkSize := s.cfg.LobChunkSize
 
 	descrs := make([]*writeLobDescr, 0, len(ids))
