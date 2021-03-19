@@ -240,63 +240,59 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 	return pr, nil
 }
 
-// execSplit checks if an exec needs to be potentially splitted for piecewise LOB wrtiting.
-func execSplit(inputFields []*ParameterField, args []interface{}) bool {
-	// no args or only one row (no bulk) --> no need to split
-	if len(inputFields) == len(args) {
-		return false
-	}
-	// do we have a LOB field as part of the parameters
-	for _, f := range inputFields {
-		if f.tc.isLob() {
-			return true
-		}
-	}
-	return false
-}
-
 // fetchFirstLobChunk reads the first LOB data ckunk.
-func fetchFirstLobChunk(args []interface{}) (bool, error) {
-	allLast := true
+func (s *Session) fetchFirstLobChunk(args []interface{}) (bool, error) {
+	chunkSize := s.cfg.LobChunkSize
+	hasNext := false
+
 	for _, arg := range args {
 		if lobInDescr, ok := arg.(*lobInDescr); ok {
-			last, err := lobInDescr.fetchNext(512) // TODO: size
+			last, err := lobInDescr.fetchNext(chunkSize)
 			if !last {
-				allLast = false
+				hasNext = true
 			}
 			if err != nil {
-				return allLast, err
+				return hasNext, err
 			}
 		}
 	}
-	return allLast, nil
+	return hasNext, nil
 }
 
-// Exec executes a sql statement.
+/*
+Exec executes a sql statement.
+
+Bulk insert containing LOBs:
+- Precondition:
+  .Sending more than one row with partial LOB data.
+- Observations:
+  .In hdb version 1 and 2 'piecewise' LOB writing does work.
+  .Same does not work in case of geo fields which are LOBs en,- decoded as well.
+  .In hana version 3 'piecewise' LOB writing seems not to work anymore at all.
+- Server implementation (not documented):
+  .'piecewise' LOB writing is only suppoerted for the last row of a 'bulk insert'.
+- Current implementation:
+  One server call in case of
+    - 'non bulk' execs or
+    - 'bulk' execs without LOBs
+  else potential several server calls (split into packages).
+  Package invariant:
+  - For all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
+*/
+
 func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
+	hasLob := func() bool {
+		for _, f := range pr.parameterFields {
+			if f.tc.isLob() {
+				return true
+			}
+		}
+		return false
+	}()
 
-	/*
-		Bulk insert:
-		- ...
-
-
-		ausnahmen beschreiben
-		eigentlich funzt aber
-		nicht bei geo daten
-		nicht in HANA version 3
-
-		offizielle aussagen
-		- ...
-		- ...
-
-
-
-
-	*/
-
-	// no split needed
-	if !execSplit(pr.parameterFields, args) {
-		return s.exec(pr, args, commit)
+	// no split needed: no LOB or only one row
+	if !hasLob || len(pr.parameterFields) == len(args) {
+		return s.exec(pr, args, hasLob, commit)
 	}
 
 	// args need to be potentially splitted (piecewise LOB handling)
@@ -310,7 +306,7 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 		from := i * numColumns
 		to := from + numColumns
 
-		allLast, err := fetchFirstLobChunk(args[from:to])
+		hasNext, err := s.fetchFirstLobChunk(args[from:to])
 		if err != nil {
 			return nil, err
 		}
@@ -319,8 +315,8 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 			trigger server call (exec) if piecewise lob handling is needed
 			or we did reach the last row
 		*/
-		if !allLast || i == (numRows-1) {
-			r, err := s.exec(pr, args[lastFrom:to], commit)
+		if hasNext || i == (numRows-1) {
+			r, err := s.exec(pr, args[lastFrom:to], true, commit)
 			if rowsAffected, err := r.RowsAffected(); err != nil {
 				totRowsAffected += rowsAffected
 			}
@@ -334,8 +330,8 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 }
 
 // exec executes an exec server call.
-func (s *Session) exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
-	inputParameters, err := newInputParameters(pr.parameterFields, args)
+func (s *Session) exec(pr *PrepareResult, args []interface{}, hasLob, commit bool) (driver.Result, error) {
+	inputParameters, err := newInputParameters(pr.parameterFields, args, hasLob)
 	if err != nil {
 		return nil, err
 	}
@@ -386,19 +382,25 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 		invariant: #inPrmFields == #args
 	*/
 	var inPrmFields, outPrmFields []*ParameterField
+	hasInLob := false
 	for _, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
+			if f.tc.isLob() {
+				hasInLob = true
+			}
 		}
 		if f.Out() {
 			outPrmFields = append(outPrmFields, f)
 		}
 	}
 
-	if _, err := fetchFirstLobChunk(args); err != nil {
-		return nil, err
+	if hasInLob {
+		if _, err := s.fetchFirstLobChunk(args); err != nil {
+			return nil, err
+		}
 	}
-	inputParameters, err := newInputParameters(inPrmFields, args)
+	inputParameters, err := newInputParameters(inPrmFields, args, hasInLob)
 	if err != nil {
 		return nil, err
 	}
@@ -450,10 +452,14 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 	*/
 	var inPrmFields, outPrmFields []*ParameterField
 	var inArgs, outArgs []interface{}
+	hasInLob := false
 	for i, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
 			inArgs = append(inArgs, args[i])
+			if f.tc.isLob() {
+				hasInLob = true
+			}
 		}
 		if f.Out() {
 			outPrmFields = append(outPrmFields, f)
@@ -466,10 +472,12 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
 	}
 
-	if _, err := fetchFirstLobChunk(inArgs); err != nil {
-		return nil, err
+	if hasInLob {
+		if _, err := s.fetchFirstLobChunk(inArgs); err != nil {
+			return nil, err
+		}
 	}
-	inputParameters, err := newInputParameters(inPrmFields, inArgs)
+	inputParameters, err := newInputParameters(inPrmFields, inArgs, hasInLob)
 	if err != nil {
 		return nil, err
 	}
@@ -557,10 +565,21 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (driver.Rows, error) {
 	// allow e.g inserts as query -> handle commit like in exec
 
-	if _, err := fetchFirstLobChunk(args); err != nil {
-		return nil, err
+	hasLob := func() bool {
+		for _, f := range pr.parameterFields {
+			if f.tc.isLob() {
+				return true
+			}
+		}
+		return false
+	}()
+
+	if hasLob {
+		if _, err := s.fetchFirstLobChunk(args); err != nil {
+			return nil, err
+		}
 	}
-	inputParameters, err := newInputParameters(pr.parameterFields, args)
+	inputParameters, err := newInputParameters(pr.parameterFields, args, hasLob)
 	if err != nil {
 		return nil, err
 	}

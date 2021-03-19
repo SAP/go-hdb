@@ -220,10 +220,11 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 type inputParameters struct {
 	inputFields []*ParameterField
 	args        []interface{}
+	hasLob      bool
 }
 
-func newInputParameters(inputFields []*ParameterField, args []interface{}) (*inputParameters, error) {
-	return &inputParameters{inputFields: inputFields, args: args}, nil
+func newInputParameters(inputFields []*ParameterField, args []interface{}, hasLob bool) (*inputParameters, error) {
+	return &inputParameters{inputFields: inputFields, args: args, hasLob: hasLob}, nil
 }
 
 func (p *inputParameters) String() string {
@@ -247,10 +248,12 @@ func (p *inputParameters) size() int {
 		}
 
 		// lob input parameter: set offset position of lob data
-		for j := 0; j < numColumns; j++ {
-			if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
-				lobInDescr.setPos(size)
-				size += lobInDescr.size()
+		if p.hasLob {
+			for j := 0; j < numColumns; j++ {
+				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+					lobInDescr.setPos(size)
+					size += lobInDescr.size()
+				}
 			}
 		}
 	}
@@ -285,10 +288,12 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 				return err
 			}
 		}
-		// lob input parameter: write data
-		for j := 0; j < numColumns; j++ {
-			if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
-				lobInDescr.writeFirst(enc)
+		// lob input parameter: write first data chunk
+		if p.hasLob {
+			for j := 0; j < numColumns; j++ {
+				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+					lobInDescr.writeFirst(enc)
+				}
 			}
 		}
 	}

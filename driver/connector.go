@@ -46,7 +46,7 @@ const (
 	DefaultBufferSize   = 16276             // Default value bufferSize.
 	DefaultFetchSize    = 128               // Default value fetchSize.
 	DefaultBulkSize     = 10000             // Default value bulkSize.
-	DefaultLobChunkSize = 4096              // Default value lobChunkSize.
+	DefaultLobChunkSize = 8192              // Default value lobChunkSize.
 	DefaultLegacy       = true              // Default value legacy.
 )
 
