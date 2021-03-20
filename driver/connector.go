@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -47,7 +46,7 @@ const (
 	DefaultBufferSize   = 16276             // Default value bufferSize.
 	DefaultFetchSize    = 128               // Default value fetchSize.
 	DefaultBulkSize     = 10000             // Default value bulkSize.
-	DefaultLobChunkSize = 4096              // Default value lobChunkSize.
+	DefaultLobChunkSize = 8192              // Default value lobChunkSize.
 	DefaultLegacy       = true              // Default value legacy.
 )
 
@@ -316,7 +315,7 @@ func (c *Connector) setDSN(dsn string) error {
 
 		case DSNTLSRootCAFile:
 			for _, fn := range v {
-				rootPEM, err := ioutil.ReadFile(fn)
+				rootPEM, err := _readFile(fn)
 				if err != nil {
 					return err
 				}

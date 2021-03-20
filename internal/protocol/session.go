@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -179,6 +179,7 @@ func (s *Session) QueryDirect(query string, commit bool) (driver.Rows, error) {
 			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
 			qr.fieldValues = resSet.fieldValues
+			qr.decodeErrors = resSet.decodeErrors
 			qr.attributes = ph.partAttributes
 		}
 	}); err != nil {
@@ -240,22 +241,115 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 	return pr, nil
 }
 
-// Exec executes a sql statement.
+// fetchFirstLobChunk reads the first LOB data ckunk.
+func (s *Session) fetchFirstLobChunk(args []interface{}) (bool, error) {
+	chunkSize := s.cfg.LobChunkSize
+	hasNext := false
+
+	for _, arg := range args {
+		if lobInDescr, ok := arg.(*lobInDescr); ok {
+			last, err := lobInDescr.fetchNext(chunkSize)
+			if !last {
+				hasNext = true
+			}
+			if err != nil {
+				return hasNext, err
+			}
+		}
+	}
+	return hasNext, nil
+}
+
+/*
+Exec executes a sql statement.
+
+Bulk insert containing LOBs:
+- Precondition:
+  .Sending more than one row with partial LOB data.
+- Observations:
+  .In hdb version 1 and 2 'piecewise' LOB writing does work.
+  .Same does not work in case of geo fields which are LOBs en,- decoded as well.
+  .In hana version 3 'piecewise' LOB writing seems not to work anymore at all.
+- Server implementation (not documented):
+  .'piecewise' LOB writing is only suppoerted for the last row of a 'bulk insert'.
+- Current implementation:
+  One server call in case of
+    - 'non bulk' execs or
+    - 'bulk' execs without LOBs
+  else potential several server calls (split into packages).
+  Package invariant:
+  - For all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
+*/
+
 func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
-	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+	hasLob := func() bool {
+		for _, f := range pr.parameterFields {
+			if f.tc.isLob() {
+				return true
+			}
+		}
+		return false
+	}()
+
+	// no split needed: no LOB or only one row
+	if !hasLob || len(pr.parameterFields) == len(args) {
+		return s.exec(pr, args, hasLob, commit)
+	}
+
+	// args need to be potentially splitted (piecewise LOB handling)
+	numColumns := len(pr.parameterFields)
+	numRows := len(args) / numColumns
+	totRowsAffected := int64(0)
+	lastFrom := 0
+
+	for i := 0; i < numRows; i++ { // row-by-row
+
+		from := i * numColumns
+		to := from + numColumns
+
+		hasNext, err := s.fetchFirstLobChunk(args[from:to])
+		if err != nil {
+			return nil, err
+		}
+
+		/*
+			trigger server call (exec) if piecewise lob handling is needed
+			or we did reach the last row
+		*/
+		if hasNext || i == (numRows-1) {
+			r, err := s.exec(pr, args[lastFrom:to], true, commit)
+			if rowsAffected, err := r.RowsAffected(); err != nil {
+				totRowsAffected += rowsAffected
+			}
+			if err != nil {
+				return driver.RowsAffected(totRowsAffected), err
+			}
+			lastFrom = to
+		}
+	}
+	return driver.RowsAffected(totRowsAffected), nil
+}
+
+// exec executes an exec server call.
+func (s *Session) exec(pr *PrepareResult, args []interface{}, hasLob, commit bool) (driver.Result, error) {
+	inputParameters, err := newInputParameters(pr.parameterFields, args, hasLob)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
 	rows := &rowsAffected{}
 	var ids []locatorID
 	lobReply := &writeLobReply{}
-	var numRow int64
+	var rowsAffected int64
 
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
 		case pkRowsAffected:
 			s.pr.read(rows)
-			numRow = rows.total()
+			rowsAffected = rows.total()
 		case pkWriteLobReply:
 			s.pr.read(lobReply)
 			ids = lobReply.ids
@@ -279,7 +373,7 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 	if fc == fcDDL {
 		return driver.ResultNoRows, nil
 	}
-	return driver.RowsAffected(numRow), nil
+	return driver.RowsAffected(rowsAffected), nil
 }
 
 // QueryCall executes a stored procecure (by Query).
@@ -289,16 +383,29 @@ func (s *Session) QueryCall(pr *PrepareResult, args []interface{}) (driver.Rows,
 		invariant: #inPrmFields == #args
 	*/
 	var inPrmFields, outPrmFields []*ParameterField
+	hasInLob := false
 	for _, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
+			if f.tc.isLob() {
+				hasInLob = true
+			}
 		}
 		if f.Out() {
 			outPrmFields = append(outPrmFields, f)
 		}
 	}
 
-	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), newInputParameters(inPrmFields, args)); err != nil {
+	if hasInLob {
+		if _, err := s.fetchFirstLobChunk(args); err != nil {
+			return nil, err
+		}
+	}
+	inputParameters, err := newInputParameters(inPrmFields, args, hasInLob)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -346,10 +453,14 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 	*/
 	var inPrmFields, outPrmFields []*ParameterField
 	var inArgs, outArgs []interface{}
+	hasInLob := false
 	for i, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
 			inArgs = append(inArgs, args[i])
+			if f.tc.isLob() {
+				hasInLob = true
+			}
 		}
 		if f.Out() {
 			outPrmFields = append(outPrmFields, f)
@@ -362,7 +473,16 @@ func (s *Session) ExecCall(pr *PrepareResult, args []interface{}) (driver.Result
 		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
 	}
 
-	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), newInputParameters(inPrmFields, inArgs)); err != nil {
+	if hasInLob {
+		if _, err := s.fetchFirstLobChunk(inArgs); err != nil {
+			return nil, err
+		}
+	}
+	inputParameters, err := newInputParameters(inPrmFields, inArgs, hasInLob)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, false, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -413,6 +533,7 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 			outPrms.outputFields = cr.outputFields
 			s.pr.read(outPrms)
 			cr.fieldValues = outPrms.fieldValues
+			cr.decodeErrors = outPrms.decodeErrors
 		case pkResultMetadata:
 			/*
 				procedure call with table parameters does return metadata for each table
@@ -429,6 +550,7 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
 			qr.fieldValues = resSet.fieldValues
+			qr.decodeErrors = resSet.decodeErrors
 			qr.attributes = ph.partAttributes
 		case pkResultsetID:
 			s.pr.read((*resultsetID)(&qr.rsID))
@@ -445,7 +567,26 @@ func (s *Session) readCall(outputFields []*ParameterField) (*callResult, []locat
 // Query executes a query.
 func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (driver.Rows, error) {
 	// allow e.g inserts as query -> handle commit like in exec
-	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), newInputParameters(pr.parameterFields, args)); err != nil {
+
+	hasLob := func() bool {
+		for _, f := range pr.parameterFields {
+			if f.tc.isLob() {
+				return true
+			}
+		}
+		return false
+	}()
+
+	if hasLob {
+		if _, err := s.fetchFirstLobChunk(args); err != nil {
+			return nil, err
+		}
+	}
+	inputParameters, err := newInputParameters(pr.parameterFields, args, hasLob)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.pw.write(s.sessionID, mtExecute, commit, statementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -460,6 +601,7 @@ func (s *Session) Query(pr *PrepareResult, args []interface{}, commit bool) (dri
 			resSet.resultFields = qr.fields
 			s.pr.read(resSet)
 			qr.fieldValues = resSet.fieldValues
+			qr.decodeErrors = resSet.decodeErrors
 			qr.attributes = ph.partAttributes
 		}
 	}); err != nil {
@@ -482,8 +624,9 @@ func (s *Session) fetchNext(qr *queryResult) error {
 	return s.pr.iterateParts(func(ph *partHeader) {
 		if ph.partKind == pkResultset {
 			s.pr.read(resSet)
-			qr.attributes = ph.partAttributes
 			qr.fieldValues = resSet.fieldValues
+			qr.decodeErrors = resSet.decodeErrors
+			qr.attributes = ph.partAttributes
 		}
 	})
 }
@@ -646,9 +789,9 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, args []interface{}) error {
+
 	chunkSize := s.cfg.LobChunkSize
 
-	readers := make([]io.Reader, 0, len(ids))
 	descrs := make([]*writeLobDescr, 0, len(ids))
 
 	numInPrmField := len(inPrmFields)
@@ -657,18 +800,14 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 	for i, arg := range args { // range over args (mass / bulk operation)
 		f := inPrmFields[i%numInPrmField]
 		if f.tc.isLob() {
-			rd, ok := arg.(io.Reader)
+			lobInDescr, ok := arg.(*lobInDescr)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - io.Reader expected", arg)
-			}
-			if f.tc.isCharBased() {
-				rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", arg)
 			}
 			if j >= len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			readers = append(readers, rd)
-			descrs = append(descrs, &writeLobDescr{id: ids[j]})
+			descrs = append(descrs, &writeLobDescr{lobInDescr: lobInDescr, id: ids[j]})
 			j++
 		}
 	}
@@ -687,18 +826,8 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 		}
 
 		// TODO check total size limit
-		for i, descr := range descrs {
-			descr.b = make([]byte, chunkSize)
-			size, err := readers[i].Read(descr.b)
-			descr.b = descr.b[:size]
-			if err != nil && err != io.EOF {
-				return err
-			}
-			descr.ofs = -1 //offset (-1 := append)
-			descr.opt = loDataincluded
-			if err == io.EOF {
-				descr.opt |= loLastdata
-			}
+		for _, descr := range descrs {
+			descr.fetchNext(chunkSize)
 		}
 
 		writeLobRequest.descrs = descrs
@@ -716,6 +845,7 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 				outPrms.outputFields = cr.outputFields
 				s.pr.read(outPrms)
 				cr.fieldValues = outPrms.fieldValues
+				cr.decodeErrors = outPrms.decodeErrors
 			case pkWriteLobReply:
 				s.pr.read(lobReply)
 				ids = lobReply.ids
@@ -724,17 +854,15 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 			return err
 		}
 
-		// remove done descr and readers
+		// remove done descr
 		j := 0
-		for i, descr := range descrs {
+		for _, descr := range descrs {
 			if !descr.opt.isLastData() {
 				descrs[j] = descr
-				readers[j] = readers[i]
 				j++
 			}
 		}
 		descrs = descrs[:j]
-		readers = readers[:j]
 	}
 	return nil
 }

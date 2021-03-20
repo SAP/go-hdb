@@ -1,6 +1,21 @@
 Release Notes
 =============
 
+## Release 0.103
+
+
+#### Release Notes
+
+- Added support of Go 1.6
+- Dropped support of Go language versions < Go 1.4
+- Deprecation of io/ioutil starting with Go 1.6
+- Support of bulk / many inserts using geospatial data types
+- Additional context information is provided in case of UTF-8 / CESU-8 conversion errors
+
+#### Incompatibilities
+
+- no known incompatibilities
+
 ## Release 0.102
 
 #### Minor revisions
@@ -17,7 +32,7 @@ Release 0.102.6 (upgrade urgency: low)
 Release 0.102.5 (upgrade urgency: moderate)
 
 - Early garbage collection of bulk / many attributes.
-- Fixed issue using context cancelCtx (context.WithCancel(...)) in sql.DB statements.
+- Fixed issue using context cancelCtx (context.WithCancel(...)) in sql.DB statements
 
 Release 0.102.4 (upgrade urgency: moderate)
 
@@ -76,7 +91,7 @@ Release 0.101.1
 
 Release 0.100.14
 
-- Added support of Go 1.3 again
+- Added support of Go 1.13 again
 
 Release 0.100.13
 
@@ -123,7 +138,7 @@ Release 0.100.1 - 0.100.4
 
 #### Release Notes
 
-- Added support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication.
+- Added support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication
 
 PBKDF2 authentification is now used as default. Standard user / password authentication is used as fallback solution.
 

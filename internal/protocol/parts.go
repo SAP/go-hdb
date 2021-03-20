@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -25,11 +25,10 @@ type partDecodeEncoder interface {
 	partEncoder
 }
 
-// TODO: remove when 1.13 compatibility is finally removed
-// type partReadWriter interface {
-// 	partReader
-// 	partWriter
-// }
+type partReadWriter interface {
+	partReader
+	partWriter
+}
 
 type part interface {
 	String() string // should support Stringer interface

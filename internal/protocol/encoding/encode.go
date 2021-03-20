@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -61,7 +61,7 @@ func (e *Encoder) Zeroes(cnt int) {
 	}
 }
 
-// Bytes writes a bytes slice.
+// Bytes writes a byte slice.
 func (e *Encoder) Bytes(p []byte) {
 	if e.err != nil {
 		return

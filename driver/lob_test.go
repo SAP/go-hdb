@@ -1,6 +1,6 @@
 // +build !unit
 
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -86,7 +86,8 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	go func() {
 		defer wg.Done()
 		if _, err := stmt.Exec(lob); err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		t.Log("exec finalized")
 	}()
@@ -112,7 +113,8 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	go func() {
 		defer wg.Done()
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		t.Log("scan finalized")
 	}()

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -80,21 +80,53 @@ var _ sessionSetter = (*lobOutDescr)(nil)
 
 /*
 TODO description
-lobOutDescr
-
+lobInDescr
 */
 type lobInDescr struct {
+	rd    io.Reader
+	opt   lobOptions
+	_size int
+	pos   int
+	b     []byte
+}
+
+func newLobInDescr(rd io.Reader) *lobInDescr {
+	return &lobInDescr{rd: rd}
+}
+
+func (d *lobInDescr) String() string {
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, d.b[:25])
+}
+
+func (d *lobInDescr) fetchNext(chunkSize int) (bool, error) {
+	if cap(d.b) < chunkSize {
+		d.b = make([]byte, chunkSize)
+	}
+	d.b = d.b[:chunkSize]
+
+	var err error
 	/*
-		currently no data is transformed for input parameters
-		--> opt == 0 (no data included)
-		--> size == 0
-		--> pos == 0
-		--> b == nil
+		We need to guarantee, that a max amount of data is read to prevent
+		piece wise LOB writing when avoidable
+		--> ReadFull
 	*/
-	opt  lobOptions
-	size int32
-	pos  int32
-	b    []byte // currently no data is transformed for input parameters
+	d._size, err = io.ReadFull(d.rd, d.b)
+	d.b = d.b[:d._size]
+
+	d.opt = loDataincluded
+	if err != io.EOF && err != io.ErrUnexpectedEOF {
+		return false, err
+	}
+	d.opt |= loLastdata
+	return true, nil
+}
+
+func (d *lobInDescr) setPos(pos int) { d.pos = pos }
+
+func (d *lobInDescr) size() int { return d._size }
+
+func (d *lobInDescr) writeFirst(enc *encoding.Encoder) {
+	enc.Bytes(d.b)
 }
 
 /*
@@ -136,14 +168,25 @@ write lobs:
 
 // descriptor for writes (lob -> db)
 type writeLobDescr struct {
-	id  locatorID
-	opt lobOptions
-	ofs int64
-	b   []byte
+	lobInDescr *lobInDescr
+	id         locatorID
+	opt        lobOptions
+	ofs        int64
+	b          []byte
 }
 
 func (d writeLobDescr) String() string {
 	return fmt.Sprintf("id %d options %s offset %d bytes %v", d.id, d.opt, d.ofs, d.b)
+}
+
+func (d *writeLobDescr) fetchNext(chunkSize int) error {
+	if _, err := d.lobInDescr.fetchNext(chunkSize); err != nil {
+		return err
+	}
+	d.opt = d.lobInDescr.opt
+	d.ofs = -1 //offset (-1 := append)
+	d.b = d.lobInDescr.b
+	return nil
 }
 
 // sniffer

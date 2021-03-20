@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -99,6 +99,28 @@ func (r *noResultType) Columns() []string              { return noColumns }
 func (r *noResultType) Close() error                   { return nil }
 func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
 
+// decodeError
+type decodeError struct {
+	row       int
+	fieldName string
+	s         string // error text
+}
+
+func (e *decodeError) Error() string {
+	return fmt.Sprintf("decode error: %s row: %d fieldname: %s", e.s, e.row, e.fieldName)
+}
+
+type decodeErrors []*decodeError
+
+func (errors decodeErrors) seek(row int) error {
+	for _, err := range errors {
+		if err.row == row {
+			return err
+		}
+	}
+	return nil
+}
+
 // check if queryResult does implement all driver row interfaces.
 var (
 	_ driver.Rows                           = (*queryResult)(nil)
@@ -110,19 +132,20 @@ var (
 	_ driver.RowsNextResultSet              = (*queryResult)(nil)
 )
 
-// A QueryResult represents the resultset of a query.
+// queryResult represents the resultset of a query.
 type queryResult struct {
 	// field alignment
-	fields      []*resultField
-	fieldValues []driver.Value
-	_columns    []string
-	lastErr     error
-	session     *Session
-	rsID        uint64
-	pos         int
-	onClose     func()
-	attributes  partAttributes
-	closed      bool
+	fields       []*resultField
+	fieldValues  []driver.Value
+	decodeErrors decodeErrors
+	_columns     []string
+	lastErr      error
+	session      *Session
+	rsID         uint64
+	pos          int
+	onClose      func()
+	attributes   partAttributes
+	closed       bool
 }
 
 // OnClose implements the OnCloser interface
@@ -189,6 +212,7 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 	}
 
 	qr.copyRow(qr.pos, dest)
+	err := qr.decodeErrors.seek(qr.pos)
 	qr.pos++
 
 	// TODO eliminate
@@ -197,7 +221,7 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 			v.setSession(qr.session)
 		}
 	}
-	return nil
+	return err
 }
 
 // ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
@@ -249,6 +273,7 @@ type callResult struct { // call output parameters
 	session      *Session
 	outputFields []*ParameterField
 	fieldValues  []driver.Value
+	decodeErrors decodeErrors
 	_columns     []string
 	qrs          []*queryResult // table output parameters
 	eof          bool
@@ -281,6 +306,7 @@ func (cr *callResult) Next(dest []driver.Value) error {
 	}
 
 	copy(dest, cr.fieldValues)
+	err := cr.decodeErrors.seek(0)
 	cr.eof = true
 	// TODO eliminate
 	for _, v := range dest {
@@ -288,7 +314,7 @@ func (cr *callResult) Next(dest []driver.Value) error {
 			v.setSession(cr.session)
 		}
 	}
-	return nil
+	return err
 }
 
 // Close implements the driver.Rows interface.
@@ -565,9 +591,7 @@ func (r *protocolReader) skipPart() error {
 func (r *protocolReader) readPart(part partReader) error {
 
 	r.dec.ResetCnt()
-	if err := part.decode(r.dec, r.ph); err != nil {
-		return err // do not ignore partReader errros
-	}
+	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
 	r.tracer.Log(part)
 
@@ -598,7 +622,7 @@ func (r *protocolReader) readPart(part partReader) error {
 	if r.cntPart != r.numPart || r.msgSize == 0 {
 		r.dec.Skip(padBytes(int(r.ph.bufferLength)))
 	}
-	return nil
+	return err
 }
 
 func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
@@ -635,9 +659,6 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 			}
 			if !r.partRead {
 				r.skip()
-			}
-			if r.err != nil {
-				return r.err
 			}
 		}
 	}

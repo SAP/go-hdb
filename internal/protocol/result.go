@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -155,7 +155,9 @@ func (r *resultMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
 		names.insert(f.columnDisplayNameOffset)
 	}
 
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 
 	for _, f := range r.resultFields {
 		f.tableName = names.name(f.tableNameOffset)
@@ -163,8 +165,6 @@ func (r *resultMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
 		f.columnName = names.name(f.columnNameOffset)
 		f.columnDisplayName = names.name(f.columnDisplayNameOffset)
 	}
-
-	//r.resultFieldSet.decode(dec)
 	return dec.Error()
 }
 
@@ -172,6 +172,7 @@ func (r *resultMetadata) decode(dec *encoding.Decoder, ph *partHeader) error {
 type resultset struct {
 	resultFields []*resultField
 	fieldValues  []driver.Value
+	decodeErrors decodeErrors
 }
 
 func (r *resultset) String() string {
@@ -187,7 +188,7 @@ func (r *resultset) decode(dec *encoding.Decoder, ph *partHeader) error {
 		for j, f := range r.resultFields {
 			var err error
 			if r.fieldValues[i*cols+j], err = f.decodeRes(dec); err != nil {
-				return err
+				r.decodeErrors = append(r.decodeErrors, &decodeError{row: i, fieldName: f.name(), s: err.Error()}) // collect decode / conversion errors
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -206,7 +206,9 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 		names.insert(f.offset)
 	}
 
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 
 	for _, f := range m.parameterFields {
 		f.fieldName = names.name(f.offset)
@@ -218,10 +220,11 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 type inputParameters struct {
 	inputFields []*ParameterField
 	args        []interface{}
+	hasLob      bool
 }
 
-func newInputParameters(inputFields []*ParameterField, args []interface{}) *inputParameters {
-	return &inputParameters{inputFields: inputFields, args: args}
+func newInputParameters(inputFields []*ParameterField, args []interface{}, hasLob bool) (*inputParameters, error) {
+	return &inputParameters{inputFields: inputFields, args: args, hasLob: hasLob}, nil
 }
 
 func (p *inputParameters) String() string {
@@ -229,23 +232,40 @@ func (p *inputParameters) String() string {
 }
 
 func (p *inputParameters) size() int {
-	size := len(p.args)
-	cnt := len(p.inputFields)
+	size := 0
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+		return 0
+	}
 
-	for i, arg := range p.args {
-		// mass insert
-		f := p.inputFields[i%cnt]
-		size += f.prmSize(arg)
+	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
+
+		size += numColumns
+
+		for j := 0; j < numColumns; j++ {
+			f := p.inputFields[j]
+			size += f.prmSize(p.args[i*numColumns+j])
+		}
+
+		// lob input parameter: set offset position of lob data
+		if p.hasLob {
+			for j := 0; j < numColumns; j++ {
+				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+					lobInDescr.setPos(size)
+					size += lobInDescr.size()
+				}
+			}
+		}
 	}
 	return size
 }
 
 func (p *inputParameters) numArg() int {
-	cnt := len(p.inputFields)
-	if cnt == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return 0
 	}
-	return len(p.args) / cnt
+	return len(p.args) / numColumns
 }
 
 func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
@@ -255,14 +275,26 @@ func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 }
 
 func (p *inputParameters) encode(enc *encoding.Encoder) error {
-	cnt := len(p.inputFields)
+	numColumns := len(p.inputFields)
+	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
+		return nil
+	}
 
-	for i, arg := range p.args {
-		//mass insert
-		f := p.inputFields[i%cnt]
-
-		if err := f.encodePrm(enc, arg); err != nil {
-			return err
+	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
+		for j := 0; j < numColumns; j++ {
+			//mass insert
+			f := p.inputFields[j]
+			if err := f.encodePrm(enc, p.args[i*numColumns+j]); err != nil {
+				return err
+			}
+		}
+		// lob input parameter: write first data chunk
+		if p.hasLob {
+			for j := 0; j < numColumns; j++ {
+				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+					lobInDescr.writeFirst(enc)
+				}
+			}
 		}
 	}
 	return nil
@@ -272,6 +304,7 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 type outputParameters struct {
 	outputFields []*ParameterField
 	fieldValues  []driver.Value
+	decodeErrors decodeErrors
 }
 
 func (p *outputParameters) String() string {
@@ -287,7 +320,7 @@ func (p *outputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
 		for j, f := range p.outputFields {
 			var err error
 			if p.fieldValues[i*cols+j], err = f.decodeRes(dec); err != nil {
-				return err
+				p.decodeErrors = append(p.decodeErrors, &decodeError{row: i, fieldName: f.name(), s: err.Error()}) // collect decode / conversion errors
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -23,7 +23,10 @@ func (c *command) resize(size int) {
 func (c command) size() int { return cesu8.Size(c) }
 func (c *command) decode(dec *encoding.Decoder, ph *partHeader) error {
 	c.resize(int(ph.bufferLength))
-	*c = dec.CESU8Bytes(len(*c))
+	var err error
+	if *c, err = dec.CESU8Bytes(len(*c)); err != nil {
+		return err
+	}
 	return dec.Error()
 }
 func (c command) encode(enc *encoding.Encoder) error { enc.CESU8Bytes(c); return nil }

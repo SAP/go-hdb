@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -49,9 +49,10 @@ func (n fieldNames) name(offset uint32) string {
 	return ""
 }
 
-func (n fieldNames) decode(dec *encoding.Decoder) {
+func (n fieldNames) decode(dec *encoding.Decoder) error {
 	// TODO sniffer - python client texts are returned differently?
 	// - double check offset calc (CESU8 issue?)
+	var err error
 	pos := uint32(0)
 	for i, on := range n {
 		diff := int(on.offset - pos)
@@ -59,10 +60,14 @@ func (n fieldNames) decode(dec *encoding.Decoder) {
 			dec.Skip(diff)
 		}
 		size := int(dec.Byte())
-		b := dec.CESU8Bytes(size)
+		b, decodeErr := dec.CESU8Bytes(size)
+		if decodeErr != nil { // do not return here -> read stream would be broken
+			err = decodeErr
+		}
 		n[i].name = string(b)
 		pos += uint32(1 + size + diff) // len byte + size + diff
 	}
+	return err
 }
 
 func resizeFieldValues(size int, values []driver.Value) []driver.Value {

@@ -1,6 +1,6 @@
 // +build !unit
 
-// SPDX-FileCopyrightText: 2014-2020 SAP SE
+// SPDX-FileCopyrightText: 2014-2021 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/big"
@@ -184,7 +183,7 @@ func TestDataType(t *testing.T) {
 
 			walk := func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() && filter(info.Name()) {
-					content, err := ioutil.ReadFile(path)
+					content, err := _readFile(path)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -545,51 +544,14 @@ func TestDataType(t *testing.T) {
 	compareLob := func(in, out Lob, t *testing.T) bool {
 		if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
 			t.Fatal(err)
+			return false
 		}
-		content, err := ioutil.ReadAll(in.rd)
+		content, err := _readAll(in.rd)
 		if err != nil {
 			t.Fatal(err)
 			return false
 		}
-
-		// t.Log("CONTENT1")
-		// t.Logf("%s", content)
-		// t.Log("CONTENT2")
-		// t.Logf("%s", out.wr.(*bytes.Buffer).Bytes())
-
-		// t.Log()
-		// t.Log("CONTENT1")
-		// t.Logf("%v", content)
-		// t.Log("CONTENT2")
-		// t.Logf("%v", out.wr.(*bytes.Buffer).Bytes())
-
-		// t.Logf("length %d %d", len(content), len(out.wr.(*bytes.Buffer).Bytes()))
-
-		content2 := out.wr.(*bytes.Buffer).Bytes()
-
-		for i, ch := range content {
-			if i < len(content2) {
-
-				if ch != content2[i] {
-					// t.Logf("%s", content[i:])
-					// t.Logf("%s", content2[i:])
-
-					// t.Log()
-
-					// t.Logf("diff %d %v %v", i, ch, content2[i])
-					return true
-
-					//panic("unequal")
-				}
-			}
-		}
-
-		equal := bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes())
-
-		if equal {
-			return equal
-		}
-		return true
+		return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes())
 	}
 
 	checkLob := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
@@ -598,6 +560,16 @@ func TestDataType(t *testing.T) {
 			return in.Valid == out.Valid && (!in.Valid || compareLob(*in.Lob, *out.Lob, t))
 		}
 		return compareLob(in.(Lob), out.(Lob), t)
+	}
+
+	// for text and bintext do not check content as we have seen examples for bintext
+	// where the content was slightly modified by hdb (e.g. elimination of spaces)
+	checkText := func(in, out interface{}, test *dataTypeTest, t *testing.T) bool {
+		if out, ok := out.(NullLob); ok {
+			in := in.(NullLob)
+			return in.Valid == out.Valid
+		}
+		return true
 	}
 
 	// baseline: alphanum is varchar
@@ -635,52 +607,54 @@ func TestDataType(t *testing.T) {
 		return formatAlphanum(in.(string)) == out.(string)
 	}
 
-	tests := []*dataTypeTest{
-		{DfvLevel1, dt.CondEQ, "timestamp", 0, 0, checkTimestamp, timeTestData},
-		{DfvLevel1, dt.CondEQ, "longdate", 0, 0, checkTimestamp, timeTestData},
-		{DfvLevel1, dt.CondEQ, "alphanum", 20, 0, checkAlphanumVarchar, alphanumTestData},
+	tests := func() []*dataTypeTest { // as tests a re executed in parallel -> do not reuse test data (especially LOBs)
+		return []*dataTypeTest{
+			{DfvLevel1, dt.CondEQ, "timestamp", 0, 0, checkTimestamp, timeTestData},
+			{DfvLevel1, dt.CondEQ, "longdate", 0, 0, checkTimestamp, timeTestData},
+			{DfvLevel1, dt.CondEQ, "alphanum", 20, 0, checkAlphanumVarchar, alphanumTestData},
 
-		{DfvLevel2, dt.CondGE, "timestamp", 0, 0, checkLongdate, timeTestData},
-		{DfvLevel2, dt.CondGE, "longdate", 0, 0, checkLongdate, timeTestData},
-		{DfvLevel2, dt.CondGE, "alphanum", 20, 0, checkAlphanum, alphanumTestData},
+			{DfvLevel2, dt.CondGE, "timestamp", 0, 0, checkLongdate, timeTestData},
+			{DfvLevel2, dt.CondGE, "longdate", 0, 0, checkLongdate, timeTestData},
+			{DfvLevel2, dt.CondGE, "alphanum", 20, 0, checkAlphanum, alphanumTestData},
 
-		{DfvLevel1, dt.CondGE, "tinyint", 0, 0, checkInt, tinyintTestData},
-		{DfvLevel1, dt.CondGE, "smallint", 0, 0, checkInt, smallintTestData},
-		{DfvLevel1, dt.CondGE, "integer", 0, 0, checkInt, integerTestData},
-		{DfvLevel1, dt.CondGE, "bigint", 0, 0, checkInt, bigintTestData},
-		{DfvLevel1, dt.CondGE, "real", 0, 0, checkFloat, realTestData},
-		{DfvLevel1, dt.CondGE, "double", 0, 0, checkFloat, doubleTestData},
-		/*
-		 using unicode (CESU-8) data for char HDB
-		 - successful insert into table
-		 - but query table returns
-		   SQL HdbError 7 - feature not supported: invalid character encoding: ...
-		 --> use ASCII test data only
-		 surprisingly: varchar works with unicode characters
-		*/
-		{DfvLevel1, dt.CondGE, "char", 40, 0, checkFixString, asciiStringTestData},
-		{DfvLevel1, dt.CondGE, "varchar", 40, 0, checkString, stringTestData},
-		{DfvLevel1, dt.CondGE, "nchar", 20, 0, checkFixString, stringTestData},
-		{DfvLevel1, dt.CondGE, "nvarchar", 20, 0, checkString, stringTestData},
-		{DfvLevel1, dt.CondGE, "binary", 20, 0, checkFixBytes, binaryTestData},
-		{DfvLevel1, dt.CondGE, "varbinary", 20, 0, checkBytes, binaryTestData},
-		{DfvLevel1, dt.CondGE, "date", 0, 0, checkDate, timeTestData},
-		{DfvLevel1, dt.CondGE, "time", 0, 0, checkTime, timeTestData},
-		{DfvLevel1, dt.CondGE, "seconddate", 0, 0, checkDateTime, timeTestData},
-		{DfvLevel1, dt.CondGE, "daydate", 0, 0, checkDate, timeTestData},
-		{DfvLevel1, dt.CondGE, "secondtime", 0, 0, checkTime, timeTestData},
-		{DfvLevel1, dt.CondGE, "decimal", 0, 0, checkDecimal, decimalTestData}, // floating point decimal number
-		{DfvLevel1, dt.CondGE, "boolean", 0, 0, checkBoolean, booleanTestData},
-		{DfvLevel1, dt.CondGE, "clob", 0, 0, checkLob, lobTestData(true)},
-		{DfvLevel1, dt.CondGE, "nclob", 0, 0, checkLob, lobTestData(false)},
-		{DfvLevel1, dt.CondGE, "blob", 0, 0, checkLob, lobTestData(false)},
+			{DfvLevel1, dt.CondGE, "tinyint", 0, 0, checkInt, tinyintTestData},
+			{DfvLevel1, dt.CondGE, "smallint", 0, 0, checkInt, smallintTestData},
+			{DfvLevel1, dt.CondGE, "integer", 0, 0, checkInt, integerTestData},
+			{DfvLevel1, dt.CondGE, "bigint", 0, 0, checkInt, bigintTestData},
+			{DfvLevel1, dt.CondGE, "real", 0, 0, checkFloat, realTestData},
+			{DfvLevel1, dt.CondGE, "double", 0, 0, checkFloat, doubleTestData},
+			/*
+			 using unicode (CESU-8) data for char HDB
+			 - successful insert into table
+			 - but query table returns
+			   SQL HdbError 7 - feature not supported: invalid character encoding: ...
+			 --> use ASCII test data only
+			 surprisingly: varchar works with unicode characters
+			*/
+			{DfvLevel1, dt.CondGE, "char", 40, 0, checkFixString, asciiStringTestData},
+			{DfvLevel1, dt.CondGE, "varchar", 40, 0, checkString, stringTestData},
+			{DfvLevel1, dt.CondGE, "nchar", 20, 0, checkFixString, stringTestData},
+			{DfvLevel1, dt.CondGE, "nvarchar", 20, 0, checkString, stringTestData},
+			{DfvLevel1, dt.CondGE, "binary", 20, 0, checkFixBytes, binaryTestData},
+			{DfvLevel1, dt.CondGE, "varbinary", 20, 0, checkBytes, binaryTestData},
+			{DfvLevel1, dt.CondGE, "date", 0, 0, checkDate, timeTestData},
+			{DfvLevel1, dt.CondGE, "time", 0, 0, checkTime, timeTestData},
+			{DfvLevel1, dt.CondGE, "seconddate", 0, 0, checkDateTime, timeTestData},
+			{DfvLevel1, dt.CondGE, "daydate", 0, 0, checkDate, timeTestData},
+			{DfvLevel1, dt.CondGE, "secondtime", 0, 0, checkTime, timeTestData},
+			{DfvLevel1, dt.CondGE, "decimal", 0, 0, checkDecimal, decimalTestData}, // floating point decimal number
+			{DfvLevel1, dt.CondGE, "boolean", 0, 0, checkBoolean, booleanTestData},
+			{DfvLevel1, dt.CondGE, "clob", 0, 0, checkLob, lobTestData(true)},
+			{DfvLevel1, dt.CondGE, "nclob", 0, 0, checkLob, lobTestData(false)},
+			{DfvLevel1, dt.CondGE, "blob", 0, 0, checkLob, lobTestData(false)},
 
-		{DfvLevel4, dt.CondGE, "text", 0, 0, checkLob, lobTestData(false)},
-		{DfvLevel6, dt.CondGE, "bintext", 0, 0, checkLob, lobTestData(true)},
+			{DfvLevel4, dt.CondGE, "text", 0, 0, checkText, lobTestData(false)},
+			{DfvLevel6, dt.CondGE, "bintext", 0, 0, checkText, lobTestData(true)},
 
-		{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
-		{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
-		{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
+			{DfvLevel8, dt.CondGE, "decimal", 18, 2, checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
+			{DfvLevel8, dt.CondGE, "decimal", 28, 2, checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
+			{DfvLevel8, dt.CondGE, "decimal", 38, 2, checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
+		}
 	}
 
 	var testSet map[int]bool
@@ -704,7 +678,7 @@ func TestDataType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
-				for _, test := range tests {
+				for _, test := range tests() {
 					if test.checkRun(dfv) {
 						t.Run(test.name(), func(t *testing.T) {
 							testDataType(db, test, t)
