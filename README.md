@@ -1,6 +1,5 @@
 # go-hdb
-
-[![GoDoc](https://godoc.org/github.com/SAP/go-hdb/driver?status.png)](https://godoc.org/github.com/SAP/go-hdb/driver)
+[![Go Reference](https://pkg.go.dev/badge/github.com/SAP/go-hdb/driver.svg)](https://pkg.go.dev/github.com/SAP/go-hdb/driver)
 [![Go Report Card](https://goreportcard.com/badge/github.com/SAP/go-hdb)](https://goreportcard.com/report/github.com/SAP/go-hdb)
 [![REUSE status](https://api.reuse.software/badge/git.fsfe.org/reuse/api)](https://api.reuse.software/info/git.fsfe.org/reuse/api)
 ![](https://github.com/SAP/go-hdb/workflows/build/badge.svg)
@@ -21,7 +20,7 @@ To build go-hdb you need to have a working Go environment of the [latest or seco
 
 ## Documentation
 
-API documentation and documented examples can be found at <https://godoc.org/github.com/SAP/go-hdb/driver>.
+API documentation and documented examples can be found at <https://pkg.go.dev/github.com/SAP/go-hdb/driver>.
 
 ## Tests
 

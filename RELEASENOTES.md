@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.103
 
+#### Minor revisions
+
+Release 0.103.1 (upgrade urgency: low)
+
+- Added https://go.dev package link to README.md
+- Linter fixes
 
 #### Release Notes
 

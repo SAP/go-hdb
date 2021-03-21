@@ -280,7 +280,6 @@ Bulk insert containing LOBs:
   Package invariant:
   - For all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
-
 func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driver.Result, error) {
 	hasLob := func() bool {
 		for _, f := range pr.parameterFields {
