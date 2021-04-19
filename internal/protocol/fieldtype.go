@@ -6,6 +6,7 @@ package protocol
 
 import (
 	"database/sql/driver"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -119,6 +120,7 @@ var (
 	decimalType    = _decimalType{}
 	varType        = _varType{}
 	alphaType      = _alphaType{}
+	hexType        = _hexType{}
 	cesu8Type      = _cesu8Type{}
 	lobVarType     = _lobVarType{}
 	lobCESU8Type   = _lobCESU8Type{}
@@ -144,6 +146,7 @@ type _fixed12Type struct{ prec, scale int }
 type _fixed16Type struct{ prec, scale int }
 type _varType struct{}
 type _alphaType struct{}
+type _hexType struct{}
 type _cesu8Type struct{}
 type _lobVarType struct{}
 type _lobCESU8Type struct{}
@@ -169,6 +172,7 @@ var (
 	_ fieldType = (*_fixed16Type)(nil)
 	_ fieldType = (*_varType)(nil)
 	_ fieldType = (*_alphaType)(nil)
+	_ fieldType = (*_hexType)(nil)
 	_ fieldType = (*_cesu8Type)(nil)
 	_ fieldType = (*_lobVarType)(nil)
 	_ fieldType = (*_lobCESU8Type)(nil)
@@ -195,6 +199,7 @@ func (_fixed12Type) String() string    { return "fixed12Type" }
 func (_fixed16Type) String() string    { return "fixed16Type" }
 func (_varType) String() string        { return "varType" }
 func (_alphaType) String() string      { return "alphaType" }
+func (_hexType) String() string        { return "hexType" }
 func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
@@ -241,6 +246,7 @@ func (ft _fixed16Type) convert(v interface{}) (interface{}, error) { return conv
 
 func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
 func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
+func (ft _hexType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
 func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
 
 func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v, false) }
@@ -307,9 +313,10 @@ func (ft _varType) prmSize(v interface{}) int {
 		return -1
 	}
 }
-func (ft _alphaType) prmSize(v interface{}) int {
-	return varType.prmSize(v)
-}
+func (ft _alphaType) prmSize(v interface{}) int { return varType.prmSize(v) }
+
+func (ft _hexType) prmSize(v interface{}) int { return varType.prmSize(v) / 2 }
+
 func (ft _cesu8Type) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
@@ -537,6 +544,26 @@ func (ft _varType) encodePrm(e *encoding.Encoder, v interface{}) error {
 func (ft _alphaType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	return varType.encodePrm(e, v)
 }
+
+func (ft _hexType) encodePrm(e *encoding.Encoder, v interface{}) error {
+	switch v := v.(type) {
+	case []byte:
+		b, err := hex.DecodeString(string(v))
+		if err != nil {
+			return err
+		}
+		return encodeVarBytes(e, b)
+	case string:
+		b, err := hex.DecodeString(v)
+		if err != nil {
+			return err
+		}
+		return encodeVarBytes(e, b)
+	default:
+		panic("invalid hex value") // should never happen
+	}
+}
+
 func encodeVarBytesSize(e *encoding.Encoder, size int) error {
 	switch {
 	default:
@@ -638,6 +665,7 @@ func (ft _fixed12Type) decodePrm(d *encoding.Decoder) (interface{}, error)    { 
 func (ft _fixed16Type) decodePrm(d *encoding.Decoder) (interface{}, error)    { return ft.decodeRes(d) }
 func (ft _varType) decodePrm(d *encoding.Decoder) (interface{}, error)        { return ft.decodeRes(d) }
 func (ft _alphaType) decodePrm(d *encoding.Decoder) (interface{}, error)      { return ft.decodeRes(d) }
+func (ft _hexType) decodePrm(d *encoding.Decoder) (interface{}, error)        { return ft.decodeRes(d) }
 func (ft _cesu8Type) decodePrm(d *encoding.Decoder) (interface{}, error)      { return ft.decodeRes(d) }
 
 // decode
@@ -829,6 +857,7 @@ func (_varType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	d.Bytes(b)
 	return b, nil
 }
+
 func (_alphaType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {
@@ -852,6 +881,17 @@ func (_alphaType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 		return b, nil
 	}
 }
+
+func (_hexType) decodeRes(d *encoding.Decoder) (interface{}, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	b := make([]byte, size)
+	d.Bytes(b)
+	return hex.EncodeToString(b), nil
+}
+
 func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	size, null := decodeVarBytesSize(d)
 	if null {

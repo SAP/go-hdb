@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.103.2 (upgrade urgency: medium)
+
+- Fixed conversion issue selecting spatial types
+
 Release 0.103.1 (upgrade urgency: low)
 
 - Added https://go.dev package link to README.md

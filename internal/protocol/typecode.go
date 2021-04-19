@@ -162,7 +162,7 @@ func (tc typeCode) dataType() DataType {
 		return DtTime
 	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
 		return DtDecimal
-	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcTableRef:
+	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcStPoint, tcStGeometry, tcTableRef:
 		return DtString
 	case tcBinary, tcVarbinary:
 		return DtBytes
@@ -222,6 +222,8 @@ func (tc typeCode) fieldType(length, fraction int) fieldType {
 		return cesu8Type
 	case tcBinary, tcVarbinary:
 		return varType
+	case tcStPoint, tcStGeometry:
+		return hexType
 	case tcBlob, tcClob, tcLocator:
 		return lobVarType
 	case tcNclob, tcText, tcNlocator:
