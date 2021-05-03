@@ -8,7 +8,10 @@ package driver
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -22,8 +25,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/common"
 	dt "github.com/SAP/go-hdb/driver/drivertest"
-	"github.com/SAP/go-hdb/driver/internal/spatial"
+	"github.com/SAP/go-hdb/driver/spatial"
 )
 
 type dttDef struct {
@@ -90,7 +94,7 @@ func (t *dttDef) insert() {
 	i := 0
 	for _, in := range t.testData {
 		if _, err := stmt.Exec(in, i); err != nil {
-			t.Fatalf("%d - %s", i, err)
+			t.Fatalf("type: %s - %d - %s", t.sqlType, i, err)
 		}
 		i++
 	}
@@ -188,13 +192,13 @@ type dttSpatial struct {
 	sqlType  string
 	srid     int32
 	fn       string
-	testData []spatial.STGeometry
+	testData []spatial.Geometry
 
 	tableName Identifier
 	numRecs   int
 }
 
-func newDttSpatial(sqlType string, srid int32, fn string, testData []spatial.STGeometry, t *testing.T) *dttSpatial {
+func newDttSpatial(sqlType string, srid int32, fn string, testData []spatial.Geometry, t *testing.T) *dttSpatial {
 	return &dttSpatial{sqlType: sqlType, srid: srid, fn: fn, testData: testData, T: t}
 
 }
@@ -258,8 +262,8 @@ func (t *dttSpatial) withTx(fn func(func(value interface{}))) {
 	t.numRecs = i
 }
 
-func (t *dttSpatial) withRows(ref interface{}, fn func(i int)) {
-	rows, err := t.db.Query(fmt.Sprintf("select * from %s order by i", t.tableName))
+func (t *dttSpatial) withRows(fn func(i int), dest ...interface{}) {
+	rows, err := t.db.Query(fmt.Sprintf("select x, i, x.st_aswkb(), x.st_asewkb(), x.st_aswkt(), x.st_asewkt(), x.st_asgeojson() from %s order by i", t.tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +271,7 @@ func (t *dttSpatial) withRows(ref interface{}, fn func(i int)) {
 
 	i := 0
 	for rows.Next() {
-		if err := rows.Scan(ref, &i); err != nil {
+		if err := rows.Scan(dest...); err != nil {
 			t.Fatal(err)
 		}
 		fn(i)
@@ -294,18 +298,87 @@ func (t *dttSpatial) run() {
 		}
 	})
 
-	var out string
-	t.withRows(&out, func(i int) {
+	var i int
+	var x string
+
+	asWKBBuffer := new(bytes.Buffer)
+	asWKBLob := &Lob{wr: asWKBBuffer}
+
+	asEWKBBuffer := new(bytes.Buffer)
+	asEWKBLob := &Lob{wr: asEWKBBuffer}
+
+	asWKTBuffer := new(bytes.Buffer)
+	asWKTLob := &Lob{wr: asWKTBuffer}
+
+	asEWKTBuffer := new(bytes.Buffer)
+	asEWKTLob := &Lob{wr: asEWKTBuffer}
+
+	asGeoJSONBuffer := new(bytes.Buffer)
+	asGeoJSONLob := &Lob{wr: asGeoJSONBuffer}
+
+	t.withRows(func(i int) {
 		wkb, err := spatial.EncodeWKB(t.testData[i], false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// t.Logf("wkb %s", wkb)
-		if string(wkb) != out {
-			t.Fatalf("%d value %v - expected %v", i, out, wkb)
+
+		if string(wkb) != x {
+			t.Fatalf("test %d: x value %v - expected %v", i, x, string(wkb))
 		}
 
-	})
+		ewkb, err := spatial.EncodeEWKB(t.testData[i], false, t.srid)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		wkt, err := spatial.EncodeWKT(t.testData[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ewkt, err := spatial.EncodeEWKT(t.testData[i], t.srid)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		geoJSON, err := spatial.EncodeGeoJSON(t.testData[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		asWKB := hex.EncodeToString(asWKBBuffer.Bytes())
+		if string(wkb) != asWKB {
+			t.Fatalf("test %d: wkb value %v - expected %v", i, asWKB, string(wkb))
+		}
+
+		asEWKB := hex.EncodeToString(asEWKBBuffer.Bytes())
+		if string(ewkb) != asEWKB {
+			t.Fatalf("test %d: ewkb value %v - expected %v", i, asEWKB, string(ewkb))
+		}
+
+		asWKT := asWKTBuffer.Bytes()
+		if !bytes.Equal(wkt, asWKT) {
+			t.Fatalf("test %d: wkt value %s - expected %s", i, asWKT, wkt)
+		}
+
+		asEWKT := asEWKTBuffer.Bytes()
+		if !bytes.Equal(ewkt, asEWKT) {
+			t.Fatalf("test %d: wkt value %s - expected %s", i, asEWKT, ewkt)
+		}
+
+		asGeoJSON := asGeoJSONBuffer.Bytes()
+		if !equalJSON(geoJSON, asGeoJSON, t.T) {
+			t.Logf("test %d: geoJSON value %s - expected %s", i, asGeoJSON, geoJSON)
+		}
+
+		// reset buffers
+		asWKBBuffer.Reset()
+		asEWKBBuffer.Reset()
+		asWKTBuffer.Reset()
+		asEWKTBuffer.Reset()
+		asGeoJSONBuffer.Reset()
+
+	}, &x, &i, asWKBLob, asEWKBLob, asWKTLob, asEWKTLob, asGeoJSONLob)
 }
 
 const (
@@ -508,7 +581,7 @@ func testInitLobFiles(t *testing.T) {
 			if !info.IsDir() && filter(info.Name()) {
 				content, err := _readFile(path)
 				if err != nil {
-					t.Fatal(err)
+					return err
 				}
 				testLobFiles = append(testLobFiles, &testLobFile{isASCII: isASCII(content), content: content})
 			}
@@ -545,35 +618,52 @@ func lobTestData(ascii bool, t *testing.T) []interface{} {
 	return testData
 }
 
-var stPointTestData = []spatial.STGeometry{
-	spatial.STPoint{Point: &spatial.Point{X: 2.5, Y: 3.0}},
-	spatial.STPoint{Point: &spatial.Point{X: 3.0, Y: 4.5}},
-	spatial.STPoint{Point: &spatial.Point{X: 3.0, Y: 6.0}},
-	spatial.STPoint{Point: &spatial.Point{X: 4.0, Y: 6.0}},
-	spatial.STPoint{},
+var stPointTestData = []spatial.Geometry{
+	spatial.Point{},
+	spatial.Point{X: 2.5, Y: 3.0},
+	spatial.Point{X: -3.0, Y: -4.5},
 }
 
-var stGeometryTestData = []spatial.STGeometry{
-	spatial.STPoint{Point: &spatial.Point{X: 2.5, Y: 3.0}},
-	spatial.STPoint{Point: &spatial.Point{X: 3.0, Y: 4.5}},
-	spatial.STPoint{Point: &spatial.Point{X: 3.0, Y: 6.0}},
-	spatial.STPoint{Point: &spatial.Point{X: 4.0, Y: 6.0}},
-	spatial.STPoint{},
+var stGeometryTestData = []spatial.Geometry{
+	spatial.Point{X: 2.5, Y: 3.0},
+	spatial.Point{X: -3.0, Y: -4.5},
+	spatial.PointZ{X: -3.0, Y: -4.5, Z: 5.0},
+	spatial.PointM{X: -3.0, Y: -4.5, M: 6.0},
+	spatial.PointM{X: -3.0, Y: -4.5, M: spatial.NaN()},
+	spatial.PointZM{X: -3.0, Y: -4.5, Z: 5.0, M: 6.0},
+	spatial.PointZM{X: -3.0, Y: -4.5, Z: 5.0, M: spatial.NaN()},
 
-	spatial.STLineString{Points: spatial.Points{spatial.Point{X: 3.0, Y: 3.0}, spatial.Point{X: 5.0, Y: 4.0}, spatial.Point{X: 6.0, Y: 3.0}}},
-	spatial.STLineString{Points: spatial.Points{spatial.Point{X: 4.0, Y: 4.0}, spatial.Point{X: 6.0, Y: 5.0}, spatial.Point{X: 7.0, Y: 4.0}}},
-	spatial.STLineString{Points: spatial.Points{spatial.Point{X: 7.0, Y: 5.0}, spatial.Point{X: 9.0, Y: 7.0}}},
-	spatial.STLineString{Points: spatial.Points{spatial.Point{X: 7.0, Y: 3.0}, spatial.Point{X: 8.0, Y: 5.0}}},
-	spatial.STLineString{},
+	spatial.LineString{},
+	spatial.LineString{{X: 3.0, Y: 3.0}, {X: 5.0, Y: 4.0}, {X: 6.0, Y: 3.0}},
+	spatial.LineString{{X: 4.0, Y: 4.0}, {X: 6.0, Y: 5.0}, {X: 7.0, Y: 4.0}},
+	spatial.LineString{{X: 7.0, Y: 5.0}, {X: 9.0, Y: 7.0}},
+	spatial.LineString{{X: 7.0, Y: 3.0}, {X: 8.0, Y: 5.0}},
 
-	/*
-	   INSERT INTO SpatialShapes VALUES(11, NEW ST_POLYGON('POLYGON((6.0 7.0, 10.0 3.0, 10.0 10.0, 6.0 7.0))'));
-	   INSERT INTO SpatialShapes VALUES(12, NEW ST_POLYGON('POLYGON((4.0 5.0, 5.0 3.0, 6.0 5.0, 4.0 5.0))'));
-	   INSERT INTO SpatialShapes VALUES(13, NEW ST_POLYGON('POLYGON((1.0 1.0, 1.0 6.0, 6.0 6.0, 6.0 1.0, 1.0 1.0))'));
-	   INSERT INTO SpatialShapes VALUES(14, NEW ST_POLYGON('POLYGON((1.0 3.0, 1.0 4.0, 5.0 4.0, 5.0 3.0, 1.0 3.0))'));
-	   INSERT INTO SpatialShapes VALUES(15, NEW ST_POLYGON());
-	*/
+	spatial.CircularString{},
+	spatial.CircularString{{X: 3.0, Y: 3.0}, {X: 5.0, Y: 4.0}, {X: 6.0, Y: 3.0}},
 
+	spatial.Polygon{},
+	spatial.Polygon{{{X: 6.0, Y: 7.0}, {X: 10.0, Y: 3.0}, {X: 10.0, Y: 10.0}, {X: 6.0, Y: 7.0}}},
+	// hdb permutates ring points?
+	// same call with
+	// spatial.Polygon{{{6.0, 7.0}, {10.0, 3.0}, {10.0, 10.0}, {6.0, 7.0}}, {{6.0, 7.0}, {10.0, 3.0}, {10.0, 10.0}, {6.0, 7.0}}}
+	// would give errors as hdb changes 'middle' coordinates for included ring
+	spatial.Polygon{{{X: 6.0, Y: 7.0}, {X: 10.0, Y: 3.0}, {X: 10.0, Y: 10.0}, {X: 6.0, Y: 7.0}}, {{X: 6.0, Y: 7.0}, {X: 10.0, Y: 10.0}, {X: 10.0, Y: 3.0}, {X: 6.0, Y: 7.0}}},
+
+	spatial.MultiPoint{},
+	spatial.MultiPoint{{X: 3.0, Y: 3.0}, {X: 5.0, Y: 4.0}},
+
+	spatial.MultiLineString{},
+	spatial.MultiLineString{{{X: 3.0, Y: 3.0}, {X: 5.0, Y: 4.0}, {X: 6.0, Y: 3.0}}, {{X: 3.0, Y: 3.0}, {X: 5.0, Y: 4.0}, {X: 6.0, Y: 3.0}}},
+
+	spatial.MultiPolygon{},
+	spatial.MultiPolygon{
+		{{{X: 6.0, Y: 7.0}, {X: 10.0, Y: 3.0}, {X: 10.0, Y: 10.0}, {X: 6.0, Y: 7.0}}, {{X: 6.0, Y: 7.0}, {X: 10.0, Y: 10.0}, {X: 10.0, Y: 3.0}, {X: 6.0, Y: 7.0}}},
+		{{{X: 6.0, Y: 7.0}, {X: 10.0, Y: 3.0}, {X: 10.0, Y: 10.0}, {X: 6.0, Y: 7.0}}, {{X: 6.0, Y: 7.0}, {X: 10.0, Y: 10.0}, {X: 10.0, Y: 3.0}, {X: 6.0, Y: 7.0}}},
+	},
+
+	spatial.GeometryCollection{},
+	spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}},
 }
 
 func checkInt(in, out interface{}) bool {
@@ -799,6 +889,18 @@ func checkText(in, out interface{}) bool {
 	return true
 }
 
+func equalJSON(b1, b2 []byte, t *testing.T) bool {
+	var j1, j2 interface{}
+
+	if err := json.Unmarshal(b1, &j1); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b2, &j2); err != nil {
+		t.Fatal(err)
+	}
+	return reflect.DeepEqual(j1, j2)
+}
+
 func TestDataType(t *testing.T) {
 	type tester interface {
 		setDB(db *sql.DB)
@@ -806,25 +908,36 @@ func TestDataType(t *testing.T) {
 		run()
 	}
 
+	/*
+		hdb version 4:
+		- does not support alphanum
+		- does not support shorttext
+	*/
+
+	hdbVersion1 := common.ParseHDBVersion("1.00.000")
+	hdbVersion4 := common.ParseHDBVersion("4.00.000")
+
 	tests := []struct {
-		dfv    int
-		cond   int
-		tester func() tester
+		dfv            int
+		dvfCond        int
+		hdbVersion     *common.HDBVersion
+		hdbVersionCond int
+		tester         func() tester
 	}{
-		{DfvLevel1, dt.CondEQ, func() tester { return newDttDef("timestamp", checkTimestamp, timeTestData, t) }},
-		{DfvLevel1, dt.CondEQ, func() tester { return newDttDef("longdate", checkTimestamp, timeTestData, t) }},
-		{DfvLevel1, dt.CondEQ, func() tester { return newDttDefL("alphanum", 20, checkAlphanumVarchar(20), alphanumTestData, t) }},
+		{DfvLevel1, dt.CondEQ, hdbVersion1, dt.CondGE, func() tester { return newDttDef("timestamp", checkTimestamp, timeTestData, t) }},
+		{DfvLevel1, dt.CondEQ, hdbVersion1, dt.CondGE, func() tester { return newDttDef("longdate", checkTimestamp, timeTestData, t) }},
+		{DfvLevel1, dt.CondEQ, hdbVersion4, dt.CondLT, func() tester { return newDttDefL("alphanum", 20, checkAlphanumVarchar(20), alphanumTestData, t) }},
 
-		{DfvLevel2, dt.CondGE, func() tester { return newDttDef("timestamp", checkLongdate, timeTestData, t) }},
-		{DfvLevel2, dt.CondGE, func() tester { return newDttDef("longdate", checkLongdate, timeTestData, t) }},
-		{DfvLevel2, dt.CondGE, func() tester { return newDttDefL("alphanum", 20, checkAlphanum, alphanumTestData, t) }},
+		{DfvLevel2, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("timestamp", checkLongdate, timeTestData, t) }},
+		{DfvLevel2, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("longdate", checkLongdate, timeTestData, t) }},
+		{DfvLevel2, dt.CondGE, hdbVersion4, dt.CondLT, func() tester { return newDttDefL("alphanum", 20, checkAlphanum, alphanumTestData, t) }},
 
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("tinyint", checkInt, tinyintTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("smallint", checkInt, smallintTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("integer", checkInt, integerTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("bigint", checkInt, bigintTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("real", checkFloat, realTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("double", checkFloat, doubleTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("tinyint", checkInt, tinyintTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("smallint", checkInt, smallintTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("integer", checkInt, integerTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("bigint", checkInt, bigintTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("real", checkFloat, realTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("double", checkFloat, doubleTestData, t) }},
 
 		/*
 		 using unicode (CESU-8) data for char HDB
@@ -834,39 +947,39 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("char", 40, checkFixString, asciiStringTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("varchar", 40, checkString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("nchar", 20, checkFixString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("nvarchar", 20, checkString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("binary", 20, checkFixBytes, binaryTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDefL("varbinary", 20, checkBytes, binaryTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("date", checkDate, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("time", checkTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("seconddate", checkDateTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("daydate", checkDate, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("secondtime", checkTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("decimal", checkDecimal, decimalTestData, t) }}, // floating point decimal number
-		{DfvLevel1, dt.CondGE, func() tester { return newDttDef("boolean", checkBoolean, booleanTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("char", 40, checkFixString, asciiStringTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("varchar", 40, checkString, stringTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("nchar", 20, checkFixString, stringTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("nvarchar", 20, checkString, stringTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("binary", 20, checkFixBytes, binaryTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("varbinary", 20, checkBytes, binaryTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("date", checkDate, timeTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("time", checkTime, timeTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("seconddate", checkDateTime, timeTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("daydate", checkDate, timeTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("secondtime", checkTime, timeTestData, t) }},
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("decimal", checkDecimal, decimalTestData, t) }}, // floating point decimal number
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("boolean", checkBoolean, booleanTestData, t) }},
 
-		{DfvLevel8, dt.CondGE, func() tester { return newDttDefLF("decimal", 18, 2, checkDecimal, decimalTestData, t) }},        // precision, scale decimal number -fixed8
-		{DfvLevel8, dt.CondGE, func() tester { return newDttDefLF("decimal", 28, 2, checkDecimal, decimalFixed12TestData, t) }}, // precision, scale decimal number -fixed12
-		{DfvLevel8, dt.CondGE, func() tester { return newDttDefLF("decimal", 38, 2, checkDecimal, decimalFixed16TestData, t) }}, // precision, scale decimal number -fixed16
+		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 18, 2, checkDecimal, decimalTestData, t) }},        // precision, scale decimal number -fixed8
+		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 28, 2, checkDecimal, decimalFixed12TestData, t) }}, // precision, scale decimal number -fixed12
+		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 38, 2, checkDecimal, decimalFixed16TestData, t) }}, // precision, scale decimal number -fixed16
 
-		{DfvLevel1, dt.CondGE, func() tester { return newDttTX("clob", checkLob(t), lobTestData(true, t), t) }},   // tests executed in parallel -> do not reuse test data
-		{DfvLevel1, dt.CondGE, func() tester { return newDttTX("nclob", checkLob(t), lobTestData(false, t), t) }}, // tests executed in parallel -> do not reuse test data
-		{DfvLevel1, dt.CondGE, func() tester { return newDttTX("blob", checkLob(t), lobTestData(false, t), t) }},  // tests executed in parallel -> do not reuse test data
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("clob", checkLob(t), lobTestData(true, t), t) }},   // tests executed in parallel -> do not reuse lobs
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("nclob", checkLob(t), lobTestData(false, t), t) }}, // tests executed in parallel -> do not reuse lobs
+		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("blob", checkLob(t), lobTestData(false, t), t) }},  // tests executed in parallel -> do not reuse lobs
 
-		{DfvLevel4, dt.CondGE, func() tester { return newDttTX("text", checkText, lobTestData(false, t), t) }},   // tests executed in parallel -> do not reuse test data
-		{DfvLevel6, dt.CondGE, func() tester { return newDttTX("bintext", checkText, lobTestData(true, t), t) }}, // tests executed in parallel -> do not reuse test data
+		{DfvLevel4, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("text", checkText, lobTestData(false, t), t) }},   // tests executed in parallel -> do not reuse lobs
+		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("bintext", checkText, lobTestData(true, t), t) }}, // tests executed in parallel -> do not reuse lobs
 
-		{DfvLevel6, dt.CondGE, func() tester { return newDttSpatial("st_point", 0, "st_geomfromewkb", stPointTestData, t) }},
-		{DfvLevel6, dt.CondGE, func() tester { return newDttSpatial("st_point", 3857, "st_geomfromewkb", stPointTestData, t) }},
+		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_point", 0, "st_geomfromewkb", stPointTestData, t) }},
+		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_point", 3857, "st_geomfromewkb", stPointTestData, t) }},
 
-		{DfvLevel6, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 0, "st_geomfromewkb", stGeometryTestData, t) }},
-		{DfvLevel6, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 3857, "st_geomfromewkb", stGeometryTestData, t) }},
+		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 0, "st_geomfromewkb", stGeometryTestData, t) }},
+		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 3857, "st_geomfromewkb", stGeometryTestData, t) }},
 	}
 
-	checkRun := func(dfv, testDfv, testCond int) bool {
+	checkDFV := func(dfv, testDfv, testCond int) bool {
 		switch testCond {
 		default:
 			return true
@@ -875,6 +988,39 @@ func TestDataType(t *testing.T) {
 		case dt.CondGE:
 			return dfv >= testDfv
 		}
+	}
+
+	checkHDBVersion := func(hdbVersion, testHDBVersion *common.HDBVersion, testHDBVersionCond int) bool {
+		cmp := hdbVersion.Compare(testHDBVersion)
+		switch testHDBVersionCond {
+		case dt.CondLT:
+			if cmp != -1 {
+				return false
+			}
+		}
+		return true
+	}
+
+	hdbVersion := func(db *sql.DB, t *testing.T) *common.HDBVersion {
+		// Grab connection.
+		conn, err := db.Conn(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var hdbVersion *common.HDBVersion
+
+		if err := conn.Raw(func(driverConn interface{}) error {
+			conn, ok := driverConn.(*Conn)
+			if !ok {
+				t.Fatal("connection does not implement *driver.Conn")
+			}
+			hdbVersion = conn.ServerInfo().Version
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return hdbVersion
 	}
 
 	var testSet map[int]bool
@@ -898,8 +1044,10 @@ func TestDataType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
+				hdbVersion := hdbVersion(db, t)
+
 				for _, test := range tests {
-					if checkRun(dfv, test.dfv, test.cond) {
+					if checkDFV(dfv, test.dfv, test.dvfCond) && checkHDBVersion(hdbVersion, test.hdbVersion, test.hdbVersionCond) {
 						tester := test.tester() // create new instance to be run in parallel
 						t.Run(tester.name(), func(t *testing.T) {
 							tester.setDB(db)

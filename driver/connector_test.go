@@ -101,10 +101,12 @@ func TestConnector(t *testing.T) {
 		testConnector(dsnConnector, t)
 	})
 
-	basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
-	t.Run("basicAuthConnector", func(t *testing.T) {
-		testConnector(basicAuthConnector, t)
-	})
+	if dsnConnector.TLSConfig() == nil { // in case of TLS the following test will fail.
+		basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
+		t.Run("basicAuthConnector", func(t *testing.T) {
+			testConnector(basicAuthConnector, t)
+		})
+	}
 
 	t.Run("sessionVariables", func(t *testing.T) {
 		testSessionVariables(dsnConnector, t)

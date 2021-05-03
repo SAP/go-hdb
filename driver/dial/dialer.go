@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Package dial provides types to implement go-hdb custom dialers.
 package dial
 
 import (

@@ -89,16 +89,8 @@ func (tc typeCode) isLob() bool {
 	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext || tc == tcLocator || tc == tcNlocator
 }
 
-func (tc typeCode) isCharBased() bool {
-	return tc == tcNvarchar || tc == tcNstring || tc == tcNclob || tc == tcText || tc == tcBintext
-}
-
 func (tc typeCode) isVariableLength() bool {
 	return tc == tcChar || tc == tcNchar || tc == tcVarchar || tc == tcNvarchar || tc == tcBinary || tc == tcVarbinary || tc == tcShorttext || tc == tcAlphanum
-}
-
-func (tc typeCode) isIntegerType() bool {
-	return tc == tcTinyint || tc == tcSmallint || tc == tcInteger || tc == tcBigint
 }
 
 func (tc typeCode) isDecimalType() bool {

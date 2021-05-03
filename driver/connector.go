@@ -58,7 +58,7 @@ const (
 	MaxBulkSize     = p.MaxNumArg     // Maximum bulk size.
 	minLobChunkSize = 128             // Minimal lobChunkSize
 	// TODO check maxLobChunkSize
-	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
+	//maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
 )
 
 /*

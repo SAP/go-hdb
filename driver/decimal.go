@@ -24,8 +24,8 @@ func (d *Decimal) Scan(src interface{}) error {
 }
 
 // Value implements the database/sql/Valuer interface.
-func (d *Decimal) Value() (driver.Value, error) {
-	return (*big.Rat)(d), nil
+func (d Decimal) Value() (driver.Value, error) {
+	return (*big.Rat)(&d), nil
 }
 
 // NullDecimal represents an Decimal that may be null.

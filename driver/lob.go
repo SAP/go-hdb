@@ -68,20 +68,17 @@ func (l *Lob) Scan(src interface{}) error {
 	return nil
 }
 
+// Value implements the database/sql/Valuer interface.
+func (l Lob) Value() (driver.Value, error) {
+	return l.rd, nil
+}
+
 // NullLob represents an Lob that may be null.
 // NullLob implements the Scanner interface so
 // it can be used as a scan destination, similar to NullString.
 type NullLob struct {
 	Lob   *Lob
 	Valid bool // Valid is true if Lob is not NULL
-}
-
-// Value implements the database/sql/Valuer interface.
-func (l NullLob) Value() (driver.Value, error) {
-	if !l.Valid {
-		return nil, nil
-	}
-	return l.Lob, nil
 }
 
 // Scan implements the database/sql/Scanner interface.
@@ -95,4 +92,12 @@ func (l *NullLob) Scan(src interface{}) error {
 	}
 	l.Valid = true
 	return nil
+}
+
+// Value implements the database/sql/Valuer interface.
+func (l NullLob) Value() (driver.Value, error) {
+	if !l.Valid {
+		return nil, nil
+	}
+	return l.Lob.rd, nil
 }

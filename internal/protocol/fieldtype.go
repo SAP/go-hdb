@@ -5,6 +5,7 @@
 package protocol
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
@@ -62,8 +63,6 @@ type locatorID uint64 // byte[locatorIdSize]
 var timeReflectType = reflect.TypeOf((*time.Time)(nil)).Elem()
 var bytesReflectType = reflect.TypeOf((*[]byte)(nil)).Elem()
 var stringReflectType = reflect.TypeOf((*string)(nil)).Elem()
-
-var zeroTime = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 const (
 	booleanFieldSize    = 1
@@ -270,6 +269,8 @@ func convertLob(ft fieldType, v interface{}, isCharBased bool) (driver.Value, er
 		rd = v
 	case ReadProvider:
 		rd = v.Reader()
+	case []byte:
+		rd = bytes.NewReader(v)
 	default:
 		return nil, newConvertError(ft, v, nil)
 	}

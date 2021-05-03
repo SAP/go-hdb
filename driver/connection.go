@@ -211,11 +211,11 @@ var (
 	_ driver.Pinger             = (*Conn)(nil)
 	_ driver.ConnBeginTx        = (*Conn)(nil)
 	_ driver.ExecerContext      = (*Conn)(nil)
-	_ driver.Execer             = (*Conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
-	_ driver.QueryerContext     = (*Conn)(nil)
-	_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
-	_ driver.NamedValueChecker  = (*Conn)(nil)
-	_ driver.SessionResetter    = (*Conn)(nil)
+	//_ driver.Execer             = (*Conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
+	_ driver.QueryerContext = (*Conn)(nil)
+	//_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
+	_ driver.NamedValueChecker = (*Conn)(nil)
+	_ driver.SessionResetter   = (*Conn)(nil)
 )
 
 // connHook is a hook for testing.
@@ -986,9 +986,9 @@ func (em execManyGenMatrix) fill(pr *p.PrepareResult, startRow, endRow int, args
 	numField := pr.NumField()
 	cnt := 0
 	for i := startRow; i < endRow; i++ {
-		v, err := convertMany(reflect.Value(em).Index(i).Interface())
-		if err != nil {
-			return err
+		v, ok := convertMany(reflect.Value(em).Index(i).Interface())
+		if !ok {
+			return fmt.Errorf("invalid 'many' argument type %[1]T %[1]v", v)
 		}
 		row := reflect.ValueOf(v) // need to be array or slice
 		if row.Len() != numField {
@@ -1104,11 +1104,12 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 	// check on standard value
 	err := convertNamedValue(s.pr, nv)
 	if err == nil || s.bulk || nv.Ordinal != 1 {
-		return err
+		return nil
 	}
 
 	// check first argument if 'composite'
-	if nv.Value, err = convertMany(nv.Value); err != nil {
+	var ok bool
+	if nv.Value, ok = convertMany(nv.Value); !ok {
 		return err
 	}
 

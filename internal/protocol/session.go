@@ -269,7 +269,7 @@ Bulk insert containing LOBs:
 - Observations:
   .In hdb version 1 and 2 'piecewise' LOB writing does work.
   .Same does not work in case of geo fields which are LOBs en,- decoded as well.
-  .In hana version 3 'piecewise' LOB writing seems not to work anymore at all.
+  .In hana version 4 'piecewise' LOB writing seems not to work anymore at all.
 - Server implementation (not documented):
   .'piecewise' LOB writing is only suppoerted for the last row of a 'bulk insert'.
 - Current implementation:
@@ -317,6 +317,9 @@ func (s *Session) Exec(pr *PrepareResult, args []interface{}, commit bool) (driv
 		*/
 		if hasNext || i == (numRows-1) {
 			r, err := s.exec(pr, args[lastFrom:to], true, commit)
+			if err != nil {
+				return driver.RowsAffected(totRowsAffected), err
+			}
 			if rowsAffected, err := r.RowsAffected(); err != nil {
 				totRowsAffected += rowsAffected
 			}

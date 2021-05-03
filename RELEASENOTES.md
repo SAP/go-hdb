@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.103.3 (upgrade urgency: medium)
+
+- Fixed runtime error raised by missing error check executing sql statements
+- Added spatial encoders, an example and additional tests
+
 Release 0.103.2 (upgrade urgency: medium)
 
 - Fixed conversion issue selecting spatial types

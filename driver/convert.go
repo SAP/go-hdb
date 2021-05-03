@@ -71,15 +71,19 @@ func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {
 	return nv.Value, false
 }
 
-func convertMany(v interface{}) (interface{}, error) {
+func convertMany(v interface{}) (interface{}, bool) {
 	// allow slice ,array, and pointers to it
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Array, reflect.Slice:
-		return rv.Interface(), nil
+		// but do not allow slice, array of bytes
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			return nil, false
+		}
+		return rv.Interface(), true
 	case reflect.Ptr:
 		return convertMany(rv.Elem().Interface())
 	default:
-		return nil, fmt.Errorf("invalid 'many' argument type %[1]T %[1]v", v)
+		return nil, false
 	}
 }

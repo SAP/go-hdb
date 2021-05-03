@@ -14,16 +14,6 @@ import (
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
-func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rowsAffected != rowsExpected {
-		t.Fatalf("rows affected %d - expected %d", rowsAffected, rowsExpected)
-	}
-}
-
 func testCancelContext(db *sql.DB, t *testing.T) {
 	stmt, err := db.Prepare("select * from dummy")
 	if err != nil {
