@@ -115,9 +115,9 @@ const (
 	mask3 = 0x0F // 0000 1111
 	mask4 = 0x07 // 0000 0111
 
-	rune1Max = 1<<7 - 1
-	rune2Max = 1<<11 - 1
-	rune3Max = 1<<16 - 1
+	rune1Max = 1<<8 - 1
+	rune2Max = 1<<12 - 1
+	rune3Max = 1<<17 - 1
 )
 
 func encodeRune(p []byte, r rune) int {
