@@ -20,7 +20,7 @@ tools:
 	go install golang.org/x/lint/golint@latest
 #install staticcheck
 	@echo "install latest staticcheck version"
-	go get honnef.co/go/tools/cmd/staticcheck@latest	
+	go install honnef.co/go/tools/cmd/staticcheck@latest	
 	
 #install fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 # pre-conditions:

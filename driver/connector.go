@@ -17,30 +17,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/common"
 	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/internal/container/vermap"
 	p "github.com/SAP/go-hdb/internal/protocol"
 )
 
-// Data Format Version values.
-// Driver does currently support DfvLevel1, DfvLevel4, DfvLevel6 and DfvLevel8.
-const (
-	DfvLevel0 = 0 // base data format
-	DfvLevel1 = 1 // eval types support all data types
-	DfvLevel2 = 2 // reserved, broken, do not use
-	DfvLevel3 = 3 // additional types Longdate, Secondate, Daydate, Secondtime supported for NGAP
-	DfvLevel4 = 4 // generic support for new date/time types
-	DfvLevel5 = 5 // spatial types in ODBC on request
-	DfvLevel6 = 6 // BINTEXT
-	DfvLevel7 = 7 // with boolean support
-	DfvLevel8 = 8 // with FIXED8/12/16 support
-)
-
-var supportedDfvs = map[int]bool{DfvLevel1: true, DfvLevel4: true, DfvLevel6: true, DfvLevel8: true}
-
 // Connector default values.
 const (
-	DefaultDfv          = DfvLevel8         // Default data version format level.
+	DefaultDfv          = common.DfvLevel8  // Default data version format level.
 	DefaultTimeout      = 300 * time.Second // Default value connection timeout (300 seconds = 5 minutes).
 	DefaultTCPKeepAlive = 15 * time.Second  // Default TCP keep-alive value (copied from net.dial.go)
 	DefaultBufferSize   = 16276             // Default value bufferSize.
@@ -540,7 +525,7 @@ func (c *Connector) Dfv() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.dfv
 func (c *Connector) SetDfv(dfv int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, ok := supportedDfvs[dfv]; ok {
+	if common.IsSupportedDfv(dfv) {
 		c.dfv = dfv
 	} else {
 		c.dfv = DefaultDfv

@@ -8,3 +8,8 @@ package common
 type ServerInfo struct {
 	Version *HDBVersion
 }
+
+// DriverConn enhances a connection with go-hdb specific connection functions.
+type DriverConn interface {
+	ServerInfo() *ServerInfo
+}

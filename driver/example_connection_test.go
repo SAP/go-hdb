@@ -13,6 +13,7 @@ import (
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/common"
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
@@ -31,17 +32,11 @@ func ExampleConn_ServerInfo() {
 		log.Fatal(err)
 	}
 
-	if err := conn.Raw(func(driverConn interface{}) error {
-		conn, ok := driverConn.(*driver.Conn)
-		if !ok {
-			log.Fatal("connection does not implement *driver.Conn")
-		}
+	conn.Raw(func(driverConn interface{}) error {
 		// Access driver.Conn methods.
-		log.Printf("hdb version: %s", conn.ServerInfo().Version)
+		log.Printf("hdb version: %s", driverConn.(common.DriverConn).ServerInfo().Version)
 		return nil
-	}); err != nil {
-		log.Fatal(err)
-	}
+	})
 
 	// Make sure that the example is executed during test runs.
 	fmt.Print("ok")

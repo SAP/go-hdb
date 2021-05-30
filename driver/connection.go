@@ -211,11 +211,14 @@ var (
 	_ driver.Pinger             = (*Conn)(nil)
 	_ driver.ConnBeginTx        = (*Conn)(nil)
 	_ driver.ExecerContext      = (*Conn)(nil)
+	_ driver.QueryerContext     = (*Conn)(nil)
+	_ driver.NamedValueChecker  = (*Conn)(nil)
+	_ driver.SessionResetter    = (*Conn)(nil)
+	_ common.DriverConn         = (*Conn)(nil) // go-hdb enhancements
+
+	// obsolete
 	//_ driver.Execer             = (*Conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
-	_ driver.QueryerContext = (*Conn)(nil)
 	//_ driver.Queryer            = (*Conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
-	_ driver.NamedValueChecker = (*Conn)(nil)
-	_ driver.SessionResetter   = (*Conn)(nil)
 )
 
 // connHook is a hook for testing.

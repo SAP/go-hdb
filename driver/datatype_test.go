@@ -8,7 +8,6 @@ package driver
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -26,61 +25,25 @@ import (
 	"unicode/utf8"
 
 	"github.com/SAP/go-hdb/driver/common"
-	dt "github.com/SAP/go-hdb/driver/drivertest"
+	drvtst "github.com/SAP/go-hdb/driver/drivertest"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
 type dttDef struct {
 	*testing.T
-	db               *sql.DB
-	sqlType          string
-	length, fraction int
-	checkFn          func(in, out interface{}) bool
-	testData         []interface{}
+	db       *sql.DB
+	typ      drvtst.ColumnType
+	checkFn  func(in, out interface{}) (bool, error)
+	testData []interface{}
 
 	tableName Identifier
 	numRecs   int
 }
 
-func newDttDef(sqlType string, checkFn func(in, out interface{}) bool, testData []interface{}, t *testing.T) *dttDef {
-	return &dttDef{sqlType: sqlType, checkFn: checkFn, testData: testData, T: t}
-}
-
-func newDttDefL(sqlType string, length int, checkFn func(in, out interface{}) bool, testData []interface{}, t *testing.T) *dttDef {
-	return &dttDef{sqlType: sqlType, length: length, checkFn: checkFn, testData: testData, T: t}
-}
-
-func newDttDefLF(sqlType string, length, fraction int, checkFn func(in, out interface{}) bool, testData []interface{}, t *testing.T) *dttDef {
-	return &dttDef{sqlType: sqlType, length: length, fraction: fraction, checkFn: checkFn, testData: testData, T: t}
-}
-
-func (t *dttDef) setDB(db *sql.DB) { t.db = db }
-
-func (t *dttDef) name() string {
-	switch {
-	case t.length != 0 && t.fraction != 0:
-		return fmt.Sprintf("%s_%d_%d", t.sqlType, t.length, t.fraction)
-	case t.length != 0:
-		return fmt.Sprintf("%s_%d", t.sqlType, t.length)
-	default:
-		return t.sqlType
-	}
-}
-
-func (t *dttDef) column() string {
-	switch {
-	case t.length != 0 && t.fraction != 0:
-		return fmt.Sprintf("%s(%d, %d)", t.sqlType, t.length, t.fraction)
-	case t.length != 0:
-		return fmt.Sprintf("%s(%d)", t.sqlType, t.length)
-	default:
-		return t.sqlType
-	}
-}
-
 func (t *dttDef) createTable() {
-	t.tableName = RandomIdentifier(fmt.Sprintf("%s_", t.name()))
-	if _, err := t.db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", t.tableName, t.column())); err != nil {
+	column := t.typ.Column()
+	t.tableName = RandomIdentifier(fmt.Sprintf("%s_", column))
+	if _, err := t.db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", t.tableName, column)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -94,7 +57,7 @@ func (t *dttDef) insert() {
 	i := 0
 	for _, in := range t.testData {
 		if _, err := stmt.Exec(in, i); err != nil {
-			t.Fatalf("type: %s - %d - %s", t.sqlType, i, err)
+			t.Fatalf("type: %s - %d - %s", t.typ.TypeName(), i, err)
 		}
 		i++
 	}
@@ -127,7 +90,11 @@ func (t *dttDef) check() {
 		}
 		outVal := reflect.ValueOf(outRef).Elem().Interface()
 
-		if !t.checkFn(in, outVal) {
+		ok, err := t.checkFn(in, outVal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
 			t.Fatalf("%d value %v - expected %v", i, outVal, in)
 		}
 		i++
@@ -140,7 +107,8 @@ func (t *dttDef) check() {
 	}
 }
 
-func (t *dttDef) run() {
+func (t *dttDef) run(db *sql.DB) {
+	t.db = db
 	t.createTable()
 	t.insert()
 	t.check()
@@ -148,10 +116,6 @@ func (t *dttDef) run() {
 
 type dttTX struct {
 	dttDef
-}
-
-func newDttTX(sqlType string, checkFn func(in, out interface{}) bool, testData []interface{}, t *testing.T) *dttTX {
-	return &dttTX{dttDef: dttDef{sqlType: sqlType, checkFn: checkFn, testData: testData, T: t}}
 }
 
 func (t *dttTX) insert() { // override insert
@@ -180,7 +144,8 @@ func (t *dttTX) insert() { // override insert
 	t.numRecs = i
 }
 
-func (t *dttTX) run() { // override run, so that dttTX insert is called
+func (t *dttTX) run(db *sql.DB) { // override run, so that dttTX insert is called
+	t.dttDef.db = db
 	t.createTable()
 	t.insert()
 	t.check()
@@ -189,48 +154,17 @@ func (t *dttTX) run() { // override run, so that dttTX insert is called
 type dttSpatial struct {
 	*testing.T
 	db       *sql.DB
-	sqlType  string
-	srid     int32
-	fn       string
+	typ      drvtst.ColumnType
 	testData []spatial.Geometry
 
 	tableName Identifier
 	numRecs   int
 }
 
-func newDttSpatial(sqlType string, srid int32, fn string, testData []spatial.Geometry, t *testing.T) *dttSpatial {
-	return &dttSpatial{sqlType: sqlType, srid: srid, fn: fn, testData: testData, T: t}
-
-}
-
-func (t *dttSpatial) setDB(db *sql.DB) { t.db = db }
-
-func (t *dttSpatial) name() string {
-	switch {
-	case t.srid != 0:
-		return fmt.Sprintf("%s_%d", t.sqlType, t.srid)
-	default:
-		return t.sqlType
-	}
-}
-
-func (t *dttSpatial) column() string {
-	if t.srid == 0 {
-		return t.sqlType
-	}
-	return fmt.Sprintf("%s(%d)", t.sqlType, t.srid)
-}
-
-func (t *dttSpatial) parameter() string {
-	if t.fn == "" {
-		return "?"
-	}
-	return fmt.Sprintf("%s(?)", t.fn)
-}
-
 func (t *dttSpatial) createTable() {
-	t.tableName = RandomIdentifier(fmt.Sprintf("%s_", t.name()))
-	if _, err := t.db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", t.tableName, t.column())); err != nil {
+	column := t.typ.Column()
+	t.tableName = RandomIdentifier(fmt.Sprintf("%s_", column))
+	if _, err := t.db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", t.tableName, column)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -243,7 +177,7 @@ func (t *dttSpatial) withTx(fn func(func(value interface{}))) {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(%s, ?)", t.tableName, t.parameter()))
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(st_geomfromewkb(?), ?)", t.tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,12 +219,15 @@ func (t *dttSpatial) withRows(fn func(i int), dest ...interface{}) {
 	}
 }
 
-func (t *dttSpatial) run() {
+func (t *dttSpatial) run(db *sql.DB) {
+	t.db = db
 	t.createTable()
+
+	srid := t.typ.SRID()
 
 	t.withTx(func(exec func(value interface{})) {
 		for _, g := range t.testData {
-			ewkb, err := spatial.EncodeEWKB(g, false, t.srid)
+			ewkb, err := spatial.EncodeEWKB(g, false, srid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -326,7 +263,7 @@ func (t *dttSpatial) run() {
 			t.Fatalf("test %d: x value %v - expected %v", i, x, string(wkb))
 		}
 
-		ewkb, err := spatial.EncodeEWKB(t.testData[i], false, t.srid)
+		ewkb, err := spatial.EncodeEWKB(t.testData[i], false, srid)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +273,7 @@ func (t *dttSpatial) run() {
 			t.Fatal(err)
 		}
 
-		ewkt, err := spatial.EncodeEWKT(t.testData[i], t.srid)
+		ewkt, err := spatial.EncodeEWKT(t.testData[i], srid)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -367,7 +304,11 @@ func (t *dttSpatial) run() {
 		}
 
 		asGeoJSON := asGeoJSONBuffer.Bytes()
-		if !equalJSON(geoJSON, asGeoJSON, t.T) {
+		ok, err := equalJSON(geoJSON, asGeoJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
 			t.Logf("test %d: geoJSON value %s - expected %s", i, asGeoJSON, geoJSON)
 		}
 
@@ -666,36 +607,36 @@ var stGeometryTestData = []spatial.Geometry{
 	spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}},
 }
 
-func checkInt(in, out interface{}) bool {
+func checkInt(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullInt64); ok {
 		in := in.(sql.NullInt64)
-		return in.Valid == out.Valid && (!in.Valid || in.Int64 == out.Int64)
+		return in.Valid == out.Valid && (!in.Valid || in.Int64 == out.Int64), nil
 	}
-	return in == out
+	return in == out, nil
 }
 
-func checkFloat(in, out interface{}) bool {
+func checkFloat(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullFloat64); ok {
 		in := in.(sql.NullFloat64)
-		return in.Valid == out.Valid && (!in.Valid || in.Float64 == out.Float64)
+		return in.Valid == out.Valid && (!in.Valid || in.Float64 == out.Float64), nil
 	}
-	return in == out
+	return in == out, nil
 }
 
-func checkDecimal(in, out interface{}) bool {
+func checkDecimal(in, out interface{}) (bool, error) {
 	if out, ok := out.(NullDecimal); ok {
 		in := in.(NullDecimal)
-		return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0)
+		return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0), nil
 	}
-	return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0
+	return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0, nil
 }
 
-func checkBoolean(in, out interface{}) bool {
+func checkBoolean(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullBool); ok {
 		in := in.(sql.NullBool)
-		return in.Valid == out.Valid && (!in.Valid || in.Bool == out.Bool)
+		return in.Valid == out.Valid && (!in.Valid || in.Bool == out.Bool), nil
 	}
-	return in == out
+	return in == out, nil
 }
 
 func equalDate(t1, t2 time.Time) bool {
@@ -723,44 +664,44 @@ func equalLongdate(t1, t2 time.Time) bool {
 	return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
 }
 
-func checkDate(in, out interface{}) bool {
+func checkDate(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
-		return in.Valid == out.Valid && (!in.Valid || equalDate(in.Time.UTC(), out.Time))
+		return in.Valid == out.Valid && (!in.Valid || equalDate(in.Time.UTC(), out.Time)), nil
 	}
-	return equalDate(in.(time.Time).UTC(), out.(time.Time))
+	return equalDate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTime(in, out interface{}) bool {
+func checkTime(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
-		return in.Valid == out.Valid && (!in.Valid || equalTime(in.Time.UTC(), out.Time))
+		return in.Valid == out.Valid && (!in.Valid || equalTime(in.Time.UTC(), out.Time)), nil
 	}
-	return equalTime(in.(time.Time).UTC(), out.(time.Time))
+	return equalTime(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkDateTime(in, out interface{}) bool {
+func checkDateTime(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
-		return in.Valid == out.Valid && (!in.Valid || equalDateTime(in.Time.UTC(), out.Time))
+		return in.Valid == out.Valid && (!in.Valid || equalDateTime(in.Time.UTC(), out.Time)), nil
 	}
-	return equalDateTime(in.(time.Time).UTC(), out.(time.Time))
+	return equalDateTime(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTimestamp(in, out interface{}) bool {
+func checkTimestamp(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
-		return in.Valid == out.Valid && (!in.Valid || equalTimestamp(in.Time.UTC(), out.Time))
+		return in.Valid == out.Valid && (!in.Valid || equalTimestamp(in.Time.UTC(), out.Time)), nil
 	}
-	return equalTimestamp(in.(time.Time).UTC(), out.(time.Time))
+	return equalTimestamp(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkLongdate(in, out interface{}) bool {
+func checkLongdate(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
-		return in.Valid == out.Valid && (!in.Valid || equalLongdate(in.Time.UTC(), out.Time))
+		return in.Valid == out.Valid && (!in.Valid || equalLongdate(in.Time.UTC(), out.Time)), nil
 	}
-	return equalLongdate(in.(time.Time).UTC(), out.(time.Time))
+	return equalLongdate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
 func compareStringFixSize(in, out string) bool {
@@ -775,20 +716,20 @@ func compareStringFixSize(in, out string) bool {
 	return true
 }
 
-func checkFixString(in, out interface{}) bool {
+func checkFixString(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
-		return in.Valid == out.Valid && (!in.Valid || compareStringFixSize(in.String, out.String))
+		return in.Valid == out.Valid && (!in.Valid || compareStringFixSize(in.String, out.String)), nil
 	}
-	return compareStringFixSize(in.(string), out.(string))
+	return compareStringFixSize(in.(string), out.(string)), nil
 }
 
-func checkString(in, out interface{}) bool {
+func checkString(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
-		return in.Valid == out.Valid && (!in.Valid || in.String == out.String)
+		return in.Valid == out.Valid && (!in.Valid || in.String == out.String), nil
 	}
-	return in == out
+	return in == out, nil
 }
 
 func compareBytesFixSize(in, out []byte) bool {
@@ -803,20 +744,20 @@ func compareBytesFixSize(in, out []byte) bool {
 	return true
 }
 
-func checkFixBytes(in, out interface{}) bool {
+func checkFixBytes(in, out interface{}) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
-		return in.Valid == out.Valid && (!in.Valid || compareBytesFixSize(in.Bytes, out.Bytes))
+		return in.Valid == out.Valid && (!in.Valid || compareBytesFixSize(in.Bytes, out.Bytes)), nil
 	}
-	return compareBytesFixSize(in.([]byte), out.([]byte))
+	return compareBytesFixSize(in.([]byte), out.([]byte)), nil
 }
 
-func checkBytes(in, out interface{}) bool {
+func checkBytes(in, out interface{}) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
-		return in.Valid == out.Valid && (!in.Valid || bytes.Equal(in.Bytes, out.Bytes))
+		return in.Valid == out.Valid && (!in.Valid || bytes.Equal(in.Bytes, out.Bytes)), nil
 	}
-	return bytes.Equal(in.([]byte), out.([]byte))
+	return bytes.Equal(in.([]byte), out.([]byte)), nil
 }
 
 // baseline: alphanum is varchar
@@ -838,106 +779,124 @@ func formatAlphanum(s string) string {
 	return strconv.FormatUint(i, 10)
 }
 
-func checkAlphanumVarchar(length int) func(in, out interface{}) bool {
-	return func(in, out interface{}) bool {
+func checkAlphanumVarchar(length int) func(in, out interface{}) (bool, error) {
+	return func(in, out interface{}) (bool, error) {
 		if out, ok := out.(sql.NullString); ok {
 			in := in.(sql.NullString)
-			return in.Valid == out.Valid && (!in.Valid || formatAlphanumVarchar(in.String, length) == out.String)
+			return in.Valid == out.Valid && (!in.Valid || formatAlphanumVarchar(in.String, length) == out.String), nil
 		}
-		return formatAlphanumVarchar(in.(string), length) == out.(string)
+		return formatAlphanumVarchar(in.(string), length) == out.(string), nil
 	}
 }
 
-func checkAlphanum(in, out interface{}) bool {
+func checkAlphanum(in, out interface{}) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
-		return in.Valid == out.Valid && (!in.Valid || formatAlphanum(in.String) == out.String)
+		return in.Valid == out.Valid && (!in.Valid || formatAlphanum(in.String) == out.String), nil
 	}
-	return formatAlphanum(in.(string)) == out.(string)
+	return formatAlphanum(in.(string)) == out.(string), nil
 }
 
-func compareLob(in, out Lob, t *testing.T) bool {
+func compareLob(in, out Lob) (bool, error) {
 	if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
-		t.Fatal(err)
-		return false
+		return false, err
 	}
 	content, err := _readAll(in.rd)
 	if err != nil {
-		t.Fatal(err)
-		return false
+		return false, err
 	}
-	return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes())
+	return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes()), nil
 }
 
-func checkLob(t *testing.T) func(in, out interface{}) bool {
-	return func(in, out interface{}) bool {
-		if out, ok := out.(NullLob); ok {
-			in := in.(NullLob)
-			return in.Valid == out.Valid && (!in.Valid || compareLob(*in.Lob, *out.Lob, t))
+func checkLob(in, out interface{}) (bool, error) {
+	if out, ok := out.(NullLob); ok {
+		in := in.(NullLob)
+		ok, err := compareLob(*in.Lob, *out.Lob)
+		if err != nil {
+			return ok, err
 		}
-		return compareLob(in.(Lob), out.(Lob), t)
+		return in.Valid == out.Valid && (!in.Valid || ok), nil
 	}
+	return compareLob(in.(Lob), out.(Lob))
 }
 
 // for text and bintext do not check content as we have seen examples for bintext
 // where the content was slightly modified by hdb (e.g. elimination of spaces)
-func checkText(in, out interface{}) bool {
+func checkText(in, out interface{}) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
-		return in.Valid == out.Valid
+		return in.Valid == out.Valid, nil
 	}
-	return true
+	return true, nil
 }
 
-func equalJSON(b1, b2 []byte, t *testing.T) bool {
+func equalJSON(b1, b2 []byte) (bool, error) {
 	var j1, j2 interface{}
 
 	if err := json.Unmarshal(b1, &j1); err != nil {
-		t.Fatal(err)
+		return false, err
 	}
 	if err := json.Unmarshal(b2, &j2); err != nil {
-		t.Fatal(err)
+		return false, err
 	}
-	return reflect.DeepEqual(j1, j2)
+	return reflect.DeepEqual(j1, j2), nil
 }
 
 func TestDataType(t *testing.T) {
-	type tester interface {
-		setDB(db *sql.DB)
-		name() string
-		run()
+	// test run condition constants
+	const (
+		condNone = iota
+		condEQ   // equal
+		condLT   // less than
+		condGE   // greater equal
+	)
+
+	checkDFV := func(dfv, testDfv, testCond int) bool {
+		switch testCond {
+		default:
+			return true
+		case condEQ:
+			return dfv == testDfv
+		case condGE:
+			return dfv >= testDfv
+		}
 	}
 
-	/*
-		hdb version 4:
-		- does not support alphanum
-		- does not support shorttext
-	*/
+	type tester interface {
+		run(db *sql.DB)
+	}
 
-	hdbVersion1 := common.ParseHDBVersion("1.00.000")
-	hdbVersion4 := common.ParseHDBVersion("4.00.000")
+	const (
+		dttDefType = iota
+		dttTXType
+		dttSpatialType
+	)
+
+	fnLobTestDataASCII := func() []interface{} { return lobTestData(true, t) }
+	fnLobTestData := func() []interface{} { return lobTestData(false, t) }
 
 	tests := []struct {
-		dfv            int
-		dvfCond        int
-		hdbVersion     *common.HDBVersion
-		hdbVersionCond int
-		tester         func() tester
+		dfv      int
+		dvfCond  int
+		testType int
+		typ      drvtst.ColumnType
+		checkFn  func(in, out interface{}) (bool, error)
+		testData interface{}
 	}{
-		{DfvLevel1, dt.CondEQ, hdbVersion1, dt.CondGE, func() tester { return newDttDef("timestamp", checkTimestamp, timeTestData, t) }},
-		{DfvLevel1, dt.CondEQ, hdbVersion1, dt.CondGE, func() tester { return newDttDef("longdate", checkTimestamp, timeTestData, t) }},
-		{DfvLevel1, dt.CondEQ, hdbVersion4, dt.CondLT, func() tester { return newDttDefL("alphanum", 20, checkAlphanumVarchar(20), alphanumTestData, t) }},
+		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkTimestamp, timeTestData},
+		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkTimestamp, timeTestData},
+		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanumVarchar(20), alphanumTestData},
 
-		{DfvLevel2, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("timestamp", checkLongdate, timeTestData, t) }},
-		{DfvLevel2, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("longdate", checkLongdate, timeTestData, t) }},
-		{DfvLevel2, dt.CondGE, hdbVersion4, dt.CondLT, func() tester { return newDttDefL("alphanum", 20, checkAlphanum, alphanumTestData, t) }},
+		{common.DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkLongdate, timeTestData},
+		{common.DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkLongdate, timeTestData},
+		{common.DfvLevel2, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanum, alphanumTestData},
 
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("tinyint", checkInt, tinyintTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("smallint", checkInt, smallintTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("integer", checkInt, integerTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("bigint", checkInt, bigintTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("real", checkFloat, realTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("double", checkFloat, doubleTestData, t) }},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTinyint), checkInt, tinyintTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSmallint), checkInt, smallintTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtInteger), checkInt, integerTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBigint), checkInt, bigintTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtReal), checkFloat, realTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDouble), checkFloat, doubleTestData},
 
 		/*
 		 using unicode (CESU-8) data for char HDB
@@ -947,96 +906,64 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("char", 40, checkFixString, asciiStringTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("varchar", 40, checkString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("nchar", 20, checkFixString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("nvarchar", 20, checkString, stringTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("binary", 20, checkFixBytes, binaryTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefL("varbinary", 20, checkBytes, binaryTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("date", checkDate, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("time", checkTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("seconddate", checkDateTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("daydate", checkDate, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("secondtime", checkTime, timeTestData, t) }},
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("decimal", checkDecimal, decimalTestData, t) }}, // floating point decimal number
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDef("boolean", checkBoolean, booleanTestData, t) }},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtChar, 40), checkFixString, asciiStringTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarchar, 40), checkString, stringTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNChar, 20), checkFixString, stringTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNVarchar, 20), checkString, stringTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtBinary, 20), checkFixBytes, binaryTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarbinary, 20), checkBytes, binaryTestData},
 
-		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 18, 2, checkDecimal, decimalTestData, t) }},        // precision, scale decimal number -fixed8
-		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 28, 2, checkDecimal, decimalFixed12TestData, t) }}, // precision, scale decimal number -fixed12
-		{DfvLevel8, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttDefLF("decimal", 38, 2, checkDecimal, decimalFixed16TestData, t) }}, // precision, scale decimal number -fixed16
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDate), checkDate, timeTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTime), checkTime, timeTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSeconddate), checkDateTime, timeTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDaydate), checkDate, timeTestData},
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSecondtime), checkTime, timeTestData},
 
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("clob", checkLob(t), lobTestData(true, t), t) }},   // tests executed in parallel -> do not reuse lobs
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("nclob", checkLob(t), lobTestData(false, t), t) }}, // tests executed in parallel -> do not reuse lobs
-		{DfvLevel1, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("blob", checkLob(t), lobTestData(false, t), t) }},  // tests executed in parallel -> do not reuse lobs
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBoolean), checkBoolean, booleanTestData},
 
-		{DfvLevel4, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("text", checkText, lobTestData(false, t), t) }},   // tests executed in parallel -> do not reuse lobs
-		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttTX("bintext", checkText, lobTestData(true, t), t) }}, // tests executed in parallel -> do not reuse lobs
+		{common.DfvLevel1, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 0, 0), checkDecimal, decimalTestData},         // floating point decimal number
+		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 18, 2), checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
+		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 28, 2), checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
+		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 38, 2), checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
 
-		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_point", 0, "st_geomfromewkb", stPointTestData, t) }},
-		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_point", 3857, "st_geomfromewkb", stPointTestData, t) }},
+		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtClob), checkLob, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
+		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtNClob), checkLob, fnLobTestData},     // tests executed in parallel -> do not reuse lobs
+		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBlob), checkLob, fnLobTestData},      // tests executed in parallel -> do not reuse lobs
 
-		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 0, "st_geomfromewkb", stGeometryTestData, t) }},
-		{DfvLevel6, dt.CondGE, hdbVersion1, dt.CondGE, func() tester { return newDttSpatial("st_geometry", 3857, "st_geomfromewkb", stGeometryTestData, t) }},
+		{common.DfvLevel4, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtText), checkText, fnLobTestData},         // tests executed in parallel -> do not reuse lobs
+		{common.DfvLevel6, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBintext), checkText, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
+
+		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 0), nil, stPointTestData},
+		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 3857), nil, stPointTestData},
+
+		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 0), nil, stGeometryTestData},
+		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 3857), nil, stGeometryTestData},
 	}
 
-	checkDFV := func(dfv, testDfv, testCond int) bool {
-		switch testCond {
+	dfvs := []int{DefaultDfv}
+	if !testing.Short() {
+		dfvs = common.SupportedDfvs
+	}
+
+	convertTestDataType := func(td interface{}) []interface{} {
+		switch td := td.(type) {
+		case []interface{}:
+			return td
+		case func() []interface{}:
+			return td() // create new instance (e.g. lob test data)
 		default:
-			return true
-		case dt.CondEQ:
-			return dfv == testDfv
-		case dt.CondGE:
-			return dfv >= testDfv
-		}
-	}
-
-	checkHDBVersion := func(hdbVersion, testHDBVersion *common.HDBVersion, testHDBVersionCond int) bool {
-		cmp := hdbVersion.Compare(testHDBVersion)
-		switch testHDBVersionCond {
-		case dt.CondLT:
-			if cmp != -1 {
-				return false
-			}
-		}
-		return true
-	}
-
-	hdbVersion := func(db *sql.DB, t *testing.T) *common.HDBVersion {
-		// Grab connection.
-		conn, err := db.Conn(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		var hdbVersion *common.HDBVersion
-
-		if err := conn.Raw(func(driverConn interface{}) error {
-			conn, ok := driverConn.(*Conn)
-			if !ok {
-				t.Fatal("connection does not implement *driver.Conn")
-			}
-			hdbVersion = conn.ServerInfo().Version
+			t.Fatalf("invalid test data type %T", td)
 			return nil
-		}); err != nil {
-			t.Fatal(err)
 		}
-		return hdbVersion
 	}
 
-	var testSet map[int]bool
-	if testing.Short() {
-		testSet = map[int]bool{DefaultDfv: true}
-	} else {
-		testSet = supportedDfvs
-	}
-
-	for dfv := range testSet {
+	for _, dfv := range dfvs {
 		func(dfv int) { // new dfv to run in parallel
 			name := fmt.Sprintf("dfv %d", dfv)
 			t.Run(name, func(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
 
-				connector, err := NewConnector(dt.DefaultAttrs())
+				connector, err := NewConnector(drvtst.DefaultAttrs())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1044,14 +971,26 @@ func TestDataType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
-				hdbVersion := hdbVersion(db, t)
+				version, err := drvtst.HDBVersion(db)
+				if err != nil {
+					t.Fatal(err)
+				}
 
 				for _, test := range tests {
-					if checkDFV(dfv, test.dfv, test.dvfCond) && checkHDBVersion(hdbVersion, test.hdbVersion, test.hdbVersionCond) {
-						tester := test.tester() // create new instance to be run in parallel
-						t.Run(tester.name(), func(t *testing.T) {
-							tester.setDB(db)
-							tester.run()
+					if test.typ.IsSupportedHDBVersion(version) && checkDFV(dfv, test.dfv, test.dvfCond) {
+						var tester tester
+						switch test.testType {
+						case dttDefType:
+							tester = &dttDef{typ: test.typ, checkFn: test.checkFn, testData: convertTestDataType(test.testData), T: t}
+						case dttTXType:
+							tester = &dttTX{dttDef: dttDef{typ: test.typ, checkFn: test.checkFn, testData: convertTestDataType(test.testData), T: t}}
+						case dttSpatialType:
+							tester = &dttSpatial{typ: test.typ, testData: test.testData.([]spatial.Geometry), T: t}
+						default:
+							t.Fatalf("invalid data type test definition type %d", test.testType)
+						}
+						t.Run(test.typ.Column(), func(t *testing.T) {
+							tester.run(db)
 						})
 					}
 				}

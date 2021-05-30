@@ -161,7 +161,7 @@ func (f *ParameterField) prmSize(v interface{}) int {
 func (f *ParameterField) encodePrm(enc *encoding.Encoder, v interface{}) error {
 	encTc := f.tc.encTc()
 	if v == nil && f.tc.supportNullValue() {
-		enc.Byte(byte(encTc) | 0x80) // type code null value: set high bit
+		enc.Byte(byte(f.tc.nullValue())) // null value type code
 		return nil
 	}
 	enc.Byte(byte(encTc)) // type code

@@ -1,6 +1,20 @@
 Release Notes
 =============
 
+## Release 0.104
+
+#### Release Notes
+
+- Added complete support of HANA version 4
+
+#### Incompatibilities
+
+- HANA version 4 does not continue to support the following data types: shorttext, alphanum, text, bintext
+- HANA 4 changes the reported database type names for
+  - char to nchar
+  - varchar to nvarchar
+  - clob to nclob
+
 ## Release 0.103
 
 #### Minor revisions
