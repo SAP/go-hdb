@@ -1107,7 +1107,7 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 	// check on standard value
 	err := convertNamedValue(s.pr, nv)
 	if err == nil || s.bulk || nv.Ordinal != 1 {
-		return nil
+		return err // return err in case ordinal != 1
 	}
 
 	// check first argument if 'composite'

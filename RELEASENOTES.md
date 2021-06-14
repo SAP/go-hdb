@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.104
 
+#### Minor revisions
+
+Release 0.104.1 (upgrade urgency: high)
+
+- Fixed runtime error raised by missing error check executing sql exec statements
+
 #### Release Notes
 
 - Added complete support of HANA version 4
