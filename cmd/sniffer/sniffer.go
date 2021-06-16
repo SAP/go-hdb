@@ -12,7 +12,7 @@ import (
 	"net"
 	"os"
 
-	p "github.com/SAP/go-hdb/internal/protocol"
+	"github.com/SAP/go-hdb/driver"
 )
 
 func main() {
@@ -44,12 +44,10 @@ func handler(conn net.Conn, dbAddr net.Addr) {
 
 	defer dbConn.Close()
 
-	err = p.NewSniffer(conn, dbConn).Do()
-	if err == nil {
-		return
-	}
-
+	err = driver.Sniff(conn, dbConn)
 	switch err {
+	case nil:
+		return
 	case io.EOF:
 		log.Printf("client connection closed - local address %s - remote address %s",
 			conn.LocalAddr().String(),

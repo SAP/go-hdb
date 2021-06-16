@@ -8,6 +8,7 @@ package driver
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -24,8 +25,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/SAP/go-hdb/driver/common"
 	drvtst "github.com/SAP/go-hdb/driver/drivertest"
+	"github.com/SAP/go-hdb/driver/hdb"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
@@ -883,20 +884,20 @@ func TestDataType(t *testing.T) {
 		checkFn  func(in, out interface{}) (bool, error)
 		testData interface{}
 	}{
-		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkTimestamp, timeTestData},
-		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkTimestamp, timeTestData},
-		{common.DfvLevel1, condEQ, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanumVarchar(20), alphanumTestData},
+		{DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkTimestamp, timeTestData},
+		{DfvLevel1, condEQ, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkTimestamp, timeTestData},
+		{DfvLevel1, condEQ, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanumVarchar(20), alphanumTestData},
 
-		{common.DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkLongdate, timeTestData},
-		{common.DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkLongdate, timeTestData},
-		{common.DfvLevel2, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanum, alphanumTestData},
+		{DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTimestamp), checkLongdate, timeTestData},
+		{DfvLevel2, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtLongdate), checkLongdate, timeTestData},
+		{DfvLevel2, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtAlphanum, 20), checkAlphanum, alphanumTestData},
 
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTinyint), checkInt, tinyintTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSmallint), checkInt, smallintTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtInteger), checkInt, integerTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBigint), checkInt, bigintTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtReal), checkFloat, realTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDouble), checkFloat, doubleTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTinyint), checkInt, tinyintTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSmallint), checkInt, smallintTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtInteger), checkInt, integerTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBigint), checkInt, bigintTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtReal), checkFloat, realTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDouble), checkFloat, doubleTestData},
 
 		/*
 		 using unicode (CESU-8) data for char HDB
@@ -906,43 +907,43 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtChar, 40), checkFixString, asciiStringTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarchar, 40), checkString, stringTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNChar, 20), checkFixString, stringTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNVarchar, 20), checkString, stringTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtBinary, 20), checkFixBytes, binaryTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarbinary, 20), checkBytes, binaryTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtChar, 40), checkFixString, asciiStringTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarchar, 40), checkString, stringTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNChar, 20), checkFixString, stringTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtNVarchar, 20), checkString, stringTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtBinary, 20), checkFixBytes, binaryTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewVarColumn(drvtst.DtVarbinary, 20), checkBytes, binaryTestData},
 
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDate), checkDate, timeTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTime), checkTime, timeTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSeconddate), checkDateTime, timeTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDaydate), checkDate, timeTestData},
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSecondtime), checkTime, timeTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDate), checkDate, timeTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtTime), checkTime, timeTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSeconddate), checkDateTime, timeTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtDaydate), checkDate, timeTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtSecondtime), checkTime, timeTestData},
 
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBoolean), checkBoolean, booleanTestData},
+		{DfvLevel1, condGE, dttDefType, drvtst.NewStdColumn(drvtst.DtBoolean), checkBoolean, booleanTestData},
 
-		{common.DfvLevel1, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 0, 0), checkDecimal, decimalTestData},         // floating point decimal number
-		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 18, 2), checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
-		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 28, 2), checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
-		{common.DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 38, 2), checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
+		{DfvLevel1, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 0, 0), checkDecimal, decimalTestData},         // floating point decimal number
+		{DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 18, 2), checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
+		{DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 28, 2), checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
+		{DfvLevel8, condGE, dttDefType, drvtst.NewDecimalColumn(drvtst.DtDecimal, 38, 2), checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
 
-		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtClob), checkLob, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
-		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtNClob), checkLob, fnLobTestData},     // tests executed in parallel -> do not reuse lobs
-		{common.DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBlob), checkLob, fnLobTestData},      // tests executed in parallel -> do not reuse lobs
+		{DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtClob), checkLob, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
+		{DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtNClob), checkLob, fnLobTestData},     // tests executed in parallel -> do not reuse lobs
+		{DfvLevel1, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBlob), checkLob, fnLobTestData},      // tests executed in parallel -> do not reuse lobs
 
-		{common.DfvLevel4, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtText), checkText, fnLobTestData},         // tests executed in parallel -> do not reuse lobs
-		{common.DfvLevel6, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBintext), checkText, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
+		{DfvLevel4, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtText), checkText, fnLobTestData},         // tests executed in parallel -> do not reuse lobs
+		{DfvLevel6, condGE, dttTXType, drvtst.NewStdColumn(drvtst.DtBintext), checkText, fnLobTestDataASCII}, // tests executed in parallel -> do not reuse lobs
 
-		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 0), nil, stPointTestData},
-		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 3857), nil, stPointTestData},
+		{DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 0), nil, stPointTestData},
+		{DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTPoint, 3857), nil, stPointTestData},
 
-		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 0), nil, stGeometryTestData},
-		{common.DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 3857), nil, stGeometryTestData},
+		{DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 0), nil, stGeometryTestData},
+		{DfvLevel6, condGE, dttSpatialType, drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 3857), nil, stGeometryTestData},
 	}
 
 	dfvs := []int{DefaultDfv}
 	if !testing.Short() {
-		dfvs = common.SupportedDfvs
+		dfvs = SupportedDfvs
 	}
 
 	convertTestDataType := func(td interface{}) []interface{} {
@@ -971,10 +972,16 @@ func TestDataType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
-				version, err := drvtst.HDBVersion(db)
+				var version *hdb.Version
+				// Grab connection to detect hdb version.
+				conn, err := db.Conn(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}
+				conn.Raw(func(driverConn interface{}) error {
+					version = driverConn.(Conn).HDBVersion()
+					return nil
+				})
 
 				for _, test := range tests {
 					if test.typ.IsSupportedHDBVersion(version) && checkDFV(dfv, test.dfv, test.dvfCond) {

@@ -24,7 +24,7 @@ func testCancelContext(db *sql.DB, t *testing.T) {
 	// create cancel context
 	ctx, cancel := context.WithCancel(context.Background())
 	// callback function to cancel context
-	cancelCtx := func(c *Conn, op int) {
+	cancelCtx := func(c *conn, op int) {
 		if op == choStmtExec {
 			cancel()
 		}

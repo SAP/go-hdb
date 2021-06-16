@@ -12,11 +12,11 @@ import (
 
 //  check if conn implements all required interfaces
 var (
-	_ driver.Validator = (*Conn)(nil)
+	_ driver.Validator = (*conn)(nil)
 )
 
 // IsValid implements the driver.Validator interface.
-func (c *Conn) IsValid() bool {
+func (c *conn) IsValid() bool {
 	c.lock()
 	defer c.unlock()
 

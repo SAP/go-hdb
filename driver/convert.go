@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"reflect"
 
-	p "github.com/SAP/go-hdb/internal/protocol"
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {

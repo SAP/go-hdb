@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/SAP/go-hdb/driver/common"
-	p "github.com/SAP/go-hdb/internal/protocol"
+	"github.com/SAP/go-hdb/driver/hdb"
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 // DataType is the type definition for the supported database types.
@@ -84,6 +84,14 @@ var typeNames = []string{
 	"st_point",
 	"st_geometry",
 }
+
+const (
+	dfvLevel3 int = 3 // additional types Longdate, Secondate, Daydate, Secondtime supported for NGAP
+	dfvLevel4 int = 4 // generic support for new date/time types
+	dfvLevel6 int = 6 // BINTEXT
+	dfvLevel7 int = 7 // with boolean support
+	dfvLevel8 int = 8 // with FIXED8/12/16 support
+)
 
 var databaseTypeNames []string
 
@@ -172,10 +180,10 @@ func spatialColumn(typeName string, srid int32, nullable bool) string {
 
 // ColumnType represents a database column.
 type ColumnType interface {
-	IsSupportedHDBVersion(version *common.HDBVersion) bool
+	IsSupportedHDBVersion(version *hdb.Version) bool
 	IsSupportedDfv(dfv int) bool
 	TypeName() string
-	DatabaseTypeName(version *common.HDBVersion, dfv int) string
+	DatabaseTypeName(version *hdb.Version, dfv int) string
 	Column() string
 	Length() (length int64, ok bool)
 	DecimalSize() (precision, scale int64, ok bool)
@@ -186,7 +194,7 @@ type ColumnType interface {
 }
 
 // IsSupportedHDBVersion implements the ColumnType interface.
-func (t DataType) IsSupportedHDBVersion(version *common.HDBVersion) bool {
+func (t DataType) IsSupportedHDBVersion(version *hdb.Version) bool {
 	switch t {
 	case DtShorttext:
 		return version.Major() < 4 // no longer supported with hdb version 4
@@ -205,7 +213,7 @@ func (t DataType) IsSupportedHDBVersion(version *common.HDBVersion) bool {
 func (t DataType) IsSupportedDfv(dfv int) bool {
 	switch t {
 	case DtText:
-		return dfv >= common.DfvLevel4
+		return dfv >= dfvLevel4
 	default:
 		return true
 	}
@@ -217,7 +225,7 @@ func (t DataType) TypeName() string { return typeNames[t] }
 // ScanType implements the ColumnType interface.
 func (t DataType) ScanType(dfv int) reflect.Type {
 	switch {
-	case t == DtBoolean && dfv < common.DfvLevel7:
+	case t == DtBoolean && dfv < dfvLevel7:
 		return goDataTypes[DtTinyint].ScanType()
 	default:
 		return goDataTypes[t].ScanType()
@@ -225,31 +233,31 @@ func (t DataType) ScanType(dfv int) reflect.Type {
 }
 
 // DatabaseTypeName implements the ColumnType interface.
-func (t DataType) DatabaseTypeName(version *common.HDBVersion, dfv int) string {
+func (t DataType) DatabaseTypeName(version *hdb.Version, dfv int) string {
 	switch {
 	case t == DtSmalldecimal:
 		return databaseTypeNames[DtDecimal]
-	case t == DtShorttext && dfv < common.DfvLevel3:
+	case t == DtShorttext && dfv < dfvLevel3:
 		return databaseTypeNames[DtNVarchar]
-	case t == DtAlphanum && dfv < common.DfvLevel3:
+	case t == DtAlphanum && dfv < dfvLevel3:
 		return databaseTypeNames[DtNVarchar]
-	case t == DtDate && dfv >= common.DfvLevel3:
+	case t == DtDate && dfv >= dfvLevel3:
 		return databaseTypeNames[DtDaydate]
-	case t == DtTime && dfv >= common.DfvLevel3:
+	case t == DtTime && dfv >= dfvLevel3:
 		return databaseTypeNames[DtSecondtime]
-	case t == DtTimestamp && dfv >= common.DfvLevel3:
+	case t == DtTimestamp && dfv >= dfvLevel3:
 		return databaseTypeNames[DtLongdate]
-	case t == DtLongdate && dfv < common.DfvLevel3:
+	case t == DtLongdate && dfv < dfvLevel3:
 		return databaseTypeNames[DtTimestamp]
-	case t == DtSeconddate && dfv < common.DfvLevel3:
+	case t == DtSeconddate && dfv < dfvLevel3:
 		return databaseTypeNames[DtTimestamp]
-	case t == DtDaydate && dfv < common.DfvLevel3:
+	case t == DtDaydate && dfv < dfvLevel3:
 		return databaseTypeNames[DtDate]
-	case t == DtSecondtime && dfv < common.DfvLevel3:
+	case t == DtSecondtime && dfv < dfvLevel3:
 		return databaseTypeNames[DtTime]
-	case t == DtBoolean && dfv < common.DfvLevel7:
+	case t == DtBoolean && dfv < dfvLevel7:
 		return databaseTypeNames[DtTinyint]
-	case t == DtBintext && dfv < common.DfvLevel6:
+	case t == DtBintext && dfv < dfvLevel6:
 		return databaseTypeNames[DtNClob]
 
 	case t == DtChar && version.Major() >= 4: // since hdb version 4: char equals nchar
@@ -295,8 +303,8 @@ type decimalType struct {
 	notNullable      bool
 }
 
-func (t *decimalType) DatabaseTypeName(version *common.HDBVersion, dfv int) string {
-	if dfv < common.DfvLevel8 {
+func (t *decimalType) DatabaseTypeName(version *hdb.Version, dfv int) string {
+	if dfv < dfvLevel8 {
 		return t.DataType.DatabaseTypeName(version, dfv)
 	}
 	// dfv >= 8

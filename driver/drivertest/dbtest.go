@@ -5,7 +5,6 @@
 package drivertest
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"flag"
@@ -13,8 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/common"
-	"github.com/SAP/go-hdb/internal/rand"
+	"github.com/SAP/go-hdb/driver/internal/rand"
 )
 
 const (
@@ -140,18 +138,3 @@ func Setup(db *sql.DB) { stdDBTest.setup(db) }
 
 // Teardown deletes the database schema(s).
 func Teardown(db *sql.DB, drop bool) { stdDBTest.teardown(db, drop) }
-
-// HDBVersion returns the hdb version.
-func HDBVersion(db *sql.DB) (hdbVersion *common.HDBVersion, err error) {
-	// Grab connection.
-	conn, err := db.Conn(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	conn.Raw(func(driverConn interface{}) error {
-		hdbVersion = driverConn.(common.DriverConn).ServerInfo().Version
-		return nil
-	})
-	return hdbVersion, nil
-}

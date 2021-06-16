@@ -8,6 +8,7 @@ package driver
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"math/big"
@@ -16,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/common"
 	drvtst "github.com/SAP/go-hdb/driver/drivertest"
+	"github.com/SAP/go-hdb/driver/hdb"
 )
 
 func TestColumnType(t *testing.T) {
@@ -43,7 +44,7 @@ func TestColumnType(t *testing.T) {
 		return strings.Repeat("?, ", size-1) + "?"
 	}
 
-	testColumnType := func(db *sql.DB, version *common.HDBVersion, dfv int, types []drvtst.ColumnType, values []interface{}, t *testing.T) {
+	testColumnType := func(db *sql.DB, version *hdb.Version, dfv int, types []drvtst.ColumnType, values []interface{}, t *testing.T) {
 
 		tableName := RandomIdentifier(fmt.Sprintf("%s_", t.Name()))
 
@@ -175,7 +176,7 @@ func TestColumnType(t *testing.T) {
 
 	dfvs := []int{DefaultDfv}
 	if !testing.Short() {
-		dfvs = common.SupportedDfvs
+		dfvs = SupportedDfvs
 	}
 
 	for _, dfv := range dfvs {
@@ -192,10 +193,16 @@ func TestColumnType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
-				version, err := drvtst.HDBVersion(db)
+				var version *hdb.Version
+				// Grab connection to detect hdb version.
+				conn, err := db.Conn(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}
+				conn.Raw(func(driverConn interface{}) error {
+					version = driverConn.(Conn).HDBVersion()
+					return nil
+				})
 
 				types := make([]drvtst.ColumnType, 0, len(testFields))
 				values := make([]interface{}, 0, len(testFields))

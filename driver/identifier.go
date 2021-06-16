@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/SAP/go-hdb/internal/rand"
+	"github.com/SAP/go-hdb/driver/internal/rand"
 )
 
 var reSimple = regexp.MustCompile("^[_A-Z][_#$A-Z0-9]*$")

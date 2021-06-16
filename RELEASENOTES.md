@@ -1,6 +1,20 @@
 Release Notes
 =============
 
+## Release 0.105
+
+#### Release Notes
+
+- Removed driver.common package
+- Additional internal package cleanups
+
+#### Incompatibilities
+
+- Some minor type incompatibilities most users should not be affected of:
+  - driver.common.HDBVersion -> driver.hdb.Version
+  - driver.common.DriverConn -> driver.Conn
+  - driver.common.DriverConn.ServerInfo() -> driver.Conn.HDBVersion()
+
 ## Release 0.104
 
 #### Minor revisions
