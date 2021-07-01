@@ -11,11 +11,10 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/SAP/go-hdb/driver/internal/unicode"
 	"golang.org/x/text/transform"
 )
 
-const readScratchSize = 512 // used for skip as well - size not too small!
+const readScratchSize = 512 // used for skip as well - define size not too small!
 
 // Decoder decodes hdb protocol datatypes an basis of an io.Reader.
 type Decoder struct {
@@ -32,10 +31,10 @@ type Decoder struct {
 }
 
 // NewDecoder creates a new Decoder instance based on an io.Reader.
-func NewDecoder(rd io.Reader) *Decoder {
+func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 	return &Decoder{
 		rd: rd,
-		tr: unicode.Cesu8ToUtf8Transformer,
+		tr: decoder(),
 	}
 }
 

@@ -14,8 +14,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/driver/hdb"
-	"github.com/SAP/go-hdb/driver/internal/unicode"
-	"github.com/SAP/go-hdb/driver/internal/unicode/cesu8"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 //padding
@@ -47,12 +46,12 @@ type Session struct {
 
 // NewSession creates a new database session.
 func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (*Session, error) {
-	pw := newProtocolWriter(rw.Writer, cfg.SessionVariables) // write upstream
+	pw := newProtocolWriter(rw.Writer, cfg.CESU8Encoder, cfg.SessionVariables) // write upstream
 	if err := pw.writeProlog(); err != nil {
 		return nil, err
 	}
 
-	pr := newProtocolReader(false, rw.Reader) // read downstream
+	pr := newProtocolReader(false, rw.Reader, cfg.CESU8Decoder) // read downstream
 	if err := pr.readProlog(); err != nil {
 		return nil, err
 	}
@@ -215,7 +214,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 		return nil, err
 	}
 
-	pr := &PrepareResult{}
+	pr := &PrepareResult{session: s}
 	resMeta := &resultMetadata{}
 	prmMeta := &parameterMetadata{}
 
@@ -693,7 +692,7 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 	var err error
 
 	if descr.isCharBased {
-		wrcl := transform.NewWriter(wr, unicode.Cesu8ToUtf8Transformer) // CESU8 transformer
+		wrcl := transform.NewWriter(wr, s.cfg.CESU8Decoder()) // CESU8 transformer
 		err = s._decodeLobs(descr, wrcl, func(b []byte) (int64, error) {
 			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
 			numChars := int64(0)

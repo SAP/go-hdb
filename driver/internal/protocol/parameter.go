@@ -90,7 +90,9 @@ func (f *ParameterField) String() string {
 }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(v interface{}) (interface{}, error) { return f.ft.convert(v) }
+func (f *ParameterField) Convert(s *Session, v interface{}) (interface{}, error) {
+	return f.ft.convert(s, v)
+}
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName

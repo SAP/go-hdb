@@ -32,4 +32,4 @@ todo*.*
 !LICENSES/*.txt
 .reuse/
 *.debug
-
+*.DS_Store

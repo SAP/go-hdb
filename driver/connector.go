@@ -20,6 +20,8 @@ import (
 	"github.com/SAP/go-hdb/driver/dial"
 	"github.com/SAP/go-hdb/driver/internal/container/vermap"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"golang.org/x/text/transform"
 )
 
 // Data format version values.
@@ -62,8 +64,7 @@ const (
 	minBulkSize     = 1               // Minimal bulkSize value.
 	MaxBulkSize     = p.MaxNumArg     // Maximum bulk size.
 	minLobChunkSize = 128             // Minimal lobChunkSize
-	// TODO check maxLobChunkSize
-	//maxLobChunkSize = 1 << 14 // Maximal lobChunkSize
+	maxLobChunkSize = 1 << 14         // Maximal lobChunkSize (TODO check)
 )
 
 /*
@@ -91,6 +92,8 @@ type Connector struct {
 	defaultSchema                                 string
 	legacy                                        bool
 	dialer                                        dial.Dialer
+	cesu8Decoder                                  func() transform.Transformer
+	cesu8Encoder                                  func() transform.Transformer
 }
 
 // newConnector returns a new Connector instance with default values.
@@ -107,6 +110,8 @@ func newConnector() *Connector {
 		sessionVariables: vermap.NewVerMap(),
 		legacy:           DefaultLegacy,
 		dialer:           dial.DefaultDialer,
+		cesu8Decoder:     cesu8.DefaultDecoder,
+		cesu8Encoder:     cesu8.DefaultEncoder,
 	}
 }
 
@@ -443,9 +448,7 @@ func (c *Connector) SetFetchSize(fetchSize int) error {
 // BulkSize returns the bulkSize of the connector.
 func (c *Connector) BulkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bulkSize }
 
-/*
-SetBulkSize sets the bulkSize of the connector.
-*/
+// SetBulkSize sets the bulkSize of the connector.
 func (c *Connector) SetBulkSize(bulkSize int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -466,6 +469,19 @@ func (c *Connector) setBulkSize(bulkSize int) error {
 // LobChunkSize returns the lobChunkSize of the connector.
 func (c *Connector) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
 
+// SetLobChunkSize sets the lobChunkSize of the connector.
+func (c *Connector) SetLobChunkSize(lobChunkSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case lobChunkSize < minLobChunkSize:
+		lobChunkSize = minLobChunkSize
+	case lobChunkSize > maxLobChunkSize:
+		lobChunkSize = maxLobChunkSize
+	}
+	c.lobChunkSize = lobChunkSize
+}
+
 // Dialer returns the dialer object of the connector.
 func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c.dialer }
 
@@ -478,6 +494,34 @@ func (c *Connector) SetDialer(dialer dial.Dialer) error {
 	}
 	c.dialer = dialer
 	return nil
+}
+
+// CESU8Decoder returns the CESU-8 decoder of the connector.
+func (c *Connector) CESU8Decoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cesu8Decoder
+}
+
+// SetCESU8Decoder sets the CESU-8 decoder of the connector.
+func (c *Connector) SetCESU8Decoder(cesu8Decoder func() transform.Transformer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cesu8Decoder = cesu8Decoder
+}
+
+// CESU8Encoder returns the CESU-8 encoder of the connector.
+func (c *Connector) CESU8Encoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cesu8Encoder
+}
+
+// SetCESU8Encoder sets the CESU-8 encoder of the connector.
+func (c *Connector) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cesu8Encoder = cesu8Encoder
 }
 
 // Timeout returns the timeout of the connector.

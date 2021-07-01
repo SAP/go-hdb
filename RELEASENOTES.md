@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.105
 
+#### Minor revisions
+
+Release 0.105.1 (upgrade urgency: low)
+
+- Added custom CESU-8 encodings
+
 #### Release Notes
 
 - Removed driver.common package

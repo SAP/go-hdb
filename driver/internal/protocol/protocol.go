@@ -15,15 +15,20 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/container/vermap"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/sqltrace"
+	"golang.org/x/text/transform"
 )
 
 // A PrepareResult represents the result of a prepare statement.
 type PrepareResult struct {
+	session         *Session
 	fc              functionCode
 	stmtID          uint64
 	parameterFields []*ParameterField
 	resultFields    []*resultField
 }
+
+// Session returns the session the prepare result belongs to.
+func (pr *PrepareResult) Session() *Session { return pr.session }
 
 // Check checks consistency of the prepare result.
 func (pr *PrepareResult) Check(qd *QueryDescr) error {
@@ -406,10 +411,10 @@ type protocolReader struct {
 	err error
 }
 
-func newProtocolReader(upStream bool, rd io.Reader) *protocolReader {
+func newProtocolReader(upStream bool, rd io.Reader, decoder func() transform.Transformer) *protocolReader {
 	return &protocolReader{
 		upStream:        upStream,
-		dec:             encoding.NewDecoder(rd),
+		dec:             encoding.NewDecoder(rd, decoder),
 		tracer:          newTraceLogger(upStream),
 		partReaderCache: map[partKind]partReader{},
 		mh:              &messageHeader{},
@@ -683,11 +688,11 @@ type protocolWriter struct {
 	ph *partHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer, sv *vermap.VerMap) *protocolWriter {
+func newProtocolWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv *vermap.VerMap) *protocolWriter {
 	return &protocolWriter{
 		wr:     wr,
 		sv:     sv,
-		enc:    encoding.NewEncoder(wr),
+		enc:    encoding.NewEncoder(wr, encoder),
 		tracer: newTraceLogger(true),
 		mh:     new(messageHeader),
 		sh:     new(segmentHeader),

@@ -290,6 +290,8 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 			LobChunkSize:     ctr.lobChunkSize,
 			Dfv:              ctr.dfv,
 			Legacy:           ctr.legacy,
+			CESU8Decoder:     ctr.cesu8Decoder,
+			CESU8Encoder:     ctr.cesu8Encoder,
 		},
 	)
 	if err != nil {
@@ -941,10 +943,9 @@ func (em execManyGenList) numRow() int    { return reflect.Value(em).Len() }
 func (em execManyGenMatrix) numRow() int  { return reflect.Value(em).Len() }
 
 func (em execManyIntfList) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
-	f := pr.ParameterField(0)
 	rows := em[startRow:endRow]
 	for i, row := range rows {
-		row, err := convertValue(f, row)
+		row, err := convertValue(pr, 0, row)
 		if err != nil {
 			return err
 		}
@@ -954,10 +955,9 @@ func (em execManyIntfList) fill(pr *p.PrepareResult, startRow, endRow int, args 
 }
 
 func (em execManyGenList) fill(pr *p.PrepareResult, startRow, endRow int, args []interface{}) error {
-	f := pr.ParameterField(0)
 	cnt := 0
 	for i := startRow; i < endRow; i++ {
-		row, err := convertValue(f, reflect.Value(em).Index(i).Interface())
+		row, err := convertValue(pr, 0, reflect.Value(em).Index(i).Interface())
 		if err != nil {
 			return err
 		}
@@ -976,8 +976,7 @@ func (em execManyIntfMatrix) fill(pr *p.PrepareResult, startRow, endRow int, arg
 			return fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, len(row), numField)
 		}
 		for j, col := range row {
-			f := pr.ParameterField(j)
-			col, err := convertValue(f, col)
+			col, err := convertValue(pr, j, col)
 			if err != nil {
 				return err
 			}
@@ -1002,8 +1001,7 @@ func (em execManyGenMatrix) fill(pr *p.PrepareResult, startRow, endRow int, args
 		}
 		for j := 0; j < numField; j++ {
 			col := row.Index(j).Interface()
-			f := pr.ParameterField(j)
-			col, err := convertValue(f, col)
+			col, err := convertValue(pr, j, col)
 			if err != nil {
 				return err
 			}

@@ -18,8 +18,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/unicode"
-	"github.com/SAP/go-hdb/driver/internal/unicode/cesu8"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 const (
@@ -94,7 +93,7 @@ type fieldType interface {
 		- so the check needs to 'fail fast'
 		- fmt.Errorf is too slow because contructor formats the error -> use ConvertError
 	*/
-	convert(v interface{}) (interface{}, error)
+	convert(s *Session, v interface{}) (interface{}, error)
 	prmSize(v interface{}) int
 	encodePrm(e *encoding.Encoder, v interface{}) error
 	decodeRes(d *encoding.Decoder) (interface{}, error)
@@ -204,52 +203,84 @@ func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
 // convert
-func (ft _booleanType) convert(v interface{}) (interface{}, error) { return convertBool(ft, v) }
+func (ft _booleanType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertBool(ft, v)
+}
 
-func (ft _tinyintType) convert(v interface{}) (interface{}, error) {
+func (ft _tinyintType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minTinyint, maxTinyint)
 }
-func (ft _smallintType) convert(v interface{}) (interface{}, error) {
+func (ft _smallintType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minSmallint, maxSmallint)
 }
-func (ft _integerType) convert(v interface{}) (interface{}, error) {
+func (ft _integerType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minInteger, maxInteger)
 }
-func (ft _bigintType) convert(v interface{}) (interface{}, error) {
+func (ft _bigintType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minBigint, maxBigint)
 }
 
-func (ft _realType) convert(v interface{}) (interface{}, error) {
+func (ft _realType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertFloat(ft, v, maxReal)
 }
-func (ft _doubleType) convert(v interface{}) (interface{}, error) {
+func (ft _doubleType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertFloat(ft, v, maxDouble)
 }
 
-func (ft _dateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
-func (ft _timeType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
-func (ft _timestampType) convert(v interface{}) (interface{}, error) {
+func (ft _dateType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _longdateType) convert(v interface{}) (interface{}, error)   { return convertTime(ft, v) }
-func (ft _seconddateType) convert(v interface{}) (interface{}, error) { return convertTime(ft, v) }
-func (ft _daydateType) convert(v interface{}) (interface{}, error)    { return convertTime(ft, v) }
-func (ft _secondtimeType) convert(v interface{}) (interface{}, error) {
+func (ft _timeType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _timestampType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _longdateType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _seconddateType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _daydateType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertTime(ft, v)
+}
+func (ft _secondtimeType) convert(s *Session, v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
 
-func (ft _decimalType) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
-func (ft _fixed8Type) convert(v interface{}) (interface{}, error)  { return convertDecimal(ft, v) }
-func (ft _fixed12Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
-func (ft _fixed16Type) convert(v interface{}) (interface{}, error) { return convertDecimal(ft, v) }
+func (ft _decimalType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertDecimal(ft, v)
+}
+func (ft _fixed8Type) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertDecimal(ft, v)
+}
+func (ft _fixed12Type) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertDecimal(ft, v)
+}
+func (ft _fixed16Type) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertDecimal(ft, v)
+}
 
-func (ft _varType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
-func (ft _alphaType) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
-func (ft _hexType) convert(v interface{}) (interface{}, error)   { return convertBytes(ft, v) }
-func (ft _cesu8Type) convert(v interface{}) (interface{}, error) { return convertBytes(ft, v) }
+func (ft _varType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertBytes(ft, v)
+}
+func (ft _alphaType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertBytes(ft, v)
+}
+func (ft _hexType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertBytes(ft, v)
+}
+func (ft _cesu8Type) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertBytes(ft, v)
+}
 
-func (ft _lobVarType) convert(v interface{}) (interface{}, error)   { return convertLob(ft, v, false) }
-func (ft _lobCESU8Type) convert(v interface{}) (interface{}, error) { return convertLob(ft, v, true) }
+func (ft _lobVarType) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertLob(s, ft, v, false)
+}
+func (ft _lobCESU8Type) convert(s *Session, v interface{}) (interface{}, error) {
+	return convertLob(s, ft, v, true)
+}
 
 // ReadProvider is the interface wrapping the Reader which provides an io.Reader.
 type ReadProvider interface {
@@ -257,7 +288,7 @@ type ReadProvider interface {
 }
 
 // Lob
-func convertLob(ft fieldType, v interface{}, isCharBased bool) (driver.Value, error) {
+func convertLob(s *Session, ft fieldType, v interface{}, isCharBased bool) (driver.Value, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -276,7 +307,7 @@ func convertLob(ft fieldType, v interface{}, isCharBased bool) (driver.Value, er
 	}
 
 	if isCharBased {
-		rd = transform.NewReader(rd, unicode.Utf8ToCesu8Transformer) // CESU8 transformer
+		rd = transform.NewReader(rd, s.cfg.CESU8Encoder()) // CESU8 decoder
 	}
 
 	return newLobInDescr(rd), nil

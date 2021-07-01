@@ -20,6 +20,8 @@ import (
 	"io"
 	"net"
 	"sync"
+
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
@@ -110,7 +112,7 @@ type sniffReader struct {
 }
 
 func newSniffReader(upStream bool, rd *bufio.Reader) *sniffReader {
-	return &sniffReader{pr: newProtocolReader(upStream, rd)}
+	return &sniffReader{pr: newProtocolReader(upStream, rd, cesu8.DefaultDecoder)}
 }
 
 type sniffUpReader struct{ *sniffReader }

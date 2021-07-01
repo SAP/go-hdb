@@ -10,7 +10,6 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/SAP/go-hdb/driver/internal/unicode"
 	"golang.org/x/text/transform"
 )
 
@@ -25,11 +24,11 @@ type Encoder struct {
 }
 
 // NewEncoder creates a new Encoder instance.
-func NewEncoder(wr io.Writer) *Encoder {
+func NewEncoder(wr io.Writer, encoder func() transform.Transformer) *Encoder {
 	return &Encoder{
 		wr: wr,
 		b:  make([]byte, writeScratchSize),
-		tr: unicode.Utf8ToCesu8Transformer,
+		tr: encoder(),
 	}
 }
 

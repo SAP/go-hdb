@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/unicode/cesu8"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 const (
