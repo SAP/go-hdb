@@ -63,6 +63,45 @@ func (o multiLineOptions) encode(enc *encoding.Encoder) {
 
 type plainOptions map[int8]interface{}
 
+func (o plainOptions) asString(k int8) string {
+	v, ok := o[k]
+	if !ok {
+		return ""
+	}
+	switch v := v.(type) {
+	case optStringType:
+		return string(v)
+	default:
+		return ""
+	}
+}
+
+func (o plainOptions) asInt(k int8) int {
+	v, ok := o[k]
+	if !ok {
+		return 0
+	}
+	switch v := v.(type) {
+	case optIntType:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+func (o plainOptions) asBool(k int8) bool {
+	v, ok := o[k]
+	if !ok {
+		return false
+	}
+	switch v := v.(type) {
+	case optBooleanType:
+		return bool(v)
+	default:
+		return false
+	}
+}
+
 func (o plainOptions) size() int {
 	size := 2 * len(o) //option + type
 	for _, v := range o {

@@ -34,6 +34,15 @@ const (
 	mtExecuteITab     messageType = 78
 	mtFetchNextITab   messageType = 79
 	mtInsertNextITab  messageType = 80
+	mtBatchPrepare    messageType = 81
+	mtDBConnectInfo   messageType = 82
+	mtXopenXAStart    messageType = 83
+	mtXopenXAEnd      messageType = 84
+	mtXopenXAPrepare  messageType = 85
+	mtXopenXACommit   messageType = 86
+	mtXopenXARollback messageType = 87
+	mtXopenXARecover  messageType = 88
+	mtXopenXAForget   messageType = 89
 )
 
 func (mt messageType) clientInfoSupported() bool {

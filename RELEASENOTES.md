@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.2 (upgrade urgency: low)
+
+- Added 'raw' connection methods DatabaseName and DBConnectInfo.
+
 Release 0.105.1 (upgrade urgency: low)
 
 - Added custom CESU-8 encodings

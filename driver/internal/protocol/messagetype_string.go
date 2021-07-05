@@ -33,6 +33,15 @@ func _() {
 	_ = x[mtExecuteITab-78]
 	_ = x[mtFetchNextITab-79]
 	_ = x[mtInsertNextITab-80]
+	_ = x[mtBatchPrepare-81]
+	_ = x[mtDBConnectInfo-82]
+	_ = x[mtXopenXAStart-83]
+	_ = x[mtXopenXAEnd-84]
+	_ = x[mtXopenXAPrepare-85]
+	_ = x[mtXopenXACommit-86]
+	_ = x[mtXopenXARollback-87]
+	_ = x[mtXopenXARecover-88]
+	_ = x[mtXopenXAForget-89]
 }
 
 const (
@@ -41,14 +50,14 @@ const (
 	_messageType_name_2 = "mtExecute"
 	_messageType_name_3 = "mtWriteLobmtReadLobmtFindLob"
 	_messageType_name_4 = "mtAuthenticatemtConnectmtCommitmtRollbackmtCloseResultsetmtDropStatementIDmtFetchNextmtFetchAbsolutemtFetchRelativemtFetchFirstmtFetchLast"
-	_messageType_name_5 = "mtDisconnectmtExecuteITabmtFetchNextITabmtInsertNextITab"
+	_messageType_name_5 = "mtDisconnectmtExecuteITabmtFetchNextITabmtInsertNextITabmtBatchPreparemtDBConnectInfomtXopenXAStartmtXopenXAEndmtXopenXAPreparemtXopenXACommitmtXopenXARollbackmtXopenXARecovermtXopenXAForget"
 )
 
 var (
 	_messageType_index_1 = [...]uint8{0, 15, 24, 36, 45, 53}
 	_messageType_index_3 = [...]uint8{0, 10, 19, 28}
 	_messageType_index_4 = [...]uint8{0, 14, 23, 31, 41, 57, 74, 85, 100, 115, 127, 138}
-	_messageType_index_5 = [...]uint8{0, 12, 25, 40, 56}
+	_messageType_index_5 = [...]uint8{0, 12, 25, 40, 56, 70, 85, 99, 111, 127, 142, 159, 175, 190}
 )
 
 func (i messageType) String() string {
@@ -66,7 +75,7 @@ func (i messageType) String() string {
 	case 65 <= i && i <= 75:
 		i -= 65
 		return _messageType_name_4[_messageType_index_4[i]:_messageType_index_4[i+1]]
-	case 77 <= i && i <= 80:
+	case 77 <= i && i <= 89:
 		i -= 77
 		return _messageType_name_5[_messageType_index_5[i]:_messageType_index_5[i+1]]
 	default:

@@ -233,6 +233,8 @@ const (
 // Conn enhances a connection with go-hdb specific connection functions.
 type Conn interface {
 	HDBVersion() *hdb.Version
+	DatabaseName() string
+	DBConnectInfo(ctx context.Context, databaseName string) (*hdb.DBConnectInfo, error)
 }
 
 // Conn is the implementation of the database/sql/driver Conn interface.
@@ -610,8 +612,37 @@ func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 
 // Conn Raw access methods
 
-// HDBVersion implements the common.DriverConn interface.
+// HDBVersion implements the Conn interface.
 func (c *conn) HDBVersion() *hdb.Version { return c.session.HDBVersion() }
+
+// DatabaseName implements the Conn interface.
+func (c *conn) DatabaseName() string { return c.session.DatabaseName() }
+
+// DBConnectInfo implements the Conn interface.
+func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *hdb.DBConnectInfo, err error) {
+	if err := c.tryLock(0); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
+
+	if c.dbConn.isBad() {
+		return nil, driver.ErrBadConn
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ci, err = c.session.DBConnectInfo(databaseName)
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.dbConn.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return ci, err
+	}
+}
 
 //transaction
 

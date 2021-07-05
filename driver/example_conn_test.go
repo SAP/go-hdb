@@ -42,3 +42,36 @@ func ExampleConn_HDBVersion() {
 
 	// output: ok
 }
+
+// ExampleConn-DBConnectInfo shows how to retrieve hdb DBConnectInfo with the help of sql.Conn.Raw().
+func ExampleConn_DBConnectInfo() {
+	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	if err != nil {
+		log.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	// Grab connection.
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := conn.Raw(func(driverConn interface{}) error {
+		// Access driver.Conn methods.
+		ci, err := driverConn.(driver.Conn).DBConnectInfo(context.Background(), driverConn.(driver.Conn).DatabaseName())
+		if err != nil {
+			return err
+		}
+		log.Printf("db connect info: %s", ci)
+		return nil
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	// Make sure that the example is executed during test runs.
+	fmt.Print("ok")
+
+	// output: ok
+}

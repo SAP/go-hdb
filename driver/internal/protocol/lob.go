@@ -95,7 +95,12 @@ func newLobInDescr(rd io.Reader) *lobInDescr {
 }
 
 func (d *lobInDescr) String() string {
-	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, d.b[:25])
+	// restrict output size
+	b := d.b
+	if len(b) >= 25 {
+		b = d.b[:25]
+	}
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, b)
 }
 
 func (d *lobInDescr) fetchNext(chunkSize int) (bool, error) {

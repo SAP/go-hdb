@@ -62,6 +62,7 @@ func (*readLobRequest) kind() partKind      { return pkReadLobRequest }
 func (*readLobReply) kind() partKind        { return pkReadLobReply }
 func (*writeLobRequest) kind() partKind     { return pkWriteLobRequest }
 func (*writeLobReply) kind() partKind       { return pkWriteLobReply }
+func (dbConnectInfo) kind() partKind        { return pkDBConnectInfo }
 
 // func (lobFlags) kind() partKind                   { return pkLobFlags }
 type partWriter interface {
@@ -112,8 +113,9 @@ var (
 	_ partWriter = (*inputParameters)(nil)
 	_ partWriter = (*resultsetID)(nil)
 	_ partWriter = (*fetchsize)(nil)
-	_ partReader = (*readLobRequest)(nil)
-	_ partReader = (*writeLobRequest)(nil)
+	_ partWriter = (*readLobRequest)(nil)
+	_ partWriter = (*writeLobRequest)(nil)
+	_ partWriter = (*dbConnectInfo)(nil)
 
 //	_ partWriter = (*lobFlags)(nil)
 )
@@ -151,6 +153,7 @@ var (
 	_ partReader = (*writeLobRequest)(nil)
 	_ partReader = (*readLobReply)(nil)
 	_ partReader = (*writeLobReply)(nil)
+	_ partReader = (*dbConnectInfo)(nil)
 )
 
 // some partReader needs additional parameter set before reading
@@ -193,6 +196,7 @@ var partTypeMap = map[partKind]reflect.Type{
 	pkReadLobReply:        reflect.TypeOf((*readLobReply)(nil)).Elem(),
 	pkWriteLobReply:       reflect.TypeOf((*writeLobReply)(nil)).Elem(),
 	pkWriteLobRequest:     reflect.TypeOf((*writeLobRequest)(nil)).Elem(),
+	pkDBConnectInfo:       reflect.TypeOf((*dbConnectInfo)(nil)).Elem(),
 }
 
 func newPartReader(pk partKind) (partReader, error) {

@@ -70,6 +70,7 @@ func _() {
 	_ = x[tcFixed8-81]
 	_ = x[tcFixed12-82]
 	_ = x[tcCiphertext-90]
+	_ = x[tcSecondtimeNull-176]
 	_ = x[tcTableRef-126]
 	_ = x[tcTableRows-127]
 }
@@ -84,6 +85,7 @@ const (
 	_typeCode_name_6 = "tcFixed8tcFixed12"
 	_typeCode_name_7 = "tcCiphertext"
 	_typeCode_name_8 = "tcTableReftcTableRows"
+	_typeCode_name_9 = "tcSecondtimeNull"
 )
 
 var (
@@ -120,6 +122,8 @@ func (i typeCode) String() string {
 	case 126 <= i && i <= 127:
 		i -= 126
 		return _typeCode_name_8[_typeCode_index_8[i]:_typeCode_index_8[i+1]]
+	case i == 176:
+		return _typeCode_name_9
 	default:
 		return "typeCode(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
