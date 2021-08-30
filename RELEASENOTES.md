@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.3 (upgrade urgency: low)
+
+- Added support of Go 1.7
+- Dropped support of Go language versions < Go 1.5
+
 Release 0.105.2 (upgrade urgency: low)
 
 - Added 'raw' connection methods DatabaseName and DBConnectInfo.

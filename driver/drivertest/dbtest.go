@@ -47,7 +47,7 @@ func newDBFlags() *dbFlags {
 	f := new(dbFlags)
 
 	flag.StringVar(&f.dsn, "dsn", os.Getenv(envDSN), "database dsn")
-	flag.StringVar(&f.schema, "schema", testGoHDBSchemaPrefix+rand.RandomString(16), "database schema")
+	flag.StringVar(&f.schema, "schema", testGoHDBSchemaPrefix+rand.AlphanumString(16), "database schema")
 	flag.BoolVar(&f.dropSchema, "dropschema", true, "drop test schema if test ran successfully")
 	flag.BoolVar(&f.dropSchemas, "dropschemas", false, "drop all existing test schemas if test ran successfully")
 	flag.IntVar(&f.pingInterval, "pingint", 0, "sets the connection ping interval (if zero, the connection ping is deactivated)")

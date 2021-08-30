@@ -19,7 +19,7 @@ type Identifier string
 // RandomIdentifier returns a random Identifier prefixed by the prefix parameter.
 // This function is used to generate database objects with random names for test and example code.
 func RandomIdentifier(prefix string) Identifier {
-	return Identifier(prefix + rand.RandomString(16))
+	return Identifier(prefix + rand.AlphanumString(16))
 }
 
 func (i Identifier) String() string {

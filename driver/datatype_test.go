@@ -27,6 +27,7 @@ import (
 
 	drvtst "github.com/SAP/go-hdb/driver/drivertest"
 	"github.com/SAP/go-hdb/driver/hdb"
+	"github.com/SAP/go-hdb/driver/internal/rand"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
@@ -537,6 +538,14 @@ func testInitLobFiles(t *testing.T) {
 		if err := filepath.Walk(root, walk); err != nil {
 			t.Fatal(err)
 		}
+
+		// add random
+		// Lob size 1MB
+		b := make([]byte, 1e6)
+		if _, err := rand.AlphanumReader.Read(b); err != nil {
+			t.Fatal(err)
+		}
+		testLobFiles = append(testLobFiles, &testLobFile{isASCII: true, content: b})
 	})
 }
 
@@ -806,6 +815,7 @@ func compareLob(in, out Lob) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// println(len(content))
 	return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes()), nil
 }
 

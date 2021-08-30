@@ -14,21 +14,27 @@ const (
 	csAlphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 
-// RandomBytes returns a random byte slice of size n and panics if crypto random reader returns an error.
-func RandomBytes(n int) []byte {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic(err.Error()) // rand should never fail
+// AlphanumReader is a global, shared instance of a random generator of alpha-numeric characters.
+var AlphanumReader = new(alphanumReader)
+
+type alphanumReader struct{}
+
+func (r *alphanumReader) Read(p []byte) (n int, err error) {
+	if n, err = rand.Read(p); err != nil {
+		return n, err
 	}
-	return b
+	size := byte(len(csAlphanum)) // len character sets <= max(byte)
+	for i, b := range p {
+		p[i] = csAlphanum[b%size]
+	}
+	return n, nil
 }
 
-// RandomString returns a random string of alphanumeric characters and panics if crypto random reader returns an error.
-func RandomString(n int) string {
-	bytes := RandomBytes(n)
-	size := byte(len(csAlphanum)) // len character sets <= max(byte)
-	for i, b := range bytes {
-		bytes[i] = csAlphanum[b%size]
+// AlphanumString returns a random string of alphanumeric characters and panics if crypto random reader returns an error.
+func AlphanumString(n int) string {
+	b := make([]byte, n)
+	if _, err := AlphanumReader.Read(b); err != nil {
+		panic(err.Error()) // rand should never fail
 	}
-	return string(bytes)
+	return string(b)
 }
