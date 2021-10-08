@@ -72,8 +72,13 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			j++
 			continue
 		}
-		if !utf8.FullRune(src[i:]) {
-			return j, i, transform.ErrShortSrc
+		// check if additional bytes needed (ErrShortSrc) only
+		// - if further bytes are potentially available (!atEOF) and
+		// - remainig buffer smaller than max size for an ecoded UTF-8 rune
+		if !atEOF && len(src[i:]) < utf8.UTFMax {
+			if !utf8.FullRune(src[i:]) {
+				return j, i, transform.ErrShortSrc
+			}
 		}
 		r, n := utf8.DecodeRune(src[i:])
 		if r == utf8.RuneError {
@@ -125,8 +130,13 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			j++
 			continue
 		}
-		if !FullRune(src[i:]) {
-			return j, i, transform.ErrShortSrc
+		// check if additional bytes needed (ErrShortSrc) only
+		// - if further bytes are potentially available (!atEOF) and
+		// - remainig buffer smaller than max size for an ecoded CESU-8 rune
+		if !atEOF && len(src[i:]) < CESUMax {
+			if !FullRune(src[i:]) {
+				return j, i, transform.ErrShortSrc
+			}
 		}
 		r, n := DecodeRune(src[i:])
 		if r == utf8.RuneError {
@@ -143,8 +153,6 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		switch {
 		case m == -1:
 			panic("internal CESU-8 to UTF-8 transformation error")
-		case m > n:
-			panic("converted rune length greater than source rune length") // 'in-place' CESU-8 to UTF-8 conversion
 		case j+m > len(dst):
 			return j, i, transform.ErrShortDst
 		}

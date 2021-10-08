@@ -5,6 +5,10 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.4 (upgrade urgency: low)
+
+- Fixed error transforming invalid CESU-8 data
+
 Release 0.105.3 (upgrade urgency: low)
 
 - Added support of Go 1.7

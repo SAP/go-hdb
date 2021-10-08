@@ -853,7 +853,9 @@ func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*Par
 
 		// TODO check total size limit
 		for _, descr := range descrs {
-			descr.fetchNext(chunkSize)
+			if err := descr.fetchNext(chunkSize); err != nil {
+				return err
+			}
 		}
 
 		writeLobRequest.descrs = descrs

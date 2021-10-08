@@ -261,20 +261,17 @@ func (e *Encoder) CESU8Bytes(p []byte) int {
 	}
 	e.tr.Reset()
 	cnt := 0
-	i := 0
-	for i < len(p) {
-		m, n, err := e.tr.Transform(e.b, p[i:], true)
+	for i := 0; i < len(p); {
+		nDst, nSrc, err := e.tr.Transform(e.b, p[i:], true)
+		if nDst != 0 {
+			n, _ := e.wr.Write(e.b[:nDst])
+			cnt += n
+		}
 		if err != nil && err != transform.ErrShortDst {
 			e.err = err
 			return cnt
 		}
-		if m == 0 {
-			e.err = transform.ErrShortDst
-			return cnt
-		}
-		o, _ := e.wr.Write(e.b[:m])
-		cnt += o
-		i += n
+		i += nSrc
 	}
 	return cnt
 }

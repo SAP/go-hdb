@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/transform"
 )
 
-const readScratchSize = 512 // used for skip as well - define size not too small!
+const readScratchSize = 4096
 
 // Decoder decodes hdb protocol datatypes an basis of an io.Reader.
 type Decoder struct {
@@ -24,7 +24,7 @@ type Decoder struct {
 	- conversion errors are returned by the reader function itself
 	*/
 	err error
-	b   [readScratchSize]byte // scratch buffer
+	b   []byte // scratch buffer (used for skip, CESU8Bytes - define size not too small!)
 	tr  transform.Transformer
 	cnt int
 	dfv int
@@ -34,6 +34,7 @@ type Decoder struct {
 func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 	return &Decoder{
 		rd: rd,
+		b:  make([]byte, readScratchSize),
 		tr: decoder(),
 	}
 }
@@ -286,14 +287,18 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 	if d.err != nil {
 		return nil, nil
 	}
-	p := make([]byte, size)
+
+	var p []byte
+	if size > readScratchSize {
+		p = make([]byte, size) //TODO: optimize via piece wise reading
+	} else {
+		p = d.b[:size]
+	}
+
 	if _, err := d.readFull(p); err != nil {
 		return nil, nil
 	}
-	d.tr.Reset()
-	n, _, err := d.tr.Transform(p, p, true) // inplace transformation
-	if err != nil {
-		return nil, err
-	}
-	return p[:n], nil
+
+	r, _, err := transform.Bytes(d.tr, p)
+	return r, err
 }

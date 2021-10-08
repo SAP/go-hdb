@@ -96,15 +96,46 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *t
 	)
 
 	resultData := []string{
-		string([]byte{0x2b, 0x30, 0x1c, 0x39, 0xef, 0xbf, 0xbd, 0x32, 0x30, 0x60, 0x33}), // invalid sequence "eda2a811" gets replaces by replacement char "fffd" -> UTF-8 "efbfbd"
+		"2b301c39efbfbd32306033", // invalid sequence "eda2a811" gets replaces by replacement char "fffd" -> UTF-8 "efbfbd"
+		"243036301defbfbdceb63714",
+		"24302837323245efbfbd6c",
+		"2443306eefbfbd2e19517c",
+		"243035027f03353245efbfbd",
+		"246a3066ed828f5d303054efbfbd",
+		"245d66301d5a383435efbfbd",
+		"24d9973048287342efbfbd78",
+		"24306a36efbfbd39393738",
+		"30393fefbfbd312c391936",
+		"303735efbfbd3425256135",
+		"24efbfbd33334d374c3736",
+		"1130691932593303efbfbd",
+		"30154301326b133334efbfbd",
+		"24efbfbd33611037370a38",
+		"24efbfbd61223433390674",
+		"2443307f61313aefbfbd34",
+		"08303438013624efbfbd33",
+		"24350730345f1a373fefbfbd",
+		"240d30efbfbd7738044132",
+		"24301bde964cefbfbd357229",
+		"306e3631324eefbfbd3036",
+		"243b303434613742efbfbd",
+		"2430772b4533360164efbfbd",
+		"2430d28763efbfbd3f333830",
+		"303535376bd8a80936efbfbd",
 	}
 
 	for rows.Next() {
 		if err := rows.Scan(&i, &s); err != nil {
 			t.Fatal(err)
 		}
-		if s != resultData[i] {
-			t.Fatalf("record %d: invalid result %x - expected %x", i, s, resultData[i])
+
+		r, err := hex.DecodeString(resultData[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if s != string(r) {
+			t.Fatalf("record %d: invalid result %x - expected %x", i, s, string(r))
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -157,6 +188,31 @@ func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T)
 func TestEncoding(t *testing.T) {
 	testData := []string{
 		"2b301c39eda2a81132306033",
+		"243036301dedb1a060ceb63714",
+		"24302837323245edb1a9146c",
+		"2443306eedbaae382e19517c",
+		"243035027f03353245edac89",
+		"246a3066ed828f5d303054eda6bf",
+		"245d66301d5a383435edb1ba",
+		"24d9973048287342edb8945078",
+		"24306a36edb1ab3039393738",
+		"30393feda48f30312c391936",
+		"303735eda898613425256135",
+		"24edb1a93033334d374c3736",
+		"1130691932593303edaf9f4c",
+		"30154301326b133334edae8e",
+		"24eda6b43033611037370a38",
+		"24eda3ab3061223433390674",
+		"2443307f61313aedbeac3734",
+		"08303438013624edbc963133",
+		"24350730345f1a373fedb8ae",
+		"240d30edbdbb1e7738044132",
+		"24301bde964cedbeac36357229",
+		"306e3631324eedaf85303036",
+		"243b303434613742eda9910c",
+		"2430772b4533360164eda69d",
+		"2430d28763eda2996d3f333830",
+		"303535376bd8a80936edb19134",
 	}
 
 	tableName := setupEncodingTestTable(testData, t)
