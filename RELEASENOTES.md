@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.5 (upgrade urgency: medium)
+
+- Upgrade golang.org/x/crypto to v0.0.0-20210921155107-089bfa567519
+- Upgrade golang.org/x/text to v0.3.7
+
 Release 0.105.4 (upgrade urgency: low)
 
 - Fixed error transforming invalid CESU-8 data
