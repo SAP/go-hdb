@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2014-2021 SAP SE
+// SPDX-FileCopyrightText: 2014-2022 SAP SE
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -13,7 +13,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.105.5"
+const DriverVersion = "0.105.6"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"

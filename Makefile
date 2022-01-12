@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2014-2021 SAP SE
+# SPDX-FileCopyrightText: 2014-2022 SAP SE
 # 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -30,4 +30,4 @@ tools:
 # - sudo apt install python3
 # - sudo apt install python3-pip
 reuse:
-	pip3 install --user reuse
+	pip3 install --user --upgrade reuse

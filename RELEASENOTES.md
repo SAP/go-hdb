@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.6 (upgrade urgency: low)
+
+- Upgrade golang.org/x/crypto to v0.0.0-20211215153901-e495a2d5b3d3
+- Update Copyright Text
+
 Release 0.105.5 (upgrade urgency: medium)
 
 - Upgrade golang.org/x/crypto to v0.0.0-20210921155107-089bfa567519
