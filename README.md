@@ -22,6 +22,34 @@ To build go-hdb you need to have a working Go environment of the [latest or seco
 
 API documentation and documented examples can be found at <https://pkg.go.dev/github.com/SAP/go-hdb/driver>.
 
+## HANA cloud connection
+
+HANA cloud connection proxy is using SNI which does require a TLS connection.
+To connect successfully you would need a valid root certificate in pem format (please see
+[SAP Help](https://help.sap.com/viewer/cc53ad464a57404b8d453bbadbc81ceb/Cloud/en-US/5bd9bcec690346a8b36df9161b1343c2.html)).
+
+The certificate (DigiCertGlobalRootCA.crt.pem) can be downloaded in 'pem-format' from
+[digicert](https://www.digicert.com/kb/digicert-root-certificates.htm).
+
+Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443". Then the dsn should look as follows:
+
+```
+"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand&TLSRootCAFile=<PATH TO CERTIFICATE>/DigiCertGlobalRootCA.crt.pem"
+```
+
+or
+
+```
+"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand"
+```
+
+with:
+- TLSServerName same as 'host'
+- TLSRootCAFile needs to point to the location in your filesystem where the file DigiCertGlobalRootCA.crt.pem is stored
+
+When omitting the TLSRootCAFile, TLS uses the host's root CA set (for more information please see
+[Config RootCAs](https://pkg.go.dev/crypto/tls#Config).
+
 ## Tests
 
 To run the driver integration tests a HANA Database server is required. The test user must have privileges to create database schemas.
