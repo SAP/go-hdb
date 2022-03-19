@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"reflect"
 	"strconv"
 	"sync"
@@ -325,7 +326,7 @@ func (c *Connector) setDSN(dsn string) error {
 
 		case DSNTLSRootCAFile:
 			for _, fn := range v {
-				rootPEM, err := _readFile(fn)
+				rootPEM, err := os.ReadFile(fn)
 				if err != nil {
 					return err
 				}

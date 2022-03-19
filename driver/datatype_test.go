@@ -523,7 +523,7 @@ func testInitLobFiles(t *testing.T) {
 
 		walk := func(path string, info os.FileInfo, err error) error {
 			if !info.IsDir() && filter(info.Name()) {
-				content, err := _readFile(path)
+				content, err := os.ReadFile(path)
 				if err != nil {
 					return err
 				}
@@ -812,7 +812,7 @@ func compareLob(in, out Lob) (bool, error) {
 	if _, err := in.rd.(*bytes.Reader).Seek(0, io.SeekStart); err != nil {
 		return false, err
 	}
-	content, err := _readAll(in.rd)
+	content, err := io.ReadAll(in.rd)
 	if err != nil {
 		return false, err
 	}

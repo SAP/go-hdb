@@ -216,10 +216,6 @@ var (
 	_ driver.SessionResetter    = (*conn)(nil)
 	_ driver.Validator          = (*conn)(nil)
 	_ Conn                      = (*conn)(nil) // go-hdb enhancements
-
-	// obsolete
-	//_ driver.Execer             = (*conn)(nil) //go 1.9 issue (ExecerContext is only called if Execer is implemented)
-	//_ driver.Queryer            = (*conn)(nil) //go 1.9 issue (QueryerContext is only called if Queryer is implemented)
 )
 
 // connHook is a hook for testing.

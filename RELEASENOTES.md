@@ -5,6 +5,11 @@ Release Notes
 
 #### Minor revisions
 
+Release 0.105.8 (upgrade urgency: low)
+
+- Added support of Go 1.8
+- Dropped support of Go language versions < Go 1.6
+
 Release 0.105.7 (upgrade urgency: low)
 
 - Update README.md
