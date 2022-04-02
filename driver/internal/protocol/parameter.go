@@ -221,16 +221,16 @@ func (m *parameterMetadata) decode(dec *encoding.Decoder, ph *partHeader) error 
 // input parameters
 type inputParameters struct {
 	inputFields []*ParameterField
-	args        []interface{}
+	nvargs      []driver.NamedValue
 	hasLob      bool
 }
 
-func newInputParameters(inputFields []*ParameterField, args []interface{}, hasLob bool) (*inputParameters, error) {
-	return &inputParameters{inputFields: inputFields, args: args, hasLob: hasLob}, nil
+func newInputParameters(inputFields []*ParameterField, nvargs []driver.NamedValue, hasLob bool) (*inputParameters, error) {
+	return &inputParameters{inputFields: inputFields, nvargs: nvargs, hasLob: hasLob}, nil
 }
 
 func (p *inputParameters) String() string {
-	return fmt.Sprintf("fields %s len(args) %d args %v", p.inputFields, len(p.args), p.args)
+	return fmt.Sprintf("fields %s len(args) %d args %v", p.inputFields, len(p.nvargs), p.nvargs)
 }
 
 func (p *inputParameters) size() int {
@@ -240,19 +240,19 @@ func (p *inputParameters) size() int {
 		return 0
 	}
 
-	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
+	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
 
 		size += numColumns
 
 		for j := 0; j < numColumns; j++ {
 			f := p.inputFields[j]
-			size += f.prmSize(p.args[i*numColumns+j])
+			size += f.prmSize(p.nvargs[i*numColumns+j].Value)
 		}
 
 		// lob input parameter: set offset position of lob data
 		if p.hasLob {
 			for j := 0; j < numColumns; j++ {
-				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*lobInDescr); ok {
 					lobInDescr.setPos(size)
 					size += lobInDescr.size()
 				}
@@ -267,7 +267,7 @@ func (p *inputParameters) numArg() int {
 	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return 0
 	}
-	return len(p.args) / numColumns
+	return len(p.nvargs) / numColumns
 }
 
 func (p *inputParameters) decode(dec *encoding.Decoder, ph *partHeader) error {
@@ -282,18 +282,18 @@ func (p *inputParameters) encode(enc *encoding.Encoder) error {
 		return nil
 	}
 
-	for i := 0; i < len(p.args)/numColumns; i++ { // row-by-row
+	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
 		for j := 0; j < numColumns; j++ {
 			//mass insert
 			f := p.inputFields[j]
-			if err := f.encodePrm(enc, p.args[i*numColumns+j]); err != nil {
+			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
 				return err
 			}
 		}
 		// lob input parameter: write first data chunk
 		if p.hasLob {
 			for j := 0; j < numColumns; j++ {
-				if lobInDescr, ok := p.args[i*numColumns+j].(*lobInDescr); ok {
+				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*lobInDescr); ok {
 					lobInDescr.writeFirst(enc)
 				}
 			}

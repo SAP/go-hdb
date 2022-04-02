@@ -55,7 +55,7 @@ const (
 	DefaultFetchSize    = 128               // Default value fetchSize.
 	DefaultBulkSize     = 10000             // Default value bulkSize.
 	DefaultLobChunkSize = 8192              // Default value lobChunkSize.
-	DefaultLegacy       = true              // Default value legacy.
+	DefaultLegacy       = false             // Default value legacy.
 )
 
 // Connector minimal / maximal values.

@@ -1,6 +1,16 @@
 Release Notes
 =============
 
+## Release 0.106
+
+#### Release Notes
+
+- The 'legacy mode' now defaults to false
+
+#### Incompatibilities
+
+- Please see Main Features (second point) of Release 0.99
+
 ## Release 0.105
 
 #### Minor revisions

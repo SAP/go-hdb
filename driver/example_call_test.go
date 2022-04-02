@@ -78,6 +78,8 @@ end
 	if err != nil {
 		log.Fatal(err)
 	}
+	// *Switch to legacy mode.
+	connector.SetLegacy(true)
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
