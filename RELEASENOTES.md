@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.106
 
+Release 0.106.1 (upgrade urgency: low)
+
+- Fixed README.md for HANA cloud connection
+
 #### Release Notes
 
 - The 'legacy mode' now defaults to false

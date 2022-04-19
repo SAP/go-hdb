@@ -34,13 +34,13 @@ The certificate (DigiCertGlobalRootCA.crt.pem) can be downloaded in 'pem-format'
 Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443". Then the dsn should look as follows:
 
 ```
-"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand&TLSRootCAFile=<PATH TO CERTIFICATE>/DigiCertGlobalRootCA.crt.pem"
+"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com&TLSRootCAFile=<PATH TO CERTIFICATE>/DigiCertGlobalRootCA.crt.pem"
 ```
 
 or
 
 ```
-"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand"
+"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com"
 ```
 
 with:
