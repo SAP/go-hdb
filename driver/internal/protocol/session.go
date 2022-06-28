@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 
@@ -58,9 +59,19 @@ func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (
 
 	s := &Session{cfg: cfg, sessionID: defaultSessionID, pr: pr, pw: pw}
 
-	authStepper := newAuth(cfg.Username, cfg.Password)
+	var stepper authStepper
+	if cfg.Username != "" {
+		stepper = newAuth(cfg.Username, cfg.Password)
+	} else if cfg.Password != "" {
+		// password is available, but no username.
+		stepper = newAuthJWT(cfg.Password)
+	} else {
+		// both username and password empty. Not supported yet. X509 in the future.
+		return nil, errors.New("no authentication method for empty password and user")
+	}
+
 	var err error
-	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
+	if s.sessionID, s.serverOptions, err = s.authenticate(stepper); err != nil {
 		return nil, err
 	}
 

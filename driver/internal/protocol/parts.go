@@ -41,6 +41,10 @@ func (*authInitReq) kind() partKind         { return pkAuthentication }
 func (*authInitRep) kind() partKind         { return pkAuthentication }
 func (*authFinalReq) kind() partKind        { return pkAuthentication }
 func (*authFinalRep) kind() partKind        { return pkAuthentication }
+func (*authInitReqJWT) kind() partKind      { return pkAuthentication }
+func (*authInitRepJWT) kind() partKind      { return pkAuthentication }
+func (*authFinalReqJWT) kind() partKind     { return pkAuthentication }
+func (*authFinalRepJWT) kind() partKind     { return pkAuthentication }
 func (clientContext) kind() partKind        { return pkClientContext }
 func (clientID) kind() partKind             { return pkClientID }
 func (clientInfo) kind() partKind           { return pkClientInfo }
@@ -72,16 +76,20 @@ type partWriter interface {
 }
 
 // numArg methods (result == 1)
-func (*authInitReq) numArg() int    { return 1 }
-func (*authInitRep) numArg() int    { return 1 }
-func (*authFinalReq) numArg() int   { return 1 }
-func (*authFinalRep) numArg() int   { return 1 }
-func (clientID) numArg() int        { return 1 }
-func (command) numArg() int         { return 1 }
-func (statementID) numArg() int     { return 1 }
-func (resultsetID) numArg() int     { return 1 }
-func (fetchsize) numArg() int       { return 1 }
-func (*readLobRequest) numArg() int { return 1 }
+func (*authInitReq) numArg() int     { return 1 }
+func (*authInitRep) numArg() int     { return 1 }
+func (*authFinalReq) numArg() int    { return 1 }
+func (*authFinalRep) numArg() int    { return 1 }
+func (*authInitReqJWT) numArg() int  { return 1 }
+func (*authInitRepJWT) numArg() int  { return 1 }
+func (*authFinalReqJWT) numArg() int { return 1 }
+func (*authFinalRepJWT) numArg() int { return 1 }
+func (clientID) numArg() int         { return 1 }
+func (command) numArg() int          { return 1 }
+func (statementID) numArg() int      { return 1 }
+func (resultsetID) numArg() int      { return 1 }
+func (fetchsize) numArg() int        { return 1 }
+func (*readLobRequest) numArg() int  { return 1 }
 
 // func (lobFlags) numArg() int                   { return 1 }
 
