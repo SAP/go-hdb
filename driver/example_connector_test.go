@@ -6,7 +6,6 @@ package driver_test
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -83,10 +82,8 @@ func tlsPrms() (serverName string, insecureSkipVerify bool, rootCAFile string, p
 	return
 }
 
-// ExampleConnector_basicAuth shows how to open a database with the help of a connector using basic authentication.
-func ExampleConnector_basicAuth() {
-	fmt.Print("ok") // execute example as test
-
+// ExampleNewBasicAuthConnector shows how to open a database with the help of a connector using basic authentication.
+func ExampleNewBasicAuthConnector() {
 	host, username, password, ok := basicAuthPrms()
 	if !ok {
 		log.Print("not all basic authorization parameters set")
@@ -103,17 +100,14 @@ func ExampleConnector_basicAuth() {
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
-
-	// output: ok
+	// output:
 }
 
-// ExampleConnector_x509Auth shows how to open a database with the help of a connector using x509 (client certificate) authentication.
-func ExampleConnector_x509Auth() {
-	fmt.Print("ok") // execute example as test
-
+// ExampleNewX509AuthConnector shows how to open a database with the help of a connector using x509 (client certificate) authentication.
+func ExampleNewX509AuthConnector() {
 	host, username, clientCertFile, clientKeyFile, ok := x509AuthPrms()
 	if !ok {
-		log.Print("not all client certificate authorization parameters set")
+		log.Print("not all X509 authorization parameters set")
 		return
 	}
 
@@ -127,17 +121,14 @@ func ExampleConnector_x509Auth() {
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
-
-	// output: ok
+	// output:
 }
 
-// ExampleConnector_jwtAuth shows how to open a database with the help of a connector using JWT authentication.
-func ExampleConnector_jwtAuth() {
-	fmt.Print("ok") // execute example as test
-
+// ExampleNewJWTAuthConnector shows how to open a database with the help of a connector using JWT authentication.
+func ExampleNewJWTAuthConnector() {
 	host, username, token, ok := jwtAuthPrms()
 	if !ok {
-		log.Print("not all token authorization parameters set")
+		log.Print("not all JWT authorization parameters set")
 		return
 	}
 
@@ -151,6 +142,5 @@ func ExampleConnector_jwtAuth() {
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
-
-	// output: ok
+	// output:
 }
