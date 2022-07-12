@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/internal/dsn"
 	"github.com/SAP/go-hdb/driver/internal/rand"
 )
 
@@ -66,13 +67,21 @@ func Schema() string { return stdDBFlags.schema }
 // PingInterval returns the ping interval.
 func PingInterval() int { return stdDBFlags.pingInterval }
 
-// DefaultAttrs returns the key value map of connector default testing attributes.
-func DefaultAttrs() map[string]interface{} {
-	return map[string]interface{}{
-		"dsn":           DSN(),
-		"defaultSchema": Schema(),
-		"pingInterval":  time.Second * time.Duration(PingInterval()),
+// DefaultAttrs holds the DSN of the default testing attributes.
+var defaultAttrs string
+
+// DefaultAttrs returns the DSN of the default testing attributes.
+func DefaultAttrs() string {
+	if defaultAttrs == "" {
+		d, err := dsn.Parse(DSN())
+		if err != nil {
+			panic(err)
+		}
+		d.DefaultSchema = Schema()
+		d.PingInterval = time.Duration(PingInterval()) * time.Second
+		defaultAttrs = d.String()
 	}
+	return defaultAttrs
 }
 
 // dbTest provides setup and teardown methods for unit tests using the database.

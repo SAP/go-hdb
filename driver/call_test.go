@@ -205,11 +205,6 @@ end
 		t.Fatal(err)
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	tests := []struct {
 		name    string
 		legacy  bool
@@ -222,6 +217,10 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
+			if err != nil {
+				t.Fatal(err)
+			}
 			connector.SetLegacy(test.legacy)
 			db := sql.OpenDB(connector)
 			defer db.Close()
@@ -384,7 +383,7 @@ func TestCall(t *testing.T) {
 		{"noOut", testCallNoOut},
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

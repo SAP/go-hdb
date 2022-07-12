@@ -20,7 +20,7 @@ import (
 )
 
 func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
 }
 
 func testDecodeError(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func testDecodeError(tableName driver.Identifier, testData []string, t *testing.
 }
 
 func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *t
 }
 
 func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

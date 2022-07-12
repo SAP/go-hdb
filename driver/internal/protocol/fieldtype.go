@@ -874,7 +874,7 @@ func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 
 func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error) {
 	m := d.Fixed(size)
-	if m == nil {
+	if m == nil { // important: return nil and not m (as m is of type *big.Int)
 		return nil, nil
 	}
 	return convertFixedToRat(m, scale), nil
@@ -930,6 +930,34 @@ func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 		return nil, nil
 	}
 	return d.CESU8Bytes(size)
+}
+
+func decodeVarBytes(d *encoding.Decoder) ([]byte, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	b := make([]byte, size)
+	d.Bytes(b)
+	return b, nil
+}
+
+func decodeVarString(d *encoding.Decoder) (string, error) {
+	b, err := decodeVarBytes(d)
+	return string(b), err
+}
+
+func decodeCESU8Bytes(d *encoding.Decoder) ([]byte, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	return d.CESU8Bytes(size)
+}
+
+func decodeCESU8String(d *encoding.Decoder) (string, error) {
+	b, err := decodeCESU8Bytes(d)
+	return string(b), err
 }
 
 func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {

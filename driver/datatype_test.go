@@ -975,7 +975,7 @@ func TestDataType(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
 
-				connector, err := NewConnector(drvtst.DefaultAttrs())
+				connector, err := NewDSNConnector(drvtst.DefaultAttrs())
 				if err != nil {
 					t.Fatal(err)
 				}

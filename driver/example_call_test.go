@@ -28,7 +28,7 @@ begin
 end
 `
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
+	connector, err := NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,7 +74,7 @@ begin
 end
 `
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
+	connector, err := NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,7 +154,7 @@ begin
   drop table #test;
 end
 `
-	connector, err := NewConnector(drivertest.DefaultAttrs())
+	connector, err := NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

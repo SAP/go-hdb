@@ -60,7 +60,7 @@ func TestConnection(t *testing.T) {
 		{"cancelContext", testCancelContext},
 	}
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
+	connector, err := NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

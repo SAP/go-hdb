@@ -99,7 +99,7 @@ func ExampleLob_pipe() {
 	defer file.Close()
 
 	// Open Test database.
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

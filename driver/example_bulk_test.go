@@ -26,7 +26,7 @@ import (
 // Bulk statements need to be executed in the context of a transaction or connection
 // to guarantee that that all statement operations are done within the same connection.
 func Example_bulkInsert() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -58,7 +58,7 @@ func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (
 
 	s := &Session{cfg: cfg, sessionID: defaultSessionID, pr: pr, pw: pw}
 
-	authStepper := newAuth(cfg.Username, cfg.Password)
+	authStepper := newAuth(cfg)
 	var err error
 	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
 		return nil, err

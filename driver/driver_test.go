@@ -221,7 +221,7 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

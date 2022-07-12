@@ -19,7 +19,7 @@ import (
 
 // ExampleConn-HDBVersion shows how to retrieve hdb server info with the help of sql.Conn.Raw().
 func ExampleConn_HDBVersion() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func ExampleConn_HDBVersion() {
 
 // ExampleConn-DBConnectInfo shows how to retrieve hdb DBConnectInfo with the help of sql.Conn.Raw().
 func ExampleConn_DBConnectInfo() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

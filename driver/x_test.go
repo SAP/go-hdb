@@ -26,7 +26,7 @@ func testInvalidCESU8(t *testing.T) {
 
 	decoder := cesu8.NewDecoder(nil)
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		t.Fatal(err)
 	}

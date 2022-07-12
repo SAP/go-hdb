@@ -258,10 +258,6 @@ type conn struct {
 }
 
 func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
-
-	ctr.mu.RLock() // lock connector
-	defer ctr.mu.RUnlock()
-
 	netConn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
 	if err != nil {
 		return nil, err
@@ -276,28 +272,13 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
 
-	session, err := p.NewSession(ctx, rw,
-		&p.SessionConfig{
-			DriverVersion:    DriverVersion,
-			DriverName:       DriverName,
-			ApplicationName:  ctr.applicationName,
-			Username:         ctr.username,
-			Password:         ctr.password,
-			SessionVariables: ctr.sessionVariables,
-			Locale:           ctr.locale,
-			FetchSize:        ctr.fetchSize,
-			LobChunkSize:     ctr.lobChunkSize,
-			Dfv:              ctr.dfv,
-			Legacy:           ctr.legacy,
-			CESU8Decoder:     ctr.cesu8Decoder,
-			CESU8Encoder:     ctr.cesu8Encoder,
-		},
-	)
+	session, err := p.NewSession(ctx, rw, ctr.sc)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
+
 	if ctr.defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, Identifier(ctr.defaultSchema)), nil); err != nil {
 			return nil, err

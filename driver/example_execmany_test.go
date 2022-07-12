@@ -22,7 +22,7 @@ func Example_manyInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		log.Fatal(err)
 	}

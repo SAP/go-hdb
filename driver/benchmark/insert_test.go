@@ -89,7 +89,7 @@ func BenchmarkInsert(b *testing.B) {
 
 	bulkSizes := []int{1000, 10000, 100000, 1000000, driver.MaxBulkSize}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
+	connector, err := driver.NewDSNConnector(drivertest.DefaultAttrs())
 	if err != nil {
 		b.Fatal(err)
 	}

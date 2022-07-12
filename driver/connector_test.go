@@ -9,14 +9,13 @@ package driver_test
 
 import (
 	"database/sql"
-	"database/sql/driver"
 	"testing"
 
-	goHdbDriver "github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
-func testConnector(connector driver.Connector, t *testing.T) {
+func testConnector(connector *driver.Connector, t *testing.T) {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
@@ -48,9 +47,13 @@ func testNotExistSessionVariables(keys []string, sv2 map[string]string, t *testi
 	}
 }
 
-func testSessionVariables(connector *goHdbDriver.Connector, t *testing.T) {
+func testSessionVariables(t *testing.T) {
+	connector, err := driver.NewDSNConnector(drivertest.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
 	// set session variables
-	sv1 := goHdbDriver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
+	sv1 := driver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
 	if err := connector.SetSessionVariables(sv1); err != nil {
 		t.Fatal(err)
 	}
@@ -67,49 +70,30 @@ func testSessionVariables(connector *goHdbDriver.Connector, t *testing.T) {
 
 	// check if session variables are set after connect to db.
 	testExistSessionVariables(sv1, sv2, t)
-
-	// update, delete, insert session variables
-	sv1 = goHdbDriver.SessionVariables{"k1": "v1new", "k2": "v2", "k4": "v4"}
-	if err := connector.SetSessionVariables(sv1); err != nil {
-		t.Fatal(err)
-	}
-
-	// execute statement to update session variables.
-	if err := drivertest.DummySelect(db); err != nil {
-		t.Fatal(err)
-	}
-
-	// retrieve session variables
-	if sv2, err = drivertest.SessionVariables(db); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Log(sv2)
-
-	// check session variables again.
-	testExistSessionVariables(sv1, sv2, t)
-	testNotExistSessionVariables([]string{"k3"}, sv2, t)
+	testNotExistSessionVariables([]string{"k4"}, sv2, t)
 
 }
 
 func TestConnector(t *testing.T) {
-	dsnConnector, err := goHdbDriver.NewDSNConnector(drivertest.DSN())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("dsnConnector", func(t *testing.T) {
-		testConnector(dsnConnector, t)
+		connector, err := driver.NewDSNConnector(drivertest.DSN())
+		if err != nil {
+			t.Fatal(err)
+		}
+		testConnector(connector, t)
 	})
 
-	if dsnConnector.TLSConfig() == nil { // in case of TLS the following test will fail.
-		basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
-		t.Run("basicAuthConnector", func(t *testing.T) {
-			testConnector(basicAuthConnector, t)
-		})
-	}
+	t.Run("basicAuthConnector", func(t *testing.T) {
+		connector, err := driver.NewDSNConnector(drivertest.DSN())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if connector.TLSConfig() == nil { // in case of TLS the following test will fail.
+			testConnector(driver.NewBasicAuthConnector(connector.Host(), connector.Username(), connector.Password()), t)
+		}
+	})
 
 	t.Run("sessionVariables", func(t *testing.T) {
-		testSessionVariables(dsnConnector, t)
+		testSessionVariables(t)
 	})
 }

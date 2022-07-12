@@ -115,6 +115,15 @@ func (e *Encoder) Uint16(i uint16) {
 	e.wr.Write(e.b[:2])
 }
 
+// Uint16ByteOrder writes an uint16 in given byte order.
+func (e *Encoder) Uint16ByteOrder(i uint16, byteOrder binary.ByteOrder) {
+	if e.err != nil {
+		return
+	}
+	byteOrder.PutUint16(e.b[:2], i)
+	e.wr.Write(e.b[:2])
+}
+
 // Int32 writes an int32.
 func (e *Encoder) Int32(i int32) {
 	if e.err != nil {
