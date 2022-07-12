@@ -15,7 +15,7 @@ import (
 
 // AuthOptions - currently supported are:
 // - basic authentication (username, password based) (whether SCRAMSHA256 or SCRAMPBKDF2SHA256) and
-// - x509 (client certificate) authentication and
+// - X509 (client certificate) authentication and
 // - JWT (token) authentication
 
 const (
