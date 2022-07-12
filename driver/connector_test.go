@@ -54,9 +54,7 @@ func testSessionVariables(t *testing.T) {
 	}
 	// set session variables
 	sv1 := driver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
-	if err := connector.SetSessionVariables(sv1); err != nil {
-		t.Fatal(err)
-	}
+	connector.SetSessionVariables(sv1)
 
 	// check session variables
 	db := sql.OpenDB(connector)

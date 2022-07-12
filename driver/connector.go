@@ -11,6 +11,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
@@ -76,7 +77,7 @@ A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users t
 After the connector has been passed to sql.OpenDB it must not be modified.
 */
 type Connector struct {
-	sc                   *p.SessionConfig
+	mu                   sync.RWMutex
 	host                 string
 	bufferSize, bulkSize int
 	timeout              time.Duration
@@ -85,28 +86,36 @@ type Connector struct {
 	tlsConfig            *tls.Config
 	defaultSchema        string
 	dialer               dial.Dialer
+	// session relevant attributes
+	username, password            string
+	clientCertFile, clientKeyFile string
+	token                         string // JWT
+	applicationName               string
+	sessionVariables              *vermap.VerMap
+	locale                        string
+	fetchSize, lobChunkSize       int
+	dfv                           int
+	legacy                        bool
+	cesu8Decoder                  func() transform.Transformer
+	cesu8Encoder                  func() transform.Transformer
 }
 
 // NewConnector returns a new Connector instance with default values.
 func NewConnector() *Connector {
 	return &Connector{
-		sc: &p.SessionConfig{
-			DriverVersion:    DriverVersion,
-			DriverName:       DriverName,
-			ApplicationName:  defaultApplicationName,
-			SessionVariables: vermap.NewVerMap(),
-			FetchSize:        DefaultFetchSize,
-			LobChunkSize:     DefaultLobChunkSize,
-			Dfv:              DefaultDfv,
-			Legacy:           DefaultLegacy,
-			CESU8Decoder:     cesu8.DefaultDecoder,
-			CESU8Encoder:     cesu8.DefaultEncoder,
-		},
-		bufferSize:   DefaultBufferSize,
-		bulkSize:     DefaultBulkSize,
-		timeout:      DefaultTimeout,
-		tcpKeepAlive: DefaultTCPKeepAlive,
-		dialer:       dial.DefaultDialer,
+		bufferSize:       DefaultBufferSize,
+		bulkSize:         DefaultBulkSize,
+		timeout:          DefaultTimeout,
+		tcpKeepAlive:     DefaultTCPKeepAlive,
+		dialer:           dial.DefaultDialer,
+		applicationName:  defaultApplicationName,
+		sessionVariables: vermap.NewVerMap(),
+		fetchSize:        DefaultFetchSize,
+		lobChunkSize:     DefaultLobChunkSize,
+		dfv:              DefaultDfv,
+		legacy:           DefaultLegacy,
+		cesu8Decoder:     cesu8.DefaultDecoder,
+		cesu8Encoder:     cesu8.DefaultEncoder,
 	}
 }
 
@@ -114,8 +123,8 @@ func NewConnector() *Connector {
 func NewBasicAuthConnector(host, username, password string) *Connector {
 	c := NewConnector()
 	c.host = host
-	c.sc.Username = username
-	c.sc.Password = password
+	c.username = username
+	c.password = password
 	return c
 }
 
@@ -123,9 +132,9 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 func NewX509AuthConnector(host, username, clientCertFile, clientKeyFile string) *Connector {
 	c := NewConnector()
 	c.host = host
-	c.sc.Username = username
-	c.sc.ClientCertFile = clientCertFile
-	c.sc.ClientKeyFile = clientKeyFile
+	c.username = username
+	c.clientCertFile = clientCertFile
+	c.clientKeyFile = clientKeyFile
 	return c
 }
 
@@ -133,8 +142,8 @@ func NewX509AuthConnector(host, username, clientCertFile, clientKeyFile string) 
 func NewJWTAuthConnector(host, username, token string) *Connector {
 	c := NewConnector()
 	c.host = host
-	c.sc.Username = username
-	c.sc.Token = token
+	c.username = username
+	c.token = token
 	return c
 }
 
@@ -146,10 +155,10 @@ func NewDSNConnector(dsnStr string) (*Connector, error) {
 	}
 	c := NewConnector()
 	c.host = dsn.Host
-	c.sc.Username = dsn.Username
-	c.sc.Password = dsn.Password
+	c.username = dsn.Username
+	c.password = dsn.Password
 	c.defaultSchema = dsn.DefaultSchema
-	c.sc.Locale = dsn.Locale
+	c.locale = dsn.Locale
 	c.setFetchSize(dsn.FetchSize)
 	c.setTimeout(dsn.Timeout)
 	c.pingInterval = dsn.PingInterval
@@ -159,40 +168,48 @@ func NewDSNConnector(dsnStr string) (*Connector, error) {
 	return c, nil
 }
 
-// clone returns a (shallow) copy (clone) of a connector.
-func (c *Connector) clone() *Connector {
-	return &Connector{
-		sc:            c.sc.Clone(),
-		host:          c.host,
-		bufferSize:    c.bufferSize,
-		bulkSize:      c.bulkSize,
-		timeout:       c.timeout,
-		pingInterval:  c.pingInterval,
-		tcpKeepAlive:  c.tcpKeepAlive,
-		tlsConfig:     c.tlsConfig.Clone(),
-		defaultSchema: c.defaultSchema,
-		dialer:        c.dialer,
+// sessionConfig returns the session relevant connector attributes.
+func (c *Connector) sessionConfig() *p.SessionConfig {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return &p.SessionConfig{
+		DriverVersion:    DriverVersion,
+		DriverName:       DriverName,
+		Username:         c.username,
+		Password:         c.password,
+		ClientCertFile:   c.clientCertFile,
+		ClientKeyFile:    c.clientKeyFile,
+		Token:            c.token,
+		ApplicationName:  c.applicationName,
+		SessionVariables: c.sessionVariables, //TODO clone
+		Locale:           c.locale,
+		FetchSize:        c.fetchSize,
+		LobChunkSize:     c.lobChunkSize,
+		Dfv:              c.dfv,
+		Legacy:           c.legacy,
+		CESU8Decoder:     c.cesu8Decoder,
+		CESU8Encoder:     c.cesu8Encoder,
 	}
 }
 
 // Host returns the host of the connector.
-func (c *Connector) Host() string { return c.host }
+func (c *Connector) Host() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.host }
 
 // Username returns the username of the connector.
-func (c *Connector) Username() string { return c.sc.Username }
+func (c *Connector) Username() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.username }
 
 // Password returns the password of the connector.
-func (c *Connector) Password() string { return c.sc.Password }
+func (c *Connector) Password() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.password }
 
 // Locale returns the locale of the connector.
-func (c *Connector) Locale() string { return c.sc.Locale }
+func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.locale }
 
 /*
 SetLocale sets the locale of the connector.
 
 For more information please see DSNLocale.
 */
-func (c *Connector) SetLocale(locale string) { c.sc.Locale = locale }
+func (c *Connector) SetLocale(locale string) { c.mu.Lock(); defer c.mu.Unlock(); c.locale = locale }
 
 // DriverVersion returns the driver version of the connector.
 func (c *Connector) DriverVersion() string { return DriverVersion }
@@ -201,28 +218,39 @@ func (c *Connector) DriverVersion() string { return DriverVersion }
 func (c *Connector) DriverName() string { return DriverName }
 
 // ApplicationName returns the locale of the connector.
-func (c *Connector) ApplicationName() string { return c.sc.ApplicationName }
+func (c *Connector) ApplicationName() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.applicationName
+}
 
 // SetApplicationName sets the application name of the connector.
-func (c *Connector) SetApplicationName(name string) error { c.sc.ApplicationName = name; return nil }
+func (c *Connector) SetApplicationName(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.applicationName = name
+}
 
 // BufferSize returns the bufferSize of the connector.
-func (c *Connector) BufferSize() int { return c.bufferSize }
+func (c *Connector) BufferSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bufferSize }
 
 /*
 SetBufferSize sets the bufferSize of the connector.
 */
-func (c *Connector) SetBufferSize(bufferSize int) error { c.bufferSize = bufferSize; return nil }
+func (c *Connector) SetBufferSize(bufferSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.bufferSize = bufferSize
+}
 
 // FetchSize returns the fetchSize of the connector.
-func (c *Connector) FetchSize() int { return c.sc.FetchSize }
+func (c *Connector) FetchSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.fetchSize }
 
-func (c *Connector) setFetchSize(fetchSize int) error {
+func (c *Connector) setFetchSize(fetchSize int) {
 	if fetchSize < minFetchSize {
 		fetchSize = minFetchSize
 	}
-	c.sc.FetchSize = fetchSize
-	return nil
+	c.fetchSize = fetchSize
 }
 
 /*
@@ -230,12 +258,16 @@ SetFetchSize sets the fetchSize of the connector.
 
 For more information please see DSNFetchSize.
 */
-func (c *Connector) SetFetchSize(fetchSize int) error { return c.setFetchSize(fetchSize) }
+func (c *Connector) SetFetchSize(fetchSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setFetchSize(fetchSize)
+}
 
 // BulkSize returns the bulkSize of the connector.
-func (c *Connector) BulkSize() int { return c.bulkSize }
+func (c *Connector) BulkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.bulkSize }
 
-func (c *Connector) setBulkSize(bulkSize int) error {
+func (c *Connector) setBulkSize(bulkSize int) {
 	switch {
 	case bulkSize < minBulkSize:
 		bulkSize = minBulkSize
@@ -243,63 +275,80 @@ func (c *Connector) setBulkSize(bulkSize int) error {
 		bulkSize = MaxBulkSize
 	}
 	c.bulkSize = bulkSize
-	return nil
 }
 
 // SetBulkSize sets the bulkSize of the connector.
-func (c *Connector) SetBulkSize(bulkSize int) error { return c.setBulkSize(bulkSize) }
+func (c *Connector) SetBulkSize(bulkSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setBulkSize(bulkSize)
+}
 
 // LobChunkSize returns the lobChunkSize of the connector.
-func (c *Connector) LobChunkSize() int { return c.sc.LobChunkSize }
+func (c *Connector) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.lobChunkSize }
 
 // SetLobChunkSize sets the lobChunkSize of the connector.
 func (c *Connector) SetLobChunkSize(lobChunkSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	switch {
 	case lobChunkSize < minLobChunkSize:
 		lobChunkSize = minLobChunkSize
 	case lobChunkSize > maxLobChunkSize:
 		lobChunkSize = maxLobChunkSize
 	}
-	c.sc.LobChunkSize = lobChunkSize
+	c.lobChunkSize = lobChunkSize
 }
 
 // Dialer returns the dialer object of the connector.
-func (c *Connector) Dialer() dial.Dialer { return c.dialer }
+func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c.dialer }
 
 // SetDialer sets the dialer object of the connector.
-func (c *Connector) SetDialer(dialer dial.Dialer) error {
+func (c *Connector) SetDialer(dialer dial.Dialer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if dialer == nil {
 		dialer = dial.DefaultDialer
 	}
 	c.dialer = dialer
-	return nil
 }
 
 // CESU8Decoder returns the CESU-8 decoder of the connector.
-func (c *Connector) CESU8Decoder() func() transform.Transformer { return c.sc.CESU8Decoder }
+func (c *Connector) CESU8Decoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cesu8Decoder
+}
 
 // SetCESU8Decoder sets the CESU-8 decoder of the connector.
 func (c *Connector) SetCESU8Decoder(cesu8Decoder func() transform.Transformer) {
-	c.sc.CESU8Decoder = cesu8Decoder
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cesu8Decoder = cesu8Decoder
 }
 
 // CESU8Encoder returns the CESU-8 encoder of the connector.
-func (c *Connector) CESU8Encoder() func() transform.Transformer { return c.sc.CESU8Encoder }
+func (c *Connector) CESU8Encoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cesu8Encoder
+}
 
 // SetCESU8Encoder sets the CESU-8 encoder of the connector.
 func (c *Connector) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
-	c.sc.CESU8Encoder = cesu8Encoder
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cesu8Encoder = cesu8Encoder
 }
 
 // Timeout returns the timeout of the connector.
-func (c *Connector) Timeout() time.Duration { return c.timeout }
+func (c *Connector) Timeout() time.Duration { c.mu.RLock(); defer c.mu.RUnlock(); return c.timeout }
 
-func (c *Connector) setTimeout(timeout time.Duration) error {
+func (c *Connector) setTimeout(timeout time.Duration) {
 	if timeout < minTimeout {
 		timeout = minTimeout
 	}
 	c.timeout = timeout
-	return nil
 }
 
 /*
@@ -307,10 +356,18 @@ SetTimeout sets the timeout of the connector.
 
 For more information please see DSNTimeout.
 */
-func (c *Connector) SetTimeout(timeout time.Duration) error { return c.setTimeout(timeout) }
+func (c *Connector) SetTimeout(timeout time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setTimeout(timeout)
+}
 
 // PingInterval returns the connection ping interval of the connector.
-func (c *Connector) PingInterval() time.Duration { return c.pingInterval }
+func (c *Connector) PingInterval() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pingInterval
+}
 
 /*
 SetPingInterval sets the connection ping interval value of the connector.
@@ -319,35 +376,45 @@ If the ping interval is greater than zero, the driver pings all open
 connections (active or idle in connection pool) periodically.
 Parameter d defines the time between the pings.
 */
-func (c *Connector) SetPingInterval(d time.Duration) error { c.pingInterval = d; return nil }
+func (c *Connector) SetPingInterval(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pingInterval = d
+}
 
 // TCPKeepAlive returns the tcp keep-alive value of the connector.
-func (c *Connector) TCPKeepAlive() time.Duration { return c.tcpKeepAlive }
+func (c *Connector) TCPKeepAlive() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.tcpKeepAlive
+}
 
 /*
 SetTCPKeepAlive sets the tcp keep-alive value of the connector.
 
 For more information please see net.Dialer structure.
 */
-func (c *Connector) SetTCPKeepAlive(tcpKeepAlive time.Duration) error {
+func (c *Connector) SetTCPKeepAlive(tcpKeepAlive time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.tcpKeepAlive = tcpKeepAlive
-	return nil
 }
 
 // Dfv returns the client data format version of the connector.
-func (c *Connector) Dfv() int { return c.sc.Dfv }
+func (c *Connector) Dfv() int { c.mu.RLock(); defer c.mu.RUnlock(); return c.dfv }
 
 // SetDfv sets the client data format version of the connector.
-func (c *Connector) SetDfv(dfv int) error {
+func (c *Connector) SetDfv(dfv int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if !IsSupportedDfv(dfv) {
 		dfv = DefaultDfv
 	}
-	c.sc.Dfv = dfv
-	return nil
+	c.dfv = dfv
 }
 
 // TLSConfig returns the TLS configuration of the connector.
-func (c *Connector) TLSConfig() *tls.Config { return c.tlsConfig }
+func (c *Connector) TLSConfig() *tls.Config { c.mu.RLock(); defer c.mu.RUnlock(); return c.tlsConfig }
 
 func (c *Connector) setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
 	c.tlsConfig = &tls.Config{
@@ -375,37 +442,51 @@ func (c *Connector) setTLS(serverName string, insecureSkipVerify bool, rootCAFil
 
 // SetTLS sets the TLS configuration of the connector with given parameters. An existing connector TLS configuration is replaced.
 func (c *Connector) SetTLS(serverName string, insecureSkipVerify bool, rootCAFiles ...string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.setTLS(serverName, insecureSkipVerify, rootCAFiles)
 }
 
 // SetTLSConfig sets the TLS configuration of the connector.
-func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) error {
+func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.tlsConfig = tlsConfig.Clone()
-	return nil
 }
 
 // SessionVariables returns the session variables stored in connector.
 func (c *Connector) SessionVariables() SessionVariables {
-	return SessionVariables(c.sc.SessionVariables.Load())
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return SessionVariables(c.sessionVariables.Load())
 }
 
 // SetSessionVariables sets the session varibles of the connector.
-func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) error {
-	c.sc.SessionVariables.Store(map[string]string(sessionVariables))
-	return nil
+func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sessionVariables.Store(map[string]string(sessionVariables))
 }
 
 // DefaultSchema returns the database default schema of the connector.
-func (c *Connector) DefaultSchema() string { return c.defaultSchema }
+func (c *Connector) DefaultSchema() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.defaultSchema
+}
 
 // SetDefaultSchema sets the database default schema of the connector.
-func (c *Connector) SetDefaultSchema(schema string) error { c.defaultSchema = schema; return nil }
+func (c *Connector) SetDefaultSchema(schema string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.defaultSchema = schema
+}
 
 // Legacy returns the connector legacy flag.
-func (c *Connector) Legacy() bool { return c.sc.Legacy }
+func (c *Connector) Legacy() bool { c.mu.RLock(); defer c.mu.RUnlock(); return c.legacy }
 
 // SetLegacy sets the connector legacy flag.
-func (c *Connector) SetLegacy(b bool) error { c.sc.Legacy = b; return nil }
+func (c *Connector) SetLegacy(b bool) { c.mu.Lock(); defer c.mu.Unlock(); c.legacy = b }
 
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {

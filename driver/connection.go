@@ -272,7 +272,7 @@ func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
 
-	session, err := p.NewSession(ctx, rw, ctr.sc)
+	session, err := p.NewSession(ctx, rw, ctr.sessionConfig())
 	if err != nil {
 		return nil, err
 	}
