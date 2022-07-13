@@ -88,12 +88,9 @@ func authDecodeStep(auth *auth, data []byte, t *testing.T) {
 
 	dec := encoding.NewDecoder(bytes.NewBuffer(data), cesu8.DefaultDecoder)
 
-	println("decode")
 	if err := part.decode(dec, nil); err != nil {
-		println("decode error")
 		t.Fatal(err)
 	}
-	println("end decode")
 }
 
 func TestJWTAuth(t *testing.T) {
