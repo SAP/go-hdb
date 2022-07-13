@@ -255,6 +255,7 @@ func (r *authInitRep) decode(dec *encoding.Decoder, ph *partHeader) error {
 		return err
 	}
 	if err := r.methods.setMethod(methodName); err != nil {
+		//panic(err)
 		return err
 	}
 	return r.methods.method.initRepDecode(d)

@@ -169,10 +169,15 @@ func decodeClientKey(data []byte) (*pem.Block, error) {
 }
 
 func signRSA(certKeyBlock *pem.Block, message *bytes.Buffer) ([]byte, error) {
-	rsaPrivateKey, err := x509.ParsePKCS1PrivateKey(certKeyBlock.Bytes)
+	privateKey, err := x509.ParsePKCS8PrivateKey(certKeyBlock.Bytes)
 	if err != nil {
 		return nil, err
 	}
+	rsaPrivateKey, ok := privateKey.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("client key not in RSA private key format")
+	}
+
 	// see example https://pkg.go.dev/crypto/rsa#SignPKCS1v15
 	rng := rand.Reader
 	hashed := sha256.Sum256(message.Bytes())
