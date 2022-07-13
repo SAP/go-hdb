@@ -12,8 +12,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
-	"os"
 )
 
 // TODO: to delete
@@ -30,17 +30,17 @@ const (
 
 // authX509 implements mnClientCert.
 type authX509 struct {
-	certFile, keyFile string
-	serverNonce       []byte
-	logonName         string
+	cert, key   []byte
+	serverNonce []byte
+	logonName   string
 }
 
-func newAuthX509(certFile, keyFile string) authMethod {
-	return &authX509{certFile: certFile, keyFile: keyFile}
+func newAuthX509(cert, key []byte) authMethod {
+	return &authX509{cert: cert, key: key}
 }
 
 func (a *authX509) String() string {
-	return fmt.Sprintf("method %s certFile %s keyFile %s", a.methodName(), a.certFile, a.keyFile)
+	return fmt.Sprintf("method %s cert %v key %v", a.methodName(), a.cert, a.key)
 }
 
 func (a *authX509) methodName() string { return mnX509 }
@@ -66,7 +66,7 @@ func (a *authX509) prepareFinalReq(prms *authPrms) error {
 
 	subPrms := prms.addPrms()
 
-	certPEMBlocks, err := decodeClientCert(a.certFile)
+	certPEMBlocks, err := decodeClientCert(a.cert)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (a *authX509) prepareFinalReq(prms *authPrms) error {
 
 	message.Write(a.serverNonce)
 
-	certKeyBlock, err := decodeClientKey(a.keyFile)
+	certKeyBlock, err := decodeClientKey(a.key)
 	if err != nil {
 		return err
 	}
@@ -121,30 +121,25 @@ func (a *authX509) finalRepDecode(d *authDecoder) error {
 	return err
 }
 
-func decodePEM(filename string) ([]*pem.Block, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
+func decodePEM(data []byte) ([]*pem.Block, error) {
 	var blocks []*pem.Block
 	block, rest := pem.Decode(data)
 	for block != nil {
 		blocks = append(blocks, block)
 		block, rest = pem.Decode(rest)
 	}
-	if blocks == nil {
-		return nil, fmt.Errorf("invalid PEM file %s", filename)
-	}
 	return blocks, nil
 }
 
-func decodeClientCert(filename string) ([]*pem.Block, error) {
-	blocks, err := decodePEM(filename)
+func decodeClientCert(data []byte) ([]*pem.Block, error) {
+	blocks, err := decodePEM(data)
 	if err != nil {
 		return nil, err
 	}
-	if len(blocks) < 1 {
+	switch {
+	case blocks == nil:
+		return nil, errors.New("invalid client cert")
+	case len(blocks) < 1:
 		return nil, fmt.Errorf("invalid number of blocks in cert file %d - expected min 1", len(blocks))
 	}
 	return blocks, nil
@@ -155,12 +150,15 @@ const (
 	pemTypePrivateKey  = "PRIVATE KEY"
 )
 
-func decodeClientKey(filename string) (*pem.Block, error) {
-	blocks, err := decodePEM(filename)
+func decodeClientKey(data []byte) (*pem.Block, error) {
+	blocks, err := decodePEM(data)
 	if err != nil {
 		return nil, err
 	}
-	if len(blocks) != numClientKeyBlocks {
+	switch {
+	case blocks == nil:
+		return nil, fmt.Errorf("invalid client key")
+	case len(blocks) != numClientKeyBlocks:
 		return nil, fmt.Errorf("invalid number of blocks in key file %d - expected %d", len(blocks), numClientKeyBlocks)
 	}
 	block := blocks[0]

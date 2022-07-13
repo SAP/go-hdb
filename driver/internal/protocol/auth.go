@@ -297,11 +297,15 @@ type auth struct {
 
 func newAuth(cfg *SessionConfig) *auth {
 	methods := &authMethods{}
-	if cfg.ClientCertFile != "" {
-		methods.add(newAuthX509(cfg.ClientCertFile, cfg.ClientKeyFile))
+	if cfg.ClientCert != nil && cfg.ClientKey != nil {
+		methods.add(newAuthX509(cfg.ClientCert, cfg.ClientKey))
 	}
 	if cfg.Token != "" {
 		methods.add(newAuthJWT(cfg.Token))
+	}
+	// mimic standard drivers and use password as token if user is empty
+	if cfg.Token == "" && cfg.Username == "" && cfg.Password != "" {
+		methods.add(newAuthJWT(cfg.Password))
 	}
 	if cfg.Password != "" {
 		methods.add(newAuthSCRAMPBKDF2SHA256(cfg.Username, cfg.Password))

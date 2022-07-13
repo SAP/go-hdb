@@ -87,17 +87,18 @@ type Connector struct {
 	defaultSchema        string
 	dialer               dial.Dialer
 	// session relevant attributes
-	username, password            string
-	clientCertFile, clientKeyFile string
-	token                         string // JWT
-	applicationName               string
-	sessionVariables              *vermap.VerMap
-	locale                        string
-	fetchSize, lobChunkSize       int
-	dfv                           int
-	legacy                        bool
-	cesu8Decoder                  func() transform.Transformer
-	cesu8Encoder                  func() transform.Transformer
+	username, password      string
+	clientCert, clientKey   []byte
+	token                   string // JWT
+	refreshToken            func() (string, bool)
+	applicationName         string
+	sessionVariables        *vermap.VerMap
+	locale                  string
+	fetchSize, lobChunkSize int
+	dfv                     int
+	legacy                  bool
+	cesu8Decoder            func() transform.Transformer
+	cesu8Encoder            func() transform.Transformer
 }
 
 // NewConnector returns a new Connector instance with default values.
@@ -129,21 +130,37 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 }
 
 // NewX509AuthConnector creates a connector for X509 (client certificate) authentication.
-func NewX509AuthConnector(host, username, clientCertFile, clientKeyFile string) *Connector {
+func NewX509AuthConnector(host, username string, clientCert, clientKey []byte) *Connector {
 	c := NewConnector()
 	c.host = host
 	c.username = username
-	c.clientCertFile = clientCertFile
-	c.clientKeyFile = clientKeyFile
+	c.clientCert = clientCert
+	c.clientKey = clientKey
 	return c
 }
 
+// NewX509AuthConnectorByFiles creates a connector for X509 (client certificate) authentication
+// based on client certificate and client key files.
+func NewX509AuthConnectorByFiles(host, username, clientCertFile, clientKeyFile string) (*Connector, error) {
+	clientCert, err := os.ReadFile(clientCertFile)
+	if err != nil {
+		return nil, err
+	}
+	clientKey, err := os.ReadFile(clientKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	return NewX509AuthConnector(host, username, clientCert, clientKey), nil
+}
+
 // NewJWTAuthConnector creates a connector for token (JWT) based authentication.
-func NewJWTAuthConnector(host, username, token string) *Connector {
+// A refreshToken callback function can be provided to enable a token refresh in case JWT authentication would fail.
+func NewJWTAuthConnector(host, username, token string, refreshToken func() (string, bool)) *Connector {
 	c := NewConnector()
 	c.host = host
 	c.username = username
 	c.token = token
+	c.refreshToken = refreshToken
 	return c
 }
 
@@ -175,8 +192,8 @@ func (c *Connector) sessionConfig() *p.SessionConfig {
 	return &p.SessionConfig{
 		Username:         c.username,
 		Password:         c.password,
-		ClientCertFile:   c.clientCertFile,
-		ClientKeyFile:    c.clientKeyFile,
+		ClientCert:       c.clientCert,
+		ClientKey:        c.clientKey,
 		Token:            c.token,
 		ApplicationName:  c.applicationName,
 		SessionVariables: c.sessionVariables, //TODO clone
@@ -198,6 +215,20 @@ func (c *Connector) Username() string { c.mu.RLock(); defer c.mu.RUnlock(); retu
 
 // Password returns the password of the connector.
 func (c *Connector) Password() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.password }
+
+// RefreshToken returns the callback function for JWT authentication token refresh.
+func (c *Connector) RefreshToken() func() (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.refreshToken
+}
+
+// SetRefreshToken sets the callback function for JWT authentication token refresh.
+func (c *Connector) SetRefreshToken(refreshToken func() (string, bool)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refreshToken = refreshToken
+}
 
 // Locale returns the locale of the connector.
 func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.locale }

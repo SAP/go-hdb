@@ -103,15 +103,19 @@ func ExampleNewBasicAuthConnector() {
 	// output:
 }
 
-// ExampleNewX509AuthConnector shows how to open a database with the help of a connector using x509 (client certificate) authentication.
-func ExampleNewX509AuthConnector() {
+// ExampleNewX509AuthConnectorByFiles shows how to open a database with the help of a connector
+// using x509 (client certificate) authentication and providing client certificate and client key by file.
+func ExampleNewX509AuthConnectorByFiles() {
 	host, username, clientCertFile, clientKeyFile, ok := x509AuthPrms()
 	if !ok {
 		log.Print("not all X509 authorization parameters set")
 		return
 	}
 
-	connector := driver.NewX509AuthConnector(host, username, clientCertFile, clientKeyFile)
+	connector, err := driver.NewX509AuthConnectorByFiles(host, username, clientCertFile, clientKeyFile)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if serverName, insecureSkipVerify, rootCAFile, ok := tlsPrms(); ok {
 		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
 	}
@@ -132,7 +136,10 @@ func ExampleNewJWTAuthConnector() {
 		return
 	}
 
-	connector := driver.NewJWTAuthConnector(host, username, token)
+	// in case JWT authentication fails provide a new token.
+	refreshToken := func() (string, bool) { return os.LookupEnv(envToken) }
+
+	connector := driver.NewJWTAuthConnector(host, username, token, refreshToken)
 	if serverName, insecureSkipVerify, rootCAFile, ok := tlsPrms(); ok {
 		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
 	}
