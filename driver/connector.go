@@ -173,8 +173,6 @@ func (c *Connector) sessionConfig() *p.SessionConfig {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return &p.SessionConfig{
-		DriverVersion:    DriverVersion,
-		DriverName:       DriverName,
 		Username:         c.username,
 		Password:         c.password,
 		ClientCertFile:   c.clientCertFile,
@@ -212,10 +210,10 @@ For more information please see DSNLocale.
 func (c *Connector) SetLocale(locale string) { c.mu.Lock(); defer c.mu.Unlock(); c.locale = locale }
 
 // DriverVersion returns the driver version of the connector.
-func (c *Connector) DriverVersion() string { return DriverVersion }
+//func (c *Connector) DriverVersion() string { return DriverVersion }
 
 // DriverName returns the driver name of the connector.
-func (c *Connector) DriverName() string { return DriverName }
+//func (c *Connector) DriverName() string { return DriverName }
 
 // ApplicationName returns the locale of the connector.
 func (c *Connector) ApplicationName() string {
@@ -487,6 +485,9 @@ func (c *Connector) Legacy() bool { c.mu.RLock(); defer c.mu.RUnlock(); return c
 
 // SetLegacy sets the connector legacy flag.
 func (c *Connector) SetLegacy(b bool) { c.mu.Lock(); defer c.mu.Unlock(); c.legacy = b }
+
+// NativeDriver returns the concrete underlying Driver of the Connector.
+func (c *Connector) NativeDriver() *Driver { return hdbDriver }
 
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {

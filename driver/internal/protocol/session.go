@@ -20,6 +20,13 @@ import (
 //padding
 const padding = 8
 
+// DriverVersion holds the version of the driver and is set during go-hdb initialization to driver.DriverVersion value.
+var DriverVersion string
+
+// clientType is the information provided to HDB identifying the driver.
+// Previously the driver.DriverName "hdb" was used but we should be more specific in providing a unique client type to HANA backend.
+const ClientType = "https://github.com/SAP/go-hdb" // "go-hbd"
+
 func padBytes(size int) int {
 	if r := size % padding; r != 0 {
 		return padding - r
@@ -105,8 +112,8 @@ func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, erro
 
 	// client context
 	clientContext := clientContext(plainOptions{
-		int8(ccoClientVersion):            optStringType(s.cfg.DriverVersion),
-		int8(ccoClientType):               optStringType(s.cfg.DriverName),
+		int8(ccoClientVersion):            optStringType(DriverVersion),
+		int8(ccoClientType):               optStringType(ClientType),
 		int8(ccoClientApplicationProgram): optStringType(s.cfg.ApplicationName),
 	})
 

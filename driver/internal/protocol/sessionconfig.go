@@ -11,7 +11,6 @@ import (
 
 // SessionConfig represents the session relevant driver connector options.
 type SessionConfig struct {
-	DriverVersion, DriverName     string
 	Username, Password            string
 	ClientCertFile, ClientKeyFile string
 	Token                         string // jwt
@@ -28,8 +27,6 @@ type SessionConfig struct {
 // Clone returns a (shallow) copy (clone) of a SessionConfig.
 func (c *SessionConfig) Clone() *SessionConfig {
 	return &SessionConfig{
-		DriverVersion:    c.DriverVersion,
-		DriverName:       c.DriverName,
 		Username:         c.Username,
 		Password:         c.Password,
 		ClientCertFile:   c.ClientCertFile,

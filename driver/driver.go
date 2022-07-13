@@ -10,6 +10,8 @@ import (
 	"database/sql/driver"
 	"os"
 	"sync/atomic"
+
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 // DriverVersion is the version number of the hdb driver.
@@ -24,6 +26,7 @@ var defaultApplicationName string
 var hdbDriver = &Driver{}
 
 func init() {
+	p.DriverVersion = DriverVersion // set driver version in session
 	defaultApplicationName, _ = os.Executable()
 	sql.Register(DriverName, hdbDriver)
 }
