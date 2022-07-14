@@ -8,12 +8,12 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // TODO: to delete
@@ -62,6 +62,7 @@ func (a *authX509) initRepDecode(d *authDecoder) error {
 }
 
 func (a *authX509) prepareFinalReq(prms *authPrms) error {
+	prms.addEmpty() // empty username
 	prms.addString(a.methodName())
 
 	subPrms := prms.addPrms()
@@ -94,7 +95,7 @@ func (a *authX509) prepareFinalReq(prms *authPrms) error {
 		return err
 	}
 
-	signature, err := signRSA(certKeyBlock, message)
+	signature, err := sign(certKeyBlock, message)
 	if err != nil {
 		return err
 	}
@@ -150,6 +151,14 @@ const (
 	pemTypePrivateKey  = "PRIVATE KEY"
 )
 
+// encryptedBlock tells whether a private key is
+// encrypted by examining its Proc-Type header
+// for a mention of ENCRYPTED
+// according to RFC 1421 Section 4.6.1.1.
+func encryptedBlock(block *pem.Block) bool {
+	return strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED")
+}
+
 func decodeClientKey(data []byte) (*pem.Block, error) {
 	blocks, err := decodePEM(data)
 	if err != nil {
@@ -162,25 +171,39 @@ func decodeClientKey(data []byte) (*pem.Block, error) {
 		return nil, fmt.Errorf("invalid number of blocks in key file %d - expected %d", len(blocks), numClientKeyBlocks)
 	}
 	block := blocks[0]
-	if block.Type != pemTypePrivateKey {
-		return nil, fmt.Errorf("invalid PEM type %s - expected %s", block.Type, pemTypePrivateKey)
+	if encryptedBlock(block) {
+		return nil, errors.New("client key is password encrypted")
 	}
 	return block, nil
 }
 
-func signRSA(certKeyBlock *pem.Block, message *bytes.Buffer) ([]byte, error) {
-	privateKey, err := x509.ParsePKCS8PrivateKey(certKeyBlock.Bytes)
+func getSigner(certKeyBlock *pem.Block) (crypto.Signer, error) {
+	switch certKeyBlock.Type {
+	case "RSA PRIVATE KEY":
+		return x509.ParsePKCS1PrivateKey(certKeyBlock.Bytes)
+	case "PRIVATE KEY":
+		key, err := x509.ParsePKCS8PrivateKey(certKeyBlock.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		signer, ok := key.(crypto.Signer)
+		if !ok {
+			return nil, errors.New("internal error: parsed PKCS8 private key is not a crypto.Signer")
+		}
+		return signer, nil
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(certKeyBlock.Bytes)
+	default:
+		return nil, fmt.Errorf("unsupported key type %q", certKeyBlock.Type)
+	}
+}
+
+func sign(certKeyBlock *pem.Block, message *bytes.Buffer) ([]byte, error) {
+	signer, err := getSigner(certKeyBlock)
 	if err != nil {
 		return nil, err
 	}
-	rsaPrivateKey, ok := privateKey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("client key not in RSA private key format")
-	}
 
-	// see example https://pkg.go.dev/crypto/rsa#SignPKCS1v15
-	rng := rand.Reader
 	hashed := sha256.Sum256(message.Bytes())
-
-	return rsa.SignPKCS1v15(rng, rsaPrivateKey, crypto.SHA256, hashed[:])
+	return signer.Sign(rand.Reader, hashed[:], crypto.SHA256)
 }

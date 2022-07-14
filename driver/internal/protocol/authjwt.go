@@ -6,6 +6,7 @@ package protocol
 
 import (
 	"fmt"
+	"strings"
 )
 
 // authJWT implements mnJWT.
@@ -56,4 +57,8 @@ func (a *authJWT) finalRepDecode(d *authDecoder) error {
 	}
 	a.cookie, err = d.bytes()
 	return err
+}
+
+func isJWTToken(token string) bool {
+	return strings.HasPrefix(token, "ey")
 }

@@ -305,7 +305,7 @@ func newAuth(cfg *SessionConfig) *auth {
 		methods.add(newAuthJWT(cfg.Token))
 	}
 	// mimic standard drivers and use password as token if user is empty
-	if cfg.Token == "" && cfg.Username == "" && cfg.Password != "" {
+	if cfg.Token == "" && cfg.Username == "" && isJWTToken(cfg.Password) {
 		methods.add(newAuthJWT(cfg.Password))
 	}
 	if cfg.Password != "" {
