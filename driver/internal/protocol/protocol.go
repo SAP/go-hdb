@@ -12,7 +12,6 @@ import (
 	"math"
 	"reflect"
 
-	"github.com/SAP/go-hdb/driver/internal/container/vermap"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	"golang.org/x/text/transform"
@@ -388,8 +387,7 @@ type protocolReader struct {
 
 	step int // authentication
 
-	dec    *encoding.Decoder
-	tracer traceLogger
+	dec *encoding.Decoder
 
 	mh *messageHeader
 	sh *segmentHeader
@@ -415,7 +413,6 @@ func newProtocolReader(upStream bool, rd io.Reader, decoder func() transform.Tra
 	return &protocolReader{
 		upStream:        upStream,
 		dec:             encoding.NewDecoder(rd, decoder),
-		tracer:          newTraceLogger(upStream),
 		partReaderCache: map[partKind]partReader{},
 		mh:              &messageHeader{},
 		sh:              &segmentHeader{},
@@ -436,7 +433,7 @@ func (r *protocolReader) readInitRequest() error {
 	if err := req.decode(r.dec); err != nil {
 		return err
 	}
-	r.tracer.Log(req)
+	traceProtocol(r.upStream, req)
 	return nil
 }
 
@@ -445,7 +442,7 @@ func (r *protocolReader) readInitReply() error {
 	if err := rep.decode(r.dec); err != nil {
 		return err
 	}
-	r.tracer.Log(rep)
+	traceProtocol(r.upStream, rep)
 	return nil
 }
 
@@ -487,10 +484,8 @@ func (r *protocolReader) checkError() error {
 	}
 
 	if r.lastErrors.isWarnings() {
-		if sqltrace.On() {
-			for _, e := range r.lastErrors.errors {
-				sqltrace.Traceln(e)
-			}
+		for _, e := range r.lastErrors.errors {
+			sqltrace.Traceln(e)
 		}
 		return nil
 	}
@@ -501,9 +496,6 @@ func (r *protocolReader) checkError() error {
 func (r *protocolReader) canSkip(pk partKind) bool {
 	// errors and rowsAffected needs always to be read
 	if pk == pkError || pk == pkRowsAffected {
-		return false
-	}
-	if debug {
 		return false
 	}
 	return true
@@ -577,7 +569,7 @@ func (r *protocolReader) skip() error {
 
 func (r *protocolReader) skipPart() error {
 	r.dec.Skip(int(r.ph.bufferLength))
-	r.tracer.Log("*skipped")
+	traceProtocol(r.upStream, "*skipped")
 
 	/*
 		hdb protocol
@@ -598,7 +590,7 @@ func (r *protocolReader) readPart(part partReader) error {
 	r.dec.ResetCnt()
 	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
-	r.tracer.Log(part)
+	traceProtocol(r.upStream, part)
 
 	bufferLen := int(r.ph.bufferLength)
 	switch {
@@ -634,7 +626,7 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
-	r.tracer.Log(r.mh)
+	traceProtocol(r.upStream, r.mh)
 
 	r.msgSize = int64(r.mh.varPartLength)
 
@@ -643,7 +635,7 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 		if err := r.sh.decode(r.dec); err != nil {
 			return err
 		}
-		r.tracer.Log(r.sh)
+		traceProtocol(r.upStream, r.sh)
 
 		r.msgSize -= int64(r.sh.segmentLength)
 		r.numPart = int(r.sh.noOfParts)
@@ -654,7 +646,7 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 			if err := r.ph.decode(r.dec); err != nil {
 				return err
 			}
-			r.tracer.Log(r.ph)
+			traceProtocol(r.upStream, r.ph)
 
 			r.cntPart++
 
@@ -675,12 +667,8 @@ type protocolWriter struct {
 	wr  *bufio.Writer
 	enc *encoding.Encoder
 
-	sv *vermap.VerMap // link to session variables
-	// last session variables snapshot
-	lastSVVersion int64
-	lastSV        map[string]string
-
-	tracer traceLogger
+	sv     map[string]string
+	svSent bool
 
 	// reuse header
 	mh *messageHeader
@@ -688,15 +676,14 @@ type protocolWriter struct {
 	ph *partHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv *vermap.VerMap) *protocolWriter {
+func newProtocolWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv map[string]string) *protocolWriter {
 	return &protocolWriter{
-		wr:     wr,
-		sv:     sv,
-		enc:    encoding.NewEncoder(wr, encoder),
-		tracer: newTraceLogger(true),
-		mh:     new(messageHeader),
-		sh:     new(segmentHeader),
-		ph:     new(partHeader),
+		wr:  wr,
+		sv:  sv,
+		enc: encoding.NewEncoder(wr, encoder),
+		mh:  new(messageHeader),
+		sh:  new(segmentHeader),
+		ph:  new(partHeader),
 	}
 }
 
@@ -718,28 +705,15 @@ func (w *protocolWriter) writeProlog() error {
 	if err := req.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer.Log(req)
+	traceProtocol(true, req)
 	return w.wr.Flush()
 }
 
 func (w *protocolWriter) write(sessionID int64, messageType messageType, commit bool, writers ...partWriter) error {
 	// check on session variables to be send as ClientInfo
-	if messageType.clientInfoSupported() && w.sv.Version() != w.lastSVVersion {
-		var upd map[string]string
-		var del map[string]bool
-
-		w.sv.WithRLock(func() {
-			upd, del = w.sv.CompareWithRLock(w.lastSV)
-			w.lastSVVersion = w.sv.Version()
-			w.lastSV = w.sv.LoadWithRLock()
-		})
-
-		// TODO: how to delete session variables via clientInfo
-		// ...for the time being we set the value to <space>...
-		for k := range del {
-			upd[k] = ""
-		}
-		writers = append([]partWriter{clientInfo(upd)}, writers...)
+	if w.sv != nil && !w.svSent && messageType.clientInfoSupported() {
+		writers = append([]partWriter{clientInfo(w.sv)}, writers...)
+		w.svSent = true
 	}
 
 	numWriters := len(writers)
@@ -766,7 +740,7 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 	if err := w.mh.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer.Log(w.mh)
+	traceProtocol(true, w.mh)
 
 	if size > math.MaxInt32 {
 		return fmt.Errorf("message size %d exceeds maximum part header value %d", size, math.MaxInt32)
@@ -783,7 +757,7 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 	if err := w.sh.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer.Log(w.sh)
+	traceProtocol(true, w.sh)
 
 	bufferSize -= segmentHeaderSize
 
@@ -802,12 +776,12 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 		if err := w.ph.encode(w.enc); err != nil {
 			return err
 		}
-		w.tracer.Log(w.ph)
+		traceProtocol(true, w.ph)
 
 		if err := part.encode(w.enc); err != nil {
 			return err
 		}
-		w.tracer.Log(part)
+		traceProtocol(true, part)
 
 		w.enc.Zeroes(pad)
 

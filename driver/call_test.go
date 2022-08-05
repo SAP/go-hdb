@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testCallEcho(db *sql.DB, t *testing.T) {
@@ -205,11 +204,6 @@ end
 		t.Fatal(err)
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	tests := []struct {
 		name    string
 		legacy  bool
@@ -222,6 +216,7 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			connector := driver.NewTestConnector()
 			connector.SetLegacy(test.legacy)
 			db := sql.OpenDB(connector)
 			defer db.Close()
@@ -384,11 +379,7 @@ func TestCall(t *testing.T) {
 		{"noOut", testCallNoOut},
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	for _, test := range tests {

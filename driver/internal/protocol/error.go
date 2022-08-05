@@ -18,6 +18,10 @@ const (
 	fixLength = 2
 )
 
+const (
+	hdbErrAuthenticationFailed = 10
+)
+
 type sqlState [sqlStateSize]byte
 
 type hdbError struct {

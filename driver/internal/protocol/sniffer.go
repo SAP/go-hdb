@@ -46,8 +46,7 @@ type Sniffer struct {
 func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 
 	//TODO - review setting values here
-	trace = true
-	debug = true
+	protocolTraceFlag.Set("true")
 
 	s := &Sniffer{
 		conn:   conn,

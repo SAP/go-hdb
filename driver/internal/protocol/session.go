@@ -17,6 +17,16 @@ import (
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
+// DriverVersion holds the version of the driver and is set during go-hdb initialization to driver.DriverVersion value.
+var DriverVersion string
+
+// ClientID holds the client ID of the driver's process and is set during go-hdb initialization to driver.clientID value.
+var ClientID string
+
+// clientType is the information provided to HDB identifying the driver.
+// Previously the driver.DriverName "hdb" was used but we should be more specific in providing a unique client type to HANA backend.
+const clientType = "go-hdb"
+
 //padding
 const padding = 8
 
@@ -28,13 +38,12 @@ func padBytes(size int) int {
 }
 
 const (
-	dfvLevel1        = 1
 	defaultSessionID = -1
 )
 
 // Session represents a HDB session.
 type Session struct {
-	cfg *SessionConfig
+	attrs *SessionAttrs // as a dedicated instance (clone) is used for every session we can access the attributes directly.
 
 	sessionID     int64
 	serverOptions connectOptions
@@ -45,22 +54,21 @@ type Session struct {
 }
 
 // NewSession creates a new database session.
-func NewSession(ctx context.Context, rw *bufio.ReadWriter, cfg *SessionConfig) (*Session, error) {
-	pw := newProtocolWriter(rw.Writer, cfg.CESU8Encoder, cfg.SessionVariables) // write upstream
+func NewSession(ctx context.Context, rw *bufio.ReadWriter, attrs *SessionAttrs, auth *Auth) (*Session, error) {
+	pw := newProtocolWriter(rw.Writer, attrs.cesu8Encoder, attrs.sessionVariables) // write upstream
 	if err := pw.writeProlog(); err != nil {
 		return nil, err
 	}
 
-	pr := newProtocolReader(false, rw.Reader, cfg.CESU8Decoder) // read downstream
+	pr := newProtocolReader(false, rw.Reader, attrs.cesu8Decoder) // read downstream
 	if err := pr.readProlog(); err != nil {
 		return nil, err
 	}
 
-	s := &Session{cfg: cfg, sessionID: defaultSessionID, pr: pr, pw: pw}
+	s := &Session{attrs: attrs, sessionID: defaultSessionID, pr: pr, pw: pw}
 
-	authStepper := newAuth(cfg.Username, cfg.Password)
 	var err error
-	if s.sessionID, s.serverOptions, err = s.authenticate(authStepper); err != nil {
+	if s.sessionID, s.serverOptions, err = s.authenticate(auth); err != nil {
 		return nil, err
 	}
 
@@ -88,62 +96,62 @@ func (s *Session) defaultClientOptions() connectOptions {
 		int8(coDistributionProtocolVersion): optBooleanType(false),
 		int8(coSelectForUpdateSupported):    optBooleanType(false),
 		int8(coSplitBatchCommands):          optBooleanType(true),
-		int8(coDataFormatVersion2):          optIntType(s.cfg.Dfv),
+		int8(coDataFormatVersion2):          optIntType(s.attrs.dfv),
 		int8(coCompleteArrayExecution):      optBooleanType(true),
 		int8(coClientDistributionMode):      cdmOff,
 		// int8(coImplicitLobStreaming):        optBooleanType(true),
 	}
-	if s.cfg.Locale != "" {
-		co[int8(coClientLocale)] = optStringType(s.cfg.Locale)
+	if s.attrs.locale != "" {
+		co[int8(coClientLocale)] = optStringType(s.attrs.locale)
 	}
 	return co
 }
 
-func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, error) {
-	var auth partReadWriter
-	var err error
+func (s *Session) authenticate(auth *Auth) (int64, connectOptions, error) {
 
 	// client context
 	clientContext := clientContext(plainOptions{
-		int8(ccoClientVersion):            optStringType(s.cfg.DriverVersion),
-		int8(ccoClientType):               optStringType(s.cfg.DriverName),
-		int8(ccoClientApplicationProgram): optStringType(s.cfg.ApplicationName),
+		int8(ccoClientVersion):            optStringType(DriverVersion),
+		int8(ccoClientType):               optStringType(clientType),
+		int8(ccoClientApplicationProgram): optStringType(s.attrs.applicationName),
 	})
 
-	if auth, err = stepper.next(); err != nil {
+	var part partReadWriter
+	var err error
+
+	if part, err = auth.step0(); err != nil {
 		return 0, nil, err
 	}
-	if err := s.pw.write(s.sessionID, mtAuthenticate, false, clientContext, auth); err != nil {
+	if err := s.pw.write(s.sessionID, mtAuthenticate, false, clientContext, part); err != nil {
 		return 0, nil, err
 	}
 
-	if auth, err = stepper.next(); err != nil {
+	if part, err = auth.step1(); err != nil {
 		return 0, nil, err
 	}
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		if ph.partKind == pkAuthentication {
-			s.pr.read(auth)
+			s.pr.read(part)
 		}
 	}); err != nil {
 		return 0, nil, err
 	}
 
-	if auth, err = stepper.next(); err != nil {
+	if part, err = auth.step2(); err != nil {
 		return 0, nil, err
 	}
-	id := newClientID()
 	co := s.defaultClientOptions()
-	if err := s.pw.write(s.sessionID, mtConnect, false, auth, id, co); err != nil {
+	if err := s.pw.write(s.sessionID, mtConnect, false, part, clientID(ClientID), co); err != nil {
 		return 0, nil, err
 	}
 
-	if auth, err = stepper.next(); err != nil {
+	if part, err = auth.step3(); err != nil {
 		return 0, nil, err
 	}
 	if err := s.pr.iterateParts(func(ph *partHeader) {
 		switch ph.partKind {
 		case pkAuthentication:
-			s.pr.read(auth)
+			s.pr.read(part)
 		case pkConnectOptions:
 			s.pr.read(&co)
 			// set data format version
@@ -151,9 +159,13 @@ func (s *Session) authenticate(stepper authStepper) (int64, connectOptions, erro
 			s.pr.setDfv(int(co[int8(coDataFormatVersion2)].(optIntType)))
 		}
 	}); err != nil {
+		if err, ok := err.(*hdbErrors); ok {
+			if err.Code() == hdbErrAuthenticationFailed {
+				return 0, nil, newAuthFailedError(auth.method.typ(), err)
+			}
+		}
 		return 0, nil, err
 	}
-
 	return s.pr.sessionID(), co, nil
 }
 
@@ -243,7 +255,7 @@ func (s *Session) Prepare(query string) (*PrepareResult, error) {
 
 // fetchFirstLobChunk reads the first LOB data ckunk.
 func (s *Session) fetchFirstLobChunk(nvargs []driver.NamedValue) (bool, error) {
-	chunkSize := s.cfg.LobChunkSize
+	chunkSize := s.attrs.lobChunkSize
 	hasNext := false
 
 	for _, arg := range nvargs {
@@ -435,7 +447,7 @@ func (s *Session) QueryCall(pr *PrepareResult, nvargs []driver.NamedValue) (driv
 	}
 
 	// legacy mode?
-	if s.cfg.Legacy {
+	if s.attrs.legacy {
 		cr.appendTableRefFields() // TODO review
 		for _, qr := range cr.qrs {
 			// add to cache
@@ -617,7 +629,7 @@ func (s *Session) Query(pr *PrepareResult, nvargs []driver.NamedValue, commit bo
 
 // FetchNext fetches next chunk in query result set.
 func (s *Session) fetchNext(qr *queryResult) error {
-	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr.rsID), fetchsize(s.cfg.FetchSize)); err != nil {
+	if err := s.pw.write(s.sessionID, mtFetchNext, false, resultsetID(qr.rsID), fetchsize(s.attrs.fetchSize)); err != nil {
 		return err
 	}
 
@@ -721,7 +733,7 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 	var err error
 
 	if descr.isCharBased {
-		wrcl := transform.NewWriter(wr, s.cfg.CESU8Decoder()) // CESU8 transformer
+		wrcl := transform.NewWriter(wr, s.attrs.cesu8Decoder()) // CESU8 transformer
 		err = s._decodeLobs(descr, wrcl, func(b []byte) (int64, error) {
 			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
 			numChars := int64(0)
@@ -753,7 +765,7 @@ func (s *Session) decodeLobs(descr *lobOutDescr, wr io.Writer) error {
 }
 
 func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
-	lobChunkSize := int64(s.cfg.LobChunkSize)
+	lobChunkSize := int64(s.attrs.lobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {
 		chunkSize := numChar - ofs
@@ -816,7 +828,7 @@ func (s *Session) _decodeLobs(descr *lobOutDescr, wr io.Writer, countChars func(
 // encodeLobs encodes (write to db) input lob parameters.
 func (s *Session) encodeLobs(cr *callResult, ids []locatorID, inPrmFields []*ParameterField, nvargs []driver.NamedValue) error {
 
-	chunkSize := s.cfg.LobChunkSize
+	chunkSize := s.attrs.lobChunkSize
 
 	descrs := make([]*writeLobDescr, 0, len(ids))
 

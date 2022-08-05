@@ -14,17 +14,12 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
 
 func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
@@ -47,11 +42,7 @@ func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
 }
 
 func testDecodeError(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
@@ -73,10 +64,7 @@ func testDecodeError(tableName driver.Identifier, testData []string, t *testing.
 }
 
 func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
+	connector := driver.NewTestConnector()
 
 	// register decoder with replace error handler
 	decoder := cesu8.NewDecoder(cesu8.ReplaceErrorHandler)
@@ -146,10 +134,7 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *t
 }
 
 func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T) {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
+	connector := driver.NewTestConnector()
 
 	// register nop decoder to receive 'raw' undecoded data
 	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })

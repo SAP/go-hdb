@@ -35,7 +35,7 @@ func newDecodeError(enc string, p int, v []byte) *DecodeError {
 }
 
 func (e *DecodeError) Error() string {
-	return fmt.Sprintf("invalid %s: %x at pos: %d", e.enc, e.v, e.p)
+	return fmt.Sprintf("invalid %s: %x at position %d", e.enc, e.v, e.p)
 }
 
 // Enc returns the expected encoding of the erroneous data.

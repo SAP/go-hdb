@@ -91,23 +91,20 @@ const (
 	maxNumTraceArg = 20
 )
 
-func init() {
-	p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem())
-	p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
-}
+var (
+	// register as var to execute even before init() funcs are called
+	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem())
+	_ = p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
+)
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
 	// atomic access - alignment
-	canceled  int32
+	cancelled int32
 	conn      net.Conn
 	timeout   time.Duration
 	lastError error // error bad connection
 	closed    bool
-}
-
-func (c *dbConn) isBad() bool {
-	return c.lastError != nil
 }
 
 func (c *dbConn) deadline() (deadline time.Time) {
@@ -123,7 +120,7 @@ var (
 )
 
 func (c *dbConn) cancel() {
-	atomic.StoreInt32(&c.canceled, 1)
+	atomic.StoreInt32(&c.cancelled, 1)
 	c.lastError = errCancelled
 }
 
@@ -136,7 +133,7 @@ func (c *dbConn) close() error {
 // Read implements the io.Reader interface.
 func (c *dbConn) Read(b []byte) (n int, err error) {
 	// check if killed
-	if atomic.LoadInt32(&c.canceled) == 1 {
+	if atomic.LoadInt32(&c.cancelled) == 1 {
 		return 0, driver.ErrBadConn
 	}
 	//set timeout
@@ -156,7 +153,7 @@ retError:
 // Write implements the io.Writer interface.
 func (c *dbConn) Write(b []byte) (n int, err error) {
 	// check if killed
-	if atomic.LoadInt32(&c.canceled) == 1 {
+	if atomic.LoadInt32(&c.cancelled) == 1 {
 		return 0, driver.ErrBadConn
 	}
 	//set timeout
@@ -248,69 +245,70 @@ type conn struct {
 	*/
 	connLock
 
-	ctr     *Connector
-	dbConn  *dbConn
-	session *p.Session
-	scanner *scanner.Scanner
-	closed  chan struct{}
+	dbConn   *dbConn
+	session  *p.Session
+	scanner  *scanner.Scanner
+	closed   chan struct{}
+	bulkSize int
 
 	inTx bool // in transaction
+
+	lastError error // last error
 }
 
-func newConn(ctx context.Context, ctr *Connector) (driver.Conn, error) {
+func newConn(ctx context.Context, connAttrs *connAttrs, sessionAttrs *p.SessionAttrs, auth *p.Auth) (driver.Conn, error) {
+	// connAttrs needs to be read locked by caller
 
-	ctr.mu.RLock() // lock connector
-	defer ctr.mu.RUnlock()
-
-	netConn, err := ctr.dialer.DialContext(ctx, ctr.host, dial.DialerOptions{Timeout: ctr.timeout, TCPKeepAlive: ctr.tcpKeepAlive})
+	netConn, err := connAttrs._dialer.DialContext(ctx, connAttrs._host, dial.DialerOptions{Timeout: connAttrs._timeout, TCPKeepAlive: connAttrs._tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
 
 	// is TLS connection requested?
-	if ctr.tlsConfig != nil {
-		netConn = tls.Client(netConn, ctr.tlsConfig)
+	if connAttrs._tlsConfig != nil {
+		netConn = tls.Client(netConn, connAttrs._tlsConfig)
 	}
 
-	dbConn := &dbConn{conn: netConn, timeout: ctr.timeout}
+	dbConn := &dbConn{conn: netConn, timeout: connAttrs._timeout}
 	// buffer connection
-	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, ctr.bufferSize), bufio.NewWriterSize(dbConn, ctr.bufferSize))
+	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, connAttrs._bufferSize), bufio.NewWriterSize(dbConn, connAttrs._bufferSize))
 
-	session, err := p.NewSession(ctx, rw,
-		&p.SessionConfig{
-			DriverVersion:    DriverVersion,
-			DriverName:       DriverName,
-			ApplicationName:  ctr.applicationName,
-			Username:         ctr.username,
-			Password:         ctr.password,
-			SessionVariables: ctr.sessionVariables,
-			Locale:           ctr.locale,
-			FetchSize:        ctr.fetchSize,
-			LobChunkSize:     ctr.lobChunkSize,
-			Dfv:              ctr.dfv,
-			Legacy:           ctr.legacy,
-			CESU8Decoder:     ctr.cesu8Decoder,
-			CESU8Encoder:     ctr.cesu8Encoder,
-		},
-	)
+	session, err := p.NewSession(ctx, rw, sessionAttrs, auth)
 	if err != nil {
 		return nil, err
 	}
 
-	c := &conn{ctr: ctr, dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{})}
-	if ctr.defaultSchema != "" {
-		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, Identifier(ctr.defaultSchema)), nil); err != nil {
+	c := &conn{dbConn: dbConn, session: session, scanner: &scanner.Scanner{}, closed: make(chan struct{}), bulkSize: connAttrs._bulkSize}
+
+	if connAttrs._defaultSchema != "" {
+		if _, err := c.ExecContext(ctx, fmt.Sprintf(setDefaultSchema, Identifier(connAttrs._defaultSchema)), nil); err != nil {
 			return nil, err
 		}
 	}
 
-	if ctr.pingInterval != 0 {
-		go c.pinger(ctr.pingInterval, c.closed)
+	if connAttrs._pingInterval != 0 {
+		go c.pinger(connAttrs._pingInterval, c.closed)
 	}
 
 	hdbDriver.addConn(1) // increment open connections.
 
 	return c, nil
+}
+
+func (c *conn) isBad() bool {
+	switch {
+
+	case c.dbConn.lastError != nil:
+		return true
+
+	case c.lastError != nil:
+		// if last error was not a hdb error the connection is most probably not useable any more, e.g.
+		// interrupted read / write on connection.
+		if _, ok := c.lastError.(Error); !ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
@@ -335,7 +333,7 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return driver.ErrBadConn
 	}
 
@@ -350,6 +348,7 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 		c.dbConn.cancel()
 		return ctx.Err()
 	case <-done:
+		c.lastError = err
 		return err
 	}
 }
@@ -361,7 +360,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 
 	p.QueryResultCache.Cleanup(c.session)
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return driver.ErrBadConn
 	}
 	return nil
@@ -372,7 +371,7 @@ func (c *conn) IsValid() bool {
 	c.lock()
 	defer c.unlock()
 
-	return !c.dbConn.isBad()
+	return !c.isBad()
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
@@ -382,7 +381,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -415,7 +414,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		if pr.IsProcedureCall() {
 			stmt = newCallStmt(c, qd.Query(), pr)
 		} else {
-			stmt = newStmt(c, qd.Query(), qd.IsBulk(), c.ctr.BulkSize(), pr) //take latest connector bulk size
+			stmt = newStmt(c, qd.Query(), qd.IsBulk(), c.bulkSize, pr) //take latest connector bulk size
 		}
 
 	done:
@@ -428,6 +427,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addStmt(1) // increment number of statements.
+		c.lastError = err
 		return stmt, err
 	}
 }
@@ -444,7 +444,7 @@ func (c *conn) Close() error {
 	p.QueryResultCache.Cleanup(c.session)
 
 	// if isBad do not disconnect
-	if !c.dbConn.isBad() {
+	if !c.isBad() {
 		c.session.Disconnect() // ignore error
 	}
 	return c.dbConn.close()
@@ -457,7 +457,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -492,6 +492,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 		return nil, ctx.Err()
 	case <-done:
 		hdbDriver.addTx(1) // increment number of transactions.
+		c.lastError = err
 		return tx, err
 	}
 }
@@ -509,7 +510,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		}
 	}()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -540,9 +541,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return rows, nil
 	}
 
-	if sqltrace.On() {
-		sqltrace.Traceln(query)
-	}
+	sqltrace.Traceln(query)
 
 	done := make(chan struct{})
 	go func() {
@@ -559,6 +558,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 			onCloser.SetOnClose(c.unlock)
 			hasRowsCloser = true
 		}
+		c.lastError = err
 		return rows, err
 	}
 }
@@ -570,7 +570,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -583,9 +583,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		return nil, err
 	}
 
-	if sqltrace.On() {
-		sqltrace.Traceln(query)
-	}
+	sqltrace.Traceln(query)
 
 	done := make(chan struct{})
 	go func() {
@@ -601,6 +599,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
+		c.lastError = err
 		return r, err
 	}
 }
@@ -630,7 +629,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *hdb.
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -645,6 +644,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *hdb.
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
+		c.lastError = err
 		return ci, err
 	}
 }
@@ -677,7 +677,7 @@ func (t *tx) close(rollback bool) error {
 	}
 	t.closed = true
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return driver.ErrBadConn
 	}
 
@@ -720,12 +720,11 @@ type stmt struct {
 	pr                *p.PrepareResult
 	bulk, flush, many bool
 	bulkSize, numBulk int
-	trace             bool                // store flag for performance reasons (especially bulk inserts)
 	nvargs            []driver.NamedValue // bulk or many
 }
 
 func newStmt(conn *conn, query string, bulk bool, bulkSize int, pr *p.PrepareResult) *stmt {
-	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize, trace: sqltrace.On()}
+	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize}
 }
 
 type callStmt struct {
@@ -768,7 +767,7 @@ func (s *stmt) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return driver.ErrBadConn
 	}
 
@@ -798,13 +797,11 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 		}
 	}()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
-	if s.trace {
-		sqltrace.Tracef("%s %v", s.query, nvargs)
-	}
+	sqltrace.Tracef("%s %v", s.query, nvargs)
 
 	if len(nvargs) != s.pr.NumField() { // all fields needs to be input fields
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.NumField())
@@ -825,6 +822,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 			onCloser.SetOnClose(c.unlock)
 			hasRowsCloser = true
 		}
+		c.lastError = err
 		return rows, err
 	}
 }
@@ -861,7 +859,7 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
@@ -869,12 +867,10 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 		connHook(c, choStmtExec)
 	}
 
-	if s.trace {
-		if len(nvargs) > maxNumTraceArg {
-			sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, nvargs[:maxNumTraceArg])
-		} else {
-			sqltrace.Tracef("%s %v", s.query, nvargs)
-		}
+	if len(nvargs) > maxNumTraceArg {
+		sqltrace.Tracef("%s first %d arguments: %v", s.query, maxNumTraceArg, nvargs[:maxNumTraceArg])
+	} else {
+		sqltrace.Tracef("%s %v", s.query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -888,6 +884,7 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
+		c.lastError = err
 		return r, err
 	}
 }
@@ -1124,7 +1121,7 @@ func (s *callStmt) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return driver.ErrBadConn
 	}
 
@@ -1147,13 +1144,11 @@ func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue)
 		}
 	}()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
-	if sqltrace.On() {
-		sqltrace.Tracef("%s %v", s.query, nvargs)
-	}
+	sqltrace.Tracef("%s %v", s.query, nvargs)
 
 	if len(nvargs) != s.pr.NumInputField() { // input fields only
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.NumInputField())
@@ -1174,6 +1169,7 @@ func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue)
 			onCloser.SetOnClose(c.unlock)
 			hasRowsCloser = true
 		}
+		c.lastError = err
 		return rows, err
 	}
 }
@@ -1186,13 +1182,11 @@ func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) 
 	}
 	defer c.unlock()
 
-	if c.dbConn.isBad() {
+	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
 
-	if sqltrace.On() {
-		sqltrace.Tracef("%s %v", s.query, nvargs)
-	}
+	sqltrace.Tracef("%s %v", s.query, nvargs)
 
 	if len(nvargs) != s.pr.NumField() {
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.NumField())
@@ -1209,6 +1203,7 @@ func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) 
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
+		c.lastError = err
 		return r, err
 	}
 }

@@ -5,14 +5,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package benchmark
+package driver_test
 
 import (
 	"database/sql"
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func benchmarkPing(c *driver.Connector, b *testing.B) {
@@ -36,10 +35,7 @@ func benchmarkPingPar(c *driver.Connector, pb *testing.PB, b *testing.B) {
 }
 
 func BenchmarkPing(b *testing.B) {
-	connector, err := driver.NewDSNConnector(drivertest.DSN())
-	if err != nil {
-		b.Fatal(err)
-	}
+	connector := driver.NewTestConnector()
 
 	b.Run("Ping sequentially", func(b *testing.B) {
 		benchmarkPingSeq(connector, b)

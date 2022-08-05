@@ -107,7 +107,7 @@ func (o plainOptions) size() int {
 	for _, v := range o {
 		switch v := v.(type) {
 		default:
-			plog.Fatalf("type %T not implemented", v)
+			panic(fmt.Sprintf("type %T not implemented", v))
 		case optBooleanType:
 			size++
 		case optTinyintType:
@@ -137,7 +137,7 @@ func (o plainOptions) decode(dec *encoding.Decoder, cnt int) {
 		switch typeCode(tc) {
 
 		default:
-			plog.Fatalf("type code %s not implemented", typeCode(tc))
+			panic(fmt.Sprintf("type code %s not implemented", typeCode(tc)))
 
 		case tcBoolean:
 			o[k] = optBooleanType(dec.Bool())
@@ -178,7 +178,7 @@ func (o plainOptions) encode(enc *encoding.Encoder) {
 		switch v := v.(type) {
 
 		default:
-			plog.Fatalf("type %T not implemented", v)
+			panic(fmt.Sprintf("type %T not implemented", v))
 
 		case optBooleanType:
 			enc.Int8(int8(tcBoolean))

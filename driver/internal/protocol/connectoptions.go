@@ -18,10 +18,13 @@ const (
 	cdmConnectionStatement optIntType = 3
 )
 
+//go:generate stringer -type=dvp
+type dvp byte
+
 // distribution protocol version
 const (
-	dpvBaseline                       = 0
-	dpvClientHandlesStatementSequence = 1
+	dpvBaseline                       dvp = 0
+	dpvClientHandlesStatementSequence dvp = 1
 )
 
 type connectOptions plainOptions

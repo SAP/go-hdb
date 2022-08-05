@@ -11,8 +11,6 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testCancelContext(db *sql.DB, t *testing.T) {
@@ -60,11 +58,7 @@ func TestConnection(t *testing.T) {
 		{"cancelContext", testCancelContext},
 	}
 
-	connector, err := NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(NewTestConnector())
 	defer db.Close()
 
 	for _, test := range tests {

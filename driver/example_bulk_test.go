@@ -14,7 +14,6 @@ import (
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 // ExampleBulkInsert inserts 1000 rows into a database table.
@@ -26,11 +25,7 @@ import (
 // Bulk statements need to be executed in the context of a transaction or connection
 // to guarantee that that all statement operations are done within the same connection.
 func Example_bulkInsert() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		log.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

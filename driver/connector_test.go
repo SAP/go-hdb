@@ -5,25 +5,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package driver_test
+package driver
 
 import (
 	"database/sql"
-	"database/sql/driver"
 	"testing"
-
-	goHdbDriver "github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
-
-func testConnector(connector driver.Connector, t *testing.T) {
-	db := sql.OpenDB(connector)
-	defer db.Close()
-
-	if err := drivertest.DummySelect(db); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func testExistSessionVariables(sv1, sv2 map[string]string, t *testing.T) {
 	for k1, v1 := range sv1 {
@@ -48,68 +35,73 @@ func testNotExistSessionVariables(keys []string, sv2 map[string]string, t *testi
 	}
 }
 
-func testSessionVariables(connector *goHdbDriver.Connector, t *testing.T) {
+func testSessionVariables(t *testing.T) {
+	connector := NewTestConnector()
+
 	// set session variables
-	sv1 := goHdbDriver.SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
-	if err := connector.SetSessionVariables(sv1); err != nil {
-		t.Fatal(err)
-	}
+	sv1 := SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
+	connector.SetSessionVariables(sv1)
 
 	// check session variables
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	// retrieve session variables
-	sv2, err := drivertest.SessionVariables(db)
+	sv2, err := querySessionVariables(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// check if session variables are set after connect to db.
 	testExistSessionVariables(sv1, sv2, t)
+	testNotExistSessionVariables([]string{"k4"}, sv2, t)
+}
 
-	// update, delete, insert session variables
-	sv1 = goHdbDriver.SessionVariables{"k1": "v1new", "k2": "v2", "k4": "v4"}
-	if err := connector.SetSessionVariables(sv1); err != nil {
+func printInvalidConnectAttempts(t *testing.T, username string) {
+	connector := NewTestConnector()
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	if invalidConnectAttempts, err := queryInvalidConnectAttempts(db, connector.Username()); err != nil {
+		t.Logf("error in selecting invalid connect attempts: %s", err)
+	} else {
+		t.Logf("number of invalid connect attempts: %d", invalidConnectAttempts)
+	}
+}
+
+func testRetryConnect(t *testing.T) {
+	const invalidPassword = "invalid_password"
+
+	connector := NewTestConnector()
+
+	password := connector.authAttrs.password() // safe password
+	refreshPassword := func() (string, bool) {
+		printInvalidConnectAttempts(t, connector.Username())
+		return password, true
+	}
+	connector.authAttrs.setPassword(invalidPassword) // set invalid password
+	connector.SetRefreshPassword(refreshPassword)
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
-
-	// execute statement to update session variables.
-	if err := drivertest.DummySelect(db); err != nil {
-		t.Fatal(err)
-	}
-
-	// retrieve session variables
-	if sv2, err = drivertest.SessionVariables(db); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Log(sv2)
-
-	// check session variables again.
-	testExistSessionVariables(sv1, sv2, t)
-	testNotExistSessionVariables([]string{"k3"}, sv2, t)
-
 }
 
 func TestConnector(t *testing.T) {
-	dsnConnector, err := goHdbDriver.NewDSNConnector(drivertest.DSN())
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name string
+		fct  func(t *testing.T)
+	}{
+		{"testSessionVariables", testSessionVariables},
+		{"testRetryConnect", testRetryConnect},
 	}
 
-	t.Run("dsnConnector", func(t *testing.T) {
-		testConnector(dsnConnector, t)
-	})
-
-	if dsnConnector.TLSConfig() == nil { // in case of TLS the following test will fail.
-		basicAuthConnector := goHdbDriver.NewBasicAuthConnector(dsnConnector.Host(), dsnConnector.Username(), dsnConnector.Password())
-		t.Run("basicAuthConnector", func(t *testing.T) {
-			testConnector(basicAuthConnector, t)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t)
 		})
 	}
-
-	t.Run("sessionVariables", func(t *testing.T) {
-		testSessionVariables(dsnConnector, t)
-	})
 }

@@ -307,7 +307,7 @@ func convertLob(s *Session, ft fieldType, v interface{}, isCharBased bool) (driv
 	}
 
 	if isCharBased {
-		rd = transform.NewReader(rd, s.cfg.CESU8Encoder()) // CESU8 decoder
+		rd = transform.NewReader(rd, s.attrs.cesu8Encoder()) // CESU8 decoder
 	}
 
 	return newLobInDescr(rd), nil
@@ -644,8 +644,8 @@ func encodeCESU8Bytes(e *encoding.Encoder, p []byte) error {
 	if err := encodeVarBytesSize(e, size); err != nil {
 		return err
 	}
-	e.CESU8Bytes(p)
-	return nil
+	_, err := e.CESU8Bytes(p)
+	return err
 }
 
 func encodeCESU8String(e *encoding.Encoder, s string) error {
@@ -653,8 +653,8 @@ func encodeCESU8String(e *encoding.Encoder, s string) error {
 	if err := encodeVarBytesSize(e, size); err != nil {
 		return err
 	}
-	e.CESU8String(s)
-	return nil
+	_, err := e.CESU8String(s)
+	return err
 }
 
 func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
@@ -874,7 +874,7 @@ func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 
 func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error) {
 	m := d.Fixed(size)
-	if m == nil {
+	if m == nil { // important: return nil and not m (as m is of type *big.Int)
 		return nil, nil
 	}
 	return convertFixedToRat(m, scale), nil
@@ -896,7 +896,7 @@ func (_alphaType) decodeRes(d *encoding.Decoder) (interface{}, error) {
 		return nil, nil
 	}
 	switch d.Dfv() {
-	case dfvLevel1: // like _varType
+	case DfvLevel1: // like _varType
 		b := make([]byte, size)
 		d.Bytes(b)
 		return b, nil
@@ -930,6 +930,34 @@ func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 		return nil, nil
 	}
 	return d.CESU8Bytes(size)
+}
+
+func decodeVarBytes(d *encoding.Decoder) ([]byte, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	b := make([]byte, size)
+	d.Bytes(b)
+	return b, nil
+}
+
+func decodeVarString(d *encoding.Decoder) (string, error) {
+	b, err := decodeVarBytes(d)
+	return string(b), err
+}
+
+func decodeCESU8Bytes(d *encoding.Decoder) ([]byte, error) {
+	size, null := decodeVarBytesSize(d)
+	if null {
+		return nil, nil
+	}
+	return d.CESU8Bytes(size)
+}
+
+func decodeCESU8String(d *encoding.Decoder) (string, error) {
+	b, err := decodeCESU8Bytes(d)
+	return string(b), err
 }
 
 func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {

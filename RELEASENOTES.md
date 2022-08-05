@@ -1,6 +1,16 @@
 Release Notes
 =============
 
+## Release 0.107
+
+#### Release Notes
+
+- Added X509 and JWT authentication
+
+#### Incompatibilities
+
+- Some minor connector incompatibilities most users should not be affected of
+
 ## Release 0.106
 
 Release 0.106.1 (upgrade urgency: low)

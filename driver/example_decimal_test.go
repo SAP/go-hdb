@@ -14,20 +14,14 @@ import (
 	"math/big"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 /*
 ExampleDecimal creates a table with a single decimal attribute, insert a record into it and select the entry afterwards.
 This demonstrates the usage of the type Decimal to write and scan decimal database attributes.
-For variables TestDSN and TestSchema see main_test.go.
 */
 func ExampleDecimal() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		log.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

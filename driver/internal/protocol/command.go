@@ -29,4 +29,4 @@ func (c *command) decode(dec *encoding.Decoder, ph *partHeader) error {
 	}
 	return dec.Error()
 }
-func (c command) encode(enc *encoding.Encoder) error { enc.CESU8Bytes(c); return nil }
+func (c command) encode(enc *encoding.Encoder) error { _, err := enc.CESU8Bytes(c); return err }

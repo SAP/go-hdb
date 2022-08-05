@@ -14,7 +14,6 @@ import (
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 const (
@@ -22,11 +21,7 @@ const (
 )
 
 func ExampleError() {
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		log.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	invalidTableName := driver.RandomIdentifier("table_")

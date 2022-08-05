@@ -59,7 +59,7 @@ func (d *Decoder) Cnt() int {
 	return d.cnt
 }
 
-// Error returns the reader error.
+// Error returns the last decoder error.
 func (d *Decoder) Error() error {
 	return d.err
 }
@@ -138,6 +138,14 @@ func (d *Decoder) Uint16() uint16 {
 		return 0
 	}
 	return binary.LittleEndian.Uint16(d.b[:2])
+}
+
+// Uint16ByteOrder reads and returns an uint16 in given byte order.
+func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
+	if _, err := d.readFull(d.b[:2]); err != nil {
+		return 0
+	}
+	return byteOrder.Uint16(d.b[:2])
 }
 
 // Int32 reads and returns an int32.

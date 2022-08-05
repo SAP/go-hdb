@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package benchmark
+package driver_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 type bulkTabler interface {
@@ -87,12 +87,10 @@ func BenchmarkInsert(b *testing.B) {
 
 	const samples = 1000000
 
-	bulkSizes := []int{1000, 10000, 100000, 1000000, driver.MaxBulkSize}
+	bulkSizes := []int{1000, 10000, 100000, 1000000, p.MaxNumArg} // maxBulkSize = p.MaxNumArg
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		b.Fatal(err)
-	}
+	connector := driver.NewTestConnector()
+
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

@@ -19,27 +19,29 @@ func (kv keyValues) size() int {
 	return size
 }
 
-func (kv keyValues) decode(dec *encoding.Decoder, cnt int) {
+func (kv keyValues) decode(dec *encoding.Decoder, cnt int) error {
 	for i := 0; i < cnt; i++ {
 		k, err := cesu8Type.decodeRes(dec)
 		if err != nil {
-			plog.Fatalf(err.Error())
+			return err
 		}
 		v, err := cesu8Type.decodeRes(dec)
 		if err != nil {
-			plog.Fatalf(err.Error())
+			return err
 		}
 		kv[string(k.([]byte))] = string(v.([]byte)) // set key value
 	}
+	return nil
 }
 
-func (kv keyValues) encode(enc *encoding.Encoder) {
+func (kv keyValues) encode(enc *encoding.Encoder) error {
 	for k, v := range kv {
 		if err := cesu8Type.encodePrm(enc, k); err != nil {
-			plog.Fatalf(err.Error())
+			return err
 		}
 		if err := cesu8Type.encodePrm(enc, v); err != nil {
-			plog.Fatalf(err.Error())
+			return err
 		}
 	}
+	return nil
 }

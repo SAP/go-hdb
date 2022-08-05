@@ -9,24 +9,34 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
+
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.106.1"
+const DriverVersion = "0.107.0"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
 
-// default application name.
-var defaultApplicationName string
-
-var hdbDriver = &Driver{}
+var clientID string
 
 func init() {
-	defaultApplicationName, _ = os.Executable()
+	p.DriverVersion = DriverVersion // set driver version in session
+	// clientID
+	if hostname, err := os.Hostname(); err == nil {
+		clientID = strings.Join([]string{strconv.Itoa(os.Getpid()), hostname}, "@")
+	} else {
+		clientID = strconv.Itoa(os.Getpid())
+	}
+	p.ClientID = clientID // set client id in session
 	sql.Register(DriverName, hdbDriver)
 }
+
+var hdbDriver = &Driver{}
 
 // driver
 

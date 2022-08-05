@@ -18,22 +18,22 @@ import (
 	"testing"
 	"time"
 
-	drvtst "github.com/SAP/go-hdb/driver/drivertest"
 	"github.com/SAP/go-hdb/driver/hdb"
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 func TestColumnType(t *testing.T) {
 
-	fields := func(types []drvtst.ColumnType) string {
+	fields := func(types []columnType) string {
 		if len(types) == 0 {
 			return ""
 		}
 
 		b := strings.Builder{}
-		b.WriteString(fmt.Sprintf("x0 %s", types[0].Column()))
+		b.WriteString(fmt.Sprintf("x0 %s", types[0].column()))
 		for i := 1; i < len(types); i++ {
 			b.WriteString(", ")
-			b.WriteString(fmt.Sprintf("x%s %s", strconv.Itoa(i), types[i].Column()))
+			b.WriteString(fmt.Sprintf("x%s %s", strconv.Itoa(i), types[i].column()))
 		}
 		return b.String()
 	}
@@ -45,7 +45,7 @@ func TestColumnType(t *testing.T) {
 		return strings.Repeat("?, ", size-1) + "?"
 	}
 
-	testColumnType := func(db *sql.DB, version *hdb.Version, dfv int, types []drvtst.ColumnType, values []interface{}, t *testing.T) {
+	testColumnType := func(db *sql.DB, types []columnType, values []interface{}, t *testing.T) {
 
 		tableName := RandomIdentifier(fmt.Sprintf("%s_", t.Name()))
 
@@ -83,31 +83,31 @@ func TestColumnType(t *testing.T) {
 
 		for i, cmpType := range cmpTypes {
 
-			if types[i].DatabaseTypeName(version, dfv) != cmpType.DatabaseTypeName() {
-				t.Fatalf("sql type %s type name %s - expected %s", types[i].TypeName(), cmpType.DatabaseTypeName(), types[i].DatabaseTypeName(version, dfv))
+			if types[i].databaseTypeName() != cmpType.DatabaseTypeName() {
+				t.Fatalf("sql type %s type name %s - expected %s", types[i].typeName(), cmpType.DatabaseTypeName(), types[i].databaseTypeName())
 			}
 
 			cmpLength, cmpOk := cmpType.Length()
-			length, ok := types[i].Length()
+			length, ok := types[i].length()
 			if cmpLength != length || cmpOk != ok {
-				t.Fatalf("sql type %s variable length %t length %d - expected %t %d", types[i].TypeName(), cmpOk, cmpLength, ok, length)
+				t.Fatalf("sql type %s variable length %t length %d - expected %t %d", types[i].typeName(), cmpOk, cmpLength, ok, length)
 			}
 
 			cmpPrecision, cmpScale, cmpOk := cmpType.DecimalSize()
-			precision, scale, ok := types[i].DecimalSize()
+			precision, scale, ok := types[i].precisionScale()
 			if cmpPrecision != precision || cmpScale != scale || cmpOk != ok {
-				t.Fatalf("sql type %s decimal %t precision %d scale %d - expected %t %d %d", types[i].TypeName(), cmpOk, cmpPrecision, cmpScale, ok, precision, scale)
+				t.Fatalf("sql type %s decimal %t precision %d scale %d - expected %t %d %d", types[i].typeName(), cmpOk, cmpPrecision, cmpScale, ok, precision, scale)
 
 			}
 
 			cmpNullable, cmpOk := cmpType.Nullable()
-			nullable, ok := types[i].Nullable()
+			nullable, ok := types[i].nullable()
 			if cmpNullable != nullable || cmpOk != ok {
-				t.Fatalf("sql type %s hasProperty %t nullable %t - expected %t %t", types[i].TypeName(), cmpOk, cmpNullable, ok, nullable)
+				t.Fatalf("sql type %s hasProperty %t nullable %t - expected %t %t", types[i].typeName(), cmpOk, cmpNullable, ok, nullable)
 			}
 
-			if cmpType.ScanType() != types[i].ScanType(dfv) {
-				t.Fatalf("sql type %s scan type %v - expected %v", types[i].TypeName(), cmpType.ScanType(), types[i].ScanType(dfv))
+			if cmpType.ScanType() != types[i].scanType() {
+				t.Fatalf("sql type %s scan type %v - expected %v", types[i].typeName(), cmpType.ScanType(), types[i].scanType())
 			}
 		}
 	}
@@ -119,77 +119,73 @@ func TestColumnType(t *testing.T) {
 		testTime    = time.Now()
 	)
 
-	testFields := []struct {
-		typ   drvtst.ColumnType
+	type testFields []struct {
+		typ   columnType
 		value interface{}
-	}{
-		{typ: drvtst.NewStdColumn(drvtst.DtTinyint), value: 1},
-		{typ: drvtst.NewStdColumn(drvtst.DtSmallint), value: 42},
-		{typ: drvtst.NewStdColumn(drvtst.DtInteger), value: 4711},
-		{typ: drvtst.NewStdColumn(drvtst.DtBigint), value: 68000},
-
-		{typ: drvtst.NewDecimalColumn(drvtst.DtDecimal, 0, 0), value: testDecimal},  // decimal
-		{typ: drvtst.NewDecimalColumn(drvtst.DtDecimal, 18, 2), value: testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
-		{typ: drvtst.NewDecimalColumn(drvtst.DtDecimal, 28, 4), value: testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
-		{typ: drvtst.NewDecimalColumn(drvtst.DtDecimal, 38, 8), value: testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
-
-		{typ: drvtst.NewDecimalColumn(drvtst.DtSmalldecimal, 0, 0), value: testDecimal}, // smalldecimal
-
-		{typ: drvtst.NewStdColumn(drvtst.DtReal), value: 1.0},
-		{typ: drvtst.NewStdColumn(drvtst.DtDouble), value: 3.14},
-
-		{typ: drvtst.NewVarColumn(drvtst.DtChar, 30), value: testString},
-		{typ: drvtst.NewVarColumn(drvtst.DtVarchar, 30), value: testString},
-		{typ: drvtst.NewVarColumn(drvtst.DtNChar, 20), value: testString},
-		{typ: drvtst.NewVarColumn(drvtst.DtNVarchar, 20), value: testString},
-
-		{typ: drvtst.NewVarColumn(drvtst.DtShorttext, 15), value: testString},
-		{typ: drvtst.NewVarColumn(drvtst.DtAlphanum, 15), value: testString},
-
-		{typ: drvtst.NewVarColumn(drvtst.DtBinary, 10), value: testBinary},
-		{typ: drvtst.NewVarColumn(drvtst.DtVarbinary, 10), value: testBinary},
-
-		{typ: drvtst.NewStdColumn(drvtst.DtDate), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtTime), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtTimestamp), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtLongdate), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtSeconddate), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtDaydate), value: testTime},
-		{typ: drvtst.NewStdColumn(drvtst.DtSecondtime), value: testTime},
-
-		{typ: drvtst.NewStdColumn(drvtst.DtClob), value: new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{typ: drvtst.NewStdColumn(drvtst.DtNClob), value: new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{typ: drvtst.NewStdColumn(drvtst.DtBlob), value: new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-
-		{typ: drvtst.NewStdColumn(drvtst.DtText), value: new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{typ: drvtst.NewStdColumn(drvtst.DtBintext), value: new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-
-		{typ: drvtst.NewStdColumn(drvtst.DtBoolean), value: false},
-
-		// TODO: insert with function (e.g. st_geomfromewkb(?))
-		// {typ: drvtst.NewSpatialColumn(drvtst.DtSTPoint, 0), value: ""},
-		// {typ: drvtst.NewSpatialColumn(drvtst.DtSTGeometry, 0), value: ""},
-
-		// not nullable
-		{typ: drvtst.NewStdColumn(drvtst.DtTinyint).SetNullable(false), value: 42},
-		{typ: drvtst.NewVarColumn(drvtst.DtVarchar, 25).SetNullable(false), value: testString},
 	}
 
-	dfvs := []int{DefaultDfv}
-	if !testing.Short() {
-		dfvs = SupportedDfvs
+	getTestFields := func(version *hdb.Version, dfv int) testFields {
+		return testFields{
+			{&basicColumn{version, dfv, basicType[dtTinyint], true}, 1},
+			{&basicColumn{version, dfv, basicType[dtSmallint], true}, 42},
+			{&basicColumn{version, dfv, basicType[dtInteger], true}, 4711},
+			{&basicColumn{version, dfv, basicType[dtBigint], true}, 68000},
+
+			{&basicColumn{version, dfv, basicType[dtReal], true}, 1.0},
+			{&basicColumn{version, dfv, basicType[dtDouble], true}, 3.14},
+
+			{&basicColumn{version, dfv, basicType[dtDate], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtTime], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtTimestamp], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtLongdate], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtSeconddate], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtDaydate], true}, testTime},
+			{&basicColumn{version, dfv, basicType[dtSecondtime], true}, testTime},
+
+			{&basicColumn{version, dfv, basicType[dtClob], true}, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{&basicColumn{version, dfv, basicType[dtNClob], true}, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{&basicColumn{version, dfv, basicType[dtBlob], true}, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+
+			{&basicColumn{version, dfv, basicType[dtText], true}, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{&basicColumn{version, dfv, basicType[dtBintext], true}, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+
+			{&basicColumn{version, dfv, basicType[dtBoolean], true}, false},
+
+			{&varColumn{version, dfv, varType[dtChar], true, 30}, testString},
+			{&varColumn{version, dfv, varType[dtVarchar], true, 30}, testString},
+			{&varColumn{version, dfv, varType[dtNChar], true, 20}, testString},
+			{&varColumn{version, dfv, varType[dtNVarchar], true, 20}, testString},
+
+			{&varColumn{version, dfv, varType[dtShorttext], true, 15}, testString},
+			{&varColumn{version, dfv, varType[dtAlphanum], true, 15}, testString},
+
+			{&varColumn{version, dfv, varType[dtBinary], true, 10}, testBinary},
+			{&varColumn{version, dfv, varType[dtVarbinary], true, 10}, testBinary},
+
+			{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 0, 0}, testDecimal},  // decimal
+			{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 18, 2}, testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
+			{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 28, 4}, testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
+			{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 38, 8}, testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
+
+			{&decimalColumn{version, dfv, decimalType[dtSmalldecimal], true, 0, 0}, testDecimal}, // smalldecimal
+
+			// TODO: insert with function (e.g. st_geomfromewkb(?))
+			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTPoint, 0), value: ""},
+			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTGeometry, 0), value: ""},
+
+			// not nullable
+			{&basicColumn{version, dfv, basicType[dtTinyint], false}, 42},
+			{&varColumn{version, dfv, varType[dtVarchar], false, 25}, testString},
+		}
 	}
 
-	for _, dfv := range dfvs {
+	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		func(dfv int) { // new dfv to run in parallel
 			name := fmt.Sprintf("dfv %d", dfv)
 			t.Run(name, func(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
 
-				connector, err := NewConnector(drvtst.DefaultAttrs())
-				if err != nil {
-					t.Fatal(err)
-				}
+				connector := NewTestConnector()
 				connector.SetDfv(int(dfv))
 				db := sql.OpenDB(connector)
 				defer db.Close()
@@ -205,15 +201,16 @@ func TestColumnType(t *testing.T) {
 					return nil
 				})
 
-				types := make([]drvtst.ColumnType, 0, len(testFields))
+				testFields := getTestFields(version, dfv)
+				types := make([]columnType, 0, len(testFields))
 				values := make([]interface{}, 0, len(testFields))
 				for _, field := range testFields {
-					if field.typ.IsSupportedHDBVersion(version) && field.typ.IsSupportedDfv(dfv) {
+					if field.typ.isSupported() {
 						types = append(types, field.typ)
 						values = append(values, field.value)
 					}
 				}
-				testColumnType(db, version, dfv, types, values, t)
+				testColumnType(db, types, values, t)
 			})
 		}(dfv)
 	}

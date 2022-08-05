@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 )
 
 func testConnection(db *sql.DB, t *testing.T) {
@@ -221,11 +220,7 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 	}
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.NewTestConnector())
 	defer db.Close()
 
 	for _, test := range tests {

@@ -13,9 +13,11 @@ import (
 
 const (
 	partHeaderSize = 16
-	// MaxNumArg is the maximum number of arguments allowed to send in a part.
-	MaxNumArg = math.MaxInt16
+	bigNumArgInd   = -1
 )
+
+// MaxNumArg is the maximum number of arguments allowed to send in a part.
+const MaxNumArg = math.MaxInt32
 
 type partAttributes int8
 
@@ -84,22 +86,19 @@ func (h *partHeader) setNumArg(numArg int) error {
 	switch {
 	default:
 		return fmt.Errorf("maximum number of arguments %d exceeded", numArg)
-	case numArg <= MaxNumArg:
+	case numArg <= math.MaxInt16:
 		h.argumentCount = int16(numArg)
 		h.bigArgumentCount = 0
-
-		// TODO: seems not to work: see bulk insert test
-		// case numArg <= math.MaxInt32:
-		// 	s.ph.argumentCount = 0
-		// 	s.ph.bigArgumentCount = int32(numArg)
-		//
+	case numArg <= math.MaxInt32:
+		h.argumentCount = bigNumArgInd
+		h.bigArgumentCount = int32(numArg)
 	}
 	return nil
 }
 
 func (h *partHeader) numArg() int {
-	if h.bigArgumentCount != 0 {
-		panic("part header: bigArgumentCount is set")
+	if h.argumentCount == bigNumArgInd {
+		return int(h.bigArgumentCount)
 	}
 	return int(h.argumentCount)
 }

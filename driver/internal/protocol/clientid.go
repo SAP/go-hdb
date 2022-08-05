@@ -5,21 +5,10 @@
 package protocol
 
 import (
-	"os"
-	"strconv"
-	"strings"
-
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
 type clientID []byte
-
-func newClientID() clientID {
-	if h, err := os.Hostname(); err == nil {
-		return clientID(strings.Join([]string{strconv.Itoa(os.Getpid()), h}, "@"))
-	}
-	return clientID(strconv.Itoa(os.Getpid()))
-}
 
 func (id clientID) String() string { return string(id) }
 func (id *clientID) resize(size int) {

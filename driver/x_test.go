@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/drivertest"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -26,11 +25,7 @@ func testInvalidCESU8(t *testing.T) {
 
 	decoder := cesu8.NewDecoder(nil)
 
-	connector, err := driver.NewConnector(drivertest.DefaultAttrs())
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	connector := driver.NewTestConnector()
 	// register nop decoder to receive 'raw' undecoded data
 	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })
 
@@ -38,7 +33,7 @@ func testInvalidCESU8(t *testing.T) {
 	defer db.Close()
 
 	numRow := 0
-	err = db.QueryRow(fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
+	err := db.QueryRow(fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
 	switch {
 	case err == sql.ErrNoRows:
 		t.Logf("table %s.%s is empty", schemaName, tableName)

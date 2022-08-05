@@ -20,11 +20,6 @@ type partDecoder interface {
 	decode(*encoding.Decoder, *partHeader) error
 }
 
-type partDecodeEncoder interface {
-	partDecoder
-	partEncoder
-}
-
 type partReadWriter interface {
 	partReader
 	partWriter

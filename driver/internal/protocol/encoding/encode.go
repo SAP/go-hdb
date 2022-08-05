@@ -17,10 +17,9 @@ const writeScratchSize = 4096
 
 // Encoder encodes hdb protocol datatypes an basis of an io.Writer.
 type Encoder struct {
-	wr  io.Writer
-	err error
-	b   []byte // scratch buffer (min 15 Bytes - Decimal)
-	tr  transform.Transformer
+	wr io.Writer
+	b  []byte // scratch buffer (min 15 Bytes - Decimal)
+	tr transform.Transformer
 }
 
 // NewEncoder creates a new Encoder instance.
@@ -34,10 +33,6 @@ func NewEncoder(wr io.Writer, encoder func() transform.Transformer) *Encoder {
 
 // Zeroes writes cnt zero byte values.
 func (e *Encoder) Zeroes(cnt int) {
-	if e.err != nil {
-		return
-	}
-
 	// zero out scratch area
 	l := cnt
 	if l > len(e.b) {
@@ -62,26 +57,17 @@ func (e *Encoder) Zeroes(cnt int) {
 
 // Bytes writes a byte slice.
 func (e *Encoder) Bytes(p []byte) {
-	if e.err != nil {
-		return
-	}
 	e.wr.Write(p)
 }
 
 // Byte writes a byte.
 func (e *Encoder) Byte(b byte) { // WriteB as sig differs from WriteByte (vet issues)
-	if e.err != nil {
-		return
-	}
 	e.b[0] = b
 	e.Bytes(e.b[:1])
 }
 
 // Bool writes a boolean.
 func (e *Encoder) Bool(v bool) {
-	if e.err != nil {
-		return
-	}
 	if v {
 		e.Byte(1)
 	} else {
@@ -91,71 +77,53 @@ func (e *Encoder) Bool(v bool) {
 
 // Int8 writes an int8.
 func (e *Encoder) Int8(i int8) {
-	if e.err != nil {
-		return
-	}
 	e.Byte(byte(i))
 }
 
 // Int16 writes an int16.
 func (e *Encoder) Int16(i int16) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint16(e.b[:2], uint16(i))
 	e.wr.Write(e.b[:2])
 }
 
 // Uint16 writes an uint16.
 func (e *Encoder) Uint16(i uint16) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint16(e.b[:2], i)
+	e.wr.Write(e.b[:2])
+}
+
+// Uint16ByteOrder writes an uint16 in given byte order.
+func (e *Encoder) Uint16ByteOrder(i uint16, byteOrder binary.ByteOrder) {
+	byteOrder.PutUint16(e.b[:2], i)
 	e.wr.Write(e.b[:2])
 }
 
 // Int32 writes an int32.
 func (e *Encoder) Int32(i int32) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint32(e.b[:4], uint32(i))
 	e.wr.Write(e.b[:4])
 }
 
 // Uint32 writes an uint32.
 func (e *Encoder) Uint32(i uint32) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint32(e.b[:4], i)
 	e.wr.Write(e.b[:4])
 }
 
 // Int64 writes an int64.
 func (e *Encoder) Int64(i int64) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint64(e.b[:8], uint64(i))
 	e.wr.Write(e.b[:8])
 }
 
 // Uint64 writes an uint64.
 func (e *Encoder) Uint64(i uint64) {
-	if e.err != nil {
-		return
-	}
 	binary.LittleEndian.PutUint64(e.b[:8], i)
 	e.wr.Write(e.b[:8])
 }
 
 // Float32 writes a float32.
 func (e *Encoder) Float32(f float32) {
-	if e.err != nil {
-		return
-	}
 	bits := math.Float32bits(f)
 	binary.LittleEndian.PutUint32(e.b[:4], bits)
 	e.wr.Write(e.b[:4])
@@ -163,9 +131,6 @@ func (e *Encoder) Float32(f float32) {
 
 // Float64 writes a float64.
 func (e *Encoder) Float64(f float64) {
-	if e.err != nil {
-		return
-	}
 	bits := math.Float64bits(f)
 	binary.LittleEndian.PutUint64(e.b[:8], bits)
 	e.wr.Write(e.b[:8])
@@ -248,17 +213,11 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 
 // String writes a string.
 func (e *Encoder) String(s string) {
-	if e.err != nil {
-		return
-	}
 	e.Bytes([]byte(s))
 }
 
 // CESU8Bytes writes an UTF-8 byte slice as CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8Bytes(p []byte) int {
-	if e.err != nil {
-		return 0
-	}
+func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 	e.tr.Reset()
 	cnt := 0
 	for i := 0; i < len(p); {
@@ -268,15 +227,14 @@ func (e *Encoder) CESU8Bytes(p []byte) int {
 			cnt += n
 		}
 		if err != nil && err != transform.ErrShortDst {
-			e.err = err
-			return cnt
+			return cnt, err
 		}
 		i += nSrc
 	}
-	return cnt
+	return cnt, nil
 }
 
 // CESU8String is like WriteCesu8 with an UTF-8 string as parameter.
-func (e *Encoder) CESU8String(s string) int {
+func (e *Encoder) CESU8String(s string) (int, error) {
 	return e.CESU8Bytes([]byte(s))
 }
