@@ -724,32 +724,28 @@ func (t *tx) close(rollback bool) (err error) {
 	}
 	t.closed = true
 
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
-
 	c.inTx = false
 
 	c.metrics.addGaugeValue(gaugeTx, -1) // decrement number of transactions.
 
-	c.execSQL(sqlRollback, iifString(rollback, "rollback", "commit"), nil,
-		func() {
-			if rollback {
+	if c.isBad() {
+		return driver.ErrBadConn
+	}
+
+	if rollback {
+		c.execSQL(sqlRollback, "rollback", nil,
+			func() {
 				err = c.session.Rollback()
-			} else {
-				err = c.session.Commit()
-			}
+			},
+		)
+		return
+	}
+	c.execSQL(sqlCommit, "commit", nil,
+		func() {
+			err = c.session.Commit()
 		},
 	)
 	return
-}
-
-// TODO: use generics
-func iifString(b bool, trueValue, falseValue string) string {
-	if b {
-		return trueValue
-	}
-	return falseValue
 }
 
 /*

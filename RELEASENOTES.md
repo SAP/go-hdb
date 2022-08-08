@@ -3,6 +3,11 @@ Release Notes
 
 ## Release 0.107
 
+Release 0.107.2 (upgrade urgency: low)
+
+- Fixed stats for commit
+- Changed stats configuration attributes
+
 Release 0.107.1 (upgrade urgency: low)
 
 - Added support of Go 1.9
@@ -63,7 +68,7 @@ Release 0.105.3 (upgrade urgency: low)
 
 Release 0.105.2 (upgrade urgency: low)
 
-- Added 'raw' connection methods DatabaseName and DBConnectInfo.
+- Added 'raw' connection methods DatabaseName and DBConnectInfo
 
 Release 0.105.1 (upgrade urgency: low)
 

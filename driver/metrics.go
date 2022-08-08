@@ -12,27 +12,20 @@ import (
 	"sync/atomic"
 )
 
-// DriverStatsCfg holds the configuration attributes for driver statistics.
-var DriverStatsCfg = struct {
-	SQLTexts        []string // read only attribute.
-	DurationBuckets []uint64 // millisecond duration buckets (read / write)
-}{
-	[]string{"ping", "query", "prepare", "exec", "rollback", "commit"},
-	[]uint64{1, 10, 100, 1000, 10000, 100000},
-}
+// StatsNumSQL is the number of SQL command categories.
+const StatsNumSQL = 6
 
-func sqlText(i int) string {
-	if i < len(DriverStatsCfg.SQLTexts) {
-		return DriverStatsCfg.SQLTexts[i]
-	}
-	return "unknown"
-}
+// StatsSQLTexts are the text used for the SQL command categories.
+var StatsSQLTexts = [StatsNumSQL]string{"ping", "query", "prepare", "exec", "rollback", "commit"}
+
+// StatsDurationBuckets are the used duration buckets in millisecongs.
+var StatsDurationBuckets = []uint64{1, 10, 100, 1000, 10000, 100000}
 
 // DurationStat represents a duration statistic.
 type DurationStat struct {
 	Count   uint64
 	Sum     uint64            // Values in milliseconds.
-	Buckets map[uint64]uint64 // map[<duration in ms>]<counter>
+	Buckets map[uint64]uint64 // map[<duration in ms>]<counter>.
 }
 
 func (s *DurationStat) String() string {
@@ -61,7 +54,7 @@ func (s Stats) String() string {
 	sb.WriteString(fmt.Sprintf("\nbytesWritten     %d", s.BytesWritten))
 	sb.WriteString("\nSQLDurations")
 	for i, durationStat := range s.SQLDurations {
-		sb.WriteString(fmt.Sprintf("\n  %-8s %s", sqlText(i), durationStat.String()))
+		sb.WriteString(fmt.Sprintf("\n  %-8s %s", StatsSQLTexts[i], durationStat.String()))
 	}
 	return sb.String()
 }
@@ -74,7 +67,6 @@ const (
 	sqlExec
 	sqlRollback
 	sqlCommit
-	numSQL
 )
 
 const (
@@ -166,7 +158,7 @@ func newMetrics(parent *metrics) *metrics {
 		parent:             parent,
 		counters:           make([]*counter, numCounter),
 		gauges:             make([]*gauge, numGauge),
-		durationHistograms: make([]*durationHistogram, numSQL),
+		durationHistograms: make([]*durationHistogram, StatsNumSQL),
 	}
 	for i := 0; i < numCounter; i++ {
 		rv.counters[i] = &counter{}
@@ -174,8 +166,8 @@ func newMetrics(parent *metrics) *metrics {
 	for i := 0; i < numGauge; i++ {
 		rv.gauges[i] = &gauge{}
 	}
-	for i := 0; i < int(numSQL); i++ {
-		rv.durationHistograms[i] = newDurationHistogram(DriverStatsCfg.DurationBuckets)
+	for i := 0; i < int(StatsNumSQL); i++ {
+		rv.durationHistograms[i] = newDurationHistogram(StatsDurationBuckets)
 	}
 	return rv
 }
@@ -202,8 +194,8 @@ func (m *metrics) addDurationHistogramValue(kind int, v int64) {
 }
 
 func (m *metrics) stats() Stats {
-	sqlDurations := make([]*DurationStat, numSQL)
-	for i := 0; i < int(numSQL); i++ {
+	sqlDurations := make([]*DurationStat, StatsNumSQL)
+	for i := 0; i < int(StatsNumSQL); i++ {
 		sqlDurations[i] = m.durationHistograms[i].stats()
 	}
 	return Stats{

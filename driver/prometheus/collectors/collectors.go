@@ -19,8 +19,6 @@ type stats interface {
 	Stats() driver.Stats
 }
 
-var numSQL = len(driver.DriverStatsCfg.SQLTexts) // determine number of SQL durations before cfg could be changed.
-
 type collector struct {
 	s stats
 
@@ -83,7 +81,7 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.openStatements
 	ch <- c.readBytes
 	ch <- c.writtenBytes
-	for i := 0; i < numSQL; i++ {
+	for i := 0; i < driver.StatsNumSQL; i++ {
 		ch <- c.sqlDurations
 	}
 }
@@ -96,13 +94,6 @@ func durationStatBuckets(s *driver.DurationStat) map[float64]uint64 {
 	return buckets
 }
 
-func sqlText(i int) string {
-	if i < len(driver.DriverStatsCfg.SQLTexts) {
-		return driver.DriverStatsCfg.SQLTexts[i]
-	}
-	return "unknown"
-}
-
 // Collect implements Collector.
 func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	stats := c.s.Stats()
@@ -112,7 +103,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.readBytes, prometheus.CounterValue, float64(stats.BytesRead))
 	ch <- prometheus.MustNewConstMetric(c.writtenBytes, prometheus.CounterValue, float64(stats.BytesWritten))
 	for i, durationStat := range stats.SQLDurations {
-		ch <- prometheus.MustNewConstHistogram(c.sqlDurations, durationStat.Count, float64(durationStat.Sum), durationStatBuckets(durationStat), sqlText(i))
+		ch <- prometheus.MustNewConstHistogram(c.sqlDurations, durationStat.Count, float64(durationStat.Sum), durationStatBuckets(durationStat), driver.StatsSQLTexts[i])
 	}
 }
 
