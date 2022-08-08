@@ -83,6 +83,7 @@ go test --tags unit
 * Support of [driver connector](https://golang.org/pkg/database/sql/driver/#Connector).
 * Support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default and standard user / password as fallback.
 * Support of client certificate (X509) and JWT (JSON Web Token) authentication.
+* [Prometheus](https://prometheus.io) collectors for driver and connector metrics (experimental).
 
 ## Dependencies
 

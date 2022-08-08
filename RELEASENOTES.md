@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.107
 
+Release 0.107.1 (upgrade urgency: low)
+
+- Added support of Go 1.9
+- Dropped support of Go language versions < Go 1.7
+- Added Prometheus collectors (experimental)
+
 #### Release Notes
 
 - Added X509 and JWT authentication
@@ -26,8 +32,6 @@ Release 0.106.1 (upgrade urgency: low)
 - Please see Main Features (second point) of Release 0.99
 
 ## Release 0.105
-
-#### Minor revisions
 
 Release 0.105.8 (upgrade urgency: low)
 
@@ -79,8 +83,6 @@ Release 0.105.1 (upgrade urgency: low)
 
 ## Release 0.104
 
-#### Minor revisions
-
 Release 0.104.1 (upgrade urgency: high)
 
 - Fixed runtime error raised by missing error check executing sql exec statements
@@ -98,8 +100,6 @@ Release 0.104.1 (upgrade urgency: high)
   - clob to nclob
 
 ## Release 0.103
-
-#### Minor revisions
 
 Release 0.103.3 (upgrade urgency: medium)
 
@@ -128,8 +128,6 @@ Release 0.103.1 (upgrade urgency: low)
 - no known incompatibilities
 
 ## Release 0.102
-
-#### Minor revisions
 
 Release 0.102.7 (upgrade urgency: high)
 
@@ -181,8 +179,6 @@ Release 0.102.1 (upgrade urgency: low)
 
 ## Release 0.101
 
-#### Minor revisions
-
 Release 0.101.2
 
 - Added multi platform build to Github workflow
@@ -197,8 +193,6 @@ Release 0.101.1
 - Dropped support of HANA server versions < 2.00.042
 
 ## Release 0.100
-
-#### Minor revisions
 
 Release 0.100.14
 
@@ -255,8 +249,6 @@ PBKDF2 authentification is now used as default. Standard user / password authent
 
 
 ## Release 0.99
-
-#### Minor revisions
 
 Release 0.99.1
 - Additional conversions for query parameters

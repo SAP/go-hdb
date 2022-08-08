@@ -176,6 +176,7 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	row := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table))
 

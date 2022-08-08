@@ -196,6 +196,7 @@ func TestColumnType(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				defer conn.Close()
 				conn.Raw(func(driverConn interface{}) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil

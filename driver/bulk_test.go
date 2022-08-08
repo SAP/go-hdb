@@ -342,6 +342,7 @@ func TestBulk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(conn, t) // run bulk tests on conn

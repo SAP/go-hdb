@@ -26,6 +26,7 @@ func ExampleConn_HDBVersion() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer conn.Close()
 
 	conn.Raw(func(driverConn interface{}) error {
 		// Access driver.Conn methods.
@@ -49,6 +50,7 @@ func ExampleConn_DBConnectInfo() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer conn.Close()
 
 	if err := conn.Raw(func(driverConn interface{}) error {
 		// Access driver.Conn methods.

@@ -27,6 +27,7 @@ A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
+	metrics      *metrics
 	connAttrs    *connAttrs
 	authAttrs    *authAttrs
 	sessionAttrs *p.SessionAttrs
@@ -35,6 +36,7 @@ type Connector struct {
 // NewConnector returns a new Connector instance with default values.
 func NewConnector() *Connector {
 	return &Connector{
+		metrics:      newMetrics(hdbDriver.metrics),
 		connAttrs:    newConnAttrs(),
 		authAttrs:    &authAttrs{},
 		sessionAttrs: p.NewSessionAttrs(),
@@ -300,7 +302,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	// can we connect via cookie?
 	if auth := c.authAttrs.cookieAuth(); auth != nil {
-		conn, err := newConn(ctx, c.connAttrs, sessionAttrs, auth)
+		conn, err := newConn(ctx, c.metrics, c.connAttrs, sessionAttrs, auth)
 		if err == nil {
 			return conn, nil
 		}
@@ -312,7 +314,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	auth := c.authAttrs.auth()
 	retries := 1
 	for {
-		conn, err := newConn(ctx, c.connAttrs, sessionAttrs, auth)
+		conn, err := newConn(ctx, c.metrics, c.connAttrs, sessionAttrs, auth)
 		if err == nil {
 			if method, ok := auth.Method().(p.AuthCookieGetter); ok {
 				c.authAttrs.setSessionCookie(method.Cookie())
@@ -331,3 +333,6 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 // Driver implements the database/sql/driver/Connector interface.
 func (c *Connector) Driver() driver.Driver { return hdbDriver }
+
+// Stats returns connector statistics.
+func (c *Connector) Stats() Stats { return c.metrics.stats() }

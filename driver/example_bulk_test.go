@@ -40,6 +40,7 @@ func Example_bulkInsert() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer conn.Close()
 
 	// Prepare statement on basis of connection (bulk insert).
 	stmt, err := conn.PrepareContext(context.Background(), fmt.Sprintf("bulk insert into %s values (?,?)", tableName))

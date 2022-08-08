@@ -1,0 +1,256 @@
+# HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
+# TYPE go_gc_duration_seconds summary
+go_gc_duration_seconds{quantile="0"} 0
+go_gc_duration_seconds{quantile="0.25"} 0
+go_gc_duration_seconds{quantile="0.5"} 0
+go_gc_duration_seconds{quantile="0.75"} 0
+go_gc_duration_seconds{quantile="1"} 0
+go_gc_duration_seconds_sum 0
+go_gc_duration_seconds_count 0
+# HELP go_goroutines Number of goroutines that currently exist.
+# TYPE go_goroutines gauge
+go_goroutines 8
+# HELP go_hdb_connector_bytes_read The total bytes read from the database connection of connector statements.
+# TYPE go_hdb_connector_bytes_read counter
+go_hdb_connector_bytes_read{db_name="myDatabase"} 0
+# HELP go_hdb_connector_bytes_written The total bytes written to the database connection of connector statements.
+# TYPE go_hdb_connector_bytes_written counter
+go_hdb_connector_bytes_written{db_name="myDatabase"} 0
+# HELP go_hdb_connector_open_connections The number of established connector connections.
+# TYPE go_hdb_connector_open_connections gauge
+go_hdb_connector_open_connections{db_name="myDatabase"} 0
+# HELP go_hdb_connector_open_statements The number of open connector statements.
+# TYPE go_hdb_connector_open_statements gauge
+go_hdb_connector_open_statements{db_name="myDatabase"} 0
+# HELP go_hdb_connector_open_transactions The number of open connector transactions.
+# TYPE go_hdb_connector_open_transactions gauge
+go_hdb_connector_open_transactions{db_name="myDatabase"} 0
+# HELP go_hdb_connector_sql_duration The duration measured in milliseconds for the different sql command categories of connector.
+# TYPE go_hdb_connector_sql_duration histogram
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="commit",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="commit"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="commit"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="exec",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="exec"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="exec"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="ping",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="ping"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="ping"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="prepare"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="prepare"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="query",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="query"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="query"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="1"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="10"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="100"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="1000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="10000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="100000"} 0
+go_hdb_connector_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="+Inf"} 0
+go_hdb_connector_sql_duration_sum{db_name="myDatabase",sql="rollback"} 0
+go_hdb_connector_sql_duration_count{db_name="myDatabase",sql="rollback"} 0
+# HELP go_hdb_driver_bytes_read The total bytes read from the database connection of driver statements.
+# TYPE go_hdb_driver_bytes_read counter
+go_hdb_driver_bytes_read{db_name="myDatabase"} 0
+# HELP go_hdb_driver_bytes_written The total bytes written to the database connection of driver statements.
+# TYPE go_hdb_driver_bytes_written counter
+go_hdb_driver_bytes_written{db_name="myDatabase"} 0
+# HELP go_hdb_driver_open_connections The number of established driver connections.
+# TYPE go_hdb_driver_open_connections gauge
+go_hdb_driver_open_connections{db_name="myDatabase"} 0
+# HELP go_hdb_driver_open_statements The number of open driver statements.
+# TYPE go_hdb_driver_open_statements gauge
+go_hdb_driver_open_statements{db_name="myDatabase"} 0
+# HELP go_hdb_driver_open_transactions The number of open driver transactions.
+# TYPE go_hdb_driver_open_transactions gauge
+go_hdb_driver_open_transactions{db_name="myDatabase"} 0
+# HELP go_hdb_driver_sql_duration The duration measured in milliseconds for the different sql command categories of driver.
+# TYPE go_hdb_driver_sql_duration histogram
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="commit",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="commit"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="commit"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="exec",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="exec"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="exec"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="ping",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="ping"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="ping"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="prepare",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="prepare"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="prepare"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="query",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="query"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="query"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="1"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="10"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="100"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="1000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="10000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="100000"} 0
+go_hdb_driver_sql_duration_bucket{db_name="myDatabase",sql="rollback",le="+Inf"} 0
+go_hdb_driver_sql_duration_sum{db_name="myDatabase",sql="rollback"} 0
+go_hdb_driver_sql_duration_count{db_name="myDatabase",sql="rollback"} 0
+# HELP go_info Information about the Go environment.
+# TYPE go_info gauge
+go_info{version="go1.19"} 1
+# HELP go_memstats_alloc_bytes Number of bytes allocated and still in use.
+# TYPE go_memstats_alloc_bytes gauge
+go_memstats_alloc_bytes 202400
+# HELP go_memstats_alloc_bytes_total Total number of bytes allocated, even if freed.
+# TYPE go_memstats_alloc_bytes_total counter
+go_memstats_alloc_bytes_total 202400
+# HELP go_memstats_buck_hash_sys_bytes Number of bytes used by the profiling bucket hash table.
+# TYPE go_memstats_buck_hash_sys_bytes gauge
+go_memstats_buck_hash_sys_bytes 1.44505e+06
+# HELP go_memstats_frees_total Total number of frees.
+# TYPE go_memstats_frees_total counter
+go_memstats_frees_total 0
+# HELP go_memstats_gc_sys_bytes Number of bytes used for garbage collection system metadata.
+# TYPE go_memstats_gc_sys_bytes gauge
+go_memstats_gc_sys_bytes 3.610136e+06
+# HELP go_memstats_heap_alloc_bytes Number of heap bytes allocated and still in use.
+# TYPE go_memstats_heap_alloc_bytes gauge
+go_memstats_heap_alloc_bytes 202400
+# HELP go_memstats_heap_idle_bytes Number of heap bytes waiting to be used.
+# TYPE go_memstats_heap_idle_bytes gauge
+go_memstats_heap_idle_bytes 1.794048e+06
+# HELP go_memstats_heap_inuse_bytes Number of heap bytes that are in use.
+# TYPE go_memstats_heap_inuse_bytes gauge
+go_memstats_heap_inuse_bytes 1.941504e+06
+# HELP go_memstats_heap_objects Number of allocated objects.
+# TYPE go_memstats_heap_objects gauge
+go_memstats_heap_objects 589
+# HELP go_memstats_heap_released_bytes Number of heap bytes released to OS.
+# TYPE go_memstats_heap_released_bytes gauge
+go_memstats_heap_released_bytes 1.794048e+06
+# HELP go_memstats_heap_sys_bytes Number of heap bytes obtained from system.
+# TYPE go_memstats_heap_sys_bytes gauge
+go_memstats_heap_sys_bytes 3.735552e+06
+# HELP go_memstats_last_gc_time_seconds Number of seconds since 1970 of last garbage collection.
+# TYPE go_memstats_last_gc_time_seconds gauge
+go_memstats_last_gc_time_seconds 0
+# HELP go_memstats_lookups_total Total number of pointer lookups.
+# TYPE go_memstats_lookups_total counter
+go_memstats_lookups_total 0
+# HELP go_memstats_mallocs_total Total number of mallocs.
+# TYPE go_memstats_mallocs_total counter
+go_memstats_mallocs_total 589
+# HELP go_memstats_mcache_inuse_bytes Number of bytes in use by mcache structures.
+# TYPE go_memstats_mcache_inuse_bytes gauge
+go_memstats_mcache_inuse_bytes 9600
+# HELP go_memstats_mcache_sys_bytes Number of bytes used for mcache structures obtained from system.
+# TYPE go_memstats_mcache_sys_bytes gauge
+go_memstats_mcache_sys_bytes 15600
+# HELP go_memstats_mspan_inuse_bytes Number of bytes in use by mspan structures.
+# TYPE go_memstats_mspan_inuse_bytes gauge
+go_memstats_mspan_inuse_bytes 46104
+# HELP go_memstats_mspan_sys_bytes Number of bytes used for mspan structures obtained from system.
+# TYPE go_memstats_mspan_sys_bytes gauge
+go_memstats_mspan_sys_bytes 48960
+# HELP go_memstats_next_gc_bytes Number of heap bytes when next garbage collection will take place.
+# TYPE go_memstats_next_gc_bytes gauge
+go_memstats_next_gc_bytes 4.194304e+06
+# HELP go_memstats_other_sys_bytes Number of bytes used for other system allocations.
+# TYPE go_memstats_other_sys_bytes gauge
+go_memstats_other_sys_bytes 1.22215e+06
+# HELP go_memstats_stack_inuse_bytes Number of bytes in use by the stack allocator.
+# TYPE go_memstats_stack_inuse_bytes gauge
+go_memstats_stack_inuse_bytes 458752
+# HELP go_memstats_stack_sys_bytes Number of bytes obtained from system for stack allocator.
+# TYPE go_memstats_stack_sys_bytes gauge
+go_memstats_stack_sys_bytes 458752
+# HELP go_memstats_sys_bytes Number of bytes obtained from system.
+# TYPE go_memstats_sys_bytes gauge
+go_memstats_sys_bytes 1.05362e+07
+# HELP go_sql_idle_connections The number of idle connections.
+# TYPE go_sql_idle_connections gauge
+go_sql_idle_connections{db_name="myDatabase"} 0
+# HELP go_sql_in_use_connections The number of connections currently in use.
+# TYPE go_sql_in_use_connections gauge
+go_sql_in_use_connections{db_name="myDatabase"} 1
+# HELP go_sql_max_idle_closed_total The total number of connections closed due to SetMaxIdleConns.
+# TYPE go_sql_max_idle_closed_total counter
+go_sql_max_idle_closed_total{db_name="myDatabase"} 0
+# HELP go_sql_max_idle_time_closed_total The total number of connections closed due to SetConnMaxIdleTime.
+# TYPE go_sql_max_idle_time_closed_total counter
+go_sql_max_idle_time_closed_total{db_name="myDatabase"} 0
+# HELP go_sql_max_lifetime_closed_total The total number of connections closed due to SetConnMaxLifetime.
+# TYPE go_sql_max_lifetime_closed_total counter
+go_sql_max_lifetime_closed_total{db_name="myDatabase"} 0
+# HELP go_sql_max_open_connections Maximum number of open connections to the database.
+# TYPE go_sql_max_open_connections gauge
+go_sql_max_open_connections{db_name="myDatabase"} 0
+# HELP go_sql_open_connections The number of established connections both in use and idle.
+# TYPE go_sql_open_connections gauge
+go_sql_open_connections{db_name="myDatabase"} 1
+# HELP go_sql_wait_count_total The total number of connections waited for.
+# TYPE go_sql_wait_count_total counter
+go_sql_wait_count_total{db_name="myDatabase"} 0
+# HELP go_sql_wait_duration_seconds_total The total time blocked waiting for a new connection.
+# TYPE go_sql_wait_duration_seconds_total counter
+go_sql_wait_duration_seconds_total{db_name="myDatabase"} 0
+# HELP go_threads Number of OS threads created.
+# TYPE go_threads gauge
+go_threads 8

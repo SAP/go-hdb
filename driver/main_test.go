@@ -41,8 +41,8 @@ func init() {
 var schema = flag.String("schema", testGoHDBSchemaPrefix+randAlphanumString(16), "database schema")
 
 // dropSchema:
-//  if set to true (default), the test schema will be dropped after successful test execution.
-//  if set to false, the test schema will remain on database after test execution.
+// if set to true (default), the test schema will be dropped after successful test execution.
+// if set to false, the test schema will remain on database after test execution.
 var dropSchema = flag.Bool("dropschema", true, "drop test schema if test ran successfully")
 
 // dropSchemas will drop all schemas with GoHDBTestSchemaPrefix prefix to clean-up all not yet deleted
@@ -120,5 +120,6 @@ func TestMain(m *testing.M) {
 	exitCode := m.Run()
 	teardown(db, exitCode == 0)
 	db.Close()
+	log.Print(connector.NativeDriver().Stats())
 	os.Exit(exitCode)
 }

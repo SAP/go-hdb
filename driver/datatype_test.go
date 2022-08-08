@@ -971,7 +971,7 @@ func TestDataType(t *testing.T) {
 				connector := NewTestConnector()
 				connector.SetDfv(dfv)
 				db := sql.OpenDB(connector)
-				//defer db.Close() // keep db open as test are running in parallel
+				t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed
 
 				var version *hdb.Version
 				// Grab connection to detect hdb version.
@@ -979,6 +979,7 @@ func TestDataType(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				defer conn.Close()
 				conn.Raw(func(driverConn interface{}) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil
