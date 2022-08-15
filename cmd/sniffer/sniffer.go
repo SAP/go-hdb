@@ -44,7 +44,7 @@ func handler(conn net.Conn, dbAddr net.Addr) {
 
 	defer dbConn.Close()
 
-	err = driver.Sniff(conn, dbConn)
+	err = driver.NewSniffer(conn, dbConn).Run()
 	switch err {
 	case nil:
 		return

@@ -19,22 +19,22 @@ const (
 //var lobChunkSize = 1 << 14 //TODO: check size
 //var lobChunkSize int32 = 4096 //TODO: check size
 
-// lob options
-type lobOptions int8
+// LobOptions represents a lob option set.
+type LobOptions int8
 
 const (
-	loNullindicator lobOptions = 0x01
-	loDataincluded  lobOptions = 0x02
-	loLastdata      lobOptions = 0x04
+	loNullindicator LobOptions = 0x01
+	loDataincluded  LobOptions = 0x02
+	loLastdata      LobOptions = 0x04
 )
 
-var lobOptionsText = map[lobOptions]string{
+var lobOptionsText = map[LobOptions]string{
 	loNullindicator: "null indicator",
 	loDataincluded:  "data included",
 	loLastdata:      "last data",
 }
 
-func (o lobOptions) String() string {
+func (o LobOptions) String() string {
 	t := make([]string, 0, len(lobOptionsText))
 
 	for option, text := range lobOptionsText {
@@ -45,10 +45,10 @@ func (o lobOptions) String() string {
 	return fmt.Sprintf("%v", t)
 }
 
-func (o lobOptions) isLastData() bool { return (o & loLastdata) != 0 }
-func (o lobOptions) isNull() bool     { return (o & loNullindicator) != 0 }
+// IsLastData return true if the last data package was read, false otherwise.
+func (o LobOptions) IsLastData() bool { return (o & loLastdata) != 0 }
+func (o LobOptions) isNull() bool     { return (o & loNullindicator) != 0 }
 
-//go:generate stringer -type=lobTypecode
 // lob typecode
 type lobTypecode int8
 
@@ -72,29 +72,29 @@ const (
 // WriterSetter is the interface wrapping the SetWriter method (Lob handling).
 type WriterSetter interface{ SetWriter(w io.Writer) error }
 
-// sessionSetter is the interface wrapping the setSession method (lob handling).
-type sessionSetter interface{ setSession(s *Session) }
+// LobsDecoderSetter is the interface wrapping the setLobsdecoder method (lob handling).
+type LobsDecoderSetter interface {
+	SetLobsDecoder(fn func(descr *LobOutDescr, wr io.Writer) error)
+}
 
-var _ WriterSetter = (*lobOutDescr)(nil)
-var _ sessionSetter = (*lobOutDescr)(nil)
+var _ WriterSetter = (*LobOutDescr)(nil)
+var _ LobsDecoderSetter = (*LobOutDescr)(nil)
 
-/*
-TODO description
-lobInDescr
-*/
-type lobInDescr struct {
+// LobInDescr represents a lob input descriptor.
+type LobInDescr struct {
+	//TODO description
 	rd    io.Reader
-	opt   lobOptions
+	opt   LobOptions
 	_size int
 	pos   int
 	b     []byte
 }
 
-func newLobInDescr(rd io.Reader) *lobInDescr {
-	return &lobInDescr{rd: rd}
+func newLobInDescr(rd io.Reader) *LobInDescr {
+	return &LobInDescr{rd: rd}
 }
 
-func (d *lobInDescr) String() string {
+func (d *LobInDescr) String() string {
 	// restrict output size
 	b := d.b
 	if len(b) >= 25 {
@@ -103,7 +103,8 @@ func (d *lobInDescr) String() string {
 	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, b)
 }
 
-func (d *lobInDescr) fetchNext(chunkSize int) (bool, error) {
+// FetchNext fetches the next lob chunk.
+func (d *LobInDescr) FetchNext(chunkSize int) (bool, error) {
 	if cap(d.b) < chunkSize {
 		d.b = make([]byte, chunkSize)
 	}
@@ -126,42 +127,41 @@ func (d *lobInDescr) fetchNext(chunkSize int) (bool, error) {
 	return true, nil
 }
 
-func (d *lobInDescr) setPos(pos int) { d.pos = pos }
+func (d *LobInDescr) setPos(pos int) { d.pos = pos }
 
-func (d *lobInDescr) size() int { return d._size }
+func (d *LobInDescr) size() int { return d._size }
 
-func (d *lobInDescr) writeFirst(enc *encoding.Encoder) {
+func (d *LobInDescr) writeFirst(enc *encoding.Encoder) {
 	enc.Bytes(d.b)
 }
 
-/*
-TODO description
-lobOutDescr
-
-*/
-type lobOutDescr struct {
-	s           *Session
-	isCharBased bool
+// LobOutDescr represents a lob output descriptor.
+type LobOutDescr struct {
+	//TODO description
+	fnLD        func(descr *LobOutDescr, wr io.Writer) error
+	IsCharBased bool
 	/*
 		HDB does not return lob type code but undefined only
 		--> ltc is always ltcUndefined
 		--> use isCharBased instead of type code check
 	*/
 	ltc     lobTypecode
-	opt     lobOptions
-	numChar int64
+	Opt     LobOptions
+	NumChar int64
 	numByte int64
-	id      locatorID
-	b       []byte
+	ID      LocatorID
+	B       []byte
 }
 
-func (d *lobOutDescr) String() string {
-	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
+func (d *LobOutDescr) String() string {
+	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.Opt, d.NumChar, d.numByte, d.ID, d.B)
 }
-func (d *lobOutDescr) setSession(s *Session) { d.s = s }
+
+// SetLobsDecoder sets the function to decode lobs.
+func (d *LobOutDescr) SetLobsDecoder(fn func(descr *LobOutDescr, wr io.Writer) error) { d.fnLD = fn }
 
 // SetWriter implements the WriterSetter interface.
-func (d *lobOutDescr) SetWriter(wr io.Writer) error { return d.s.decodeLobs(d, wr) }
+func (d *LobOutDescr) SetWriter(wr io.Writer) error { return d.fnLD(d, wr) }
 
 /*
 write lobs:
@@ -171,33 +171,34 @@ write lobs:
   - writeLobReply
 */
 
-// descriptor for writes (lob -> db)
-type writeLobDescr struct {
-	lobInDescr *lobInDescr
-	id         locatorID
-	opt        lobOptions
+// WriteLobDescr represents a lob descriptor for writes (lob -> db).
+type WriteLobDescr struct {
+	LobInDescr *LobInDescr
+	ID         LocatorID
+	Opt        LobOptions
 	ofs        int64
 	b          []byte
 }
 
-func (d writeLobDescr) String() string {
-	return fmt.Sprintf("id %d options %s offset %d bytes %v", d.id, d.opt, d.ofs, d.b)
+func (d WriteLobDescr) String() string {
+	return fmt.Sprintf("id %d options %s offset %d bytes %v", d.ID, d.Opt, d.ofs, d.b)
 }
 
-func (d *writeLobDescr) fetchNext(chunkSize int) error {
-	if _, err := d.lobInDescr.fetchNext(chunkSize); err != nil {
+// FetchNext fetches the next lob chunk.
+func (d *WriteLobDescr) FetchNext(chunkSize int) error {
+	if _, err := d.LobInDescr.FetchNext(chunkSize); err != nil {
 		return err
 	}
-	d.opt = d.lobInDescr.opt
+	d.Opt = d.LobInDescr.opt
 	d.ofs = -1 //offset (-1 := append)
-	d.b = d.lobInDescr.b
+	d.b = d.LobInDescr.b
 	return nil
 }
 
 // sniffer
-func (d *writeLobDescr) decode(dec *encoding.Decoder) error {
-	d.id = locatorID(dec.Uint64())
-	d.opt = lobOptions(dec.Int8())
+func (d *WriteLobDescr) decode(dec *encoding.Decoder) error {
+	d.ID = LocatorID(dec.Uint64())
+	d.Opt = LobOptions(dec.Int8())
 	d.ofs = dec.Int64()
 	size := dec.Int32()
 	d.b = make([]byte, size)
@@ -206,49 +207,47 @@ func (d *writeLobDescr) decode(dec *encoding.Decoder) error {
 }
 
 // write chunk to db
-func (d *writeLobDescr) encode(enc *encoding.Encoder) error {
-	enc.Uint64(uint64(d.id))
-	enc.Int8(int8(d.opt))
+func (d *WriteLobDescr) encode(enc *encoding.Encoder) error {
+	enc.Uint64(uint64(d.ID))
+	enc.Int8(int8(d.Opt))
 	enc.Int64(d.ofs)
 	enc.Int32(int32(len(d.b)))
 	enc.Bytes(d.b)
 	return nil
 }
 
-// write lob fields to db (request)
-type writeLobRequest struct {
-	descrs []*writeLobDescr
+// WriteLobRequest represents a lob write request part.
+type WriteLobRequest struct {
+	Descrs []*WriteLobDescr
 }
 
-func (r *writeLobRequest) String() string { return fmt.Sprintf("descriptors %v", r.descrs) }
+func (r *WriteLobRequest) String() string { return fmt.Sprintf("descriptors %v", r.Descrs) }
 
-func (r *writeLobRequest) size() int {
+func (r *WriteLobRequest) size() int {
 	size := 0
-	for _, descr := range r.descrs {
+	for _, descr := range r.Descrs {
 		size += (writeLobRequestSize + len(descr.b))
 	}
 	return size
 }
 
-func (r *writeLobRequest) numArg() int {
-	return len(r.descrs)
-}
+func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 
 // sniffer
-func (r *writeLobRequest) decode(dec *encoding.Decoder, ph *partHeader) error {
+func (r *WriteLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
-	r.descrs = make([]*writeLobDescr, numArg)
+	r.Descrs = make([]*WriteLobDescr, numArg)
 	for i := 0; i < numArg; i++ {
-		r.descrs[i] = &writeLobDescr{}
-		if err := r.descrs[i].decode(dec); err != nil {
+		r.Descrs[i] = &WriteLobDescr{}
+		if err := r.Descrs[i].decode(dec); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *writeLobRequest) encode(enc *encoding.Encoder) error {
-	for _, descr := range r.descrs {
+func (r *WriteLobRequest) encode(enc *encoding.Encoder) error {
+	for _, descr := range r.Descrs {
 		if err := descr.encode(enc); err != nil {
 			return err
 		}
@@ -256,98 +255,100 @@ func (r *writeLobRequest) encode(enc *encoding.Encoder) error {
 	return nil
 }
 
-// write lob fields to db (reply)
-// - returns ids which have not been written completely
-type writeLobReply struct {
-	ids []locatorID
+// WriteLobReply represents a lob write reply part.
+type WriteLobReply struct {
+	// write lob fields to db (reply)
+	// - returns ids which have not been written completely
+	IDs []LocatorID
 }
 
-func (r *writeLobReply) String() string { return fmt.Sprintf("ids %v", r.ids) }
+func (r *WriteLobReply) String() string { return fmt.Sprintf("ids %v", r.IDs) }
 
-func (r *writeLobReply) reset(numArg int) {
-	if r.ids == nil || cap(r.ids) < numArg {
-		r.ids = make([]locatorID, numArg)
+func (r *WriteLobReply) reset(numArg int) {
+	if r.IDs == nil || cap(r.IDs) < numArg {
+		r.IDs = make([]LocatorID, numArg)
 	} else {
-		r.ids = r.ids[:numArg]
+		r.IDs = r.IDs[:numArg]
 	}
 }
 
-func (r *writeLobReply) decode(dec *encoding.Decoder, ph *partHeader) error {
+func (r *WriteLobReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
 	r.reset(numArg)
 
 	for i := 0; i < numArg; i++ {
-		r.ids[i] = locatorID(dec.Uint64())
+		r.IDs[i] = LocatorID(dec.Uint64())
 	}
 	return dec.Error()
 }
 
-/*
-read lobs:
-- read lob field from database in chunks
-- loop:
-  - readLobRequest
-  - readLobReply
+// ReadLobRequest represents a lob read request part.
+type ReadLobRequest struct {
+	/*
+	   read lobs:
+	   - read lob field from database in chunks
+	   - loop:
+	     - readLobRequest
+	     - readLobReply
 
-- read lob reply
-  seems like readLobreply returns only a result for one lob - even if more then one is requested
-  --> read single lobs
-*/
-
-type readLobRequest struct {
-	id        locatorID
-	ofs       int64
-	chunkSize int32
+	   - read lob reply
+	     seems like readLobreply returns only a result for one lob - even if more then one is requested
+	     --> read single lobs
+	*/
+	ID        LocatorID
+	Ofs       int64
+	ChunkSize int32
 }
 
-func (r *readLobRequest) String() string {
-	return fmt.Sprintf("id %d offset %d size %d", r.id, r.ofs, r.chunkSize)
+func (r *ReadLobRequest) String() string {
+	return fmt.Sprintf("id %d offset %d size %d", r.ID, r.Ofs, r.ChunkSize)
 }
 
 // sniffer
-func (r *readLobRequest) decode(dec *encoding.Decoder, ph *partHeader) error {
-	r.id = locatorID(dec.Uint64())
-	r.ofs = dec.Int64()
-	r.chunkSize = dec.Int32()
+func (r *ReadLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
+	r.ID = LocatorID(dec.Uint64())
+	r.Ofs = dec.Int64()
+	r.ChunkSize = dec.Int32()
 	dec.Skip(4)
 	return nil
 }
 
-func (r *readLobRequest) encode(enc *encoding.Encoder) error {
-	enc.Uint64(uint64(r.id))
-	enc.Int64(r.ofs + 1) //1-based
-	enc.Int32(r.chunkSize)
+func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
+	enc.Uint64(uint64(r.ID))
+	enc.Int64(r.Ofs + 1) //1-based
+	enc.Int32(r.ChunkSize)
 	enc.Zeroes(4)
 	return nil
 }
 
-type readLobReply struct {
-	id  locatorID
-	opt lobOptions
-	b   []byte
+// ReadLobReply represents a lob read reply part.
+type ReadLobReply struct {
+	ID  LocatorID
+	Opt LobOptions
+	B   []byte
 }
 
-func (r *readLobReply) String() string {
-	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.opt, r.b)
+func (r *ReadLobReply) String() string {
+	return fmt.Sprintf("id %d options %s bytes %v", r.ID, r.Opt, r.B)
 }
 
-func (r *readLobReply) resize(size int) {
-	if r.b == nil || size > cap(r.b) {
-		r.b = make([]byte, size)
+func (r *ReadLobReply) resize(size int) {
+	if r.B == nil || size > cap(r.B) {
+		r.B = make([]byte, size)
 	} else {
-		r.b = r.b[:size]
+		r.B = r.B[:size]
 	}
 }
 
-func (r *readLobReply) decode(dec *encoding.Decoder, ph *partHeader) error {
+func (r *ReadLobReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	if ph.numArg() != 1 {
 		panic("numArg == 1 expected")
 	}
-	r.id = locatorID(dec.Uint64())
-	r.opt = lobOptions(dec.Int8())
+	r.ID = LocatorID(dec.Uint64())
+	r.Opt = LobOptions(dec.Int8())
 	size := int(dec.Int32())
 	dec.Skip(3)
 	r.resize(size)
-	dec.Bytes(r.b)
+	dec.Bytes(r.B)
 	return nil
 }

@@ -14,6 +14,8 @@ import (
 
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"golang.org/x/text/transform"
 )
 
 // conn attributes default values.
@@ -31,6 +33,19 @@ const (
 	maxBulkSize = p.MaxNumArg     // maximum bulk size.
 )
 
+const (
+	defaultFetchSize    = 128         // Default value fetchSize.
+	defaultLobChunkSize = 8192        // Default value lobChunkSize.
+	defaultDfv          = p.DfvLevel8 // Default data version format level.
+	defaultLegacy       = false       // Default value legacy.
+)
+
+const (
+	minFetchSize    = 1       // Minimal fetchSize value.
+	minLobChunkSize = 128     // Minimal lobChunkSize
+	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize (TODO check)
+)
+
 // connAttrs is holding connection relevant attributes.
 type connAttrs struct {
 	mu             sync.RWMutex
@@ -43,6 +58,16 @@ type connAttrs struct {
 	_tlsConfig     *tls.Config
 	_defaultSchema string
 	_dialer        dial.Dialer
+
+	_applicationName  string
+	_sessionVariables map[string]string
+	_locale           string
+	_fetchSize        int
+	_lobChunkSize     int
+	_dfv              int
+	_legacy           bool
+	_cesu8Decoder     func() transform.Transformer
+	_cesu8Encoder     func() transform.Transformer
 }
 
 func newConnAttrs() *connAttrs {
@@ -52,6 +77,14 @@ func newConnAttrs() *connAttrs {
 		_timeout:      defaultTimeout,
 		_tcpKeepAlive: defaultTCPKeepAlive,
 		_dialer:       dial.DefaultDialer,
+
+		_applicationName: defaultApplicationName,
+		_fetchSize:       defaultFetchSize,
+		_lobChunkSize:    defaultLobChunkSize,
+		_dfv:             defaultDfv,
+		_legacy:          defaultLegacy,
+		_cesu8Decoder:    cesu8.DefaultDecoder,
+		_cesu8Encoder:    cesu8.DefaultEncoder,
 	}
 }
 
@@ -157,4 +190,81 @@ func (a *connAttrs) setDialer(dialer dial.Dialer) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a._dialer = dialer
+}
+func (a *connAttrs) applicationName() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a._applicationName
+}
+func (a *connAttrs) setApplicationName(name string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a._applicationName = name
+}
+func (a *connAttrs) sessionVariables() map[string]string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return cloneStringStringMap(a._sessionVariables)
+}
+func (a *connAttrs) setSessionVariables(sessionVariables map[string]string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a._sessionVariables = cloneStringStringMap(sessionVariables)
+}
+func (a *connAttrs) locale() string          { a.mu.RLock(); defer a.mu.RUnlock(); return a._locale }
+func (a *connAttrs) setLocale(locale string) { a.mu.Lock(); defer a.mu.Unlock(); a._locale = locale }
+func (a *connAttrs) fetchSize() int          { a.mu.RLock(); defer a.mu.RUnlock(); return a._fetchSize }
+func (a *connAttrs) _setFetchSize(fetchSize int) {
+	if fetchSize < minFetchSize {
+		fetchSize = minFetchSize
+	}
+	a._fetchSize = fetchSize
+}
+func (a *connAttrs) setFetchSize(fetchSize int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a._setFetchSize(fetchSize)
+}
+func (a *connAttrs) lobChunkSize() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._lobChunkSize }
+func (a *connAttrs) setLobChunkSize(lobChunkSize int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch {
+	case lobChunkSize < minLobChunkSize:
+		lobChunkSize = minLobChunkSize
+	case lobChunkSize > maxLobChunkSize:
+		lobChunkSize = maxLobChunkSize
+	}
+	a._lobChunkSize = lobChunkSize
+}
+func (a *connAttrs) dfv() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._dfv }
+func (a *connAttrs) setDfv(dfv int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !p.IsSupportedDfv(dfv) {
+		dfv = defaultDfv
+	}
+	a._dfv = dfv
+}
+func (a *connAttrs) legacy() bool     { a.mu.RLock(); defer a.mu.RUnlock(); return a._legacy }
+func (a *connAttrs) setLegacy(b bool) { a.mu.Lock(); defer a.mu.Unlock(); a._legacy = b }
+func (a *connAttrs) cesu8Decoder() func() transform.Transformer {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a._cesu8Decoder
+}
+func (a *connAttrs) setCESU8Decoder(cesu8Decoder func() transform.Transformer) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a._cesu8Decoder = cesu8Decoder
+}
+func (a *connAttrs) cesu8Encoder() func() transform.Transformer {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a._cesu8Encoder
+}
+func (a *connAttrs) setCESU8Encoder(cesu8Encoder func() transform.Transformer) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a._cesu8Encoder = cesu8Encoder
 }

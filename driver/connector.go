@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql/driver"
+	"errors"
 	"os"
 	"time"
 
@@ -27,19 +28,17 @@ A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
-	metrics      *metrics
-	connAttrs    *connAttrs
-	authAttrs    *authAttrs
-	sessionAttrs *p.SessionAttrs
+	metrics   *metrics
+	connAttrs *connAttrs
+	authAttrs *authAttrs
 }
 
 // NewConnector returns a new Connector instance with default values.
 func NewConnector() *Connector {
 	return &Connector{
-		metrics:      newMetrics(hdbDriver.metrics),
-		connAttrs:    newConnAttrs(),
-		authAttrs:    &authAttrs{},
-		sessionAttrs: p.NewSessionAttrs(),
+		metrics:   newMetrics(hdbDriver.metrics, statsCfg.TimeBuckets),
+		connAttrs: newConnAttrs(),
+		authAttrs: &authAttrs{},
 	}
 }
 
@@ -223,90 +222,93 @@ func (c *Connector) SetRefreshToken(refreshToken func() (token string, ok bool))
 }
 
 // ApplicationName returns the locale of the connector.
-func (c *Connector) ApplicationName() string { return c.sessionAttrs.ApplicationName() }
+func (c *Connector) ApplicationName() string { return c.connAttrs.applicationName() }
 
 // SetApplicationName sets the application name of the connector.
-func (c *Connector) SetApplicationName(name string) { c.sessionAttrs.SetApplicationName(name) }
+func (c *Connector) SetApplicationName(name string) { c.connAttrs.setApplicationName(name) }
 
 // SessionVariables returns the session variables stored in connector.
-func (c *Connector) SessionVariables() SessionVariables { return c.sessionAttrs.SessionVariables() }
+func (c *Connector) SessionVariables() SessionVariables { return c.connAttrs.sessionVariables() }
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) {
-	c.sessionAttrs.SetSessionVariables(sessionVariables)
+	c.connAttrs.setSessionVariables(sessionVariables)
 }
 
 // Locale returns the locale of the connector.
-func (c *Connector) Locale() string { return c.sessionAttrs.Locale() }
+func (c *Connector) Locale() string { return c.connAttrs.locale() }
 
 /*
 SetLocale sets the locale of the connector.
 
 For more information please see DSNLocale.
 */
-func (c *Connector) SetLocale(locale string) { c.sessionAttrs.SetLocale(locale) }
+func (c *Connector) SetLocale(locale string) { c.connAttrs.setLocale(locale) }
 
 // FetchSize returns the fetchSize of the connector.
-func (c *Connector) FetchSize() int { return c.sessionAttrs.FetchSize() }
+func (c *Connector) FetchSize() int { return c.connAttrs.fetchSize() }
 
 /*
 SetFetchSize sets the fetchSize of the connector.
 
 For more information please see DSNFetchSize.
 */
-func (c *Connector) SetFetchSize(fetchSize int) { c.sessionAttrs.SetFetchSize(fetchSize) }
+func (c *Connector) SetFetchSize(fetchSize int) { c.connAttrs.setFetchSize(fetchSize) }
 
 // LobChunkSize returns the lobChunkSize of the connector.
-func (c *Connector) LobChunkSize() int { return c.sessionAttrs.LobChunkSize() }
+func (c *Connector) LobChunkSize() int { return c.connAttrs.lobChunkSize() }
 
 // SetLobChunkSize sets the lobChunkSize of the connector.
-func (c *Connector) SetLobChunkSize(lobChunkSize int) { c.sessionAttrs.SetLobChunkSize(lobChunkSize) }
+func (c *Connector) SetLobChunkSize(lobChunkSize int) { c.connAttrs.setLobChunkSize(lobChunkSize) }
 
 // Dfv returns the client data format version of the connector.
-func (c *Connector) Dfv() int { return c.sessionAttrs.Dfv() }
+func (c *Connector) Dfv() int { return c.connAttrs.dfv() }
 
 // SetDfv sets the client data format version of the connector.
-func (c *Connector) SetDfv(dfv int) { c.sessionAttrs.SetDfv(dfv) }
+func (c *Connector) SetDfv(dfv int) { c.connAttrs.setDfv(dfv) }
 
 // Legacy returns the connector legacy flag.
-func (c *Connector) Legacy() bool { return c.sessionAttrs.Legacy() }
+func (c *Connector) Legacy() bool { return c.connAttrs.legacy() }
 
 // SetLegacy sets the connector legacy flag.
-func (c *Connector) SetLegacy(b bool) { c.sessionAttrs.SetLegacy(b) }
+func (c *Connector) SetLegacy(b bool) { c.connAttrs.setLegacy(b) }
 
 // CESU8Decoder returns the CESU-8 decoder of the connector.
-func (c *Connector) CESU8Decoder() func() transform.Transformer { return c.sessionAttrs.CESU8Decoder() }
+func (c *Connector) CESU8Decoder() func() transform.Transformer { return c.connAttrs.cesu8Decoder() }
 
 // SetCESU8Decoder sets the CESU-8 decoder of the connector.
 func (c *Connector) SetCESU8Decoder(cesu8Decoder func() transform.Transformer) {
-	c.sessionAttrs.SetCESU8Decoder(cesu8Decoder)
+	c.connAttrs.setCESU8Decoder(cesu8Decoder)
 }
 
 // CESU8Encoder returns the CESU-8 encoder of the connector.
-func (c *Connector) CESU8Encoder() func() transform.Transformer { return c.sessionAttrs.CESU8Encoder() }
+func (c *Connector) CESU8Encoder() func() transform.Transformer { return c.connAttrs.cesu8Encoder() }
 
 // SetCESU8Encoder sets the CESU-8 encoder of the connector.
 func (c *Connector) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
-	c.sessionAttrs.SetCESU8Encoder(cesu8Encoder)
+	c.connAttrs.setCESU8Encoder(cesu8Encoder)
 }
 
 // NativeDriver returns the concrete underlying Driver of the Connector.
 func (c *Connector) NativeDriver() *Driver { return hdbDriver }
 
+func isAuthError(checkErr error) bool {
+	var hdbErrors *p.HdbErrors
+	if !errors.As(checkErr, &hdbErrors) {
+		return false
+	}
+	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
+}
+
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
-	sessionAttrs := c.sessionAttrs.Clone()
-
-	c.connAttrs.mu.RLock()
-	defer c.connAttrs.mu.RUnlock()
-
 	// can we connect via cookie?
 	if auth := c.authAttrs.cookieAuth(); auth != nil {
-		conn, err := newConn(ctx, c.metrics, c.connAttrs, sessionAttrs, auth)
+		conn, err := newConn(ctx, c.metrics, c.connAttrs, auth)
 		if err == nil {
 			return conn, nil
 		}
-		if _, ok := err.(*p.AuthFailedError); !ok {
+		if !isAuthError(err) {
 			return nil, err
 		}
 	}
@@ -314,14 +316,14 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	auth := c.authAttrs.auth()
 	retries := 1
 	for {
-		conn, err := newConn(ctx, c.metrics, c.connAttrs, sessionAttrs, auth)
+		conn, err := newConn(ctx, c.metrics, c.connAttrs, auth)
 		if err == nil {
 			if method, ok := auth.Method().(p.AuthCookieGetter); ok {
 				c.authAttrs.setSessionCookie(method.Cookie())
 			}
 			return conn, nil
 		}
-		if _, ok := err.(*p.AuthFailedError); !ok {
+		if !isAuthError(err) {
 			return nil, err
 		}
 		if retries < 1 || !c.authAttrs.refresh(auth) {

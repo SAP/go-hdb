@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/SAP/go-hdb/driver/hdb"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
@@ -34,12 +33,12 @@ type _baseType struct {
 	minDfv       *int
 	maxMV        *uint64
 	typeName     string
-	fnDBTypeName func(v *hdb.Version, dfv int) (bool, string)
+	fnDBTypeName func(v *Version, dfv int) (bool, string)
 	_scanType    reflect.Type
-	fnScanType   func(v *hdb.Version, dfv int) (bool, reflect.Type)
+	fnScanType   func(v *Version, dfv int) (bool, reflect.Type)
 }
 
-func (t *_baseType) isSupported(version *hdb.Version, dfv int) bool {
+func (t *_baseType) isSupported(version *Version, dfv int) bool {
 	switch {
 	case t.minDfv != nil && t.maxMV != nil:
 		return version.Major() <= *t.maxMV && dfv >= *t.minDfv
@@ -52,7 +51,7 @@ func (t *_baseType) isSupported(version *hdb.Version, dfv int) bool {
 	}
 }
 
-func (t *_baseType) databaseTypeName(v *hdb.Version, dfv int) string {
+func (t *_baseType) databaseTypeName(v *Version, dfv int) string {
 	if t.fnDBTypeName != nil {
 		if ok, name := t.fnDBTypeName(v, dfv); ok {
 			return name
@@ -61,7 +60,7 @@ func (t *_baseType) databaseTypeName(v *hdb.Version, dfv int) string {
 	return t.typeName
 }
 
-func (t *_baseType) scanType(v *hdb.Version, dfv int) reflect.Type {
+func (t *_baseType) scanType(v *Version, dfv int) reflect.Type {
 	if t.fnScanType != nil {
 		if ok, typ := t.fnScanType(v, dfv); ok {
 			return typ
@@ -130,107 +129,107 @@ const (
 	dtSTGeometry
 )
 
-func _dateDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _dateDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, "DAYDATE"
 	}
 	return false, ""
 }
 
-func _timeDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _timeDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, "SECONDTIME"
 	}
 	return false, ""
 }
 
-func _timestampDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _timestampDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, "LONGDATE"
 	}
 	return false, ""
 }
 
-func _longdateDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _longdateDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "TIMESTAMP"
 	}
 	return false, ""
 }
 
-func _seconddateDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _seconddateDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "TIMESTAMP"
 	}
 	return false, ""
 }
 
-func _daydateDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _daydateDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "DATE"
 	}
 	return false, ""
 }
 
-func _secondtimeDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _secondtimeDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "TIME"
 	}
 	return false, ""
 }
 
-func _clobDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _clobDBTypeName(version *Version, dfv int) (bool, string) {
 	if version.Major() >= 4 {
 		return true, "NCLOB"
 	}
 	return false, ""
 }
 
-func _bintextDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _bintextDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel6 {
 		return true, "NCLOB"
 	}
 	return false, ""
 }
 
-func _booleanDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _booleanDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel7 {
 		return true, "TINYINT"
 	}
 	return false, ""
 }
 
-func _charDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _charDBTypeName(version *Version, dfv int) (bool, string) {
 	if version.Major() >= 4 { // since hdb version 4: char equals nchar
 		return true, "NCHAR"
 	}
 	return false, ""
 }
 
-func _varcharDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _varcharDBTypeName(version *Version, dfv int) (bool, string) {
 	if version.Major() >= 4 { // since hdb version 4: char equals nchar
 		return true, "NVARCHAR"
 	}
 	return false, ""
 }
 
-func _shorttextDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _shorttextDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "NVARCHAR"
 	}
 	return false, ""
 }
 
-func _alphanumDBTypeName(version *hdb.Version, dfv int) (bool, string) {
+func _alphanumDBTypeName(version *Version, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, "NVARCHAR"
 	}
 	return false, ""
 }
 
-func _smalldecimalDBTypeName(version *hdb.Version, dfv int) (bool, string) { return true, "DECIMAL" }
+func _smalldecimalDBTypeName(version *Version, dfv int) (bool, string) { return true, "DECIMAL" }
 
-func _booleanScanType(version *hdb.Version, dfv int) (bool, reflect.Type) {
+func _booleanScanType(version *Version, dfv int) (bool, reflect.Type) {
 	if dfv < p.DfvLevel7 {
 		return true, p.DtTinyint.ScanType()
 	}
@@ -287,7 +286,7 @@ var spatialType = []*_spatialType{
 }
 
 type basicColumn struct {
-	version   *hdb.Version
+	version   *Version
 	_dfv      int
 	dt        *_basicType
 	_nullable bool
@@ -304,7 +303,7 @@ func (t *basicColumn) scanType() reflect.Type                            { retur
 func (t *basicColumn) nullable() (nullable, ok bool)                     { return t._nullable, true }
 
 type varColumn struct {
-	version   *hdb.Version
+	version   *Version
 	_dfv      int
 	dt        *_varType
 	_nullable bool
@@ -322,7 +321,7 @@ func (t *varColumn) scanType() reflect.Type                            { return 
 func (t *varColumn) nullable() (nullable, ok bool)                     { return t._nullable, true }
 
 type decimalColumn struct {
-	version          *hdb.Version
+	version          *Version
 	_dfv             int
 	dt               *_decimalType
 	_nullable        bool
@@ -377,7 +376,7 @@ func (t *decimalColumn) scanType() reflect.Type        { return t.dt.scanType(t.
 func (t *decimalColumn) nullable() (nullable, ok bool) { return t._nullable, true }
 
 type spatialColumn struct {
-	version   *hdb.Version
+	version   *Version
 	_dfv      int
 	dt        *_spatialType
 	_nullable bool

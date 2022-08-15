@@ -6,384 +6,31 @@ package protocol
 
 import (
 	"bufio"
-	"database/sql/driver"
 	"fmt"
 	"io"
 	"math"
-	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	"golang.org/x/text/transform"
 )
 
-// A PrepareResult represents the result of a prepare statement.
-type PrepareResult struct {
-	session         *Session
-	fc              functionCode
-	stmtID          uint64
-	parameterFields []*ParameterField
-	resultFields    []*resultField
-}
+// padding
+const padding = 8
 
-// Session returns the session the prepare result belongs to.
-func (pr *PrepareResult) Session() *Session { return pr.session }
-
-// Check checks consistency of the prepare result.
-func (pr *PrepareResult) Check(qd *QueryDescr) error {
-	call := qd.kind == QkCall
-	if call != pr.fc.isProcedureCall() {
-		return fmt.Errorf("function code mismatch: query descriptor %s - function code %s", qd.kind, pr.fc)
+func padBytes(size int) int {
+	if r := size % padding; r != 0 {
+		return padding - r
 	}
-
-	if !call {
-		// only input parameters allowed
-		for _, f := range pr.parameterFields {
-			if f.Out() {
-				return fmt.Errorf("invalid parameter %s", f)
-			}
-		}
-	}
-	return nil
+	return 0
 }
 
-// StmtID returns the statement id.
-func (pr *PrepareResult) StmtID() uint64 {
-	return pr.stmtID
-}
-
-// IsProcedureCall returns true if the statement is a call statement.
-func (pr *PrepareResult) IsProcedureCall() bool {
-	return pr.fc.isProcedureCall()
-}
-
-// NumField returns the number of parameter fields in a database statement.
-func (pr *PrepareResult) NumField() int {
-	return len(pr.parameterFields)
-}
-
-// NumInputField returns the number of input fields in a database statement.
-func (pr *PrepareResult) NumInputField() int {
-	if !pr.fc.isProcedureCall() {
-		return len(pr.parameterFields) // only input fields
-	}
-	numField := 0
-	for _, f := range pr.parameterFields {
-		if f.In() {
-			numField++
-		}
-	}
-	return numField
-}
-
-// ParameterField returns the parameter field at index idx.
-func (pr *PrepareResult) ParameterField(idx int) *ParameterField {
-	return pr.parameterFields[idx]
-}
-
-// OnCloser defines getter and setter for a function which should be called when closing.
-type OnCloser interface {
-	OnClose() func()
-	SetOnClose(func())
-}
-
-// NoResult is the driver.Rows drop-in replacement if driver Query or QueryRow is used for statements that do not return rows.
-var noResult = new(noResultType)
-
-//  check if noResultType implements all required interfaces
-var (
-	_ driver.Rows = (*noResultType)(nil)
-)
-
-var noColumns = []string{}
-
-type noResultType struct{}
-
-func (r *noResultType) Columns() []string              { return noColumns }
-func (r *noResultType) Close() error                   { return nil }
-func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
-
-// decodeError
-type decodeError struct {
-	row       int
-	fieldName string
-	s         string // error text
-}
-
-func (e *decodeError) Error() string {
-	return fmt.Sprintf("decode error: %s row: %d fieldname: %s", e.s, e.row, e.fieldName)
-}
-
-type decodeErrors []*decodeError
-
-func (errors decodeErrors) seek(row int) error {
-	for _, err := range errors {
-		if err.row == row {
-			return err
-		}
-	}
-	return nil
-}
-
-// check if queryResult does implement all driver row interfaces.
-var (
-	_ driver.Rows                           = (*queryResult)(nil)
-	_ driver.RowsColumnTypeDatabaseTypeName = (*queryResult)(nil)
-	_ driver.RowsColumnTypeLength           = (*queryResult)(nil)
-	_ driver.RowsColumnTypeNullable         = (*queryResult)(nil)
-	_ driver.RowsColumnTypePrecisionScale   = (*queryResult)(nil)
-	_ driver.RowsColumnTypeScanType         = (*queryResult)(nil)
-	_ driver.RowsNextResultSet              = (*queryResult)(nil)
-)
-
-// queryResult represents the resultset of a query.
-type queryResult struct {
-	// field alignment
-	fields       []*resultField
-	fieldValues  []driver.Value
-	decodeErrors decodeErrors
-	_columns     []string
-	lastErr      error
-	session      *Session
-	rsID         uint64
-	pos          int
-	onClose      func()
-	attributes   partAttributes
-	closed       bool
-}
-
-// OnClose implements the OnCloser interface
-func (qr *queryResult) OnClose() func() { return qr.onClose }
-
-// SetOnClose implements the OnCloser interface
-func (qr *queryResult) SetOnClose(f func()) { qr.onClose = f }
-
-// Columns implements the driver.Rows interface.
-func (qr *queryResult) Columns() []string {
-	if qr._columns == nil {
-		numField := len(qr.fields)
-		qr._columns = make([]string, numField)
-		for i := 0; i < numField; i++ {
-			qr._columns[i] = qr.fields[i].name()
-		}
-	}
-	return qr._columns
-}
-
-// Close implements the driver.Rows interface.
-func (qr *queryResult) Close() error {
-	if !qr.closed && qr.onClose != nil {
-		defer qr.onClose()
-	}
-	qr.closed = true
-
-	if qr.attributes.ResultsetClosed() {
-		return nil
-	}
-	// if lastError is set, attrs are nil
-	if qr.lastErr != nil {
-		return qr.lastErr
-	}
-	return qr.session.CloseResultsetID(qr.rsID)
-}
-
-func (qr *queryResult) numRow() int {
-	if len(qr.fieldValues) == 0 {
-		return 0
-	}
-	return len(qr.fieldValues) / len(qr.fields)
-}
-
-func (qr *queryResult) copyRow(idx int, dest []driver.Value) {
-	cols := len(qr.fields)
-	copy(dest, qr.fieldValues[idx*cols:(idx+1)*cols])
-}
-
-// Next implements the driver.Rows interface.
-func (qr *queryResult) Next(dest []driver.Value) error {
-	if qr.pos >= qr.numRow() {
-		if qr.attributes.LastPacket() {
-			return io.EOF
-		}
-		if err := qr.session.fetchNext(qr); err != nil {
-			qr.lastErr = err //fieldValues and attrs are nil
-			return err
-		}
-		if qr.numRow() == 0 {
-			return io.EOF
-		}
-		qr.pos = 0
-	}
-
-	qr.copyRow(qr.pos, dest)
-	err := qr.decodeErrors.seek(qr.pos)
-	qr.pos++
-
-	// TODO eliminate
-	for _, v := range dest {
-		if v, ok := v.(sessionSetter); ok {
-			v.setSession(qr.session)
-		}
-	}
-	return err
-}
-
-// ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
-func (qr *queryResult) ColumnTypeDatabaseTypeName(idx int) string { return qr.fields[idx].typeName() }
-
-// ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
-func (qr *queryResult) ColumnTypeLength(idx int) (int64, bool) { return qr.fields[idx].typeLength() }
-
-// ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
-func (qr *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return qr.fields[idx].nullable(), true
-}
-
-// ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
-func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return qr.fields[idx].typePrecisionScale()
-}
-
-// ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
-func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type {
-	return scanTypeMap[qr.fields[idx].scanType()]
-}
-
-/*
-driver.RowsNextResultSet:
-- currently not used
-- could be implemented as pointer to next queryResult (advancing by copying data from next)
-*/
-
-// HasNextResultSet implements the driver.RowsNextResultSet interface.
-func (qr *queryResult) HasNextResultSet() bool { return false }
-
-// NextResultSet implements the driver.RowsNextResultSet interface.
-func (qr *queryResult) NextResultSet() error { return io.EOF }
-
-// check if callResult does implement all driver row interfaces.
-var (
-	_ driver.Rows                           = (*callResult)(nil)
-	_ driver.RowsColumnTypeDatabaseTypeName = (*callResult)(nil)
-	_ driver.RowsColumnTypeLength           = (*callResult)(nil)
-	_ driver.RowsColumnTypeNullable         = (*callResult)(nil)
-	_ driver.RowsColumnTypePrecisionScale   = (*callResult)(nil)
-	_ driver.RowsColumnTypeScanType         = (*callResult)(nil)
-	_ driver.RowsNextResultSet              = (*callResult)(nil)
-)
-
-// A CallResult represents the result (output parameters and values) of a call statement.
-type callResult struct { // call output parameters
-	session      *Session
-	outputFields []*ParameterField
-	fieldValues  []driver.Value
-	decodeErrors decodeErrors
-	_columns     []string
-	qrs          []*queryResult // table output parameters
-	eof          bool
-	closed       bool
-	onClose      func()
-}
-
-// OnClose implements the OnCloser interface
-func (cr *callResult) OnClose() func() { return cr.onClose }
-
-// SetOnClose implements the OnCloser interface
-func (cr *callResult) SetOnClose(f func()) { cr.onClose = f }
-
-// Columns implements the driver.Rows interface.
-func (cr *callResult) Columns() []string {
-	if cr._columns == nil {
-		numField := len(cr.outputFields)
-		cr._columns = make([]string, numField)
-		for i := 0; i < numField; i++ {
-			cr._columns[i] = cr.outputFields[i].name()
-		}
-	}
-	return cr._columns
-}
-
-/// Next implements the driver.Rows interface.
-func (cr *callResult) Next(dest []driver.Value) error {
-	if len(cr.fieldValues) == 0 || cr.eof {
-		return io.EOF
-	}
-
-	copy(dest, cr.fieldValues)
-	err := cr.decodeErrors.seek(0)
-	cr.eof = true
-	// TODO eliminate
-	for _, v := range dest {
-		if v, ok := v.(sessionSetter); ok {
-			v.setSession(cr.session)
-		}
-	}
-	return err
-}
-
-// Close implements the driver.Rows interface.
-func (cr *callResult) Close() error {
-	if !cr.closed && cr.onClose != nil {
-		cr.onClose()
-	}
-	cr.closed = true
-	return nil
-}
-
-// ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
-func (cr *callResult) ColumnTypeDatabaseTypeName(idx int) string {
-	return cr.outputFields[idx].typeName()
-}
-
-// ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
-func (cr *callResult) ColumnTypeLength(idx int) (int64, bool) {
-	return cr.outputFields[idx].typeLength()
-}
-
-// ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
-func (cr *callResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return cr.outputFields[idx].nullable(), true
-}
-
-// ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
-func (cr *callResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return cr.outputFields[idx].typePrecisionScale()
-}
-
-// ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
-func (cr *callResult) ColumnTypeScanType(idx int) reflect.Type {
-	return scanTypeMap[cr.outputFields[idx].scanType()]
-}
-
-/*
-driver.RowsNextResultSet:
-- currently not used
-- could be implemented as pointer to next queryResult (advancing by copying data from next)
-*/
-
-// HasNextResultSet implements the driver.RowsNextResultSet interface.
-func (cr *callResult) HasNextResultSet() bool { return false }
-
-// NextResultSet implements the driver.RowsNextResultSet interface.
-func (cr *callResult) NextResultSet() error { return io.EOF }
-
-//
-func (cr *callResult) appendTableRefFields() {
-	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRef, mode: pmOut, offset: 0})
-		cr.fieldValues = append(cr.fieldValues, encodeID(qr.rsID))
-	}
-}
-
-func (cr *callResult) appendTableRowsFields() {
-	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &ParameterField{fieldName: fmt.Sprintf("table %d", i), tc: tcTableRows, mode: pmOut, offset: 0})
-		cr.fieldValues = append(cr.fieldValues, qr)
-	}
-}
-
-type protocolReader struct {
-	upStream bool
+// Reader represents a protocol reader.
+type Reader struct {
+	upStream   bool
+	tracer     func(up bool, v interface{}) // performance
+	traceOn    bool
+	sqlTraceOn bool
 
 	step int // authentication
 
@@ -391,17 +38,17 @@ type protocolReader struct {
 
 	mh *messageHeader
 	sh *segmentHeader
-	ph *partHeader
+	ph *PartHeader
 
 	msgSize  int64
 	numPart  int
 	cntPart  int
 	partRead bool
 
-	partReaderCache map[partKind]partReader
+	partReaderCache map[PartKind]partReader
 
-	lastErrors       *hdbErrors
-	lastRowsAffected *rowsAffected
+	lastErrors       *HdbErrors
+	lastRowsAffected *RowsAffected
 
 	// partReader read errors could be
 	// - read buffer errors -> buffer Error() and ResetError()
@@ -409,51 +56,61 @@ type protocolReader struct {
 	err error
 }
 
-func newProtocolReader(upStream bool, rd io.Reader, decoder func() transform.Transformer) *protocolReader {
-	return &protocolReader{
+// NewReader returns an instance of a protocol reader.
+func NewReader(upStream bool, rd io.Reader, decoder func() transform.Transformer) *Reader {
+	tracer, on := newTracer()
+	return &Reader{
 		upStream:        upStream,
+		tracer:          tracer,
+		traceOn:         on,
+		sqlTraceOn:      sqltrace.On(),
 		dec:             encoding.NewDecoder(rd, decoder),
-		partReaderCache: map[partKind]partReader{},
+		partReaderCache: map[PartKind]partReader{},
 		mh:              &messageHeader{},
 		sh:              &segmentHeader{},
-		ph:              &partHeader{},
+		ph:              &PartHeader{},
 	}
 }
 
-func (r *protocolReader) setDfv(dfv int) {
-	r.dec.SetDfv(dfv)
-}
+// SetDfv sets the data format version fpr the protocol reader.
+func (r *Reader) SetDfv(dfv int) { r.dec.SetDfv(dfv) }
 
-func (r *protocolReader) readSkip() error            { return r.iterateParts(nil) }
-func (r *protocolReader) sessionID() int64           { return r.mh.sessionID }
-func (r *protocolReader) functionCode() functionCode { return r.sh.functionCode }
+// ReadSkip reads the server reply without returning the results.
+func (r *Reader) ReadSkip() error { return r.IterateParts(nil) }
 
-func (r *protocolReader) readInitRequest() error {
+// SessionID returns the message header session id.
+func (r *Reader) SessionID() int64 { return r.mh.sessionID }
+
+// FunctionCode returns the segment header function code.
+func (r *Reader) FunctionCode() FunctionCode { return r.sh.functionCode }
+
+func (r *Reader) readInitRequest() error {
 	req := &initRequest{}
 	if err := req.decode(r.dec); err != nil {
 		return err
 	}
-	traceProtocol(r.upStream, req)
+	r.tracer(r.upStream, req)
 	return nil
 }
 
-func (r *protocolReader) readInitReply() error {
+func (r *Reader) readInitReply() error {
 	rep := &initReply{}
 	if err := rep.decode(r.dec); err != nil {
 		return err
 	}
-	traceProtocol(r.upStream, rep)
+	r.tracer(r.upStream, rep)
 	return nil
 }
 
-func (r *protocolReader) readProlog() error {
+// ReadProlog reads the protocol prolog.
+func (r *Reader) ReadProlog() error {
 	if r.upStream {
 		return r.readInitRequest()
 	}
 	return r.readInitReply()
 }
 
-func (r *protocolReader) checkError() error {
+func (r *Reader) checkError() error {
 	defer func() { // init readFlags
 		r.lastErrors = nil
 		r.lastRowsAffected = nil
@@ -476,16 +133,18 @@ func (r *protocolReader) checkError() error {
 	if r.lastRowsAffected != nil { // link statement to error
 		j := 0
 		for i, rows := range *r.lastRowsAffected {
-			if rows == raExecutionFailed {
-				r.lastErrors.setStmtNo(j, i)
+			if rows == RaExecutionFailed {
+				r.lastErrors.SetStmtNo(j, i)
 				j++
 			}
 		}
 	}
 
-	if r.lastErrors.isWarnings() {
-		for _, e := range r.lastErrors.errors {
-			sqltrace.Traceln(e)
+	if r.lastErrors.HasWarnings() {
+		if r.sqlTraceOn {
+			r.lastErrors.ErrorsFunc(func(err error) {
+				sqltrace.Traceln(err)
+			})
 		}
 		return nil
 	}
@@ -493,15 +152,7 @@ func (r *protocolReader) checkError() error {
 	return r.lastErrors
 }
 
-func (r *protocolReader) canSkip(pk partKind) bool {
-	// errors and rowsAffected needs always to be read
-	if pk == pkError || pk == pkRowsAffected {
-		return false
-	}
-	return true
-}
-
-func (r *protocolReader) read(part partReader) error {
+func (r *Reader) Read(part partReader) error {
 	r.partRead = true
 
 	err := r.readPart(part)
@@ -510,66 +161,62 @@ func (r *protocolReader) read(part partReader) error {
 	}
 
 	switch part := part.(type) {
-	case *hdbErrors:
+	case *HdbErrors:
 		r.lastErrors = part
-	case *rowsAffected:
+	case *RowsAffected:
 		r.lastRowsAffected = part
 	}
 	return err
 }
 
-func (r *protocolReader) authPart() partReader {
+func (r *Reader) authPart() partReader {
 	defer func() { r.step++ }()
 
 	switch {
 	case r.upStream && r.step == 0:
-		return &authInitReq{}
+		return &AuthInitRequest{}
 	case r.upStream:
-		return &authFinalReq{}
+		return &AuthFinalRequest{}
 	case !r.upStream && r.step == 0:
-		return &authInitRep{}
+		return &AuthInitReply{}
 	case !r.upStream:
-		return &authFinalRep{}
+		return &AuthFinalReply{}
 	default:
 		panic(fmt.Errorf("invalid auth step in protocol reader %d", r.step))
 	}
 }
 
-func (r *protocolReader) defaultPart(pk partKind) (partReader, error) {
-	part, ok := r.partReaderCache[pk]
-	if !ok {
-		var err error
-		part, err = newPartReader(pk)
-		if err != nil {
-			return nil, err
-		}
-		r.partReaderCache[pk] = part
-	}
-	return part, nil
-}
+func (r *Reader) skip() error {
+	pk := r.ph.PartKind
 
-func (r *protocolReader) skip() error {
-	pk := r.ph.partKind
-	if r.canSkip(pk) {
+	// if trace is on or mandatory parts need to be read we cannot skip
+	if !(r.traceOn || pk == PkError || pk == PkRowsAffected) {
 		return r.skipPart()
 	}
 
-	var part partReader
-	var err error
-	if pk == pkAuthentication {
-		part = r.authPart()
-	} else {
-		part, err = r.defaultPart(pk)
+	if pk == PkAuthentication {
+		return r.Read(r.authPart())
 	}
-	if err != nil {
+
+	// check part cache
+	if part, ok := r.partReaderCache[pk]; ok {
+		return r.Read(part)
+	}
+
+	part, ok := newGenPartReader(pk)
+	if !ok { // part is not yet supported -> skip
 		return r.skipPart()
 	}
-	return r.read(part)
+
+	// cache part
+	r.partReaderCache[pk] = part
+
+	return r.Read(part)
 }
 
-func (r *protocolReader) skipPart() error {
+func (r *Reader) skipPart() error {
 	r.dec.Skip(int(r.ph.bufferLength))
-	traceProtocol(r.upStream, "*skipped")
+	r.tracer(r.upStream, "*skipped")
 
 	/*
 		hdb protocol
@@ -585,12 +232,12 @@ func (r *protocolReader) skipPart() error {
 	return nil
 }
 
-func (r *protocolReader) readPart(part partReader) error {
+func (r *Reader) readPart(part partReader) error {
 
 	r.dec.ResetCnt()
 	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
-	traceProtocol(r.upStream, part)
+	r.tracer(r.upStream, part)
 
 	bufferLen := int(r.ph.bufferLength)
 	switch {
@@ -622,11 +269,12 @@ func (r *protocolReader) readPart(part partReader) error {
 	return err
 }
 
-func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
+// IterateParts is iterating over the parts returned by the server.
+func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
-	traceProtocol(r.upStream, r.mh)
+	r.tracer(r.upStream, r.mh)
 
 	r.msgSize = int64(r.mh.varPartLength)
 
@@ -635,7 +283,7 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 		if err := r.sh.decode(r.dec); err != nil {
 			return err
 		}
-		traceProtocol(r.upStream, r.sh)
+		r.tracer(r.upStream, r.sh)
 
 		r.msgSize -= int64(r.sh.segmentLength)
 		r.numPart = int(r.sh.noOfParts)
@@ -646,13 +294,13 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 			if err := r.ph.decode(r.dec); err != nil {
 				return err
 			}
-			traceProtocol(r.upStream, r.ph)
+			r.tracer(r.upStream, r.ph)
 
 			r.cntPart++
 
 			r.partRead = false
-			if partCb != nil {
-				partCb(r.ph)
+			if partFn != nil {
+				partFn(r.ph)
 			}
 			if !r.partRead {
 				r.skip()
@@ -662,8 +310,10 @@ func (r *protocolReader) iterateParts(partCb func(ph *partHeader)) error {
 	return r.checkError()
 }
 
-// protocol writer
-type protocolWriter struct {
+// Writer represents a protocol writer.
+type Writer struct {
+	tracer func(up bool, v interface{}) // performance
+
 	wr  *bufio.Writer
 	enc *encoding.Encoder
 
@@ -673,17 +323,20 @@ type protocolWriter struct {
 	// reuse header
 	mh *messageHeader
 	sh *segmentHeader
-	ph *partHeader
+	ph *PartHeader
 }
 
-func newProtocolWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv map[string]string) *protocolWriter {
-	return &protocolWriter{
-		wr:  wr,
-		sv:  sv,
-		enc: encoding.NewEncoder(wr, encoder),
-		mh:  new(messageHeader),
-		sh:  new(segmentHeader),
-		ph:  new(partHeader),
+// NewWriter returns an instance of a protocol writer.
+func NewWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv map[string]string) *Writer {
+	tracer, _ := newTracer()
+	return &Writer{
+		tracer: tracer,
+		wr:     wr,
+		sv:     sv,
+		enc:    encoding.NewEncoder(wr, encoder),
+		mh:     new(messageHeader),
+		sh:     new(segmentHeader),
+		ph:     new(PartHeader),
 	}
 }
 
@@ -694,7 +347,8 @@ const (
 	protocolVersionMinor = 1
 )
 
-func (w *protocolWriter) writeProlog() error {
+// WriteProlog writes the protocol prolog.
+func (w *Writer) WriteProlog() error {
 	req := &initRequest{}
 	req.product.major = productVersionMajor
 	req.product.minor = productVersionMinor
@@ -705,13 +359,13 @@ func (w *protocolWriter) writeProlog() error {
 	if err := req.encode(w.enc); err != nil {
 		return err
 	}
-	traceProtocol(true, req)
+	w.tracer(true, req)
 	return w.wr.Flush()
 }
 
-func (w *protocolWriter) write(sessionID int64, messageType messageType, commit bool, writers ...partWriter) error {
+func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
 	// check on session variables to be send as ClientInfo
-	if w.sv != nil && !w.svSent && messageType.clientInfoSupported() {
+	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
 		writers = append([]partWriter{clientInfo(w.sv)}, writers...)
 		w.svSent = true
 	}
@@ -740,7 +394,7 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 	if err := w.mh.encode(w.enc); err != nil {
 		return err
 	}
-	traceProtocol(true, w.mh)
+	w.tracer(true, w.mh)
 
 	if size > math.MaxInt32 {
 		return fmt.Errorf("message size %d exceeds maximum part header value %d", size, math.MaxInt32)
@@ -757,7 +411,7 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 	if err := w.sh.encode(w.enc); err != nil {
 		return err
 	}
-	traceProtocol(true, w.sh)
+	w.tracer(true, w.sh)
 
 	bufferSize -= segmentHeaderSize
 
@@ -766,7 +420,7 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 		size := partSize[i]
 		pad := padBytes(size)
 
-		w.ph.partKind = part.kind()
+		w.ph.PartKind = part.kind()
 		if err := w.ph.setNumArg(part.numArg()); err != nil {
 			return err
 		}
@@ -776,12 +430,12 @@ func (w *protocolWriter) write(sessionID int64, messageType messageType, commit 
 		if err := w.ph.encode(w.enc); err != nil {
 			return err
 		}
-		traceProtocol(true, w.ph)
+		w.tracer(true, w.ph)
 
 		if err := part.encode(w.enc); err != nil {
 			return err
 		}
-		traceProtocol(true, part)
+		w.tracer(true, part)
 
 		w.enc.Zeroes(pad)
 

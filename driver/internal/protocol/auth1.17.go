@@ -9,13 +9,17 @@
 
 package protocol
 
-import "sort"
+import (
+	"sort"
 
-func (m authMethods) order() []authMethod {
-	methods := make([]authMethod, 0, len(m))
+	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
+)
+
+func (m authMethods) order() []auth.Method {
+	methods := make([]auth.Method, 0, len(m))
 	for _, method := range m {
 		methods = append(methods, method)
 	}
-	sort.Slice(methods, func(i, j int) bool { return methods[i].order() < methods[j].order() })
+	sort.Slice(methods, func(i, j int) bool { return methods[i].Order() < methods[j].Order() })
 	return methods
 }

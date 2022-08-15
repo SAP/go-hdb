@@ -10,12 +10,13 @@
 package protocol
 
 import (
+	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
-func (m authMethods) order() []authMethod {
+func (m authMethods) order() []auth.Method {
 	methods := maps.Values(m)
-	slices.SortFunc(methods, func(a, b authMethod) bool { return a.order() < b.order() })
+	slices.SortFunc(methods, func(a, b auth.Method) bool { return a.Order() < b.Order() })
 	return methods
 }

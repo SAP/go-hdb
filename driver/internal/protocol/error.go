@@ -10,6 +10,29 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
+// ErrorLevel send from database server.
+type errorLevel int8
+
+func (e errorLevel) String() string {
+	switch e {
+	case 0:
+		return "Warning"
+	case 1:
+		return "Error"
+	case 2:
+		return "Fatal Error"
+	default:
+		return ""
+	}
+}
+
+// HDB error level constants.
+const (
+	errorLevelWarning    errorLevel = 0
+	errorLevelError      errorLevel = 1
+	errorLevelFatalError errorLevel = 2
+)
+
 const (
 	sqlStateSize = 5
 	// bytes of fix length fields mod 8
@@ -18,8 +41,9 @@ const (
 	fixLength = 2
 )
 
+// HANA Database errors.
 const (
-	hdbErrAuthenticationFailed = 10
+	HdbErrAuthenticationFailed = 10
 )
 
 type sqlState [sqlStateSize]byte
@@ -34,7 +58,6 @@ type hdbError struct {
 	errorText       []byte
 }
 
-// String implements the Stringer interface.
 func (e *hdbError) String() string {
 	return fmt.Sprintf("errorCode %d errorPosition %d errorTextLength %d errorLevel %s sqlState %s stmtNo %d errorText %s",
 		e.errorCode,
@@ -47,7 +70,6 @@ func (e *hdbError) String() string {
 	)
 }
 
-// Error implements the Error interface.
 func (e *hdbError) Error() string {
 	if e.stmtNo != -1 {
 		return fmt.Sprintf("SQL %s %d - %s (statement no: %d)", e.errorLevel, e.errorCode, e.errorText, e.stmtNo)
@@ -55,32 +77,28 @@ func (e *hdbError) Error() string {
 	return fmt.Sprintf("SQL %s %d - %s", e.errorLevel, e.errorCode, e.errorText)
 }
 
-type hdbErrors struct {
+// HdbErrors represent the collection of errors return by the server.
+type HdbErrors struct {
 	errors []*hdbError
 	//numArg int
 	idx int
 }
 
-// String implements the Stringer interface.
-func (e *hdbErrors) String() string {
-	return e.errors[e.idx].String()
-}
+func (e *HdbErrors) String() string { return e.errors[e.idx].String() }
+func (e *HdbErrors) Error() string  { return e.errors[e.idx].Error() }
 
-// Error implements the golang error interface.
-func (e *hdbErrors) Error() string {
-	return e.errors[e.idx].Error()
+// ErrorsFunc executes fn on all hdb errors.
+func (e *HdbErrors) ErrorsFunc(fn func(err error)) {
+	for _, err := range e.errors {
+		fn(err)
+	}
 }
 
 // NumError implements the driver.Error interface.
-func (e *hdbErrors) NumError() int {
-	if e.errors == nil {
-		return 0
-	}
-	return len(e.errors)
-}
+func (e *HdbErrors) NumError() int { return len(e.errors) }
 
 // SetIdx implements the driver.Error interface.
-func (e *hdbErrors) SetIdx(idx int) {
+func (e *HdbErrors) SetIdx(idx int) {
 	numError := e.NumError()
 	switch {
 	case idx < 0:
@@ -93,94 +111,72 @@ func (e *hdbErrors) SetIdx(idx int) {
 }
 
 // StmtNo implements the driver.Error interface.
-func (e *hdbErrors) StmtNo() int {
-	return e.errors[e.idx].stmtNo
-}
+func (e *HdbErrors) StmtNo() int { return e.errors[e.idx].stmtNo }
 
 // Code implements the driver.Error interface.
-func (e *hdbErrors) Code() int {
-	return int(e.errors[e.idx].errorCode)
-}
+func (e *HdbErrors) Code() int { return int(e.errors[e.idx].errorCode) }
 
 // Position implements the driver.Error interface.
-func (e *hdbErrors) Position() int {
-	return int(e.errors[e.idx].errorPosition)
-}
+func (e *HdbErrors) Position() int { return int(e.errors[e.idx].errorPosition) }
 
 // Level implements the driver.Error interface.
-func (e *hdbErrors) Level() int {
-	return int(e.errors[e.idx].errorLevel)
-}
+func (e *HdbErrors) Level() int { return int(e.errors[e.idx].errorLevel) }
 
 // Text implements the driver.Error interface.
-func (e *hdbErrors) Text() string {
-	return string(e.errors[e.idx].errorText)
-}
+func (e *HdbErrors) Text() string { return string(e.errors[e.idx].errorText) }
 
 // IsWarning implements the driver.Error interface.
-func (e *hdbErrors) IsWarning() bool {
-	return e.errors[e.idx].errorLevel == errorLevelWarning
-}
+func (e *HdbErrors) IsWarning() bool { return e.errors[e.idx].errorLevel == errorLevelWarning }
 
 // IsError implements the driver.Error interface.
-func (e *hdbErrors) IsError() bool {
-	return e.errors[e.idx].errorLevel == errorLevelError
-}
+func (e *HdbErrors) IsError() bool { return e.errors[e.idx].errorLevel == errorLevelError }
 
 // IsFatal implements the driver.Error interface.
-func (e *hdbErrors) IsFatal() bool {
-	return e.errors[e.idx].errorLevel == errorLevelFatalError
-}
+func (e *HdbErrors) IsFatal() bool { return e.errors[e.idx].errorLevel == errorLevelFatalError }
 
-func (e *hdbErrors) setStmtNo(idx, no int) {
+// SetStmtNo sets the staement number of the error.
+func (e *HdbErrors) SetStmtNo(idx, no int) {
 	if idx >= 0 && idx < e.NumError() {
 		e.errors[idx].stmtNo = no
 	}
 }
 
-func (e *hdbErrors) isWarnings() bool {
-	for _, _error := range e.errors {
-		if _error.errorLevel != errorLevelWarning {
+// HasWarnings returns true if the error collection contains warnings, false otherwise.
+func (e *HdbErrors) HasWarnings() bool {
+	for _, err := range e.errors {
+		if err.errorLevel != errorLevelWarning {
 			return false
 		}
 	}
 	return true
 }
 
-func (e *hdbErrors) reset(numArg int) {
-	e.idx = 0 // init error index
-	if e.errors == nil || numArg > cap(e.errors) {
-		e.errors = make([]*hdbError, numArg)
-	} else {
-		e.errors = e.errors[:numArg]
-	}
-}
-
-func (e *hdbErrors) decode(dec *encoding.Decoder, ph *partHeader) error {
-	e.reset(ph.numArg())
+func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
+	e.idx = 0
+	e.errors = resizeHdbErrorSlice(e.errors, ph.numArg())
 
 	numArg := ph.numArg()
 	for i := 0; i < numArg; i++ {
-		_error := e.errors[i]
-		if _error == nil {
-			_error = new(hdbError)
-			e.errors[i] = _error
+		err := e.errors[i]
+		if err == nil {
+			err = new(hdbError)
+			e.errors[i] = err
 		}
 
-		_error.stmtNo = -1
-		_error.errorCode = dec.Int32()
-		_error.errorPosition = dec.Int32()
-		_error.errorTextLength = dec.Int32()
-		_error.errorLevel = errorLevel(dec.Int8())
-		dec.Bytes(_error.sqlState[:])
+		err.stmtNo = -1
+		err.errorCode = dec.Int32()
+		err.errorPosition = dec.Int32()
+		err.errorTextLength = dec.Int32()
+		err.errorLevel = errorLevel(dec.Int8())
+		dec.Bytes(err.sqlState[:])
 
 		// read error text as ASCII data as some errors return invalid CESU-8 characters
 		// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invaid CESU-8 characters>
 		//	if e.errorText, err = rd.ReadCesu8(int(e.errorTextLength)); err != nil {
 		//		return err
 		//	}
-		_error.errorText = make([]byte, int(_error.errorTextLength))
-		dec.Bytes(_error.errorText)
+		err.errorText = make([]byte, int(err.errorTextLength))
+		dec.Bytes(err.errorText)
 
 		if numArg == 1 {
 			// Error (protocol error?):
@@ -197,7 +193,7 @@ func (e *hdbErrors) decode(dec *encoding.Decoder, ph *partHeader) error {
 			break
 		}
 
-		pad := padBytes(int(fixLength + _error.errorTextLength))
+		pad := padBytes(int(fixLength + err.errorTextLength))
 		if pad != 0 {
 			dec.Skip(pad)
 		}

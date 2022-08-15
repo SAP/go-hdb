@@ -101,7 +101,7 @@ func (d *Decoder) Skip(cnt int) {
 	}
 }
 
-// Byte reads and returns a byte.
+// Byte decodes a byte.
 func (d *Decoder) Byte() byte {
 	if _, err := d.readFull(d.b[:1]); err != nil {
 		return 0
@@ -109,22 +109,22 @@ func (d *Decoder) Byte() byte {
 	return d.b[0]
 }
 
-// Bytes reads into a byte slice.
+// Bytes decodes bytes.
 func (d *Decoder) Bytes(p []byte) {
 	d.readFull(p)
 }
 
-// Bool reads and returns a boolean.
+// Bool decodes a boolean.
 func (d *Decoder) Bool() bool {
 	return d.Byte() != 0
 }
 
-// Int8 reads and returns an int8.
+// Int8 decodes an int8.
 func (d *Decoder) Int8() int8 {
 	return int8(d.Byte())
 }
 
-// Int16 reads and returns an int16.
+// Int16 decodes an int16.
 func (d *Decoder) Int16() int16 {
 	if _, err := d.readFull(d.b[:2]); err != nil {
 		return 0
@@ -132,7 +132,7 @@ func (d *Decoder) Int16() int16 {
 	return int16(binary.LittleEndian.Uint16(d.b[:2]))
 }
 
-// Uint16 reads and returns an uint16.
+// Uint16 decodes an uint16.
 func (d *Decoder) Uint16() uint16 {
 	if _, err := d.readFull(d.b[:2]); err != nil {
 		return 0
@@ -140,7 +140,7 @@ func (d *Decoder) Uint16() uint16 {
 	return binary.LittleEndian.Uint16(d.b[:2])
 }
 
-// Uint16ByteOrder reads and returns an uint16 in given byte order.
+// Uint16ByteOrder decodes an uint16 in given byte order.
 func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
 	if _, err := d.readFull(d.b[:2]); err != nil {
 		return 0
@@ -148,7 +148,7 @@ func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
 	return byteOrder.Uint16(d.b[:2])
 }
 
-// Int32 reads and returns an int32.
+// Int32 decodes an int32.
 func (d *Decoder) Int32() int32 {
 	if _, err := d.readFull(d.b[:4]); err != nil {
 		return 0
@@ -156,7 +156,7 @@ func (d *Decoder) Int32() int32 {
 	return int32(binary.LittleEndian.Uint32(d.b[:4]))
 }
 
-// Uint32 reads and returns an uint32.
+// Uint32 decodes an uint32.
 func (d *Decoder) Uint32() uint32 {
 	if _, err := d.readFull(d.b[:4]); err != nil {
 		return 0
@@ -164,7 +164,7 @@ func (d *Decoder) Uint32() uint32 {
 	return binary.LittleEndian.Uint32(d.b[:4])
 }
 
-// Uint32ByteOrder reads and returns an uint32 in given byte order.
+// Uint32ByteOrder decodes an uint32 in given byte order.
 func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
 	if _, err := d.readFull(d.b[:4]); err != nil {
 		return 0
@@ -172,7 +172,7 @@ func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
 	return byteOrder.Uint32(d.b[:4])
 }
 
-// Int64 reads and returns an int64.
+// Int64 decodes an int64.
 func (d *Decoder) Int64() int64 {
 	if _, err := d.readFull(d.b[:8]); err != nil {
 		return 0
@@ -180,7 +180,7 @@ func (d *Decoder) Int64() int64 {
 	return int64(binary.LittleEndian.Uint64(d.b[:8]))
 }
 
-// Uint64 reads and returns an uint64.
+// Uint64 decodes an uint64.
 func (d *Decoder) Uint64() uint64 {
 	if _, err := d.readFull(d.b[:8]); err != nil {
 		return 0
@@ -188,7 +188,7 @@ func (d *Decoder) Uint64() uint64 {
 	return binary.LittleEndian.Uint64(d.b[:8])
 }
 
-// Float32 reads and returns a float32.
+// Float32 decodes a float32.
 func (d *Decoder) Float32() float32 {
 	if _, err := d.readFull(d.b[:4]); err != nil {
 		return 0
@@ -197,7 +197,7 @@ func (d *Decoder) Float32() float32 {
 	return math.Float32frombits(bits)
 }
 
-// Float64 reads and returns a float64.
+// Float64 decodes a float64.
 func (d *Decoder) Float64() float64 {
 	if _, err := d.readFull(d.b[:8]); err != nil {
 		return 0
@@ -206,7 +206,7 @@ func (d *Decoder) Float64() float64 {
 	return math.Float64frombits(bits)
 }
 
-// Decimal reads and returns a decimal.
+// Decimal decodes a decimal.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 	bs := d.b[:decSize]
@@ -251,7 +251,7 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 	return m, exp, nil
 }
 
-// Fixed reads and returns a fixed decimal.
+// Fixed decodes a fixed decimal.
 func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	bs := d.b[:size]
 
@@ -289,7 +289,7 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 	return m
 }
 
-// CESU8Bytes reads a size CESU-8 encoded byte sequence and returns an UTF-8 byte slice.
+// CESU8Bytes decodes CESU-8 into UTF-8 bytes.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 	if d.err != nil {
@@ -307,6 +307,56 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 		return nil, nil
 	}
 
-	r, _, err := transform.Bytes(d.tr, p)
-	return r, err
+	b, _, err := transform.Bytes(d.tr, p)
+	return b, err
+}
+
+// lenInd decodes the length indicator of a variable field.
+func (d *Decoder) lenInd() (n, size int, null bool) {
+	ind := d.Byte() //length indicator
+	switch {
+	default:
+		return 1, 0, false
+	case ind == bytesLenIndNullValue:
+		return 1, 0, true
+	case ind <= bytesLenIndSmall:
+		return 1, int(ind), false
+	case ind == bytesLenIndMedium:
+		return 3, int(d.Int16()), false
+	case ind == bytesLenIndBig:
+		return 5, int(d.Int32()), false
+	}
+}
+
+// LIBytes decodes bytes with length indicator.
+func (d *Decoder) LIBytes() (n int, b []byte) {
+	n, size, null := d.lenInd()
+	if null {
+		return n, nil
+	}
+	b = make([]byte, size)
+	d.Bytes(b)
+	return n + size, b
+}
+
+// LIString decodes a string with length indicator.
+func (d *Decoder) LIString() (n int, s string) {
+	n, b := d.LIBytes()
+	return n, string(b)
+}
+
+// CESU8LIBytes decodes CESU-8 into UTF-8 bytes with lenght indicator.
+func (d *Decoder) CESU8LIBytes() (int, []byte, error) {
+	n, size, null := d.lenInd()
+	if null {
+		return n, nil, nil
+	}
+	b, err := d.CESU8Bytes(size)
+	return n + size, b, err
+}
+
+// CESU8LIString decodes a CESU-8 into a UTF-8 string with length indicator.
+func (d *Decoder) CESU8LIString() (int, string, error) {
+	n, b, err := d.CESU8LIBytes()
+	return n, string(b), err
 }

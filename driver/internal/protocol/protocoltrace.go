@@ -7,11 +7,12 @@ package protocol
 import (
 	"flag"
 	"fmt"
+	"log"
 
 	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
-var protocolTrace = trace.NewTrace("hdb", "protocol")
+var protocolTrace = trace.NewTrace(log.Ldate|log.Ltime, "hdb", "protocol")
 
 var protocolTraceFlag = trace.NewFlag(protocolTrace)
 
@@ -24,28 +25,37 @@ const (
 	downStreamPrefix = "←"
 )
 
-func streamPrefix(upStream bool) string {
-	if upStream {
-		return upStreamPrefix
-	}
-	return downStreamPrefix
-}
+func newTracer() (func(up bool, v interface{}), bool) {
 
-func traceProtocol(up bool, v interface{}) {
-	prefix := streamPrefix(up)
-	var msg string
-
-	switch v.(type) {
-	case *initRequest, *initReply:
-		msg = fmt.Sprintf("%sINI %s", prefix, v)
-	case *messageHeader:
-		msg = fmt.Sprintf("%sMSG %s", prefix, v)
-	case *segmentHeader:
-		msg = fmt.Sprintf(" SEG %s", v)
-	case *partHeader:
-		msg = fmt.Sprintf(" PAR %s", v)
-	default:
-		msg = fmt.Sprintf("     %s", v)
+	prefix := func(up bool) string {
+		if up {
+			return upStreamPrefix
+		}
+		return downStreamPrefix
 	}
-	protocolTrace.Output(2, msg)
+
+	traceNull := func(bool, interface{}) {}
+
+	traceProtocol := func(up bool, v interface{}) {
+		var msg string
+
+		switch v.(type) {
+		case *initRequest, *initReply:
+			msg = fmt.Sprintf("%sINI %s", prefix(up), v)
+		case *messageHeader:
+			msg = fmt.Sprintf("%sMSG %s", prefix(up), v)
+		case *segmentHeader:
+			msg = fmt.Sprintf(" SEG %s", v)
+		case *PartHeader:
+			msg = fmt.Sprintf(" PAR %s", v)
+		default:
+			msg = fmt.Sprintf("     %s", v)
+		}
+		protocolTrace.Output(2, msg)
+	}
+
+	if protocolTrace.On() {
+		return traceProtocol, true
+	}
+	return traceNull, false
 }

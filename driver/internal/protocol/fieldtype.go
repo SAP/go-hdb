@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -34,14 +33,6 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
-// string / binary length indicators
-const (
-	bytesLenIndNullValue byte = 255
-	bytesLenIndSmall     byte = 245
-	bytesLenIndMedium    byte = 246
-	bytesLenIndBig       byte = 247
-)
-
 const (
 	realNullValue   uint32 = ^uint32(0)
 	doubleNullValue uint64 = ^uint64(0)
@@ -57,34 +48,22 @@ const (
 	secondtimeNullValue int32 = 86402
 )
 
-type locatorID uint64 // byte[locatorIdSize]
+// LocatorID represents a locotor id.
+type LocatorID uint64 // byte[locatorIdSize]
 
 var timeReflectType = reflect.TypeOf((*time.Time)(nil)).Elem()
 var bytesReflectType = reflect.TypeOf((*[]byte)(nil)).Elem()
 var stringReflectType = reflect.TypeOf((*string)(nil)).Elem()
 
-const (
-	booleanFieldSize    = 1
-	tinyintFieldSize    = 1
-	smallintFieldSize   = 2
-	integerFieldSize    = 4
-	bigintFieldSize     = 8
-	realFieldSize       = 4
-	doubleFieldSize     = 8
-	dateFieldSize       = 4
-	timeFieldSize       = 4
-	timestampFieldSize  = dateFieldSize + timeFieldSize
-	longdateFieldSize   = 8
-	seconddateFieldSize = 8
-	daydateFieldSize    = 4
-	secondtimeFieldSize = 4
-	decimalFieldSize    = 16
-	fixed8FieldSize     = 8
-	fixed12FieldSize    = 12
-	fixed16FieldSize    = 16
+const lobInputParametersSize = 9
 
-	lobInputParametersSize = 9
-)
+type fieldConverter interface {
+	convert(v interface{}) (interface{}, error)
+}
+
+type cesu8FieldConverter interface {
+	convertCESU8(t transform.Transformer, v interface{}) (interface{}, error)
+}
 
 type fieldType interface {
 	/*
@@ -93,7 +72,6 @@ type fieldType interface {
 		- so the check needs to 'fail fast'
 		- fmt.Errorf is too slow because contructor formats the error -> use ConvertError
 	*/
-	convert(s *Session, v interface{}) (interface{}, error)
 	prmSize(v interface{}) int
 	encodePrm(e *encoding.Encoder, v interface{}) error
 	decodeRes(d *encoding.Decoder) (interface{}, error)
@@ -124,30 +102,32 @@ var (
 	lobCESU8Type   = _lobCESU8Type{}
 )
 
-type _booleanType struct{}
-type _tinyintType struct{}
-type _smallintType struct{}
-type _integerType struct{}
-type _bigintType struct{}
-type _realType struct{}
-type _doubleType struct{}
-type _dateType struct{}
-type _timeType struct{}
-type _timestampType struct{}
-type _longdateType struct{}
-type _seconddateType struct{}
-type _daydateType struct{}
-type _secondtimeType struct{}
-type _decimalType struct{}
-type _fixed8Type struct{ prec, scale int }
-type _fixed12Type struct{ prec, scale int }
-type _fixed16Type struct{ prec, scale int }
-type _varType struct{}
-type _alphaType struct{}
-type _hexType struct{}
-type _cesu8Type struct{}
-type _lobVarType struct{}
-type _lobCESU8Type struct{}
+type (
+	_booleanType    struct{}
+	_tinyintType    struct{}
+	_smallintType   struct{}
+	_integerType    struct{}
+	_bigintType     struct{}
+	_realType       struct{}
+	_doubleType     struct{}
+	_dateType       struct{}
+	_timeType       struct{}
+	_timestampType  struct{}
+	_longdateType   struct{}
+	_seconddateType struct{}
+	_daydateType    struct{}
+	_secondtimeType struct{}
+	_decimalType    struct{}
+	_fixed8Type     struct{ prec, scale int }
+	_fixed12Type    struct{ prec, scale int }
+	_fixed16Type    struct{ prec, scale int }
+	_varType        struct{}
+	_alphaType      struct{}
+	_hexType        struct{}
+	_cesu8Type      struct{}
+	_lobVarType     struct{}
+	_lobCESU8Type   struct{}
+)
 
 var (
 	_ fieldType = (*_booleanType)(nil)
@@ -203,83 +183,83 @@ func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
 // convert
-func (ft _booleanType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _booleanType) convert(v interface{}) (interface{}, error) {
 	return convertBool(ft, v)
 }
 
-func (ft _tinyintType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _tinyintType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minTinyint, maxTinyint)
 }
-func (ft _smallintType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _smallintType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minSmallint, maxSmallint)
 }
-func (ft _integerType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _integerType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minInteger, maxInteger)
 }
-func (ft _bigintType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _bigintType) convert(v interface{}) (interface{}, error) {
 	return convertInteger(ft, v, minBigint, maxBigint)
 }
 
-func (ft _realType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _realType) convert(v interface{}) (interface{}, error) {
 	return convertFloat(ft, v, maxReal)
 }
-func (ft _doubleType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _doubleType) convert(v interface{}) (interface{}, error) {
 	return convertFloat(ft, v, maxDouble)
 }
 
-func (ft _dateType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _dateType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _timeType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _timeType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _timestampType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _timestampType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _longdateType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _longdateType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _seconddateType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _seconddateType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _daydateType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _daydateType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
-func (ft _secondtimeType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _secondtimeType) convert(v interface{}) (interface{}, error) {
 	return convertTime(ft, v)
 }
 
-func (ft _decimalType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _decimalType) convert(v interface{}) (interface{}, error) {
 	return convertDecimal(ft, v)
 }
-func (ft _fixed8Type) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _fixed8Type) convert(v interface{}) (interface{}, error) {
 	return convertDecimal(ft, v)
 }
-func (ft _fixed12Type) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _fixed12Type) convert(v interface{}) (interface{}, error) {
 	return convertDecimal(ft, v)
 }
-func (ft _fixed16Type) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _fixed16Type) convert(v interface{}) (interface{}, error) {
 	return convertDecimal(ft, v)
 }
 
-func (ft _varType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _varType) convert(v interface{}) (interface{}, error) {
 	return convertBytes(ft, v)
 }
-func (ft _alphaType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _alphaType) convert(v interface{}) (interface{}, error) {
 	return convertBytes(ft, v)
 }
-func (ft _hexType) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _hexType) convert(v interface{}) (interface{}, error) {
 	return convertBytes(ft, v)
 }
-func (ft _cesu8Type) convert(s *Session, v interface{}) (interface{}, error) {
+func (ft _cesu8Type) convert(v interface{}) (interface{}, error) {
 	return convertBytes(ft, v)
 }
 
-func (ft _lobVarType) convert(s *Session, v interface{}) (interface{}, error) {
-	return convertLob(s, ft, v, false)
+func (ft _lobVarType) convert(v interface{}) (interface{}, error) {
+	return convertLob(nil, ft, v)
 }
-func (ft _lobCESU8Type) convert(s *Session, v interface{}) (interface{}, error) {
-	return convertLob(s, ft, v, true)
+func (ft _lobCESU8Type) convertCESU8(t transform.Transformer, v interface{}) (interface{}, error) {
+	return convertLob(t, ft, v)
 }
 
 // ReadProvider is the interface wrapping the Reader which provides an io.Reader.
@@ -288,7 +268,7 @@ type ReadProvider interface {
 }
 
 // Lob
-func convertLob(s *Session, ft fieldType, v interface{}, isCharBased bool) (driver.Value, error) {
+func convertLob(t transform.Transformer, ft fieldType, v interface{}) (driver.Value, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -306,41 +286,41 @@ func convertLob(s *Session, ft fieldType, v interface{}, isCharBased bool) (driv
 		return nil, newConvertError(ft, v, nil)
 	}
 
-	if isCharBased {
-		rd = transform.NewReader(rd, s.attrs.cesu8Encoder()) // CESU8 decoder
+	if t != nil { // cesu8Encoder
+		rd = transform.NewReader(rd, t)
 	}
 
 	return newLobInDescr(rd), nil
 }
 
 // prm size
-func (_booleanType) prmSize(interface{}) int    { return booleanFieldSize }
-func (_tinyintType) prmSize(interface{}) int    { return tinyintFieldSize }
-func (_smallintType) prmSize(interface{}) int   { return smallintFieldSize }
-func (_integerType) prmSize(interface{}) int    { return integerFieldSize }
-func (_bigintType) prmSize(interface{}) int     { return bigintFieldSize }
-func (_realType) prmSize(interface{}) int       { return realFieldSize }
-func (_doubleType) prmSize(interface{}) int     { return doubleFieldSize }
-func (_dateType) prmSize(interface{}) int       { return dateFieldSize }
-func (_timeType) prmSize(interface{}) int       { return timeFieldSize }
-func (_timestampType) prmSize(interface{}) int  { return timestampFieldSize }
-func (_longdateType) prmSize(interface{}) int   { return longdateFieldSize }
-func (_seconddateType) prmSize(interface{}) int { return seconddateFieldSize }
-func (_daydateType) prmSize(interface{}) int    { return daydateFieldSize }
-func (_secondtimeType) prmSize(interface{}) int { return secondtimeFieldSize }
-func (_decimalType) prmSize(interface{}) int    { return decimalFieldSize }
-func (_fixed8Type) prmSize(interface{}) int     { return fixed8FieldSize }
-func (_fixed12Type) prmSize(interface{}) int    { return fixed12FieldSize }
-func (_fixed16Type) prmSize(interface{}) int    { return fixed16FieldSize }
+func (_booleanType) prmSize(interface{}) int    { return encoding.BooleanFieldSize }
+func (_tinyintType) prmSize(interface{}) int    { return encoding.TinyintFieldSize }
+func (_smallintType) prmSize(interface{}) int   { return encoding.SmallintFieldSize }
+func (_integerType) prmSize(interface{}) int    { return encoding.IntegerFieldSize }
+func (_bigintType) prmSize(interface{}) int     { return encoding.BigintFieldSize }
+func (_realType) prmSize(interface{}) int       { return encoding.RealFieldSize }
+func (_doubleType) prmSize(interface{}) int     { return encoding.DoubleFieldSize }
+func (_dateType) prmSize(interface{}) int       { return encoding.DateFieldSize }
+func (_timeType) prmSize(interface{}) int       { return encoding.TimeFieldSize }
+func (_timestampType) prmSize(interface{}) int  { return encoding.TimestampFieldSize }
+func (_longdateType) prmSize(interface{}) int   { return encoding.LongdateFieldSize }
+func (_seconddateType) prmSize(interface{}) int { return encoding.SeconddateFieldSize }
+func (_daydateType) prmSize(interface{}) int    { return encoding.DaydateFieldSize }
+func (_secondtimeType) prmSize(interface{}) int { return encoding.SecondtimeFieldSize }
+func (_decimalType) prmSize(interface{}) int    { return encoding.DecimalFieldSize }
+func (_fixed8Type) prmSize(interface{}) int     { return encoding.Fixed8FieldSize }
+func (_fixed12Type) prmSize(interface{}) int    { return encoding.Fixed12FieldSize }
+func (_fixed16Type) prmSize(interface{}) int    { return encoding.Fixed16FieldSize }
 func (_lobVarType) prmSize(v interface{}) int   { return lobInputParametersSize }
 func (_lobCESU8Type) prmSize(v interface{}) int { return lobInputParametersSize }
 
 func (ft _varType) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return varBytesSize(len(v))
+		return encoding.VarBytesSize(len(v))
 	case string:
-		return varBytesSize(len(v))
+		return encoding.VarBytesSize(len(v))
 	default:
 		return -1
 	}
@@ -352,24 +332,11 @@ func (ft _hexType) prmSize(v interface{}) int { return varType.prmSize(v) / 2 }
 func (ft _cesu8Type) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return varBytesSize(cesu8.Size(v))
+		return encoding.VarBytesSize(cesu8.Size(v))
 	case string:
-		return varBytesSize(cesu8.StringSize(v))
+		return encoding.VarBytesSize(cesu8.StringSize(v))
 	default:
 		return -1
-	}
-}
-
-func varBytesSize(size int) int {
-	switch {
-	default:
-		return -1
-	case size <= int(bytesLenIndSmall):
-		return size + 1
-	case size <= math.MaxInt16:
-		return size + 3
-	case size <= math.MaxInt32:
-		return size + 5
 	}
 }
 
@@ -535,15 +502,15 @@ func (ft _decimalType) encodePrm(e *encoding.Encoder, v interface{}) error {
 }
 
 func (ft _fixed8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	return encodeFixed(e, v, fixed8FieldSize, ft.prec, ft.scale)
+	return encodeFixed(e, v, encoding.Fixed8FieldSize, ft.prec, ft.scale)
 }
 
 func (ft _fixed12Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	return encodeFixed(e, v, fixed12FieldSize, ft.prec, ft.scale)
+	return encodeFixed(e, v, encoding.Fixed12FieldSize, ft.prec, ft.scale)
 }
 
 func (ft _fixed16Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	return encodeFixed(e, v, fixed16FieldSize, ft.prec, ft.scale)
+	return encodeFixed(e, v, encoding.Fixed16FieldSize, ft.prec, ft.scale)
 }
 
 func encodeFixed(e *encoding.Encoder, v interface{}, size, prec, scale int) error {
@@ -566,9 +533,9 @@ func encodeFixed(e *encoding.Encoder, v interface{}, size, prec, scale int) erro
 func (ft _varType) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
 	case []byte:
-		return encodeVarBytes(e, v)
+		return e.LIBytes(v)
 	case string:
-		return encodeVarString(e, v)
+		return e.LIString(v)
 	default:
 		panic("invalid var value") // should never happen
 	}
@@ -584,81 +551,31 @@ func (ft _hexType) encodePrm(e *encoding.Encoder, v interface{}) error {
 		if err != nil {
 			return err
 		}
-		return encodeVarBytes(e, b)
+		return e.LIBytes(b)
 	case string:
 		b, err := hex.DecodeString(v)
 		if err != nil {
 			return err
 		}
-		return encodeVarBytes(e, b)
+		return e.LIBytes(b)
 	default:
 		panic("invalid hex value") // should never happen
 	}
 }
 
-func encodeVarBytesSize(e *encoding.Encoder, size int) error {
-	switch {
-	default:
-		return fmt.Errorf("max argument length %d of string exceeded", size)
-	case size <= int(bytesLenIndSmall):
-		e.Byte(byte(size))
-	case size <= math.MaxInt16:
-		e.Byte(bytesLenIndMedium)
-		e.Int16(int16(size))
-	case size <= math.MaxInt32:
-		e.Byte(bytesLenIndBig)
-		e.Int32(int32(size))
-	}
-	return nil
-}
-
-func encodeVarBytes(e *encoding.Encoder, p []byte) error {
-	if err := encodeVarBytesSize(e, len(p)); err != nil {
-		return err
-	}
-	e.Bytes(p)
-	return nil
-}
-
-func encodeVarString(e *encoding.Encoder, s string) error {
-	if err := encodeVarBytesSize(e, len(s)); err != nil {
-		return err
-	}
-	e.String(s)
-	return nil
-}
-
 func (ft _cesu8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
 	switch v := v.(type) {
 	case []byte:
-		return encodeCESU8Bytes(e, v)
+		return e.CESU8LIBytes(v)
 	case string:
-		return encodeCESU8String(e, v)
+		return e.CESU8LIString(v)
 	default:
 		panic("invalid cesu8 value") // should never happen
 	}
 }
 
-func encodeCESU8Bytes(e *encoding.Encoder, p []byte) error {
-	size := cesu8.Size(p)
-	if err := encodeVarBytesSize(e, size); err != nil {
-		return err
-	}
-	_, err := e.CESU8Bytes(p)
-	return err
-}
-
-func encodeCESU8String(e *encoding.Encoder, s string) error {
-	size := cesu8.StringSize(s)
-	if err := encodeVarBytesSize(e, size); err != nil {
-		return err
-	}
-	_, err := e.CESU8String(s)
-	return err
-}
-
 func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
-	lobInDescr, ok := v.(*lobInDescr)
+	lobInDescr, ok := v.(*LobInDescr)
 	if !ok {
 		panic("invalid lob var value") // should never happen
 	}
@@ -666,14 +583,14 @@ func (ft _lobVarType) encodePrm(e *encoding.Encoder, v interface{}) error {
 }
 
 func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v interface{}) error {
-	lobInDescr, ok := v.(*lobInDescr)
+	lobInDescr, ok := v.(*LobInDescr)
 	if !ok {
 		panic("invalid lob cesu8 value") // should never happen
 	}
 	return encodeLobPrm(e, lobInDescr)
 }
 
-func encodeLobPrm(e *encoding.Encoder, descr *lobInDescr) error {
+func encodeLobPrm(e *encoding.Encoder, descr *LobInDescr) error {
 	e.Byte(byte(descr.opt))
 	e.Int32(int32(len(descr.b)))
 	e.Int32(int32(descr.pos))
@@ -857,19 +774,19 @@ func (ft _fixed8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
 		return nil, nil
 	}
-	return decodeFixed(d, fixed8FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed8FieldSize, ft.prec, ft.scale)
 }
 func (ft _fixed12Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
 		return nil, nil
 	}
-	return decodeFixed(d, fixed12FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed12FieldSize, ft.prec, ft.scale)
 }
 func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
 	if !d.Bool() { //null value
 		return nil, nil
 	}
-	return decodeFixed(d, fixed16FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed16FieldSize, ft.prec, ft.scale)
 }
 
 func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error) {
@@ -881,104 +798,74 @@ func decodeFixed(d *encoding.Decoder, size, prec, scale int) (interface{}, error
 }
 
 func (_varType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
 		return nil, nil
 	}
-	b := make([]byte, size)
-	d.Bytes(b)
 	return b, nil
 }
 
 func (_alphaType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
 		return nil, nil
 	}
-	switch d.Dfv() {
-	case DfvLevel1: // like _varType
-		b := make([]byte, size)
-		d.Bytes(b)
-		return b, nil
-	default:
-		/*
-			byte:
-			- high bit set -> numeric
-			- high bit unset -> alpha
-			- bits 0-6: field size
-		*/
-		d.Byte() // ignore for the moment
-		b := make([]byte, size-1)
-		d.Bytes(b)
+	if d.Dfv() == DfvLevel1 { // like _varType
 		return b, nil
 	}
+	/*
+		first byte:
+		- high bit set -> numeric
+		- high bit unset -> alpha
+		- bits 0-6: field size
+
+		ignore first byte for now
+	*/
+	return b[1:], nil
 }
 
 func (_hexType) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
 		return nil, nil
 	}
-	b := make([]byte, size)
-	d.Bytes(b)
 	return hex.EncodeToString(b), nil
 }
 
 func (_cesu8Type) decodeRes(d *encoding.Decoder) (interface{}, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
+	_, b, err := d.CESU8LIBytes()
+	if err != nil {
+		return nil, err
+	}
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
 		return nil, nil
 	}
-	return d.CESU8Bytes(size)
-}
-
-func decodeVarBytes(d *encoding.Decoder) ([]byte, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
-		return nil, nil
-	}
-	b := make([]byte, size)
-	d.Bytes(b)
 	return b, nil
 }
 
-func decodeVarString(d *encoding.Decoder) (string, error) {
-	b, err := decodeVarBytes(d)
-	return string(b), err
-}
-
-func decodeCESU8Bytes(d *encoding.Decoder) ([]byte, error) {
-	size, null := decodeVarBytesSize(d)
-	if null {
-		return nil, nil
-	}
-	return d.CESU8Bytes(size)
-}
-
-func decodeCESU8String(d *encoding.Decoder) (string, error) {
-	b, err := decodeCESU8Bytes(d)
-	return string(b), err
-}
-
-func decodeVarBytesSize(d *encoding.Decoder) (int, bool) {
-	ind := d.Byte() //length indicator
-	switch {
-	default:
-		return 0, false
-	case ind == bytesLenIndNullValue:
-		return 0, true
-	case ind <= bytesLenIndSmall:
-		return int(ind), false
-	case ind == bytesLenIndMedium:
-		return int(d.Int16()), false
-	case ind == bytesLenIndBig:
-		return int(d.Int32()), false
-	}
-}
-
 func decodeLobPrm(d *encoding.Decoder) (interface{}, error) {
-	descr := &lobInDescr{}
-	descr.opt = lobOptions(d.Byte())
+	descr := &LobInDescr{}
+	descr.opt = LobOptions(d.Byte())
 	descr._size = int(d.Int32())
 	descr.pos = int(d.Int32())
 	return nil, nil
@@ -992,19 +879,19 @@ func (_lobCESU8Type) decodePrm(d *encoding.Decoder) (interface{}, error) {
 }
 
 func decodeLobRes(d *encoding.Decoder, isCharBased bool) (interface{}, error) {
-	descr := &lobOutDescr{isCharBased: isCharBased}
+	descr := &LobOutDescr{IsCharBased: isCharBased}
 	descr.ltc = lobTypecode(d.Int8())
-	descr.opt = lobOptions(d.Int8())
-	if descr.opt.isNull() {
+	descr.Opt = LobOptions(d.Int8())
+	if descr.Opt.isNull() {
 		return nil, nil
 	}
 	d.Skip(2)
-	descr.numChar = d.Int64()
+	descr.NumChar = d.Int64()
 	descr.numByte = d.Int64()
-	descr.id = locatorID(d.Uint64())
+	descr.ID = LocatorID(d.Uint64())
 	size := int(d.Int32())
-	descr.b = make([]byte, size)
-	d.Bytes(descr.b)
+	descr.B = make([]byte, size)
+	d.Bytes(descr.B)
 	return descr, nil
 }
 

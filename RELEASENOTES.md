@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.107
 
+Release 0.107.3 (upgrade urgency: low)
+
+- Changed stats configuration
+- Added metrics
+- Source code cleanups
+
 Release 0.107.2 (upgrade urgency: low)
 
 - Fixed stats for commit

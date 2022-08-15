@@ -9,104 +9,103 @@ import (
 	"strings"
 )
 
-//go:generate stringer -type=typeCode
-
-// typeCode identify the type of a field transferred to or from the database.
-type typeCode byte
+// TypeCode identify the type of a field transferred to or from the database.
+type TypeCode byte
 
 // null value indicator is high bit
 
 const (
-	tcNullL             typeCode = 0x00
-	tcTinyint           typeCode = 0x01
-	tcSmallint          typeCode = 0x02
-	tcInteger           typeCode = 0x03
-	tcBigint            typeCode = 0x04
-	tcDecimal           typeCode = 0x05
-	tcReal              typeCode = 0x06
-	tcDouble            typeCode = 0x07
-	tcChar              typeCode = 0x08
-	tcVarchar           typeCode = 0x09 // changed from tcVarchar1 to tcVarchar (ref hdbclient)
-	tcNchar             typeCode = 0x0A
-	tcNvarchar          typeCode = 0x0B
-	tcBinary            typeCode = 0x0C
-	tcVarbinary         typeCode = 0x0D
-	tcDate              typeCode = 0x0E
-	tcTime              typeCode = 0x0F
-	tcTimestamp         typeCode = 0x10
-	tcTimetz            typeCode = 0x11
-	tcTimeltz           typeCode = 0x12
-	tcTimestampTz       typeCode = 0x13
-	tcTimestampLtz      typeCode = 0x14
-	tcIntervalYm        typeCode = 0x15
-	tcIntervalDs        typeCode = 0x16
-	tcRowid             typeCode = 0x17
-	tcUrowid            typeCode = 0x18
-	tcClob              typeCode = 0x19
-	tcNclob             typeCode = 0x1A
-	tcBlob              typeCode = 0x1B
-	tcBoolean           typeCode = 0x1C
-	tcString            typeCode = 0x1D
-	tcNstring           typeCode = 0x1E
-	tcLocator           typeCode = 0x1F
-	tcNlocator          typeCode = 0x20
-	tcBstring           typeCode = 0x21
-	tcDecimalDigitArray typeCode = 0x22
-	tcVarchar2          typeCode = 0x23
-	tcTable             typeCode = 0x2D
-	tcSmalldecimal      typeCode = 0x2f // inserted (not existent in hdbclient)
-	tcAbapstream        typeCode = 0x30
-	tcAbapstruct        typeCode = 0x31
-	tcAarray            typeCode = 0x32
-	tcText              typeCode = 0x33
-	tcShorttext         typeCode = 0x34
-	tcBintext           typeCode = 0x35
-	tcAlphanum          typeCode = 0x37
-	tcLongdate          typeCode = 0x3D
-	tcSeconddate        typeCode = 0x3E
-	tcDaydate           typeCode = 0x3F
-	tcSecondtime        typeCode = 0x40
-	tcClocator          typeCode = 0x46
-	tcBlobDiskReserved  typeCode = 0x47
-	tcClobDiskReserved  typeCode = 0x48
-	tcNclobDiskReserved typeCode = 0x49
-	tcStGeometry        typeCode = 0x4A
-	tcStPoint           typeCode = 0x4B
-	tcFixed16           typeCode = 0x4C
-	tcAbapItab          typeCode = 0x4D
-	tcRecordRowStore    typeCode = 0x4E
-	tcRecordColumnStore typeCode = 0x4F
-	tcFixed8            typeCode = 0x51
-	tcFixed12           typeCode = 0x52
-	tcCiphertext        typeCode = 0x5A
+	tcNullL             TypeCode = 0x00
+	tcTinyint           TypeCode = 0x01
+	tcSmallint          TypeCode = 0x02
+	tcInteger           TypeCode = 0x03
+	tcBigint            TypeCode = 0x04
+	tcDecimal           TypeCode = 0x05
+	tcReal              TypeCode = 0x06
+	tcDouble            TypeCode = 0x07
+	tcChar              TypeCode = 0x08
+	tcVarchar           TypeCode = 0x09 // changed from tcVarchar1 to tcVarchar (ref hdbclient)
+	tcNchar             TypeCode = 0x0A
+	tcNvarchar          TypeCode = 0x0B
+	tcBinary            TypeCode = 0x0C
+	tcVarbinary         TypeCode = 0x0D
+	tcDate              TypeCode = 0x0E
+	tcTime              TypeCode = 0x0F
+	tcTimestamp         TypeCode = 0x10
+	tcTimetz            TypeCode = 0x11
+	tcTimeltz           TypeCode = 0x12
+	tcTimestampTz       TypeCode = 0x13
+	tcTimestampLtz      TypeCode = 0x14
+	tcIntervalYm        TypeCode = 0x15
+	tcIntervalDs        TypeCode = 0x16
+	tcRowid             TypeCode = 0x17
+	tcUrowid            TypeCode = 0x18
+	tcClob              TypeCode = 0x19
+	tcNclob             TypeCode = 0x1A
+	tcBlob              TypeCode = 0x1B
+	tcBoolean           TypeCode = 0x1C
+	tcString            TypeCode = 0x1D
+	tcNstring           TypeCode = 0x1E
+	tcLocator           TypeCode = 0x1F
+	tcNlocator          TypeCode = 0x20
+	tcBstring           TypeCode = 0x21
+	tcDecimalDigitArray TypeCode = 0x22
+	tcVarchar2          TypeCode = 0x23
+	tcTable             TypeCode = 0x2D
+	tcSmalldecimal      TypeCode = 0x2f // inserted (not existent in hdbclient)
+	tcAbapstream        TypeCode = 0x30
+	tcAbapstruct        TypeCode = 0x31
+	tcAarray            TypeCode = 0x32
+	tcText              TypeCode = 0x33
+	tcShorttext         TypeCode = 0x34
+	tcBintext           TypeCode = 0x35
+	tcAlphanum          TypeCode = 0x37
+	tcLongdate          TypeCode = 0x3D
+	tcSeconddate        TypeCode = 0x3E
+	tcDaydate           TypeCode = 0x3F
+	tcSecondtime        TypeCode = 0x40
+	tcClocator          TypeCode = 0x46
+	tcBlobDiskReserved  TypeCode = 0x47
+	tcClobDiskReserved  TypeCode = 0x48
+	tcNclobDiskReserved TypeCode = 0x49
+	tcStGeometry        TypeCode = 0x4A
+	tcStPoint           TypeCode = 0x4B
+	tcFixed16           TypeCode = 0x4C
+	tcAbapItab          TypeCode = 0x4D
+	tcRecordRowStore    TypeCode = 0x4E
+	tcRecordColumnStore TypeCode = 0x4F
+	tcFixed8            TypeCode = 0x51
+	tcFixed12           TypeCode = 0x52
+	tcCiphertext        TypeCode = 0x5A
 
 	// special null values
-	tcSecondtimeNull typeCode = 0xB0
+	tcSecondtimeNull TypeCode = 0xB0
 
-	// additional internal typecodes
-	tcTableRef  typeCode = 0x7e // 126
-	tcTableRows typeCode = 0x7f // 127
+	// TcTableRef is the TypeCode for table references.
+	TcTableRef TypeCode = 0x7e // 126
+	// TcTableRows is the TypeCode for table rows.
+	TcTableRows TypeCode = 0x7f // 127
 )
 
-func (tc typeCode) isLob() bool {
+// IsLob returns true if the TypeCode represents a Lob, false otherwise.
+func (tc TypeCode) IsLob() bool {
 	return tc == tcClob || tc == tcNclob || tc == tcBlob || tc == tcText || tc == tcBintext || tc == tcLocator || tc == tcNlocator
 }
 
-func (tc typeCode) isVariableLength() bool {
+func (tc TypeCode) isVariableLength() bool {
 	return tc == tcChar || tc == tcNchar || tc == tcVarchar || tc == tcNvarchar || tc == tcBinary || tc == tcVarbinary || tc == tcShorttext || tc == tcAlphanum
 }
 
-func (tc typeCode) isDecimalType() bool {
+func (tc TypeCode) isDecimalType() bool {
 	return tc == tcSmalldecimal || tc == tcDecimal || tc == tcFixed8 || tc == tcFixed12 || tc == tcFixed16
 }
 
-//
-func (tc typeCode) supportNullValue() bool {
+func (tc TypeCode) supportNullValue() bool {
 	// boolean values: false =:= 0; null =:= 1; true =:= 2
 	return !(tc == tcBoolean)
 }
 
-func (tc typeCode) nullValue() typeCode {
+func (tc TypeCode) nullValue() TypeCode {
 	if tc == tcSecondtime {
 		/*
 			HDB bug: secondtime null value cannot be set by setting high bit
@@ -126,7 +125,7 @@ func (tc typeCode) nullValue() typeCode {
 }
 
 // see hdbclient
-func (tc typeCode) encTc() typeCode {
+func (tc TypeCode) encTc() TypeCode {
 	switch tc {
 	default:
 		return tc
@@ -141,7 +140,7 @@ tcBintext:
 - see dataTypeMap and encTc
 */
 
-func (tc typeCode) dataType() DataType {
+func (tc TypeCode) dataType() DataType {
 	// performance: use switch instead of map
 	switch tc {
 	case tcBoolean:
@@ -164,26 +163,26 @@ func (tc typeCode) dataType() DataType {
 		return DtTime
 	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
 		return DtDecimal
-	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcStPoint, tcStGeometry, tcTableRef:
+	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcStPoint, tcStGeometry, TcTableRef:
 		return DtString
 	case tcBinary, tcVarbinary:
 		return DtBytes
 	case tcBlob, tcClob, tcNclob, tcText, tcBintext:
 		return DtLob
-	case tcTableRows:
+	case TcTableRows:
 		return DtRows
 	default:
-		panic(fmt.Sprintf("Missing DataType for typeCode %s", tc))
+		panic(fmt.Sprintf("missing DataType for typeCode %s", tc))
 	}
 }
 
 // typeName returns the database type name.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (tc typeCode) typeName() string {
+func (tc TypeCode) typeName() string {
 	return strings.ToUpper(tc.String()[2:])
 }
 
-func (tc typeCode) fieldType(length, fraction int) fieldType {
+func (tc TypeCode) fieldType(length, fraction int) fieldType {
 	// performance: use switch instead of map
 	switch tc {
 	case tcBoolean:
@@ -239,6 +238,27 @@ func (tc typeCode) fieldType(length, fraction int) fieldType {
 	case tcFixed16:
 		return _fixed16Type{prec: length, scale: fraction} // used for decimals(x,y) 2^63 - 1 (int128)
 	default:
-		panic(fmt.Sprintf("Missing FieldType for typeCode %s", tc))
+		panic(fmt.Sprintf("missing fieldType for typeCode %s", tc))
+	}
+}
+
+func (tc TypeCode) optType() optType {
+	switch tc {
+	case tcBoolean:
+		return optBooleanType
+	case tcTinyint:
+		return optTinyintType
+	case tcInteger:
+		return optIntegerType
+	case tcBigint:
+		return optBigintType
+	case tcDouble:
+		return optDoubleType
+	case tcString:
+		return optStringType
+	case tcBstring:
+		return optBstringType
+	default:
+		panic(fmt.Sprintf("missing optType for typeCode %s", tc))
 	}
 }

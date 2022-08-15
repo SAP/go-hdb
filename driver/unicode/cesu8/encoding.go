@@ -74,7 +74,7 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		}
 		// check if additional bytes needed (ErrShortSrc) only
 		// - if further bytes are potentially available (!atEOF) and
-		// - remainig buffer smaller than max size for an ecoded UTF-8 rune
+		// - remaining buffer smaller than max size for an ecoded UTF-8 rune
 		if !atEOF && len(src[i:]) < utf8.UTFMax {
 			if !utf8.FullRune(src[i:]) {
 				return j, i, transform.ErrShortSrc
@@ -132,7 +132,7 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		}
 		// check if additional bytes needed (ErrShortSrc) only
 		// - if further bytes are potentially available (!atEOF) and
-		// - remainig buffer smaller than max size for an ecoded CESU-8 rune
+		// - remaining buffer smaller than max size for an ecoded CESU-8 rune
 		if !atEOF && len(src[i:]) < CESUMax {
 			if !FullRune(src[i:]) {
 				return j, i, transform.ErrShortSrc

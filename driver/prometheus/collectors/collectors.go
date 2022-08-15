@@ -19,6 +19,11 @@ type stats interface {
 	Stats() driver.Stats
 }
 
+var (
+	statsNumTime   = driver.StatsNumTime()
+	statsTimeTexts = driver.StatsTimeTexts()
+)
+
 type collector struct {
 	s stats
 
@@ -27,7 +32,7 @@ type collector struct {
 	openStatements   *prometheus.Desc
 	readBytes        *prometheus.Desc
 	writtenBytes     *prometheus.Desc
-	sqlDurations     *prometheus.Desc
+	timeStats        *prometheus.Desc
 }
 
 func newCollector(s stats, subsystem string, labels prometheus.Labels) prometheus.Collector {
@@ -65,10 +70,10 @@ func newCollector(s stats, subsystem string, labels prometheus.Labels) prometheu
 			nil,
 			labels,
 		),
-		sqlDurations: prometheus.NewDesc(
-			fqName("sql_duration"),
-			fmt.Sprintf("The duration measured in milliseconds for the different sql command categories of %s.", subsystem),
-			[]string{"sql"},
+		timeStats: prometheus.NewDesc(
+			fqName("time_stats"),
+			fmt.Sprintf("The spent time measured in milliseconds for the different time categories of %s.", subsystem),
+			[]string{"time"},
 			labels,
 		),
 	}
@@ -81,12 +86,12 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.openStatements
 	ch <- c.readBytes
 	ch <- c.writtenBytes
-	for i := 0; i < driver.StatsNumSQL; i++ {
-		ch <- c.sqlDurations
+	for i := 0; i < statsNumTime; i++ {
+		ch <- c.timeStats
 	}
 }
 
-func durationStatBuckets(s *driver.DurationStat) map[float64]uint64 {
+func timeStatBuckets(s *driver.TimeStat) map[float64]uint64 {
 	buckets := map[float64]uint64{}
 	for k, v := range s.Buckets {
 		buckets[float64(k)] = v
@@ -102,8 +107,8 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.openStatements, prometheus.GaugeValue, float64(stats.OpenStatements))
 	ch <- prometheus.MustNewConstMetric(c.readBytes, prometheus.CounterValue, float64(stats.BytesRead))
 	ch <- prometheus.MustNewConstMetric(c.writtenBytes, prometheus.CounterValue, float64(stats.BytesWritten))
-	for i, durationStat := range stats.SQLDurations {
-		ch <- prometheus.MustNewConstHistogram(c.sqlDurations, durationStat.Count, float64(durationStat.Sum), durationStatBuckets(durationStat), driver.StatsSQLTexts[i])
+	for i, timeStat := range stats.TimeStats {
+		ch <- prometheus.MustNewConstHistogram(c.timeStats, timeStat.Count, float64(timeStat.Sum), timeStatBuckets(timeStat), statsTimeTexts[i])
 	}
 }
 

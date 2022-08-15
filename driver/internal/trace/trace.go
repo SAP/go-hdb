@@ -20,12 +20,12 @@ type Trace struct {
 }
 
 // NewTrace returns a new trace object.
-func NewTrace(prefix ...string) *Trace {
-	return &Trace{Logger: log.New(io.Discard, fmt.Sprintf("%s ", strings.Join(prefix, " ")), log.Ldate|log.Ltime|log.Lshortfile)}
+func NewTrace(flag int, prefix ...string) *Trace {
+	return &Trace{Logger: log.New(io.Discard, fmt.Sprintf("%s ", strings.Join(prefix, " ")), flag)}
 }
 
 // On returns true if the tracing output is enabled, else otherwise.
-func (t *Trace) On() bool { return t.Writer() != io.Discard }
+func (t *Trace) On() bool { return t.Writer() != io.Discard } // 'slow' as t.Writer() uses a mutex.
 
 // SetOn enables or disabled the tracing output.
 func (t *Trace) SetOn(on bool) {

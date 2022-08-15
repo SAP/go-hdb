@@ -7,11 +7,12 @@ package sqltrace
 import (
 	"flag"
 	"fmt"
+	"log"
 
 	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
-var std = trace.NewTrace("hdb", "sql")
+var std = trace.NewTrace(log.Ldate|log.Ltime, "hdb", "sql")
 
 var traceFlag = trace.NewFlag(std)
 

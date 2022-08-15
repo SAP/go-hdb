@@ -26,7 +26,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/SAP/go-hdb/driver/hdb"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
@@ -903,7 +902,7 @@ func TestDataType(t *testing.T) {
 		run(t *testing.T, db *sql.DB)
 	}
 
-	getTests := func(version *hdb.Version, dfv int) []tester {
+	getTests := func(version *Version, dfv int) []tester {
 		return []tester{
 			&dttDef{&basicColumn{version, dfv, basicType[dtTinyint], true}, checkInt, tinyintTestData},
 			&dttDef{&basicColumn{version, dfv, basicType[dtSmallint], true}, checkInt, smallintTestData},
@@ -973,7 +972,7 @@ func TestDataType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed
 
-				var version *hdb.Version
+				var version *Version
 				// Grab connection to detect hdb version.
 				conn, err := db.Conn(context.Background())
 				if err != nil {
@@ -986,14 +985,14 @@ func TestDataType(t *testing.T) {
 				})
 
 				for i, test := range getTests(version, dfv) {
-					func(i int, test tester) { // save i, test to run in parallel
+					func(i int, test tester, db *sql.DB) { // save i, test to run in parallel
 						if test.columnType().isSupported() {
 							t.Run(fmt.Sprintf("%s %d", test.columnType().column(), i), func(t *testing.T) {
 								t.Parallel() // run in parallel to speed up
 								test.run(t, db)
 							})
 						}
-					}(i, test)
+					}(i, test, db)
 				}
 			})
 		}(dfv)

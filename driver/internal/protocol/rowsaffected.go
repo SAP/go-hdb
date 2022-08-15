@@ -10,28 +10,28 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-//rows affected
+// rows affected
 const (
 	raSuccessNoInfo   = -2
-	raExecutionFailed = -3
+	RaExecutionFailed = -3
 )
 
-//rows affected
-type rowsAffected []int32
+// RowsAffected represents a rows affected part.
+type RowsAffected []int32
 
-func (r rowsAffected) String() string {
+func (r RowsAffected) String() string {
 	return fmt.Sprintf("%v", []int32(r))
 }
 
-func (r *rowsAffected) reset(numArg int) {
+func (r *RowsAffected) reset(numArg int) {
 	if r == nil || numArg > cap(*r) {
-		*r = make(rowsAffected, numArg)
+		*r = make(RowsAffected, numArg)
 	} else {
 		*r = (*r)[:numArg]
 	}
 }
 
-func (r *rowsAffected) decode(dec *encoding.Decoder, ph *partHeader) error {
+func (r *RowsAffected) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	r.reset(ph.numArg())
 
 	for i := 0; i < ph.numArg(); i++ {
@@ -40,7 +40,8 @@ func (r *rowsAffected) decode(dec *encoding.Decoder, ph *partHeader) error {
 	return dec.Error()
 }
 
-func (r rowsAffected) total() int64 {
+// Total return the total number of all affected rows.
+func (r RowsAffected) Total() int64 {
 	if r == nil {
 		return 0
 	}

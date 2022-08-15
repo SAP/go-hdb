@@ -4,64 +4,64 @@
 
 package protocol
 
-//go:generate stringer -type=partKind
+// PartKind represents the part kind.
+type PartKind int8
 
-type partKind int8
-
+// PartKind constants.
 const (
-	pkNil                       partKind = 0
-	pkCommand                   partKind = 3
-	pkResultset                 partKind = 5
-	pkError                     partKind = 6
-	pkStatementID               partKind = 10
-	pkTransactionID             partKind = 11
-	pkRowsAffected              partKind = 12
-	pkResultsetID               partKind = 13
-	pkTopologyInformation       partKind = 15
-	pkTableLocation             partKind = 16
-	pkReadLobRequest            partKind = 17
-	pkReadLobReply              partKind = 18
-	pkAbapIStream               partKind = 25
-	pkAbapOStream               partKind = 26
-	pkCommandInfo               partKind = 27
-	pkWriteLobRequest           partKind = 28
-	pkClientContext             partKind = 29
-	pkWriteLobReply             partKind = 30
-	pkParameters                partKind = 32
-	pkAuthentication            partKind = 33
-	pkSessionContext            partKind = 34
-	pkClientID                  partKind = 35
-	pkProfile                   partKind = 38
-	pkStatementContext          partKind = 39
-	pkPartitionInformation      partKind = 40
-	pkOutputParameters          partKind = 41
-	pkConnectOptions            partKind = 42
-	pkCommitOptions             partKind = 43
-	pkFetchOptions              partKind = 44
-	pkFetchSize                 partKind = 45
-	pkParameterMetadata         partKind = 47
-	pkResultMetadata            partKind = 48
-	pkFindLobRequest            partKind = 49
-	pkFindLobReply              partKind = 50
-	pkItabSHM                   partKind = 51
-	pkItabChunkMetadata         partKind = 53
-	pkItabMetadata              partKind = 55
-	pkItabResultChunk           partKind = 56
-	pkClientInfo                partKind = 57
-	pkStreamData                partKind = 58
-	pkOStreamResult             partKind = 59
-	pkFDARequestMetadata        partKind = 60
-	pkFDAReplyMetadata          partKind = 61
-	pkBatchPrepare              partKind = 62 //Reserved: do not use
-	pkBatchExecute              partKind = 63 //Reserved: do not use
-	pkTransactionFlags          partKind = 64
-	pkRowSlotImageParamMetadata partKind = 65 //Reserved: do not use
-	pkRowSlotImageResultset     partKind = 66 //Reserved: do not use
-	pkDBConnectInfo             partKind = 67
-	pkLobFlags                  partKind = 68
-	pkResultsetOptions          partKind = 69
-	pkXATransactionInfo         partKind = 70
-	pkSessionVariable           partKind = 71
-	pkWorkLoadReplayContext     partKind = 72
-	pkSQLReplyOptions           partKind = 73
+	pkNil                       PartKind = 0
+	PkCommand                   PartKind = 3
+	PkResultset                 PartKind = 5
+	PkError                     PartKind = 6
+	PkStatementID               PartKind = 10
+	pkTransactionID             PartKind = 11
+	PkRowsAffected              PartKind = 12
+	PkResultsetID               PartKind = 13
+	PkTopologyInformation       PartKind = 15
+	pkTableLocation             PartKind = 16
+	PkReadLobRequest            PartKind = 17
+	PkReadLobReply              PartKind = 18
+	pkAbapIStream               PartKind = 25
+	pkAbapOStream               PartKind = 26
+	pkCommandInfo               PartKind = 27
+	PkWriteLobRequest           PartKind = 28
+	PkClientContext             PartKind = 29
+	PkWriteLobReply             PartKind = 30
+	PkParameters                PartKind = 32
+	PkAuthentication            PartKind = 33
+	pkSessionContext            PartKind = 34
+	PkClientID                  PartKind = 35
+	pkProfile                   PartKind = 38
+	PkStatementContext          PartKind = 39
+	pkPartitionInformation      PartKind = 40
+	PkOutputParameters          PartKind = 41
+	PkConnectOptions            PartKind = 42
+	pkCommitOptions             PartKind = 43
+	pkFetchOptions              PartKind = 44
+	PkFetchSize                 PartKind = 45
+	PkParameterMetadata         PartKind = 47
+	PkResultMetadata            PartKind = 48
+	pkFindLobRequest            PartKind = 49
+	pkFindLobReply              PartKind = 50
+	pkItabSHM                   PartKind = 51
+	pkItabChunkMetadata         PartKind = 53
+	pkItabMetadata              PartKind = 55
+	pkItabResultChunk           PartKind = 56
+	PkClientInfo                PartKind = 57
+	pkStreamData                PartKind = 58
+	pkOStreamResult             PartKind = 59
+	pkFDARequestMetadata        PartKind = 60
+	pkFDAReplyMetadata          PartKind = 61
+	pkBatchPrepare              PartKind = 62 //Reserved: do not use
+	pkBatchExecute              PartKind = 63 //Reserved: do not use
+	PkTransactionFlags          PartKind = 64
+	pkRowSlotImageParamMetadata PartKind = 65 //Reserved: do not use
+	pkRowSlotImageResultset     PartKind = 66 //Reserved: do not use
+	PkDBConnectInfo             PartKind = 67
+	pkLobFlags                  PartKind = 68
+	pkResultsetOptions          PartKind = 69
+	pkXATransactionInfo         PartKind = 70
+	pkSessionVariable           PartKind = 71
+	pkWorkLoadReplayContext     PartKind = 72
+	pkSQLReplyOptions           PartKind = 73
 )

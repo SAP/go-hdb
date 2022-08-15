@@ -9,15 +9,13 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
-
-	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
-func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
+func convertNamedValue(conn *conn, pr *prepareResult, nv *driver.NamedValue) error {
 
 	idx := nv.Ordinal - 1
 
-	f := pr.ParameterField(idx)
+	f := pr.parameterField(idx)
 
 	v, out := normNamedValue(nv)
 
@@ -38,13 +36,13 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 		if reflect.ValueOf(v).Kind() != reflect.Ptr {
 			return fmt.Errorf("out parameter %v needs to be pointer variable", v)
 		}
-		if _, err := f.Convert(pr.Session(), v); err != nil { // check field only
+		if _, err := f.Convert(conn.cesu8Encoder(), v); err != nil { // check field only
 			return err
 		}
 		return nil
 	}
 
-	if v, err = f.Convert(pr.Session(), v); err != nil { // convert field
+	if v, err = f.Convert(conn.cesu8Encoder(), v); err != nil { // convert field
 		return err
 	}
 
@@ -52,9 +50,9 @@ func convertNamedValue(pr *p.PrepareResult, nv *driver.NamedValue) error {
 	return nil
 }
 
-func convertValue(pr *p.PrepareResult, idx int, v driver.Value) (driver.Value, error) {
+func convertValue(conn *conn, pr *prepareResult, idx int, v driver.Value) (driver.Value, error) {
 	var err error
-	f := pr.ParameterField(idx)
+	f := pr.parameterField(idx)
 	// let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
 	if valuer, ok := v.(driver.Valuer); ok {
 		if v, err = valuer.Value(); err != nil {
@@ -62,7 +60,7 @@ func convertValue(pr *p.PrepareResult, idx int, v driver.Value) (driver.Value, e
 		}
 	}
 	// convert field
-	return f.Convert(pr.Session(), v)
+	return f.Convert(conn.cesu8Encoder(), v)
 }
 
 func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {

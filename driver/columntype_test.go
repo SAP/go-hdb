@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/hdb"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
@@ -124,7 +123,7 @@ func TestColumnType(t *testing.T) {
 		value interface{}
 	}
 
-	getTestFields := func(version *hdb.Version, dfv int) testFields {
+	getTestFields := func(version *Version, dfv int) testFields {
 		return testFields{
 			{&basicColumn{version, dfv, basicType[dtTinyint], true}, 1},
 			{&basicColumn{version, dfv, basicType[dtSmallint], true}, 42},
@@ -190,7 +189,7 @@ func TestColumnType(t *testing.T) {
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
-				var version *hdb.Version
+				var version *Version
 				// Grab connection to detect hdb version.
 				conn, err := db.Conn(context.Background())
 				if err != nil {

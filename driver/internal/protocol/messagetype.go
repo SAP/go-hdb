@@ -4,48 +4,49 @@
 
 package protocol
 
-//go:generate stringer -type=messageType
+// MessageType represents the message type.
+type MessageType int8
 
-type messageType int8
-
+// MessageType constants.
 const (
-	mtNil             messageType = 0
-	mtExecuteDirect   messageType = 2
-	mtPrepare         messageType = 3
-	mtAbapStream      messageType = 4
-	mtXAStart         messageType = 5
-	mtXAJoin          messageType = 6
-	mtExecute         messageType = 13
-	mtWriteLob        messageType = 16
-	mtReadLob         messageType = 17
-	mtFindLob         messageType = 18
-	mtAuthenticate    messageType = 65
-	mtConnect         messageType = 66
-	mtCommit          messageType = 67
-	mtRollback        messageType = 68
-	mtCloseResultset  messageType = 69
-	mtDropStatementID messageType = 70
-	mtFetchNext       messageType = 71
-	mtFetchAbsolute   messageType = 72
-	mtFetchRelative   messageType = 73
-	mtFetchFirst      messageType = 74
-	mtFetchLast       messageType = 75
-	mtDisconnect      messageType = 77
-	mtExecuteITab     messageType = 78
-	mtFetchNextITab   messageType = 79
-	mtInsertNextITab  messageType = 80
-	mtBatchPrepare    messageType = 81
-	mtDBConnectInfo   messageType = 82
-	mtXopenXAStart    messageType = 83
-	mtXopenXAEnd      messageType = 84
-	mtXopenXAPrepare  messageType = 85
-	mtXopenXACommit   messageType = 86
-	mtXopenXARollback messageType = 87
-	mtXopenXARecover  messageType = 88
-	mtXopenXAForget   messageType = 89
+	mtNil             MessageType = 0
+	MtExecuteDirect   MessageType = 2
+	MtPrepare         MessageType = 3
+	mtAbapStream      MessageType = 4
+	mtXAStart         MessageType = 5
+	mtXAJoin          MessageType = 6
+	MtExecute         MessageType = 13
+	MtWriteLob        MessageType = 16
+	MtReadLob         MessageType = 17
+	mtFindLob         MessageType = 18
+	MtAuthenticate    MessageType = 65
+	MtConnect         MessageType = 66
+	MtCommit          MessageType = 67
+	MtRollback        MessageType = 68
+	MtCloseResultset  MessageType = 69
+	MtDropStatementID MessageType = 70
+	MtFetchNext       MessageType = 71
+	mtFetchAbsolute   MessageType = 72
+	mtFetchRelative   MessageType = 73
+	mtFetchFirst      MessageType = 74
+	mtFetchLast       MessageType = 75
+	MtDisconnect      MessageType = 77
+	mtExecuteITab     MessageType = 78
+	mtFetchNextITab   MessageType = 79
+	mtInsertNextITab  MessageType = 80
+	mtBatchPrepare    MessageType = 81
+	MtDBConnectInfo   MessageType = 82
+	mtXopenXAStart    MessageType = 83
+	mtXopenXAEnd      MessageType = 84
+	mtXopenXAPrepare  MessageType = 85
+	mtXopenXACommit   MessageType = 86
+	mtXopenXARollback MessageType = 87
+	mtXopenXARecover  MessageType = 88
+	mtXopenXAForget   MessageType = 89
 )
 
-func (mt messageType) clientInfoSupported() bool {
+// ClientInfoSupported returns true if message does support client info, false otherwise.
+func (mt MessageType) ClientInfoSupported() bool {
 	/*
 		mtConnect is only supported since 2.00.042
 		As server version is only available after connect we do not use it
@@ -54,5 +55,5 @@ func (mt messageType) clientInfoSupported() bool {
 
 		return mt == mtConnect || mt == mtPrepare || mt == mtExecuteDirect || mt == mtExecute
 	*/
-	return mt == mtPrepare || mt == mtExecuteDirect || mt == mtExecute
+	return mt == MtPrepare || mt == MtExecuteDirect || mt == MtExecute
 }

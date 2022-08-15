@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/SAP/go-hdb/driver"
 	drivercollectors "github.com/SAP/go-hdb/driver/prometheus/collectors"
@@ -109,6 +110,8 @@ func Example() {
 		// if no HTTP server address then store metrics in "metrics.prom" file.
 
 		const filename = "metrics.prom"
+
+		time.Sleep(100 * time.Millisecond) // wait for some pings
 
 		if err := prometheus.WriteToTextfile(filename, prometheus.DefaultRegisterer.(*prometheus.Registry)); err != nil {
 			log.Fatal(err)

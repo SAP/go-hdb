@@ -4,37 +4,38 @@
 
 package protocol
 
-//go:generate stringer -type=functionCode
+// FunctionCode represents a function code.
+type FunctionCode int16
 
-type functionCode int16
-
+// FunctionCode constants.
 const (
-	fcNil                       functionCode = 0
-	fcDDL                       functionCode = 1
-	fcInsert                    functionCode = 2
-	fcUpdate                    functionCode = 3
-	fcDelete                    functionCode = 4
-	fcSelect                    functionCode = 5
-	fcSelectForUpdate           functionCode = 6
-	fcExplain                   functionCode = 7
-	fcDBProcedureCall           functionCode = 8
-	fcDBProcedureCallWithResult functionCode = 9
-	fcFetch                     functionCode = 10
-	fcCommit                    functionCode = 11
-	fcRollback                  functionCode = 12
-	fcSavepoint                 functionCode = 13
-	fcConnect                   functionCode = 14
-	fcWriteLob                  functionCode = 15
-	fcReadLob                   functionCode = 16
-	fcPing                      functionCode = 17 //reserved: do not use
-	fcDisconnect                functionCode = 18
-	fcCloseCursor               functionCode = 19
-	fcFindLob                   functionCode = 20
-	fcAbapStream                functionCode = 21
-	fcXAStart                   functionCode = 22
-	fcXAJoin                    functionCode = 23
+	fcNil                       FunctionCode = 0
+	FcDDL                       FunctionCode = 1
+	fcInsert                    FunctionCode = 2
+	fcUpdate                    FunctionCode = 3
+	fcDelete                    FunctionCode = 4
+	fcSelect                    FunctionCode = 5
+	fcSelectForUpdate           FunctionCode = 6
+	fcExplain                   FunctionCode = 7
+	fcDBProcedureCall           FunctionCode = 8
+	fcDBProcedureCallWithResult FunctionCode = 9
+	fcFetch                     FunctionCode = 10
+	fcCommit                    FunctionCode = 11
+	fcRollback                  FunctionCode = 12
+	fcSavepoint                 FunctionCode = 13
+	fcConnect                   FunctionCode = 14
+	fcWriteLob                  FunctionCode = 15
+	fcReadLob                   FunctionCode = 16
+	fcPing                      FunctionCode = 17 //reserved: do not use
+	fcDisconnect                FunctionCode = 18
+	fcCloseCursor               FunctionCode = 19
+	fcFindLob                   FunctionCode = 20
+	fcAbapStream                FunctionCode = 21
+	fcXAStart                   FunctionCode = 22
+	fcXAJoin                    FunctionCode = 23
 )
 
-func (fc functionCode) isProcedureCall() bool {
+// IsProcedureCall returns true if the function code is a procedure call, false otherwise.
+func (fc FunctionCode) IsProcedureCall() bool {
 	return fc == fcDBProcedureCall
 }

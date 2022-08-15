@@ -109,6 +109,17 @@ func TestMain(m *testing.M) {
 		flag.Parse()
 	}
 
+	//TODO
+	/*
+		SQLDurations
+		rollback count 6 sum 36 values map[1:0 10:6 100:0 1000:0 10000:0 100000:0]
+		commit   count 33 sum 1276 values map[1:0 10:24 100:8 1000:0 10000:1 100000:0]
+		ping     count 5 sum 30 values map[1:0 10:5 100:0 1000:0 10000:0 100000:0]
+		query    count 181 sum 2859 values map[1:0 10:47 100:132 1000:2 10000:0 100000:0]
+		prepare  count 176 sum 1732 values map[1:0 10:139 100:37 1000:0 10000:0 100000:0]
+		exec     count 3817 sum 111643 values map[1:9 10:1806 100:1941 1000:40 10000:21 100000:0]
+	*/
+
 	// do not use NewTestConnector as it does set the default schema and the schema creation in setup would be answered by a HDB error.
 	connector, err := newDSNConnector(testDSN)
 	if err != nil {

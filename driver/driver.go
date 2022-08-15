@@ -11,31 +11,41 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "0.107.2"
+const DriverVersion = "0.107.3"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
 
-var clientID string
+var clientID = func() string {
+	if hostname, err := os.Hostname(); err == nil {
+		return strings.Join([]string{strconv.Itoa(os.Getpid()), hostname}, "@")
+	}
+	return strconv.Itoa(os.Getpid())
+}()
+
+// clientType is the information provided to HDB identifying the driver.
+// Previously the driver.DriverName "hdb" was used but we should be more specific in providing a unique client type to HANA backend.
+const clientType = "go-hdb"
+
+var defaultApplicationName, _ = os.Executable()
+
+// driver singleton instance (do not use directly - use getDriver() instead)
+var hdbDriver *Driver
 
 func init() {
-	p.DriverVersion = DriverVersion // set driver version in session
-	// clientID
-	if hostname, err := os.Hostname(); err == nil {
-		clientID = strings.Join([]string{strconv.Itoa(os.Getpid()), hostname}, "@")
-	} else {
-		clientID = strconv.Itoa(os.Getpid())
+	// load stats configuration
+	if err := loadStatsCfg(); err != nil {
+		panic(err) // invalid configuration file
 	}
-	p.ClientID = clientID // set client id in session
+
+	// instantiate hdbDriver
+	hdbDriver = &Driver{newMetrics(nil, statsCfg.TimeBuckets)}
+	// register driver
 	sql.Register(DriverName, hdbDriver)
 }
-
-var hdbDriver = newDriver()
 
 // driver
 
@@ -48,10 +58,6 @@ var (
 // Driver represents the go sql driver implementation for hdb.
 type Driver struct {
 	metrics *metrics
-}
-
-func newDriver() *Driver {
-	return &Driver{metrics: newMetrics(nil)}
 }
 
 // Open implements the driver.Driver interface.
