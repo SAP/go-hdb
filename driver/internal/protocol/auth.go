@@ -47,7 +47,7 @@ func (a *Auth) String() string { return fmt.Sprintf("logonname %s", a.logonname)
 
 // AddSessionCookie adds session cookie authentication method.
 func (a *Auth) AddSessionCookie(cookie []byte, clientID string) {
-	a.methods[auth.MtSessionCookie] = auth.NewSessionCookie(cookie, clientID)
+	a.methods[auth.MtSessionCookie] = auth.NewSessionCookie(cookie, a.logonname, clientID)
 	auth.Tracef("add session cookie: cookie %v clientID %s", cookie, clientID)
 }
 
