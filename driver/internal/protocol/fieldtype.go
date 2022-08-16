@@ -318,9 +318,9 @@ func (_lobCESU8Type) prmSize(v interface{}) int { return lobInputParametersSize 
 func (ft _varType) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return encoding.VarBytesSize(len(v))
+		return encoding.VarFieldSize(len(v))
 	case string:
-		return encoding.VarBytesSize(len(v))
+		return encoding.VarFieldSize(len(v))
 	default:
 		return -1
 	}
@@ -332,9 +332,9 @@ func (ft _hexType) prmSize(v interface{}) int { return varType.prmSize(v) / 2 }
 func (ft _cesu8Type) prmSize(v interface{}) int {
 	switch v := v.(type) {
 	case []byte:
-		return encoding.VarBytesSize(cesu8.Size(v))
+		return encoding.VarFieldSize(cesu8.Size(v))
 	case string:
-		return encoding.VarBytesSize(cesu8.StringSize(v))
+		return encoding.VarFieldSize(cesu8.StringSize(v))
 	default:
 		return -1
 	}

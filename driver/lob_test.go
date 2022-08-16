@@ -35,7 +35,7 @@ func testLobInsert(db *sql.DB, t *testing.T) {
 	}
 	defer stmt.Close()
 
-	// TODO
+	// TODO finalize
 
 }
 

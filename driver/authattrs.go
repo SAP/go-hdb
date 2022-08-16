@@ -92,8 +92,8 @@ func (a *authAttrs) cookieAuth() *p.Auth {
 		return nil
 	}
 
-	auth := p.NewAuth(a._logonname) // important: for session cookie auth we do need the logonname from JWT auth.
-	auth.AddSessionCookie(a._sessionCookie, clientID)
+	auth := p.NewAuth(a._logonname)                                 // important: for session cookie auth we do need the logonname from JWT auth.
+	auth.AddSessionCookie(a._sessionCookie, a._logonname, clientID) // And for HANA onPrem the final session cookie req needs the logonname as well.
 	return auth
 }
 

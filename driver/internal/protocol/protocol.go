@@ -243,7 +243,7 @@ func (r *Reader) readPart(part partReader) error {
 	switch {
 	case cnt < bufferLen: // protocol buffer length > read bytes -> skip the unread bytes
 
-		// TODO enable for debug
+		// Enable for debug
 		// b := make([]byte, bufferLen-cnt)
 		// p.rd.ReadFull(b)
 		// println(fmt.Sprintf("%x", b))

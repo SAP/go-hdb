@@ -3,6 +3,14 @@ Release Notes
 
 ## Release 0.107
 
+Release 0.107.4 (upgrade urgency: medium)
+
+- Fixed authentication issue session cookie (https://github.com/SAP/go-hdb/pull/93)
+- Fixed connection error handling in case of invalid queries
+- Incompatible change of time stats
+- Updated: github.com/prometheus/client_golang to v1.13.0
+- Source code cleanups
+
 Release 0.107.3 (upgrade urgency: low)
 
 - Changed stats configuration

@@ -109,7 +109,7 @@ func NewDecoder(d *encoding.Decoder) *Decoder {
 	return &Decoder{d: d}
 }
 
-// NumPrm ckecks the number of paramters and returns an error if not equal expected, nil otherwise.
+// NumPrm ckecks the number of parameters and returns an error if not equal expected, nil otherwise.
 func (d *Decoder) NumPrm(expected int) error {
 	numPrm := int(d.d.Int16())
 	if numPrm != expected {
@@ -158,9 +158,9 @@ func (p *Prms) Size() int {
 	for _, e := range p.prms {
 		switch e := e.(type) {
 		case []byte:
-			size += encoding.VarBytesSize(len(e))
+			size += encoding.VarFieldSize(len(e))
 		case string:
-			size += encoding.VarBytesSize(cesu8.StringSize(e))
+			size += encoding.VarFieldSize(cesu8.StringSize(e))
 		case *Prms:
 			subSize := subPrmsSize(e.Size())
 			size += (int(subSize) + subSize.fieldSize())

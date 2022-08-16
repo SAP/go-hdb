@@ -41,7 +41,7 @@ func (ops *Options[K]) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	*ops = Options[K]{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := K(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}

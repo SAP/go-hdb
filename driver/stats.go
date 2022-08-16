@@ -10,36 +10,48 @@ import (
 	"strings"
 )
 
-// TimeStat represents a statistic of spent time.
-type TimeStat struct {
+// StatsHistogram represents statistic data in a histogram structure.
+type StatsHistogram struct {
 	// Count holds the number of measurements
 	Count uint64
-	// Sum holds the sum of the spent time in milliseconds.
+	// Sum holds the sum of the measurements.
 	Sum uint64
-	// The bucket key is the upper time limit in milliseconds for a time measurement falling in this category with
-	// time measurement <= time limt.
-	// The bucket value is the number of measurements falling in the time limit category.
-	Buckets map[uint64]uint64 // Count bucketsmap[<duration in ms>]<counter>.
+	// Buckets contains the count of measurements belonging to a bucket where the
+	// value of the measurement is less or equal the bucket map key.
+	Buckets map[uint64]uint64
 }
 
-func (s *TimeStat) String() string {
+func (s *StatsHistogram) String() string {
 	return fmt.Sprintf("count %d sum %d values %v", s.Count, s.Sum, s.Buckets)
 }
 
+// Constants for time statistics.
+const (
+	StatsTimeRead     = iota // Time spent on reading from connection.
+	StatsTimeWrite           // Time spent on writing to connection.
+	StatsTimeAuth            // Time spent on authentication.
+	StatsTimeQuery           // Time spent on executing queries.
+	StatsTimePrepare         // Time spent on preparing queries.
+	StatsTimeExec            // Time spent on execution queries which do not return rows, like INSERT or UPDATE.
+	StatsTimeCall            // Time spent on call statements.
+	StatsTimeFetch           // Time spent on fetching rows.
+	StatsTimeFetchLob        // Time spent on fetching large objects.
+	StatsTimeRollback        // Time spent on rollbacks.
+	StatsTimeCommit          // Time spent on commits.
+	NumStatsTime
+)
+
 // Stats contains driver statistics.
 type Stats struct {
-	// Gauges
-	OpenConnections  int // The number of established driver connections.
-	OpenTransactions int // The number of open driver transactions.
-	OpenStatements   int // The number of open driver database statements.
-	// Counter
-	BytesRead    uint64 // Total bytes read by client connection.
-	BytesWritten uint64 // Total bytes written by client connection.
-	//
-	ReadTime  *TimeStat
-	WriteTime *TimeStat
+	OpenConnections  int             // The number of current established driver connections.
+	OpenTransactions int             // The number of current open driver transactions.
+	OpenStatements   int             // The number of current open driver database statements.
+	BytesRead        uint64          // Total bytes read by client connection.
+	BytesWritten     uint64          // Total bytes written by client connection.
+	ReadTime         *StatsHistogram // Total time spent reading data from connection.
+	WriteTime        *StatsHistogram // Total time spent writing data to connection.
 
-	TimeStats []*TimeStat // Spent time statistics.
+	Times []*StatsHistogram // Spent time statistics (see StatsTime* constants for details).
 }
 
 func (s Stats) String() string {
@@ -50,7 +62,7 @@ func (s Stats) String() string {
 	sb.WriteString(fmt.Sprintf("\nbytesRead        %d", s.BytesRead))
 	sb.WriteString(fmt.Sprintf("\nbytesWritten     %d", s.BytesWritten))
 	sb.WriteString("\nTimes")
-	for i, timeStat := range s.TimeStats {
+	for i, timeStat := range s.Times {
 		sb.WriteString(fmt.Sprintf("\n  %-12s %s", statsCfg.TimeTexts[i], timeStat.String()))
 	}
 	return sb.String()

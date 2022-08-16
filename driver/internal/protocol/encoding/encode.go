@@ -239,7 +239,8 @@ func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 // CESU8String encodes an UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
 func (e *Encoder) CESU8String(s string) (int, error) { return e.CESU8Bytes([]byte(s)) }
 
-func (e *Encoder) lenInd(size int) error {
+// varFieldInd encodes a variable field indicator.
+func (e *Encoder) varFieldInd(size int) error {
 	switch {
 	default:
 		return fmt.Errorf("max argument length %d of string exceeded", size)
@@ -257,7 +258,7 @@ func (e *Encoder) lenInd(size int) error {
 
 // LIBytes encodes bytes with length indicator.
 func (e *Encoder) LIBytes(p []byte) error {
-	if err := e.lenInd(len(p)); err != nil {
+	if err := e.varFieldInd(len(p)); err != nil {
 		return err
 	}
 	e.Bytes(p)
@@ -266,7 +267,7 @@ func (e *Encoder) LIBytes(p []byte) error {
 
 // LIString encodes a string with length indicator.
 func (e *Encoder) LIString(s string) error {
-	if err := e.lenInd(len(s)); err != nil {
+	if err := e.varFieldInd(len(s)); err != nil {
 		return err
 	}
 	e.String(s)
@@ -276,7 +277,7 @@ func (e *Encoder) LIString(s string) error {
 // CESU8LIBytes encodes UTF-8 into CESU-8 bytes with length indicator.
 func (e *Encoder) CESU8LIBytes(p []byte) error {
 	size := cesu8.Size(p)
-	if err := e.lenInd(size); err != nil {
+	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
 	_, err := e.CESU8Bytes(p)
@@ -286,7 +287,7 @@ func (e *Encoder) CESU8LIBytes(p []byte) error {
 // CESU8LIString encodes an UTF-8 into a CESU-8 string with length indicator.
 func (e *Encoder) CESU8LIString(s string) error {
 	size := cesu8.StringSize(s)
-	if err := e.lenInd(size); err != nil {
+	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
 	_, err := e.CESU8String(s)

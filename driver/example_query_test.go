@@ -13,8 +13,7 @@ import (
 	"log"
 )
 
-// TODO
-// ExampleQuery: tbd
+// TODO complete for named parameters
 func Example_query() {
 	db := sql.OpenDB(NewTestConnector())
 	defer db.Close()

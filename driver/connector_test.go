@@ -27,8 +27,6 @@ func testExistSessionVariables(sv1, sv2 map[string]string, t *testing.T) {
 func testNotExistSessionVariables(keys []string, sv2 map[string]string, t *testing.T) {
 	for _, k1 := range keys {
 		v2, ok := sv2[k1]
-		// deleted session variable shouldn't be found, but like clientInfo does not allow (check TODO in internal/protocol/protocol.go)
-		// deletions, the value of a 'deleted' session variable is set to <space>.
 		if ok && v2 != "" {
 			t.Fatalf("session variable value for %s is %s - should be empty", k1, v2)
 		}

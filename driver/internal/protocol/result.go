@@ -45,27 +45,22 @@ func (id *ResultsetID) decode(dec *encoding.Decoder, ph *PartHeader) error {
 }
 func (id ResultsetID) encode(enc *encoding.Encoder) error { enc.Uint64(uint64(id)); return nil }
 
-// TODO cache
 func newResultFields(size int) []*ResultField {
 	return make([]*ResultField, size)
 }
 
 // ResultField represents a database result field.
 type ResultField struct {
-	// field alignment
-	tableName               string
-	schemaName              string
-	columnName              string
-	columnDisplayName       string
-	ft                      fieldType // avoid tc.fieldType() calls
-	tableNameOffset         uint32
-	schemaNameOffset        uint32
-	columnNameOffset        uint32
-	columnDisplayNameOffset uint32
-	length                  int16
-	fraction                int16
-	columnOptions           columnOptions
-	tc                      TypeCode
+	names                *fieldNames
+	ft                   fieldType // avoid tc.fieldType() calls
+	tableNameOfs         uint32
+	schemaNameOfs        uint32
+	columnNameOfs        uint32
+	columnDisplayNameOfs uint32
+	length               int16
+	fraction             int16
+	columnOptions        columnOptions
+	tc                   typeCode
 }
 
 // String implements the Stringer interface.
@@ -75,10 +70,10 @@ func (f *ResultField) String() string {
 		f.tc,
 		f.fraction,
 		f.length,
-		f.tableName,
-		f.schemaName,
-		f.columnName,
-		f.columnDisplayName,
+		f.names.name(f.tableNameOfs),
+		f.names.name(f.schemaNameOfs),
+		f.names.name(f.columnNameOfs),
+		f.names.name(f.columnDisplayNameOfs),
 	)
 }
 
@@ -113,18 +108,24 @@ func (f *ResultField) TypePrecisionScale() (int64, int64, bool) {
 func (f *ResultField) Nullable() bool { return f.columnOptions == coOptional }
 
 // Name returns the result field name.
-func (f *ResultField) Name() string { return f.columnDisplayName }
+func (f *ResultField) Name() string { return f.names.name(f.columnDisplayNameOfs) }
 
 func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.columnOptions = columnOptions(dec.Int8())
-	f.tc = TypeCode(dec.Int8())
+	f.tc = typeCode(dec.Int8())
 	f.fraction = dec.Int16()
 	f.length = dec.Int16()
 	dec.Skip(2) //filler
-	f.tableNameOffset = dec.Uint32()
-	f.schemaNameOffset = dec.Uint32()
-	f.columnNameOffset = dec.Uint32()
-	f.columnDisplayNameOffset = dec.Uint32()
+	f.tableNameOfs = dec.Uint32()
+	f.schemaNameOfs = dec.Uint32()
+	f.columnNameOfs = dec.Uint32()
+	f.columnDisplayNameOfs = dec.Uint32()
+
+	f.names.insert(f.tableNameOfs)
+	f.names.insert(f.schemaNameOfs)
+	f.names.insert(f.columnNameOfs)
+	f.names.insert(f.columnDisplayNameOfs)
+
 	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
@@ -143,25 +144,13 @@ func (r *ResultMetadata) String() string {
 
 func (r *ResultMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	r.ResultFields = newResultFields(ph.numArg())
-
-	names := fieldNames{}
-
+	names := &fieldNames{}
 	for i := 0; i < len(r.ResultFields); i++ {
-		f := new(ResultField)
+		f := &ResultField{names: names}
 		f.decode(dec)
 		r.ResultFields[i] = f
-		names.insert(f.tableNameOffset)
-		names.insert(f.schemaNameOffset)
-		names.insert(f.columnNameOffset)
-		names.insert(f.columnDisplayNameOffset)
 	}
 	names.decode(dec)
-	for _, f := range r.ResultFields {
-		f.tableName = names.name(f.tableNameOffset)
-		f.schemaName = names.name(f.schemaNameOffset)
-		f.columnName = names.name(f.columnNameOffset)
-		f.columnDisplayName = names.name(f.columnDisplayNameOffset)
-	}
 	return dec.Error()
 }
 

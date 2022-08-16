@@ -13,8 +13,6 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
-//TODO rework this
-
 // check if rows types do implement all driver row interfaces.
 var (
 	_ driver.Rows = (*noResultType)(nil)
@@ -186,7 +184,6 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 	err := qr.decodeErrors.RowError(qr.pos)
 	qr.pos++
 
-	// TODO eliminate
 	for _, v := range dest {
 		if v, ok := v.(p.LobsDecoderSetter); ok {
 			v.SetLobsDecoder(qr.conn.decodeLobs)
@@ -267,7 +264,6 @@ func (cr *callResult) Next(dest []driver.Value) error {
 	copy(dest, cr.fieldValues)
 	err := cr.decodeErrors.RowError(0)
 	cr.eof = true
-	// TODO eliminate
 	for _, v := range dest {
 		if v, ok := v.(p.LobsDecoderSetter); ok {
 			v.SetLobsDecoder(cr.conn.decodeLobs)
@@ -324,14 +320,14 @@ func (cr *callResult) NextResultSet() error { return io.EOF }
 
 func (cr *callResult) appendTableRefFields() {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &p.ParameterField{FieldName: fmt.Sprintf("table %d", i), TC: p.TcTableRef, Mode: p.PmOut, Offset: 0})
+		cr.outputFields = append(cr.outputFields, p.NewTableRefParameterField(i))
 		cr.fieldValues = append(cr.fieldValues, encodeID(qr.rsID))
 	}
 }
 
 func (cr *callResult) appendTableRowsFields() {
 	for i, qr := range cr.qrs {
-		cr.outputFields = append(cr.outputFields, &p.ParameterField{FieldName: fmt.Sprintf("table %d", i), TC: p.TcTableRows, Mode: p.PmOut, Offset: 0})
+		cr.outputFields = append(cr.outputFields, p.NewTableRowsParameterField(i))
 		cr.fieldValues = append(cr.fieldValues, qr)
 	}
 }

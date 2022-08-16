@@ -15,10 +15,6 @@ const (
 	writeLobRequestSize = 21
 )
 
-// variable (unit testing)
-//var lobChunkSize = 1 << 14 //TODO: check size
-//var lobChunkSize int32 = 4096 //TODO: check size
-
 // LobOptions represents a lob option set.
 type LobOptions int8
 
@@ -82,7 +78,6 @@ var _ LobsDecoderSetter = (*LobOutDescr)(nil)
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
-	//TODO description
 	rd    io.Reader
 	opt   LobOptions
 	_size int
@@ -137,7 +132,6 @@ func (d *LobInDescr) writeFirst(enc *encoding.Encoder) {
 
 // LobOutDescr represents a lob output descriptor.
 type LobOutDescr struct {
-	//TODO description
 	fnLD        func(descr *LobOutDescr, wr io.Writer) error
 	IsCharBased bool
 	/*

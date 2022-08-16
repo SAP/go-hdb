@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package prometheus_test
+package collectors_test
 
 import (
 	"database/sql"
@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"time"
 
 	"github.com/SAP/go-hdb/driver"
 	drivercollectors "github.com/SAP/go-hdb/driver/prometheus/collectors"
@@ -24,20 +23,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func completeAddr(addr string) string {
-	const (
-		defaultHost = "localhost"
-		defaultPort = "50000"
-	)
+func formatHTTPAddr(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		log.Fatal(err)
+		return addr
 	}
 	if host == "" {
-		host = defaultHost
+		host = "localhost"
 	}
 	if port == "" {
-		port = defaultPort
+		port = "80"
 	}
 	return net.JoinHostPort(host, port)
 }
@@ -46,16 +41,15 @@ func completeAddr(addr string) string {
 func Example() {
 	const (
 		envDSN  = "GOHDBDSN"
-		envAddr = "GOHDBADDR"
+		envHTTP = "GOHDBHTTP"
 	)
 
-	dsn, ok := os.LookupEnv(envDSN)
-	if !ok {
+	dsn := os.Getenv(envDSN)
+	addr := os.Getenv(envHTTP)
+
+	// exit if dsn or http address is missing.
+	if dsn == "" || addr == "" {
 		return
-	}
-	addr, ok := os.LookupEnv(envAddr)
-	if ok {
-		addr = completeAddr(addr)
 	}
 
 	connector, err := driver.NewDSNConnector(dsn)
@@ -67,7 +61,7 @@ func Example() {
 
 	// dbName: use as label.
 	// as alternative connector.Host() could be used.
-	dbName := "myDatabase"
+	const dbName = "myDatabase"
 
 	// register collector for sql db stats.
 	dbStatsCollector := collectors.NewDBStatsCollector(db, dbName)
@@ -106,29 +100,15 @@ func Example() {
 		}
 	}()
 
-	if addr == "" {
-		// if no HTTP server address then store metrics in "metrics.prom" file.
+	// register prometheus HTTP handler and start HTTP server.
+	http.Handle("/metrics", promhttp.Handler())
+	go http.ListenAndServe(addr, nil)
 
-		const filename = "metrics.prom"
+	log.Printf("access the metrics at http://%s/metrics", formatHTTPAddr(addr))
 
-		time.Sleep(100 * time.Millisecond) // wait for some pings
-
-		if err := prometheus.WriteToTextfile(filename, prometheus.DefaultRegisterer.(*prometheus.Registry)); err != nil {
-			log.Fatal(err)
-		}
-
-	} else {
-		// else register prometheus HTTP handler and start HTTP server.
-
-		http.Handle("/metrics", promhttp.Handler())
-		go http.ListenAndServe(addr, nil)
-
-		log.Printf("access the metrics at http://%s/metrics", addr)
-
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt)
-		<-sigint
-	}
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, os.Interrupt)
+	<-sigint
 
 	close(done)
 	wg.Wait()

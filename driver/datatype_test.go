@@ -57,7 +57,7 @@ func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
 		if _, err := stmt.Exec(in, i); err == nil { // error expected
 			t.Fatalf("type: %s - %d - error expected", dtt._columnType.typeName(), i)
 		} else {
-			t.Logf("type: %s - %d - %s", dtt._columnType.typeName(), i, err)
+			t.Logf("type: %s - %d - %s - %T", dtt._columnType.typeName(), i, err, err)
 		}
 	}
 }

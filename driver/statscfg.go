@@ -10,9 +10,6 @@ import (
 	"fmt"
 )
 
-// StatsNumTime returns the number of time measurement categories.
-func StatsNumTime() int { return numTime }
-
 // StatsTimeTexts returns the texts of time measurement categories.
 func StatsTimeTexts() []string { return cloneStringSlice(statsCfg.TimeTexts) }
 
@@ -30,8 +27,8 @@ func loadStatsCfg() error {
 		return fmt.Errorf("invalid statscfg.json file: %s", err)
 	}
 
-	if len(statsCfg.TimeTexts) != numTime {
-		return fmt.Errorf("invalid number of statscfg.json timeTexts %d - expected %d", len(statsCfg.TimeTexts), numTime)
+	if len(statsCfg.TimeTexts) != int(NumStatsTime) {
+		return fmt.Errorf("invalid number of statscfg.json timeTexts %d - expected %d", len(statsCfg.TimeTexts), NumStatsTime)
 	}
 	if len(statsCfg.TimeBuckets) == 0 {
 		return fmt.Errorf("number of statscfg.json timeBuckets needs to be greater than %d", 0)

@@ -12,7 +12,7 @@ import (
 
 type optType interface {
 	fmt.Stringer
-	typeCode() TypeCode
+	typeCode() typeCode
 	size(v interface{}) int
 	encode(e *encoding.Encoder, v interface{})
 	decode(d *encoding.Decoder) interface{}
@@ -56,13 +56,13 @@ func (_optDoubleType) String() string  { return "doubleType" }
 func (_optStringType) String() string  { return "dateType" }
 func (_optBstringType) String() string { return "timeType" }
 
-func (_optBooleanType) typeCode() TypeCode { return tcBoolean }
-func (_optTinyintType) typeCode() TypeCode { return tcTinyint }
-func (_optIntegerType) typeCode() TypeCode { return tcInteger }
-func (_optBigintType) typeCode() TypeCode  { return tcBigint }
-func (_optDoubleType) typeCode() TypeCode  { return tcDouble }
-func (_optStringType) typeCode() TypeCode  { return tcString }
-func (_optBstringType) typeCode() TypeCode { return tcBstring }
+func (_optBooleanType) typeCode() typeCode { return tcBoolean }
+func (_optTinyintType) typeCode() typeCode { return tcTinyint }
+func (_optIntegerType) typeCode() typeCode { return tcInteger }
+func (_optBigintType) typeCode() typeCode  { return tcBigint }
+func (_optDoubleType) typeCode() typeCode  { return tcDouble }
+func (_optStringType) typeCode() typeCode  { return tcString }
+func (_optBstringType) typeCode() typeCode { return tcBstring }
 
 func (_optBooleanType) size(interface{}) int   { return encoding.BooleanFieldSize }
 func (_optTinyintType) size(interface{}) int   { return encoding.TinyintFieldSize }

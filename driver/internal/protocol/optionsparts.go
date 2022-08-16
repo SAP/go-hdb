@@ -36,12 +36,13 @@ const (
 type transactionFlagType int8
 
 const (
-	tfRolledback                     transactionFlagType = 0
-	tfCommited                       transactionFlagType = 1
-	tfNewIsolationLevel              transactionFlagType = 2
-	tfDDLCommitmodeChanged           transactionFlagType = 3
-	tfWriteTransactionStarted        transactionFlagType = 4
-	tfNowriteTransactionStarted      transactionFlagType = 5
-	tfSessionClosingTransactionError transactionFlagType = 6
-	//TODO: update - flag 7 ??? in protocol
+	tfRolledback                      transactionFlagType = 0
+	tfCommited                        transactionFlagType = 1
+	tfNewIsolationLevel               transactionFlagType = 2
+	tfDDLCommitmodeChanged            transactionFlagType = 3
+	tfWriteTransactionStarted         transactionFlagType = 4
+	tfNowriteTransactionStarted       transactionFlagType = 5
+	tfSessionClosingTransactionError  transactionFlagType = 6
+	tfSessionClosingTransactionErrror transactionFlagType = 7
+	tfReadOnlyMode                    transactionFlagType = 8
 )

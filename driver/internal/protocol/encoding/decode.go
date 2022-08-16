@@ -298,7 +298,7 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 
 	var p []byte
 	if size > readScratchSize {
-		p = make([]byte, size) //TODO: optimize via piece wise reading
+		p = make([]byte, size)
 	} else {
 		p = d.b[:size]
 	}
@@ -311,8 +311,8 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 	return b, err
 }
 
-// lenInd decodes the length indicator of a variable field.
-func (d *Decoder) lenInd() (n, size int, null bool) {
+// varFieldInd decodes a variable field indicator.
+func (d *Decoder) varFieldInd() (n, size int, null bool) {
 	ind := d.Byte() //length indicator
 	switch {
 	default:
@@ -330,7 +330,7 @@ func (d *Decoder) lenInd() (n, size int, null bool) {
 
 // LIBytes decodes bytes with length indicator.
 func (d *Decoder) LIBytes() (n int, b []byte) {
-	n, size, null := d.lenInd()
+	n, size, null := d.varFieldInd()
 	if null {
 		return n, nil
 	}
@@ -345,9 +345,9 @@ func (d *Decoder) LIString() (n int, s string) {
 	return n, string(b)
 }
 
-// CESU8LIBytes decodes CESU-8 into UTF-8 bytes with lenght indicator.
+// CESU8LIBytes decodes CESU-8 into UTF-8 bytes with length indicator.
 func (d *Decoder) CESU8LIBytes() (int, []byte, error) {
-	n, size, null := d.lenInd()
+	n, size, null := d.varFieldInd()
 	if null {
 		return n, nil, nil
 	}

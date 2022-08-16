@@ -19,10 +19,7 @@ type stats interface {
 	Stats() driver.Stats
 }
 
-var (
-	statsNumTime   = driver.StatsNumTime()
-	statsTimeTexts = driver.StatsTimeTexts()
-)
+var statsTimeTexts = driver.StatsTimeTexts()
 
 type collector struct {
 	s stats
@@ -32,7 +29,7 @@ type collector struct {
 	openStatements   *prometheus.Desc
 	readBytes        *prometheus.Desc
 	writtenBytes     *prometheus.Desc
-	timeStats        *prometheus.Desc
+	times            *prometheus.Desc
 }
 
 func newCollector(s stats, subsystem string, labels prometheus.Labels) prometheus.Collector {
@@ -70,7 +67,7 @@ func newCollector(s stats, subsystem string, labels prometheus.Labels) prometheu
 			nil,
 			labels,
 		),
-		timeStats: prometheus.NewDesc(
+		times: prometheus.NewDesc(
 			fqName("time_stats"),
 			fmt.Sprintf("The spent time measured in milliseconds for the different time categories of %s.", subsystem),
 			[]string{"time"},
@@ -86,12 +83,12 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.openStatements
 	ch <- c.readBytes
 	ch <- c.writtenBytes
-	for i := 0; i < statsNumTime; i++ {
-		ch <- c.timeStats
+	for i := 0; i < int(driver.NumStatsTime); i++ {
+		ch <- c.times
 	}
 }
 
-func timeStatBuckets(s *driver.TimeStat) map[float64]uint64 {
+func buckets(s *driver.StatsHistogram) map[float64]uint64 {
 	buckets := map[float64]uint64{}
 	for k, v := range s.Buckets {
 		buckets[float64(k)] = v
@@ -107,8 +104,8 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.openStatements, prometheus.GaugeValue, float64(stats.OpenStatements))
 	ch <- prometheus.MustNewConstMetric(c.readBytes, prometheus.CounterValue, float64(stats.BytesRead))
 	ch <- prometheus.MustNewConstMetric(c.writtenBytes, prometheus.CounterValue, float64(stats.BytesWritten))
-	for i, timeStat := range stats.TimeStats {
-		ch <- prometheus.MustNewConstHistogram(c.timeStats, timeStat.Count, float64(timeStat.Sum), timeStatBuckets(timeStat), statsTimeTexts[i])
+	for i, h := range stats.Times {
+		ch <- prometheus.MustNewConstHistogram(c.times, h.Count, float64(h.Sum), buckets(h), statsTimeTexts[i])
 	}
 }
 

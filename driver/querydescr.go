@@ -65,7 +65,15 @@ func encodeID(id uint64) string {
 	return fmt.Sprintf("%s %s", queryKindKeyword[qkID], strconv.FormatUint(id, 10))
 }
 
-var errInvalidCmdToken = errors.New("invalid command token")
+type invalidQueryError struct {
+	query string
+}
+
+func (e *invalidQueryError) Error() string {
+	return fmt.Sprintf("ivalid query parameter: %s", e.query)
+}
+
+var errEmptyQuery = errors.New("query parameter is empty")
 
 const (
 	bulkQuery = "bulk"
@@ -85,6 +93,10 @@ func (d *queryDescr) String() string {
 
 // NewQueryDescr returns a new QueryDescr instance.
 func newQueryDescr(query string, sc *scanner.Scanner) (*queryDescr, error) {
+	if query == "" {
+		return nil, errEmptyQuery
+	}
+
 	d := &queryDescr{query: query}
 
 	sc.Reset(query)
@@ -93,7 +105,7 @@ func newQueryDescr(query string, sc *scanner.Scanner) (*queryDescr, error) {
 	token, start, end := sc.Next()
 
 	if token != scanner.Identifier {
-		return nil, errInvalidCmdToken
+		return nil, &invalidQueryError{query: query}
 	}
 
 	if strings.ToLower(query[start:end]) == bulkQuery {
@@ -117,7 +129,7 @@ func newQueryDescr(query string, sc *scanner.Scanner) (*queryDescr, error) {
 	if d.kind == qkID {
 		token, start, end = sc.Next()
 		if token != scanner.Number {
-			return nil, errInvalidCmdToken
+			return nil, &invalidQueryError{query: query}
 		}
 		var err error
 		d.id, err = strconv.ParseUint(query[start:end], 10, 64)

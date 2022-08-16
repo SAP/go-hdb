@@ -71,27 +71,48 @@ func newParameterFields(size int) []*ParameterField {
 
 // ParameterField contains database field attributes for parameters.
 type ParameterField struct {
-	// field alignment
-	FieldName        string
+	names            *fieldNames
 	ft               fieldType // avoid tc.fieldType() calls in Converter (e.g. bulk insert)
-	Offset           uint32
+	ofs              int       // field name offset & used for index in case of tableRef or tableRows type
 	length           int16
 	fraction         int16
 	parameterOptions parameterOptions
-	TC               TypeCode
-	Mode             ParameterMode
+	tc               typeCode
+	mode             ParameterMode
+}
+
+// NewTableRefParameterField returns a ParameterField representing a table reference.
+func NewTableRefParameterField(idx int) *ParameterField {
+	return &ParameterField{ofs: idx, tc: TcTableRef, mode: PmOut}
+}
+
+// NewTableRowsParameterField returns a ParameterField representing table rows.
+func NewTableRowsParameterField(idx int) *ParameterField {
+	return &ParameterField{ofs: idx, tc: TcTableRows, mode: PmOut}
+}
+
+func (f *ParameterField) fieldName() string {
+	switch f.tc {
+	case TcTableRef, TcTableRows:
+		return fmt.Sprintf("table %d", f.ofs)
+	default:
+		return f.names.name(uint32(f.ofs))
+	}
 }
 
 func (f *ParameterField) String() string {
 	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s fraction %d length %d name %s",
 		f.parameterOptions,
-		f.TC,
-		f.Mode,
+		f.tc,
+		f.mode,
 		f.fraction,
 		f.length,
-		f.FieldName,
+		f.fieldName(),
 	)
 }
+
+// IsLob returns true if the ParameterField is of type lob, false otherwise.
+func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 
 // Convert returns the result of the fieldType conversion.
 func (f *ParameterField) Convert(t transform.Transformer, v interface{}) (interface{}, error) {
@@ -107,16 +128,16 @@ func (f *ParameterField) Convert(t transform.Transformer, v interface{}) (interf
 
 // TypeName returns the type name of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *ParameterField) TypeName() string { return f.TC.typeName() }
+func (f *ParameterField) TypeName() string { return f.tc.typeName() }
 
 // ScanType returns the scan type of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *ParameterField) ScanType() reflect.Type { return f.TC.dataType().ScanType() }
+func (f *ParameterField) ScanType() reflect.Type { return f.tc.dataType().ScanType() }
 
 // TypeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
 func (f *ParameterField) TypeLength() (int64, bool) {
-	if f.TC.isVariableLength() {
+	if f.tc.isVariableLength() {
 		return int64(f.length), true
 	}
 	return 0, false
@@ -125,7 +146,7 @@ func (f *ParameterField) TypeLength() (int64, bool) {
 // TypePrecisionScale returns the type precision and scale (decimal types) of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
 func (f *ParameterField) TypePrecisionScale() (int64, int64, bool) {
-	if f.TC.isDecimalType() {
+	if f.tc.isDecimalType() {
 		return int64(f.length), int64(f.fraction), true
 	}
 	return 0, 0, false
@@ -133,48 +154,43 @@ func (f *ParameterField) TypePrecisionScale() (int64, int64, bool) {
 
 // Nullable returns true if the field may be null, false otherwise.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *ParameterField) Nullable() bool {
-	return f.parameterOptions == poOptional
-}
+func (f *ParameterField) Nullable() bool { return f.parameterOptions == poOptional }
 
 // In returns true if the parameter field is an input field.
-func (f *ParameterField) In() bool {
-	return f.Mode == pmInout || f.Mode == PmIn
-}
+func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == PmIn }
 
 // Out returns true if the parameter field is an output field.
-func (f *ParameterField) Out() bool {
-	return f.Mode == pmInout || f.Mode == PmOut
-}
+func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == PmOut }
 
 // Name returns the parameter field name.
-func (f *ParameterField) Name() string {
-	return f.FieldName
-}
+func (f *ParameterField) Name() string { return f.fieldName() }
 
 func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
-	f.TC = TypeCode(dec.Int8())
-	f.Mode = ParameterMode(dec.Int8())
+	f.tc = typeCode(dec.Int8())
+	f.mode = ParameterMode(dec.Int8())
 	dec.Skip(1) //filler
-	f.Offset = dec.Uint32()
+	f.ofs = int(dec.Uint32())
 	f.length = dec.Int16()
 	f.fraction = dec.Int16()
 	dec.Skip(4) //filler
-	f.ft = f.TC.fieldType(int(f.length), int(f.fraction))
+
+	f.names.insert(uint32(f.ofs))
+
+	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
 func (f *ParameterField) prmSize(v interface{}) int {
-	if v == nil && f.TC.supportNullValue() {
+	if v == nil && f.tc.supportNullValue() {
 		return 0
 	}
 	return f.ft.prmSize(v)
 }
 
 func (f *ParameterField) encodePrm(enc *encoding.Encoder, v interface{}) error {
-	encTc := f.TC.encTc()
-	if v == nil && f.TC.supportNullValue() {
-		enc.Byte(byte(f.TC.nullValue())) // null value type code
+	encTc := f.tc.encTc()
+	if v == nil && f.tc.supportNullValue() {
+		enc.Byte(byte(f.tc.nullValue())) // null value type code
 		return nil
 	}
 	enc.Byte(byte(encTc)) // type code
@@ -191,14 +207,14 @@ decode parameter
 - type code is first byte (see encodePrm)
 */
 func (f *ParameterField) decodePrm(dec *encoding.Decoder) (interface{}, error) {
-	tc := TypeCode(dec.Byte())
+	tc := typeCode(dec.Byte())
 	if tc&0x80 != 0 { // high bit set -> null value
 		return nil, nil
 	}
 	return f.ft.decodePrm(dec)
 }
 
-// ParameterMetadata represents the metadata of a paramter.
+// ParameterMetadata represents the metadata of a parameter.
 type ParameterMetadata struct {
 	ParameterFields []*ParameterField
 }
@@ -209,23 +225,17 @@ func (m *ParameterMetadata) String() string {
 
 func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	m.ParameterFields = newParameterFields(ph.numArg())
-
-	names := fieldNames{}
-
+	names := &fieldNames{}
 	for i := 0; i < len(m.ParameterFields); i++ {
-		f := new(ParameterField)
+		f := &ParameterField{names: names}
 		f.decode(dec)
 		m.ParameterFields[i] = f
-		names.insert(f.Offset)
 	}
 	names.decode(dec)
-	for _, f := range m.ParameterFields {
-		f.FieldName = names.name(f.Offset)
-	}
 	return dec.Error()
 }
 
-// InputParameters represents the set of input paramters.
+// InputParameters represents the set of input parameters.
 type InputParameters struct {
 	InputFields []*ParameterField
 	nvargs      []driver.NamedValue

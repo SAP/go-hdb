@@ -21,7 +21,9 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
+	e "github.com/SAP/go-hdb/driver/internal/errors"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+
 	"github.com/SAP/go-hdb/driver/internal/protocol/scanner"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -147,8 +149,8 @@ func (c *dbConn) Read(b []byte) (n int, err error) {
 	}
 	start = time.Now()
 	n, err = c.conn.Read(b)
-	c.metrics.addTimeValue(timeRead, time.Since(start).Nanoseconds())
-	c.metrics.addCounterValue(counterBytesRead, uint64(n))
+	c.metrics.chHistograms <- gaugeMsg{idx: int(StatsTimeRead), v: time.Since(start).Nanoseconds()}
+	c.metrics.chCounters <- counterMsg{idx: counterBytesRead, v: uint64(n)}
 	if err == nil {
 		return
 	}
@@ -171,8 +173,8 @@ func (c *dbConn) Write(b []byte) (n int, err error) {
 	}
 	start = time.Now()
 	n, err = c.conn.Write(b)
-	c.metrics.addTimeValue(timeWrite, time.Since(start).Nanoseconds())
-	c.metrics.addCounterValue(counterBytesWritten, uint64(n))
+	c.metrics.chHistograms <- gaugeMsg{idx: int(StatsTimeWrite), v: time.Since(start).Nanoseconds()}
+	c.metrics.chCounters <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
 	if err == nil {
 		return
 	}
@@ -268,8 +270,6 @@ type conn struct {
 
 	trace bool // call sqlTrace.On() only once
 
-	//Attrs *connAttrs // as a dedicated instance (clone) is used for every session we can access the attributes directly.
-
 	sessionID int64
 
 	// after go.17 support: delete serverOptions and define it again direcly here
@@ -319,7 +319,6 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Au
 		cesu8Decoder: attrs._cesu8Decoder,
 		cesu8Encoder: attrs._cesu8Encoder,
 	}
-	//c.Attrs = connAttrs // TODO rework
 
 	c.pw = p.NewWriter(rw.Writer, attrs._cesu8Encoder, cloneStringStringMap(attrs._sessionVariables)) // write upstream
 	if err := c.pw.WriteProlog(); err != nil {
@@ -353,7 +352,7 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Au
 		go c.pinger(attrs._pingInterval, c.closed)
 	}
 
-	c.metrics.addGaugeValue(gaugeConn, 1) // increment open connections.
+	c.metrics.chGauges <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
 	return c, nil
 }
@@ -365,9 +364,7 @@ func (c *conn) isBad() bool {
 		return true
 
 	case c.lastError != nil:
-		// if last error was not a hdb error the connection is most probably not useable any more, e.g.
-		// interrupted read / write on connection.
-		if _, ok := c.lastError.(Error); !ok {
+		if errors.Is(c.lastError, e.ErrFatal) {
 			return true
 		}
 	}
@@ -489,7 +486,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.addGaugeValue(gaugeStmt, 1) // increment number of statements.
+		c.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
 		c.lastError = err
 		return stmt, err
 	}
@@ -500,8 +497,8 @@ func (c *conn) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	c.metrics.addGaugeValue(gaugeConn, -1) // decrement open connections.
-	close(c.closed)                        // signal connection close
+	c.metrics.chGauges <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
+	close(c.closed)                                       // signal connection close
 
 	// cleanup query cache
 	stdQueryResultCache.cleanup(c)
@@ -556,7 +553,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.addGaugeValue(gaugeTx, 1) // increment number of transactions.
+		c.metrics.chGauges <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
 		c.lastError = err
 		return tx, err
 	}
@@ -731,8 +728,9 @@ func traceSQL(start time.Time, query string, nvargs []driver.NamedValue) {
 	}
 }
 
-func (c *conn) addTimeValue(start time.Time, k int) {
-	c.metrics.addTimeValue(k, time.Since(start).Nanoseconds())
+func (c *conn) addTimeValue(start time.Time, idx int) {
+	c.metrics.chHistograms <- gaugeMsg{idx: int(idx), v: time.Since(start).Nanoseconds()}
+	// c.metrics.addTimeValue(k, time.Since(start).Nanoseconds())
 }
 
 //transaction
@@ -765,7 +763,7 @@ func (t *tx) close(rollback bool) (err error) {
 
 	c.inTx = false
 
-	c.metrics.addGaugeValue(gaugeTx, -1) // decrement number of transactions.
+	c.metrics.chGauges <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
 	if c.isBad() {
 		return driver.ErrBadConn
@@ -855,14 +853,14 @@ func (s *stmt) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	s.conn.metrics.addGaugeValue(gaugeStmt, -1) // decrement number of statements.
+	s.conn.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	if c.isBad() {
 		return driver.ErrBadConn
 	}
 
 	if s.nvargs != nil {
-		if len(s.nvargs) != 0 { // log always //TODO: Fatal?
+		if len(s.nvargs) != 0 { // log always
 			dlog.Printf("close: %s - not flushed records: %d)", s.query, len(s.nvargs)/s.pr.numField())
 		}
 		s.nvargs = nil
@@ -963,7 +961,7 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 
 	done := make(chan struct{})
 	go func() {
-		r, err = c._execBulk(s.pr, nvargs, !c.inTx) //TODO
+		r, err = c._execBulk(s.pr, nvargs, !c.inTx)
 		close(done)
 	}()
 
@@ -1213,7 +1211,7 @@ func (s *callStmt) Close() error {
 		return driver.ErrBadConn
 	}
 
-	s.conn.metrics.addGaugeValue(gaugeStmt, -1) // decrement number of statements.
+	s.conn.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	return c._dropStatementID(s.pr.stmtID)
 }
@@ -1339,7 +1337,7 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 }
 
 func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, locale string) (int64, connectOptions, error) {
-	defer c.addTimeValue(time.Now(), timeAuth)
+	defer c.addTimeValue(time.Now(), StatsTimeAuth)
 
 	// client context
 	clientContext := clientContext{
@@ -1414,7 +1412,7 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 }
 
 func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), timeQuery)
+	defer c.addTimeValue(time.Now(), StatsTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
 	if err := c.pw.Write(c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
@@ -1449,7 +1447,7 @@ func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
 }
 
 func (c *conn) _execDirect(query string, commit bool) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), timeExec)
+	defer c.addTimeValue(time.Now(), StatsTimeExec)
 
 	if err := c.pw.Write(c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
 		return nil, err
@@ -1472,7 +1470,7 @@ func (c *conn) _execDirect(query string, commit bool) (driver.Result, error) {
 }
 
 func (c *conn) _prepare(query string) (*prepareResult, error) {
-	defer c.addTimeValue(time.Now(), timePrepare)
+	defer c.addTimeValue(time.Now(), StatsTimePrepare)
 
 	if err := c.pw.Write(c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
 		return nil, err
@@ -1538,11 +1536,11 @@ Bulk insert containing LOBs:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
 func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), timeExec)
+	defer c.addTimeValue(time.Now(), StatsTimeExec)
 
 	hasLob := func() bool {
 		for _, f := range pr.parameterFields {
-			if f.TC.IsLob() {
+			if f.IsLob() {
 				return true
 			}
 		}
@@ -1637,7 +1635,7 @@ func (c *conn) _exec(pr *prepareResult, nvargs []driver.NamedValue, hasLob, comm
 }
 
 func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), timeCall)
+	defer c.addTimeValue(time.Now(), StatsTimeCall)
 
 	/*
 		only in args
@@ -1648,7 +1646,7 @@ func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver
 	for _, f := range pr.parameterFields {
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
-			if f.TC.IsLob() {
+			if f.IsLob() {
 				hasInLob = true
 			}
 		}
@@ -1695,7 +1693,7 @@ func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver
 
 	// legacy mode?
 	if c.legacy {
-		cr.appendTableRefFields() // TODO review
+		cr.appendTableRefFields()
 		for _, qr := range cr.qrs {
 			// add to cache
 			stdQueryResultCache.set(qr.rsID, qr)
@@ -1707,7 +1705,7 @@ func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver
 }
 
 func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), timeCall)
+	defer c.addTimeValue(time.Now(), StatsTimeCall)
 
 	/*
 		in,- and output args
@@ -1723,7 +1721,7 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 		if f.In() {
 			inPrmFields = append(inPrmFields, f)
 			inArgs = append(inArgs, nvargs[i])
-			if f.TC.IsLob() {
+			if f.IsLob() {
 				hasInLob = true
 			}
 		}
@@ -1830,13 +1828,13 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 }
 
 func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), timeQuery)
+	defer c.addTimeValue(time.Now(), StatsTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in exec
 
 	hasLob := func() bool {
 		for _, f := range pr.parameterFields {
-			if f.TC.IsLob() {
+			if f.IsLob() {
 				return true
 			}
 		}
@@ -1880,8 +1878,7 @@ func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool
 }
 
 func (c *conn) _fetchNext(qr *queryResult) error {
-	//TODO: query?
-	defer c.addTimeValue(time.Now(), timeFetch)
+	defer c.addTimeValue(time.Now(), StatsTimeFetch)
 
 	if err := c.pw.Write(c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.fetchSize)); err != nil {
 		return err
@@ -1914,7 +1911,7 @@ func (c *conn) _closeResultsetID(id uint64) error {
 }
 
 func (c *conn) _commit() error {
-	defer c.addTimeValue(time.Now(), timeCommit)
+	defer c.addTimeValue(time.Now(), StatsTimeCommit)
 
 	if err := c.pw.Write(c.sessionID, p.MtCommit, false); err != nil {
 		return err
@@ -1926,7 +1923,7 @@ func (c *conn) _commit() error {
 }
 
 func (c *conn) _rollback() error {
-	defer c.addTimeValue(time.Now(), timeRollback)
+	defer c.addTimeValue(time.Now(), StatsTimeRollback)
 
 	if err := c.pw.Write(c.sessionID, p.MtRollback, false); err != nil {
 		return err
@@ -1959,7 +1956,7 @@ func (c *conn) _disconnect() error {
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
 func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
-	defer c.addTimeValue(time.Now(), timeFetchLob)
+	defer c.addTimeValue(time.Now(), StatsTimeFetchLob)
 
 	var err error
 
@@ -2066,7 +2063,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 	j := 0
 	for i, arg := range nvargs { // range over args (mass / bulk operation)
 		f := inPrmFields[i%numInPrmField]
-		if f.TC.IsLob() {
+		if f.IsLob() {
 			lobInDescr, ok := arg.Value.(*p.LobInDescr)
 			if !ok {
 				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", arg)

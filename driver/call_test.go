@@ -51,7 +51,7 @@ end
 		fct  func(db *sql.DB, proc driver.Identifier, t *testing.T)
 	}{
 		{"QueryRow", testQueryRow},
-		// {"Query", testQuery}, // TODO
+		// {"Query", testQuery}, // TODO: 'call' query
 		// {"Exec", testExec},   // TODO: output parameter
 	}
 

@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func assertEqualInt(t *testing.T, tc TypeCode, v interface{}, r int64) {
+func assertEqualInt(t *testing.T, tc typeCode, v interface{}, r int64) {
 	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func assertEqualInt(t *testing.T, tc TypeCode, v interface{}, r int64) {
 	}
 }
 
-func assertEqualIntOutOfRangeError(t *testing.T, tc TypeCode, v interface{}) {
+func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
 	_, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrIntegerOutOfRange) {
@@ -70,7 +70,7 @@ func testConvertInteger(t *testing.T) {
 	assertEqualInt(t, tcInteger, "42", 42)
 }
 
-func assertEqualFloat(t *testing.T, tc TypeCode, v interface{}, r float64) {
+func assertEqualFloat(t *testing.T, tc typeCode, v interface{}, r float64) {
 	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func assertEqualFloat(t *testing.T, tc TypeCode, v interface{}, r float64) {
 	}
 }
 
-func assertEqualFloatOutOfRangeError(t *testing.T, tc TypeCode, v interface{}) {
+func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v interface{}) {
 	_, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrFloatOutOfRange) {
@@ -119,7 +119,7 @@ func testConvertFloat(t *testing.T) {
 	assertEqualFloat(t, tcDouble, stringDoubleValue, doubleValue)
 }
 
-func assertEqualTime(t *testing.T, tc TypeCode, v interface{}, r time.Time) {
+func assertEqualTime(t *testing.T, tc typeCode, v interface{}, r time.Time) {
 	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func testConvertTime(t *testing.T) {
 	assertEqualTime(t, tcTimestamp, &timeValue, timeValue)
 }
 
-func assertEqualString(t *testing.T, tc TypeCode, v interface{}, r string) {
+func assertEqualString(t *testing.T, tc typeCode, v interface{}, r string) {
 	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +169,7 @@ func testConvertString(t *testing.T) {
 	assertEqualString(t, tcString, &stringValue, stringValue)
 }
 
-func assertEqualBytes(t *testing.T, tc TypeCode, v interface{}, r []byte) {
+func assertEqualBytes(t *testing.T, tc typeCode, v interface{}, r []byte) {
 	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)

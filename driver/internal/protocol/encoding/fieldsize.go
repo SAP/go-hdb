@@ -36,8 +36,8 @@ const (
 	bytesLenIndBig       byte = 247
 )
 
-// VarBytesSize returns the size of a varible byte variable.
-func VarBytesSize(size int) int {
+// VarFieldSize returns the size of a varible field variable ([]byte, string and unicode variants).
+func VarFieldSize(size int) int {
 	switch {
 	default:
 		return -1

@@ -12,55 +12,57 @@ import (
 
 const noFieldName uint32 = 0xFFFFFFFF
 
-type offsetName struct {
-	offset uint32
-	name   string
+type ofsName struct {
+	ofs  uint32
+	name string
 }
 
-type fieldNames []offsetName
+type fieldNames struct { // use struct here to get a stable pointer
+	items []ofsName
+}
 
-func (fn fieldNames) search(offset uint32) int {
+func (fn *fieldNames) search(ofs uint32) int {
 	// binary search
-	return sort.Search(len(fn), func(i int) bool { return fn[i].offset >= offset })
+	return sort.Search(len(fn.items), func(i int) bool { return fn.items[i].ofs >= ofs })
 }
 
-func (fn *fieldNames) insert(offset uint32) {
-	if offset == noFieldName {
+func (fn *fieldNames) insert(ofs uint32) {
+	if ofs == noFieldName {
 		return
 	}
-	i := fn.search(offset)
+	i := fn.search(ofs)
 	switch {
-	case i >= len(*fn): // not found -> append
-		*fn = append(*fn, offsetName{offset: offset})
-	case (*fn)[i].offset == offset: // duplicate
+	case i >= len(fn.items): // not found -> append
+		fn.items = append(fn.items, ofsName{ofs: ofs})
+	case fn.items[i].ofs == ofs: // duplicate
 	default: // insert
-		*fn = append(*fn, offsetName{})
-		copy((*fn)[i+1:], (*fn)[i:])
-		(*fn)[i] = offsetName{offset: offset}
+		fn.items = append(fn.items, ofsName{})
+		copy(fn.items[i+1:], fn.items[i:])
+		fn.items[i] = ofsName{ofs: ofs}
 	}
 }
 
-func (fn fieldNames) name(offset uint32) string {
-	i := fn.search(offset)
-	if i < len(fn) {
-		return fn[i].name
+func (fn *fieldNames) name(ofs uint32) string {
+	i := fn.search(ofs)
+	if i < len(fn.items) {
+		return fn.items[i].name
 	}
 	return ""
 }
 
-func (fn fieldNames) decode(dec *encoding.Decoder) (err error) {
+func (fn *fieldNames) decode(dec *encoding.Decoder) (err error) {
 	// TODO sniffer - python client texts are returned differently?
 	// - double check offset calc (CESU8 issue?)
 	pos := uint32(0)
-	for i, on := range fn {
-		diff := int(on.offset - pos)
+	for i, on := range fn.items {
+		diff := int(on.ofs - pos)
 		if diff > 0 {
 			dec.Skip(diff)
 		}
 		var n int
 		var s string
 		n, s, err = dec.CESU8LIString()
-		fn[i].name = s
+		fn.items[i].name = s
 		pos += uint32(n + diff) // len byte + size + diff
 	}
 	return err

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package hdb defines hdb specific data structures used by the driver.
+// Package hdb defines hdb specific data structures used by the driver (deprecated).
 package hdb
 
 import "github.com/SAP/go-hdb/driver"

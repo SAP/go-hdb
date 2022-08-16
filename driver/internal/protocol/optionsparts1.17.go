@@ -125,7 +125,7 @@ func (ops *ClientContext) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	*ops = ClientContext{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := ClientContextOption(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}
@@ -136,7 +136,7 @@ func (ops *ConnectOptions) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	*ops = ConnectOptions{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := ConnectOption(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}
@@ -147,7 +147,7 @@ func (ops *DBConnectInfo) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	*ops = DBConnectInfo{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := DBConnectInfoType(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}
@@ -158,7 +158,7 @@ func (ops *statementContext) decode(dec *encoding.Decoder, ph *PartHeader) error
 	*ops = statementContext{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := statementContextType(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}
@@ -169,7 +169,7 @@ func (ops *transactionFlags) decode(dec *encoding.Decoder, ph *PartHeader) error
 	*ops = transactionFlags{} // no reuse of maps - create new one
 	for i := 0; i < ph.numArg(); i++ {
 		k := transactionFlagType(dec.Int8())
-		tc := TypeCode(dec.Byte())
+		tc := typeCode(dec.Byte())
 		ot := tc.optType()
 		(*ops)[k] = ot.decode(dec)
 	}

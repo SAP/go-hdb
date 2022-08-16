@@ -4,27 +4,6 @@
 
 package driver
 
-import (
-	"sync"
-	"sync/atomic"
-)
-
-// Constants for time statistics.
-const (
-	timeRead = iota
-	timeWrite
-	timeAuth
-	timeQuery
-	timePrepare
-	timeExec
-	timeCall
-	timeFetch
-	timeFetchLob
-	timeRollback
-	timeCommit
-	numTime
-)
-
 const (
 	counterBytesRead = iota
 	counterBytesWritten
@@ -38,122 +17,131 @@ const (
 	numGauge
 )
 
-type counter struct {
-	n uint64 // atomic access.
+type histogram struct {
+	count     uint64
+	sum       uint64
+	keys      []uint64
+	values    []uint64
+	underflow uint64 // in case of negative duration (will add to zero bucket)
 }
 
-func (c *counter) add(n uint64)  { atomic.AddUint64(&c.n, uint64(n)) }
-func (c *counter) value() uint64 { return atomic.LoadUint64(&c.n) }
-
-type gauge struct {
-	v int64 // atomic access.
+func newHistogram(keys []uint64) *histogram {
+	return &histogram{keys: keys, values: make([]uint64, len(keys))}
 }
 
-func (g *gauge) add(n int64)  { atomic.AddInt64(&g.v, int64(n)) }
-func (g *gauge) value() int64 { return atomic.LoadInt64(&g.v) }
-
-type timeHistogram struct {
-	mu          sync.Mutex
-	count       uint64
-	sum         uint64
-	timeBuckets []uint64
-	buckets     []uint64
-	underflow   uint64 // in case of negative duration (will add to zero bucket)
-}
-
-func newTimeHistogram(timeBuckets []uint64) *timeHistogram {
-	return &timeHistogram{timeBuckets: timeBuckets, buckets: make([]uint64, len(timeBuckets))}
-}
-
-func (h *timeHistogram) stats() *TimeStat {
-	h.mu.Lock()
-	rv := &TimeStat{
+func (h *histogram) stats() *StatsHistogram {
+	rv := &StatsHistogram{
 		Count:   h.count,
 		Sum:     h.sum / 1e6, // time in milliseconds
-		Buckets: make(map[uint64]uint64, len(h.buckets)),
+		Buckets: make(map[uint64]uint64, len(h.keys)),
 	}
-	for i, timeBucket := range h.timeBuckets {
-		rv.Buckets[timeBucket] = h.buckets[i]
+	for i, key := range h.keys {
+		rv.Buckets[key] = h.values[i]
 	}
-	h.mu.Unlock()
 	return rv
 }
 
-func (h *timeHistogram) add(ns int64) { // time in nanoseconds
-	h.mu.Lock()
+func (h *histogram) add(ns int64) { // time in nanoseconds
 	h.count++
 	if ns < 0 {
 		h.underflow++
-		h.mu.Unlock()
 		return
 	}
 	h.sum += uint64(ns)
 	// determine index
-	i := binarySearchSliceUint64(h.timeBuckets, uint64(ns)/1e6) // bucket in milliseconds
-	if i < len(h.timeBuckets) {
-		h.buckets[i]++
+	i := binarySearchSliceUint64(h.keys, uint64(ns)/1e6) // bucket in milliseconds
+	if i < len(h.keys) {
+		h.values[i]++
 	}
-	h.mu.Unlock()
+}
+
+type counterMsg struct {
+	v   uint64
+	idx int
+}
+
+type gaugeMsg struct {
+	v   int64
+	idx int
 }
 
 type metrics struct {
-	parent         *metrics
-	counters       []*counter
-	gauges         []*gauge
-	timeHistograms []*timeHistogram
+	parent   *metrics
+	counters []uint64
+	gauges   []int64
+	times    []*histogram
+
+	chCounters   chan counterMsg
+	chGauges     chan gaugeMsg
+	chHistograms chan gaugeMsg
+	chReqStats   chan chan *Stats
 }
 
-func newMetrics(parent *metrics, timeBuckets []uint64) *metrics {
+const (
+	numChMetrics = 100
+	numChStats   = 10
+)
+
+func newMetrics(parent *metrics, timeKeys []uint64) *metrics {
 	rv := &metrics{
-		parent:         parent,
-		counters:       make([]*counter, numCounter),
-		gauges:         make([]*gauge, numGauge),
-		timeHistograms: make([]*timeHistogram, numTime),
+		parent:       parent,
+		counters:     make([]uint64, numCounter),
+		gauges:       make([]int64, numGauge),
+		times:        make([]*histogram, NumStatsTime),
+		chCounters:   make(chan counterMsg, numChMetrics),
+		chGauges:     make(chan gaugeMsg, numChMetrics),
+		chHistograms: make(chan gaugeMsg, numChMetrics),
+		chReqStats:   make(chan chan *Stats, numChStats),
 	}
-	for i := 0; i < numCounter; i++ {
-		rv.counters[i] = &counter{}
+	for i := 0; i < int(NumStatsTime); i++ {
+		rv.times[i] = newHistogram(timeKeys)
 	}
-	for i := 0; i < numGauge; i++ {
-		rv.gauges[i] = &gauge{}
-	}
-	for i := 0; i < int(numTime); i++ {
-		rv.timeHistograms[i] = newTimeHistogram(timeBuckets)
-	}
+
+	go rv.collect(rv.chCounters, rv.chGauges, rv.chHistograms, rv.chReqStats)
 	return rv
 }
 
-func (m *metrics) addCounterValue(kind int, v uint64) {
-	m.counters[kind].add(v)
-	if m.parent != nil {
-		m.parent.addCounterValue(kind, v)
+func (m *metrics) buildStats() *Stats {
+	times := make([]*StatsHistogram, NumStatsTime)
+	for i, th := range m.times {
+		times[i] = th.stats()
+	}
+	return &Stats{
+		OpenConnections:  int(m.gauges[gaugeConn]),
+		OpenTransactions: int(m.gauges[gaugeTx]),
+		OpenStatements:   int(m.gauges[gaugeStmt]),
+		BytesRead:        m.counters[counterBytesRead],
+		BytesWritten:     m.counters[counterBytesWritten],
+		Times:            times,
 	}
 }
 
-func (m *metrics) addGaugeValue(kind int, v int64) {
-	m.gauges[kind].add(v)
-	if m.parent != nil {
-		m.parent.addGaugeValue(kind, v)
-	}
-}
-
-func (m *metrics) addTimeValue(kind int, v int64) {
-	m.timeHistograms[kind].add(v)
-	if m.parent != nil {
-		m.parent.addTimeValue(kind, v)
+func (m *metrics) collect(chCounters <-chan counterMsg, chGauges <-chan gaugeMsg, chHistograms <-chan gaugeMsg, chReqStats <-chan chan *Stats) {
+	for {
+		select {
+		case msg := <-chCounters:
+			m.counters[msg.idx] += msg.v
+			if m.parent != nil {
+				m.parent.chCounters <- msg
+			}
+		case msg := <-chGauges:
+			m.gauges[msg.idx] += msg.v
+			if m.parent != nil {
+				m.parent.chGauges <- msg
+			}
+		case msg := <-chHistograms:
+			m.times[msg.idx].add(msg.v)
+			if m.parent != nil {
+				m.parent.chHistograms <- msg
+			}
+		case chStats := <-chReqStats:
+			chStats <- m.buildStats()
+		}
 	}
 }
 
 func (m *metrics) stats() Stats {
-	timeStats := make([]*TimeStat, numTime)
-	for i, th := range m.timeHistograms {
-		timeStats[i] = th.stats()
-	}
-	return Stats{
-		OpenConnections:  int(m.gauges[gaugeConn].value()),
-		OpenTransactions: int(m.gauges[gaugeTx].value()),
-		OpenStatements:   int(m.gauges[gaugeStmt].value()),
-		BytesRead:        m.counters[counterBytesRead].value(),
-		BytesWritten:     m.counters[counterBytesWritten].value(),
-		TimeStats:        timeStats,
-	}
+	chStats := make(chan *Stats)
+	m.chReqStats <- chStats
+	return *<-chStats
 }

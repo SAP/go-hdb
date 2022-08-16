@@ -11,6 +11,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/internal/errors"
+
 	"golang.org/x/text/transform"
 )
 
@@ -46,6 +48,9 @@ func (e *DecodeError) Pos() int { return e.p }
 
 // Value returns the value which should be decoded.
 func (e *DecodeError) Value() []byte { return e.v }
+
+// Is returns true on the target driver errors.Fatal, false otherwise.
+func (e *DecodeError) Is(target error) bool { return target == errors.ErrFatal }
 
 // Encoder supports encoding of UTF-8 encoded data into CESU-8.
 type Encoder struct {
