@@ -8,39 +8,35 @@
 package driver_test
 
 import (
-	"database/sql"
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
 )
 
-func benchmarkPing(c *driver.Connector, b *testing.B) {
-	db := sql.OpenDB(c)
-	defer db.Close()
+func benchmarkPing(b *testing.B) {
+	db := driver.DefaultTestDB()
 	if err := db.Ping(); err != nil {
 		b.Fatal(err)
 	}
 }
 
-func benchmarkPingSeq(c *driver.Connector, b *testing.B) {
+func benchmarkPingSeq(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		benchmarkPing(c, b)
+		benchmarkPing(b)
 	}
 }
 
-func benchmarkPingPar(c *driver.Connector, pb *testing.PB, b *testing.B) {
+func benchmarkPingPar(pb *testing.PB, b *testing.B) {
 	for pb.Next() {
-		benchmarkPing(c, b)
+		benchmarkPing(b)
 	}
 }
 
 func BenchmarkPing(b *testing.B) {
-	connector := driver.NewTestConnector()
-
 	b.Run("Ping sequentially", func(b *testing.B) {
-		benchmarkPingSeq(connector, b)
+		benchmarkPingSeq(b)
 	})
 	b.Run("Ping parallel", func(b *testing.B) {
-		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(connector, pb, b) })
+		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(pb, b) })
 	})
 }

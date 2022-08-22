@@ -21,7 +21,7 @@ ExampleDecimal creates a table with a single decimal attribute, insert a record 
 This demonstrates the usage of the type Decimal to write and scan decimal database attributes.
 */
 func ExampleDecimal() {
-	db := sql.OpenDB(driver.NewTestConnector())
+	db := sql.OpenDB(driver.DefaultTestConnector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

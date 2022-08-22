@@ -14,6 +14,7 @@ import (
 
 // authAttrs is holding authentication relevant attributes.
 type authAttrs struct {
+	hasCookie               atomicBool
 	mu                      sync.RWMutex
 	_username, _password    string // basic authentication
 	_clientCert, _clientKey []byte // X509
@@ -25,126 +26,156 @@ type authAttrs struct {
 	_refreshToken           func() (token string, ok bool)
 }
 
-func (a *authAttrs) username() string { a.mu.RLock(); defer a.mu.RUnlock(); return a._username }
-func (a *authAttrs) password() string { a.mu.RLock(); defer a.mu.RUnlock(); return a._password }
-func (a *authAttrs) setPassword(password string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._password = password
-}
-func (a *authAttrs) clientCert() (clientCert, clientKey []byte) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._clientCert, a._clientKey
-}
-func (a *authAttrs) setClientCert(clientCert, clientKey []byte) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._clientCert = clientCert
-	a._clientKey = clientKey
-}
-func (a *authAttrs) token() string         { a.mu.RLock(); defer a.mu.RUnlock(); return a._token }
-func (a *authAttrs) setToken(token string) { a.mu.Lock(); defer a.mu.Unlock(); a._token = token }
-func (a *authAttrs) setSessionCookie(logonname string, cookie []byte) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._logonname = logonname
-	a._sessionCookie = cookie
-}
-func (a *authAttrs) refreshPassword() func() (password string, ok bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._refreshPassword
-}
-func (a *authAttrs) setRefreshPassword(refreshPassword func() (password string, ok bool)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._refreshPassword = refreshPassword
-}
-func (a *authAttrs) refreshClientCert() func() (clientCert, clientKey []byte, ok bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._refreshClientCert
-}
-func (a *authAttrs) setRefreshClientCert(refreshClientCert func() (clientCert, clientKey []byte, ok bool)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._refreshClientCert = refreshClientCert
-}
-func (a *authAttrs) refreshToken() func() (token string, ok bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._refreshToken
-}
-func (a *authAttrs) setRefreshToken(refreshToken func() (token string, ok bool)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._refreshToken = refreshToken
-}
+/*
+keep c as the instance name, so that the generated help does have the same variable name when object is
+included in connector
+*/
 
 func isJWTToken(token string) bool { return strings.HasPrefix(token, "ey") }
 
-func (a *authAttrs) cookieAuth() *p.Auth {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	if a._sessionCookie == nil {
+func (c *authAttrs) cookieAuth() *p.Auth {
+	if !c.hasCookie.Load() { // fastpath without lock
 		return nil
 	}
 
-	auth := p.NewAuth(a._logonname)                                 // important: for session cookie auth we do need the logonname from JWT auth.
-	auth.AddSessionCookie(a._sessionCookie, a._logonname, clientID) // And for HANA onPrem the final session cookie req needs the logonname as well.
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	auth := p.NewAuth(c._logonname)                                 // important: for session cookie auth we do need the logonname from JWT auth.
+	auth.AddSessionCookie(c._sessionCookie, c._logonname, clientID) // And for HANA onPrem the final session cookie req needs the logonname as well.
 	return auth
 }
 
-func (a *authAttrs) auth() *p.Auth {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+func (c *authAttrs) auth() *p.Auth {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	auth := p.NewAuth(a._username) // use username as logonname
-	if a._clientCert != nil && a._clientKey != nil {
-		auth.AddX509(a._clientCert, a._clientKey)
+	auth := p.NewAuth(c._username) // use username as logonname
+	if c._clientCert != nil && c._clientKey != nil {
+		auth.AddX509(c._clientCert, c._clientKey)
 	}
-	if a._token != "" {
-		auth.AddJWT(a._token)
+	if c._token != "" {
+		auth.AddJWT(c._token)
 	}
 	// mimic standard drivers and use password as token if user is empty
-	if a._token == "" && a._username == "" && isJWTToken(a._password) {
-		auth.AddJWT(a._password)
+	if c._token == "" && c._username == "" && isJWTToken(c._password) {
+		auth.AddJWT(c._password)
 	}
-	if a._password != "" {
-		auth.AddBasic(a._username, a._password)
+	if c._password != "" {
+		auth.AddBasic(c._username, c._password)
 	}
 	return auth
 }
 
-func (a *authAttrs) refresh(auth *p.Auth) bool {
+func (c *authAttrs) refresh(auth *p.Auth) bool {
 	switch method := auth.Method().(type) {
 
 	case p.AuthPasswordSetter:
-		if fn := a.refreshPassword(); fn != nil {
-			if password, ok := fn(); ok && a._password != password {
-				a.setPassword(password)
+		if fn := c._refreshPassword; fn != nil {
+			if password, ok := fn(); ok && c._password != password {
+				c.mu.Lock()
+				c._password = password
+				c.mu.Unlock()
 				method.SetPassword(password)
 				return true
 			}
 		}
 	case p.AuthTokenSetter:
-		if fn := a.refreshToken(); fn != nil {
-			if token, ok := fn(); ok && a._token != token {
-				a.setToken(token)
+		if fn := c._refreshToken; fn != nil {
+			if token, ok := fn(); ok && c._token != token {
+				c.mu.Lock()
+				c._token = token
+				c.mu.Unlock()
 				method.SetToken(token)
 				return true
 			}
 		}
 	case p.AuthCertKeySetter:
-		if fn := a.refreshClientCert(); fn != nil {
-			if clientCert, clientKey, ok := fn(); ok && !(bytes.Equal(a._clientCert, clientCert) && bytes.Equal(a._clientKey, clientKey)) {
-				a.setClientCert(clientCert, clientKey)
+		if fn := c._refreshClientCert; fn != nil {
+			if clientCert, clientKey, ok := fn(); ok && !(bytes.Equal(c._clientCert, clientCert) && bytes.Equal(c._clientKey, clientKey)) {
+				c.mu.Lock()
+				c._clientCert = clientCert
+				c._clientKey = clientKey
+				c.mu.Unlock()
 				method.SetCertKey(clientCert, clientKey)
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func (c *authAttrs) invalidateCookie() { c.hasCookie.Store(false) }
+
+func (c *authAttrs) setCookie(logonname string, sessionCookie []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.hasCookie.Store(true)
+	c._logonname = logonname
+	c._sessionCookie = sessionCookie
+}
+
+// Username returns the username of the connector.
+func (c *authAttrs) Username() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._username }
+
+// Password returns the basic authentication password of the connector.
+func (c *authAttrs) Password() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._password }
+
+// SetPassword sets the basic authentication password of the connector.
+func (c *authAttrs) SetPassword(password string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._password = password
+}
+
+// RefreshPassword returns the callback function for basic authentication password refresh.
+func (c *authAttrs) RefreshPassword() func() (password string, ok bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._refreshPassword
+}
+
+// SetRefreshPassword sets the callback function for basic authentication password refresh.
+func (c *authAttrs) SetRefreshPassword(refreshPassword func() (password string, ok bool)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._refreshPassword = refreshPassword
+}
+
+// ClientCert returns the X509 authentication client certificate and key of the connector.
+func (c *authAttrs) ClientCert() (clientCert, clientKey []byte) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._clientCert, c._clientKey
+}
+
+// RefreshClientCert returns the callback function for X509 authentication client certificate and key refresh.
+func (c *authAttrs) RefreshClientCert() func() (clientCert, clientKey []byte, ok bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._refreshClientCert
+}
+
+// SetRefreshClientCert sets the callback function for X509 authentication client certificate and key refresh.
+func (c *authAttrs) SetRefreshClientCert(refreshClientCert func() (clientCert, clientKey []byte, ok bool)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._refreshClientCert = refreshClientCert
+}
+
+// Token returns the JWT authentication token of the connector.
+func (c *authAttrs) Token() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._token }
+
+// RefreshToken returns the callback function for JWT authentication token refresh.
+func (c *authAttrs) RefreshToken() func() (token string, ok bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._refreshToken
+}
+
+// SetRefreshToken sets the callback function for JWT authentication token refresh.
+func (c *authAttrs) SetRefreshToken(refreshToken func() (token string, ok bool)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._refreshToken = refreshToken
 }

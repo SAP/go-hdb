@@ -41,7 +41,6 @@ func (a *JWT) PrepareInitReq(prms *Prms) {
 // InitRepDecode implements the Method interface.
 func (a *JWT) InitRepDecode(d *Decoder) error {
 	a.logonname = d.String()
-	Tracef("JWT auth - logonname: %v", a.logonname)
 	return nil
 }
 
@@ -63,6 +62,5 @@ func (a *JWT) FinalRepDecode(d *Decoder) error {
 		return err
 	}
 	a._cookie = d.bytes()
-	Tracef("JWT auth - cookie: %v", a._cookie)
 	return nil
 }

@@ -8,7 +8,6 @@
 package collectors_test
 
 import (
-	"database/sql"
 	"log"
 	"net"
 	"net/http"
@@ -56,28 +55,28 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	db := sql.OpenDB(connector)
+	// use driver.OpenDB instead of sql.OpenDB to collect driver.DB specific statistics.
+	db := driver.OpenDB(connector)
 	defer db.Close()
 
-	// dbName: use as label.
-	// as alternative connector.Host() could be used.
+	// use dbName as label.
 	const dbName = "myDatabase"
 
-	// register collector for sql db stats.
-	dbStatsCollector := collectors.NewDBStatsCollector(db, dbName)
-	if err := prometheus.Register(dbStatsCollector); err != nil {
+	// register collector for sql.DB stats.
+	sqlDBStatsCollector := collectors.NewDBStatsCollector(db.DB, dbName)
+	if err := prometheus.Register(sqlDBStatsCollector); err != nil {
 		log.Fatal(err)
 	}
 
-	// register collector for go-hdb driver metrics.
-	driverCollector := drivercollectors.NewDriverCollector(connector.NativeDriver(), dbName)
+	// register collector for go-hdb driver stats.
+	driverCollector := drivercollectors.NewDriverStatsCollector(connector.NativeDriver(), dbName)
 	if err := prometheus.Register(driverCollector); err != nil {
 		log.Fatal(err)
 	}
 
-	// register collector for go-hdb connector metrics.
-	connectorCollector := drivercollectors.NewConnectorCollector(connector, dbName)
-	if err := prometheus.Register(connectorCollector); err != nil {
+	// register collector for extended go-hdb db stats.
+	driverDBExStatsCollector := drivercollectors.NewDBExStatsCollector(db, dbName)
+	if err := prometheus.Register(driverDBExStatsCollector); err != nil {
 		log.Fatal(err)
 	}
 

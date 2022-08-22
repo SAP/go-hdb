@@ -527,7 +527,7 @@ var testLobFiles = make([]*testLobFile, 0)
 var initLobFilesOnce sync.Once
 
 func testInitLobFiles(t *testing.T) {
-	initLobFilesOnce.Do(func() { // lazy (lob file test might not be executed)
+	initLobFilesOnce.Do(func() { // lazy (lob file test might not be executed at allss)
 
 		isASCII := func(content []byte) bool {
 			for _, b := range content {

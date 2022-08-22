@@ -11,15 +11,16 @@ package driver
 
 import (
 	"sort"
+
+	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
-func cloneStringSlice(s []string) []string {
-	if s == nil {
-		return nil
-	}
-	return append([]string{}, s...)
-}
+// aliase
+type connectOptions = p.ConnectOptions
+type dbConnectInfo = p.DBConnectInfo
+type clientContext = p.ClientContext
 
+// generic alternatives
 func cloneStringStringMap(m map[string]string) map[string]string {
 	if m == nil {
 		return nil
@@ -30,18 +31,8 @@ func cloneStringStringMap(m map[string]string) map[string]string {
 	}
 	return clone
 }
-
-/*
-	func cloneSliceUint64(s []uint64) []uint64 {
-		// Preserve nil in case it matters.
-		if s == nil {
-			return nil
-		}
-		return append([]uint64{}, s...)
-	}
-*/
-func sortSliceUint64(s []uint64) { sort.Slice(s, func(i, j int) bool { return s[i] < s[j] }) }
-func compactSliceUint64(s []uint64) []uint64 {
+func sortSliceFloat64(s []float64) { sort.Slice(s, func(i, j int) bool { return s[i] < s[j] }) }
+func compactSliceFloat64(s []float64) []float64 {
 	if len(s) == 0 {
 		return s
 	}
@@ -56,6 +47,6 @@ func compactSliceUint64(s []uint64) []uint64 {
 	}
 	return s[:i]
 }
-func binarySearchSliceUint64(s []uint64, x uint64) int {
+func binarySearchSliceFloat64(s []float64, x float64) int {
 	return sort.Search(len(s), func(i int) bool { return s[i] >= x })
 }

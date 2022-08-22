@@ -36,13 +36,13 @@ func convertNamedValue(conn *conn, pr *prepareResult, nv *driver.NamedValue) err
 		if reflect.ValueOf(v).Kind() != reflect.Ptr {
 			return fmt.Errorf("out parameter %v needs to be pointer variable", v)
 		}
-		if _, err := f.Convert(conn.cesu8Encoder(), v); err != nil { // check field only
+		if _, err := f.Convert(conn._cesu8Encoder(), v); err != nil { // check field only
 			return err
 		}
 		return nil
 	}
 
-	if v, err = f.Convert(conn.cesu8Encoder(), v); err != nil { // convert field
+	if v, err = f.Convert(conn._cesu8Encoder(), v); err != nil { // convert field
 		return err
 	}
 
@@ -60,7 +60,7 @@ func convertValue(conn *conn, pr *prepareResult, idx int, v driver.Value) (drive
 		}
 	}
 	// convert field
-	return f.Convert(conn.cesu8Encoder(), v)
+	return f.Convert(conn._cesu8Encoder(), v)
 }
 
 func normNamedValue(nv *driver.NamedValue) (interface{}, bool) {

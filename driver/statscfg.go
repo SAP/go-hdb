@@ -10,15 +10,12 @@ import (
 	"fmt"
 )
 
-// StatsTimeTexts returns the texts of time measurement categories.
-func StatsTimeTexts() []string { return cloneStringSlice(statsCfg.TimeTexts) }
-
 //go:embed statscfg.json
 var statsCfgRaw []byte
 
 var statsCfg struct {
-	TimeTexts   []string `json:"timeTexts"`
-	TimeBuckets []uint64 `json:"timeBuckets"`
+	SQLTimeTexts    []string  `json:"sqlTimeTexts"`
+	TimeUpperBounds []float64 `json:"timeUpperBounds"`
 }
 
 func loadStatsCfg() error {
@@ -27,16 +24,16 @@ func loadStatsCfg() error {
 		return fmt.Errorf("invalid statscfg.json file: %s", err)
 	}
 
-	if len(statsCfg.TimeTexts) != int(NumStatsTime) {
-		return fmt.Errorf("invalid number of statscfg.json timeTexts %d - expected %d", len(statsCfg.TimeTexts), NumStatsTime)
+	if len(statsCfg.SQLTimeTexts) != int(numSQLTime) {
+		return fmt.Errorf("invalid number of statscfg.json sqlTimeTexts %d - expected %d", len(statsCfg.SQLTimeTexts), numSQLTime)
 	}
-	if len(statsCfg.TimeBuckets) == 0 {
-		return fmt.Errorf("number of statscfg.json timeBuckets needs to be greater than %d", 0)
+	if len(statsCfg.TimeUpperBounds) == 0 {
+		return fmt.Errorf("number of statscfg.json timeUpperBounds needs to be greater than %d", 0)
 	}
 
 	// sort and dedup timeBuckets
-	sortSliceUint64(statsCfg.TimeBuckets)
-	statsCfg.TimeBuckets = compactSliceUint64(statsCfg.TimeBuckets)
+	sortSliceFloat64(statsCfg.TimeUpperBounds)
+	statsCfg.TimeUpperBounds = compactSliceFloat64(statsCfg.TimeUpperBounds)
 
 	return nil
 }

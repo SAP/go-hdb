@@ -10,7 +10,6 @@ package driver_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
@@ -18,7 +17,7 @@ import (
 
 // ExampleConn-HDBVersion shows how to retrieve hdb server info with the help of sql.Conn.Raw().
 func ExampleConn_HDBVersion() {
-	db := sql.OpenDB(driver.NewTestConnector())
+	db := sql.OpenDB(driver.DefaultTestConnector())
 	defer db.Close()
 
 	// Grab connection.
@@ -33,16 +32,12 @@ func ExampleConn_HDBVersion() {
 		log.Printf("hdb version: %s", driverConn.(driver.Conn).HDBVersion())
 		return nil
 	})
-
-	// Make sure that the example is executed during test runs.
-	fmt.Print("ok")
-
-	// output: ok
+	// output:
 }
 
 // ExampleConn-DBConnectInfo shows how to retrieve hdb DBConnectInfo with the help of sql.Conn.Raw().
 func ExampleConn_DBConnectInfo() {
-	db := sql.OpenDB(driver.NewTestConnector())
+	db := sql.OpenDB(driver.DefaultTestConnector())
 	defer db.Close()
 
 	// Grab connection.
@@ -63,9 +58,5 @@ func ExampleConn_DBConnectInfo() {
 	}); err != nil {
 		log.Fatal(err)
 	}
-
-	// Make sure that the example is executed during test runs.
-	fmt.Print("ok")
-
-	// output: ok
+	// output:
 }

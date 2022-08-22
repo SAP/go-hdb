@@ -26,7 +26,7 @@ begin
 end
 `
 
-	db := sql.OpenDB(NewTestConnector())
+	db := sql.OpenDB(DefaultTestConnector())
 	defer db.Close()
 
 	procedure := RandomIdentifier("procOut_")

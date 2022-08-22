@@ -58,9 +58,7 @@ func TestConnection(t *testing.T) {
 		{"cancelContext", testCancelContext},
 	}
 
-	db := sql.OpenDB(NewTestConnector())
-	defer db.Close()
-
+	db := DefaultTestDB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(db, t)

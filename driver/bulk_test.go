@@ -335,9 +335,7 @@ func TestBulk(t *testing.T) {
 		{"testBulkGeo", testBulkGeo},
 	}
 
-	db := sql.OpenDB(driver.NewTestConnector())
-	defer db.Close()
-
+	db := driver.DefaultTestDB()
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)

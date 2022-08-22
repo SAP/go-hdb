@@ -15,7 +15,7 @@ import (
 
 // TODO complete for named parameters
 func Example_query() {
-	db := sql.OpenDB(NewTestConnector())
+	db := sql.OpenDB(DefaultTestConnector())
 	defer db.Close()
 
 	table := RandomIdentifier("testNamedArg_")

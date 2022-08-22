@@ -4,6 +4,12 @@
 
 package driver
 
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
 const (
 	counterBytesRead = iota
 	counterBytesWritten
@@ -17,41 +23,60 @@ const (
 	numGauge
 )
 
+const (
+	timeRead = iota
+	timeWrite
+	timeAuth
+	numTime
+)
+
+const (
+	sqlTimeQuery = iota
+	sqlTimePrepare
+	sqlTimeExec
+	sqlTimeCall
+	sqlTimeFetch
+	sqlTimeFetchLob
+	sqlTimeRollback
+	sqlTimeCommit
+	numSQLTime
+)
+
 type histogram struct {
-	count     uint64
-	sum       uint64
-	keys      []uint64
-	values    []uint64
-	underflow uint64 // in case of negative duration (will add to zero bucket)
+	count          uint64
+	sum            float64
+	upperBounds    []float64
+	boundCounts    []uint64
+	underflowCount uint64 // in case of negative duration (will add to zero bucket)
 }
 
-func newHistogram(keys []uint64) *histogram {
-	return &histogram{keys: keys, values: make([]uint64, len(keys))}
+func newHistogram(upperBounds []float64) *histogram {
+	return &histogram{upperBounds: upperBounds, boundCounts: make([]uint64, len(upperBounds))}
 }
 
 func (h *histogram) stats() *StatsHistogram {
 	rv := &StatsHistogram{
 		Count:   h.count,
-		Sum:     h.sum / 1e6, // time in milliseconds
-		Buckets: make(map[uint64]uint64, len(h.keys)),
+		Sum:     h.sum,
+		Buckets: make(map[float64]uint64, len(h.upperBounds)),
 	}
-	for i, key := range h.keys {
-		rv.Buckets[key] = h.values[i]
+	for i, upperBound := range h.upperBounds {
+		rv.Buckets[upperBound] = h.boundCounts[i]
 	}
 	return rv
 }
 
-func (h *histogram) add(ns int64) { // time in nanoseconds
+func (h *histogram) add(v float64) { // time in nanoseconds
 	h.count++
-	if ns < 0 {
-		h.underflow++
-		return
+	if v < 0 {
+		h.underflowCount++
+		v = 0
 	}
-	h.sum += uint64(ns)
+	h.sum += v
 	// determine index
-	i := binarySearchSliceUint64(h.keys, uint64(ns)/1e6) // bucket in milliseconds
-	if i < len(h.keys) {
-		h.values[i]++
+	idx := binarySearchSliceFloat64(h.upperBounds, v)
+	for i := idx; i < len(h.upperBounds); i++ {
+		h.boundCounts[i]++
 	}
 }
 
@@ -65,83 +90,136 @@ type gaugeMsg struct {
 	idx int
 }
 
+type timeMsg struct {
+	d   time.Duration
+	idx int
+}
+
+type sqlTimeMsg struct {
+	d   time.Duration
+	idx int
+}
+
 type metrics struct {
-	parent   *metrics
+	parent *metrics
+
 	counters []uint64
 	gauges   []int64
 	times    []*histogram
+	sqlTimes []*histogram
 
-	chCounters   chan counterMsg
-	chGauges     chan gaugeMsg
-	chHistograms chan gaugeMsg
-	chReqStats   chan chan *Stats
+	wg    *sync.WaitGroup
+	chMsg chan interface{}
+
+	closed atomicBool
 }
 
 const (
-	numChMetrics = 100
-	numChStats   = 10
+	numCh = 100000
 )
 
-func newMetrics(parent *metrics, timeKeys []uint64) *metrics {
+func newMetrics(parent *metrics, timeUpperBounds []float64) *metrics {
 	rv := &metrics{
-		parent:       parent,
-		counters:     make([]uint64, numCounter),
-		gauges:       make([]int64, numGauge),
-		times:        make([]*histogram, NumStatsTime),
-		chCounters:   make(chan counterMsg, numChMetrics),
-		chGauges:     make(chan gaugeMsg, numChMetrics),
-		chHistograms: make(chan gaugeMsg, numChMetrics),
-		chReqStats:   make(chan chan *Stats, numChStats),
-	}
-	for i := 0; i < int(NumStatsTime); i++ {
-		rv.times[i] = newHistogram(timeKeys)
-	}
+		parent:   parent,
+		counters: make([]uint64, numCounter),
+		gauges:   make([]int64, numGauge),
+		times:    make([]*histogram, numTime),
+		sqlTimes: make([]*histogram, numSQLTime),
 
-	go rv.collect(rv.chCounters, rv.chGauges, rv.chHistograms, rv.chReqStats)
+		wg:    new(sync.WaitGroup),
+		chMsg: make(chan interface{}, numCh),
+	}
+	for i := 0; i < int(numTime); i++ {
+		rv.times[i] = newHistogram(timeUpperBounds)
+	}
+	for i := 0; i < int(numSQLTime); i++ {
+		rv.sqlTimes[i] = newHistogram(timeUpperBounds)
+	}
+	rv.wg.Add(1)
+	if parent == nil {
+		go rv.collect(rv.wg, rv.chMsg, rv.handleMsg)
+	} else {
+		go rv.collect(rv.wg, rv.chMsg, rv.handleParentMsg)
+	}
 	return rv
 }
 
 func (m *metrics) buildStats() *Stats {
-	times := make([]*StatsHistogram, NumStatsTime)
-	for i, th := range m.times {
-		times[i] = th.stats()
+	sqlTimes := make(map[string]*StatsHistogram, len(m.sqlTimes))
+	for i, sqlTime := range m.sqlTimes {
+		sqlTimes[statsCfg.SQLTimeTexts[i]] = sqlTime.stats()
 	}
 	return &Stats{
 		OpenConnections:  int(m.gauges[gaugeConn]),
 		OpenTransactions: int(m.gauges[gaugeTx]),
 		OpenStatements:   int(m.gauges[gaugeStmt]),
-		BytesRead:        m.counters[counterBytesRead],
-		BytesWritten:     m.counters[counterBytesWritten],
-		Times:            times,
+		ReadBytes:        m.counters[counterBytesRead],
+		WrittenBytes:     m.counters[counterBytesWritten],
+		ReadTime:         m.times[timeRead].stats(),
+		WriteTime:        m.times[timeWrite].stats(),
+		AuthTime:         m.times[timeAuth].stats(),
+		SQLTimes:         sqlTimes,
 	}
 }
 
-func (m *metrics) collect(chCounters <-chan counterMsg, chGauges <-chan gaugeMsg, chHistograms <-chan gaugeMsg, chReqStats <-chan chan *Stats) {
-	for {
-		select {
-		case msg := <-chCounters:
-			m.counters[msg.idx] += msg.v
-			if m.parent != nil {
-				m.parent.chCounters <- msg
-			}
-		case msg := <-chGauges:
-			m.gauges[msg.idx] += msg.v
-			if m.parent != nil {
-				m.parent.chGauges <- msg
-			}
-		case msg := <-chHistograms:
-			m.times[msg.idx].add(msg.v)
-			if m.parent != nil {
-				m.parent.chHistograms <- msg
-			}
-		case chStats := <-chReqStats:
-			chStats <- m.buildStats()
-		}
+func milliseconds(d time.Duration) float64 { return float64(d.Nanoseconds()) / 1e6 }
+
+func (m *metrics) handleMsg(msg interface{}) {
+	switch msg := msg.(type) {
+	case counterMsg:
+		m.counters[msg.idx] += msg.v
+	case gaugeMsg:
+		m.gauges[msg.idx] += msg.v
+	case timeMsg:
+		m.times[msg.idx].add(milliseconds(msg.d))
+	case sqlTimeMsg:
+		m.sqlTimes[msg.idx].add(milliseconds(msg.d))
+	case chan *Stats:
+		msg <- m.buildStats()
+	default:
+		panic(fmt.Sprintf("invalid metric message type %T", msg))
 	}
 }
 
-func (m *metrics) stats() Stats {
+func (m *metrics) handleParentMsg(msg interface{}) {
+	switch msg := msg.(type) {
+	case counterMsg:
+		m.parent.chMsg <- msg
+		m.counters[msg.idx] += msg.v
+	case gaugeMsg:
+		m.parent.chMsg <- msg
+		m.gauges[msg.idx] += msg.v
+	case timeMsg:
+		m.parent.chMsg <- msg
+		m.times[msg.idx].add(milliseconds(msg.d))
+	case sqlTimeMsg:
+		m.parent.chMsg <- msg
+		m.sqlTimes[msg.idx].add(milliseconds(msg.d))
+	case chan *Stats:
+		msg <- m.buildStats()
+	default:
+		panic(fmt.Sprintf("invalid metric message type %T", msg))
+	}
+}
+
+func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan interface{}, msgHandler func(msg interface{})) {
+	for msg := range chMsg {
+		msgHandler(msg)
+	}
+	wg.Done()
+}
+
+func (m *metrics) stats() *Stats {
+	if m.closed.Load() { // if closed return stas directly as we do not have write conflicts anymore
+		return m.stats()
+	}
 	chStats := make(chan *Stats)
-	m.chReqStats <- chStats
-	return *<-chStats
+	m.chMsg <- chStats
+	return <-chStats
+}
+
+func (m *metrics) close() {
+	m.closed.Store(true)
+	close(m.chMsg)
+	m.wg.Wait()
 }

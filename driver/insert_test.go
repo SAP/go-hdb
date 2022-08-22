@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
-	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
 type bulkTabler interface {
@@ -87,7 +86,7 @@ func BenchmarkInsert(b *testing.B) {
 
 	const samples = 1000000
 
-	bulkSizes := []int{1000, 10000, 100000, 1000000, p.MaxNumArg} // maxBulkSize = p.MaxNumArg
+	bulkSizes := []int{1000, 10000, 100000, 1000000}
 
 	connector := driver.NewTestConnector()
 

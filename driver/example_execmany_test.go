@@ -21,7 +21,7 @@ func Example_manyInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
 
-	db := sql.OpenDB(driver.NewTestConnector())
+	db := sql.OpenDB(driver.DefaultTestConnector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

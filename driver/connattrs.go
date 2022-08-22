@@ -18,6 +18,12 @@ import (
 	"golang.org/x/text/transform"
 )
 
+/*
+SessionVariables maps session variables to their values.
+All defined session variables will be set once after a database connection is opened.
+*/
+type SessionVariables map[string]string
+
 // conn attributes default values.
 const (
 	defaultBufferSize   = 16276             // default value bufferSize.
@@ -48,17 +54,16 @@ const (
 
 // connAttrs is holding connection relevant attributes.
 type connAttrs struct {
-	mu             sync.RWMutex
-	_host          string
-	_timeout       time.Duration
-	_pingInterval  time.Duration
-	_bufferSize    int
-	_bulkSize      int
-	_tcpKeepAlive  time.Duration // see net.Dialer
-	_tlsConfig     *tls.Config
-	_defaultSchema string
-	_dialer        dial.Dialer
-
+	mu                sync.RWMutex
+	_host             string
+	_timeout          time.Duration
+	_pingInterval     time.Duration
+	_bufferSize       int
+	_bulkSize         int
+	_tcpKeepAlive     time.Duration // see net.Dialer
+	_tlsConfig        *tls.Config
+	_defaultSchema    string
+	_dialer           dial.Dialer
 	_applicationName  string
 	_sessionVariables map[string]string
 	_locale           string
@@ -72,12 +77,11 @@ type connAttrs struct {
 
 func newConnAttrs() *connAttrs {
 	return &connAttrs{
-		_bufferSize:   defaultBufferSize,
-		_bulkSize:     defaultBulkSize,
-		_timeout:      defaultTimeout,
-		_tcpKeepAlive: defaultTCPKeepAlive,
-		_dialer:       dial.DefaultDialer,
-
+		_timeout:         defaultTimeout,
+		_bufferSize:      defaultBufferSize,
+		_bulkSize:        defaultBulkSize,
+		_tcpKeepAlive:    defaultTCPKeepAlive,
+		_dialer:          dial.DefaultDialer,
 		_applicationName: defaultApplicationName,
 		_fetchSize:       defaultFetchSize,
 		_lobChunkSize:    defaultLobChunkSize,
@@ -88,72 +92,54 @@ func newConnAttrs() *connAttrs {
 	}
 }
 
-func (a *connAttrs) host() string           { a.mu.RLock(); defer a.mu.RUnlock(); return a._host }
-func (a *connAttrs) timeout() time.Duration { a.mu.RLock(); defer a.mu.RUnlock(); return a._timeout }
-func (a *connAttrs) _setTimeout(timeout time.Duration) {
+/*
+keep c as the instance name, so that the generated help does have the same variable name when object is
+included in connector
+*/
+
+func (c *connAttrs) clone() *connAttrs {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return &connAttrs{
+		_host:             c._host,
+		_timeout:          c._timeout,
+		_pingInterval:     c._pingInterval,
+		_bufferSize:       c._bufferSize,
+		_bulkSize:         c._bulkSize,
+		_tcpKeepAlive:     c._tcpKeepAlive,
+		_tlsConfig:        c._tlsConfig.Clone(),
+		_defaultSchema:    c._defaultSchema,
+		_dialer:           c._dialer,
+		_applicationName:  c._applicationName,
+		_sessionVariables: cloneStringStringMap(c._sessionVariables),
+		_locale:           c._locale,
+		_fetchSize:        c._fetchSize,
+		_lobChunkSize:     c._lobChunkSize,
+		_dfv:              c._dfv,
+		_legacy:           c._legacy,
+		_cesu8Decoder:     c._cesu8Decoder,
+		_cesu8Encoder:     c._cesu8Encoder,
+	}
+}
+
+func (c *connAttrs) setTimeout(timeout time.Duration) {
 	if timeout < minTimeout {
 		timeout = minTimeout
 	}
-	a._timeout = timeout
+	c._timeout = timeout
 }
-func (a *connAttrs) setTimeout(timeout time.Duration) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._setTimeout(timeout)
-}
-func (a *connAttrs) pingInterval() time.Duration {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._pingInterval
-}
-func (a *connAttrs) setPingInterval(d time.Duration) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._pingInterval = d
-}
-func (a *connAttrs) bufferSize() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._bufferSize }
-func (a *connAttrs) setBufferSize(bufferSize int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._bufferSize = bufferSize
-}
-func (a *connAttrs) bulkSize() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._bulkSize }
-func (a *connAttrs) _setBulkSize(bulkSize int) {
+func (c *connAttrs) setBulkSize(bulkSize int) {
 	switch {
 	case bulkSize < minBulkSize:
 		bulkSize = minBulkSize
 	case bulkSize > maxBulkSize:
 		bulkSize = maxBulkSize
 	}
-	a._bulkSize = bulkSize
+	c._bulkSize = bulkSize
 }
-func (a *connAttrs) setBulkSize(bulkSize int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._setBulkSize(bulkSize)
-}
-func (a *connAttrs) tcpKeepAlive() time.Duration {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._tcpKeepAlive
-}
-func (a *connAttrs) setTCPKeepAlive(tcpKeepAlive time.Duration) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._tcpKeepAlive = tcpKeepAlive
-}
-func (a *connAttrs) tlsConfig() *tls.Config {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._tlsConfig.Clone()
-}
-func (a *connAttrs) setTLSConfig(tlsConfig *tls.Config) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._tlsConfig = tlsConfig.Clone()
-}
-func (a *connAttrs) _setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
-	a._tlsConfig = &tls.Config{
+func (c *connAttrs) setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
+	c._tlsConfig = &tls.Config{
 		ServerName:         serverName,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
@@ -171,100 +157,270 @@ func (a *connAttrs) _setTLS(serverName string, insecureSkipVerify bool, rootCAFi
 		}
 	}
 	if certPool != nil {
-		a._tlsConfig.RootCAs = certPool
+		c._tlsConfig.RootCAs = certPool
 	}
 	return nil
 }
-func (a *connAttrs) setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a._setTLS(serverName, insecureSkipVerify, rootCAFiles)
-}
-func (a *connAttrs) defaultSchema() string          { return a._defaultSchema }
-func (a *connAttrs) setDefaultSchema(schema string) { a._defaultSchema = schema }
-func (a *connAttrs) dialer() dial.Dialer            { a.mu.RLock(); defer a.mu.RUnlock(); return a._dialer }
-func (a *connAttrs) setDialer(dialer dial.Dialer) {
+func (c *connAttrs) setDialer(dialer dial.Dialer) {
 	if dialer == nil {
 		dialer = dial.DefaultDialer
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._dialer = dialer
+	c._dialer = dialer
 }
-func (a *connAttrs) applicationName() string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._applicationName
-}
-func (a *connAttrs) setApplicationName(name string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._applicationName = name
-}
-func (a *connAttrs) sessionVariables() map[string]string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return cloneStringStringMap(a._sessionVariables)
-}
-func (a *connAttrs) setSessionVariables(sessionVariables map[string]string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._sessionVariables = cloneStringStringMap(sessionVariables)
-}
-func (a *connAttrs) locale() string          { a.mu.RLock(); defer a.mu.RUnlock(); return a._locale }
-func (a *connAttrs) setLocale(locale string) { a.mu.Lock(); defer a.mu.Unlock(); a._locale = locale }
-func (a *connAttrs) fetchSize() int          { a.mu.RLock(); defer a.mu.RUnlock(); return a._fetchSize }
-func (a *connAttrs) _setFetchSize(fetchSize int) {
+func (c *connAttrs) setFetchSize(fetchSize int) {
 	if fetchSize < minFetchSize {
 		fetchSize = minFetchSize
 	}
-	a._fetchSize = fetchSize
+	c._fetchSize = fetchSize
 }
-func (a *connAttrs) setFetchSize(fetchSize int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._setFetchSize(fetchSize)
-}
-func (a *connAttrs) lobChunkSize() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._lobChunkSize }
-func (a *connAttrs) setLobChunkSize(lobChunkSize int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (c *connAttrs) setLobChunkSize(lobChunkSize int) {
 	switch {
 	case lobChunkSize < minLobChunkSize:
 		lobChunkSize = minLobChunkSize
 	case lobChunkSize > maxLobChunkSize:
 		lobChunkSize = maxLobChunkSize
 	}
-	a._lobChunkSize = lobChunkSize
+	c._lobChunkSize = lobChunkSize
 }
-func (a *connAttrs) dfv() int { a.mu.RLock(); defer a.mu.RUnlock(); return a._dfv }
-func (a *connAttrs) setDfv(dfv int) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (c *connAttrs) setDfv(dfv int) {
 	if !p.IsSupportedDfv(dfv) {
 		dfv = defaultDfv
 	}
-	a._dfv = dfv
+	c._dfv = dfv
 }
-func (a *connAttrs) legacy() bool     { a.mu.RLock(); defer a.mu.RUnlock(); return a._legacy }
-func (a *connAttrs) setLegacy(b bool) { a.mu.Lock(); defer a.mu.Unlock(); a._legacy = b }
-func (a *connAttrs) cesu8Decoder() func() transform.Transformer {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._cesu8Decoder
+func (c *connAttrs) setCESU8Decoder(cesu8Decoder func() transform.Transformer) {
+	if cesu8Decoder == nil {
+		cesu8Decoder = cesu8.DefaultDecoder
+	}
+	c._cesu8Decoder = cesu8Decoder
 }
-func (a *connAttrs) setCESU8Decoder(cesu8Decoder func() transform.Transformer) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._cesu8Decoder = cesu8Decoder
+func (c *connAttrs) setCESU8Encoder(cesu8Encoder func() transform.Transformer) {
+	if cesu8Encoder == nil {
+		cesu8Encoder = cesu8.DefaultEncoder
+	}
+	c._cesu8Encoder = cesu8Encoder
 }
-func (a *connAttrs) cesu8Encoder() func() transform.Transformer {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a._cesu8Encoder
+
+// Host returns the host of the connector.
+func (c *connAttrs) Host() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._host }
+
+// Timeout returns the timeout of the connector.
+func (c *connAttrs) Timeout() time.Duration { c.mu.RLock(); defer c.mu.RUnlock(); return c._timeout }
+
+/*
+SetTimeout sets the timeout of the connector.
+
+For more information please see DSNTimeout.
+*/
+func (c *connAttrs) SetTimeout(timeout time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setTimeout(timeout)
 }
-func (a *connAttrs) setCESU8Encoder(cesu8Encoder func() transform.Transformer) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a._cesu8Encoder = cesu8Encoder
+
+// PingInterval returns the connection ping interval of the connector.
+func (c *connAttrs) PingInterval() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._pingInterval
+}
+
+/*
+SetPingInterval sets the connection ping interval value of the connector.
+
+If the ping interval is greater than zero, the driver pings all open
+connections (active or idle in connection pool) periodically.
+Parameter d defines the time between the pings in milliseconds.
+*/
+func (c *connAttrs) SetPingInterval(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._pingInterval = d
+}
+
+// BufferSize returns the bufferSize of the connector.
+func (c *connAttrs) BufferSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._bufferSize }
+
+/*
+SetBufferSize sets the bufferSize of the connector.
+*/
+func (c *connAttrs) SetBufferSize(bufferSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._bufferSize = bufferSize
+}
+
+// BulkSize returns the bulkSize of the connector.
+func (c *connAttrs) BulkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._bulkSize }
+
+// SetBulkSize sets the bulkSize of the connector.
+func (c *connAttrs) SetBulkSize(bulkSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setBulkSize(bulkSize)
+}
+
+// TCPKeepAlive returns the tcp keep-alive value of the connector.
+func (c *connAttrs) TCPKeepAlive() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._tcpKeepAlive
+}
+
+/*
+SetTCPKeepAlive sets the tcp keep-alive value of the connector.
+
+For more information please see net.Dialer structure.
+*/
+func (c *connAttrs) SetTCPKeepAlive(tcpKeepAlive time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._tcpKeepAlive = tcpKeepAlive
+}
+
+// DefaultSchema returns the database default schema of the connector.
+func (c *connAttrs) DefaultSchema() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._defaultSchema
+}
+
+// SetDefaultSchema sets the database default schema of the connector.
+func (c *connAttrs) SetDefaultSchema(schema string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._defaultSchema = schema
+}
+
+// TLSConfig returns the TLS configuration of the connector.
+func (c *connAttrs) TLSConfig() *tls.Config {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._tlsConfig.Clone()
+}
+
+// SetTLS sets the TLS configuration of the connector with given parameters. An existing connector TLS configuration is replaced.
+func (c *connAttrs) SetTLS(serverName string, insecureSkipVerify bool, rootCAFiles ...string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.setTLS(serverName, insecureSkipVerify, rootCAFiles)
+}
+
+// SetTLSConfig sets the TLS configuration of the connector.
+func (c *connAttrs) SetTLSConfig(tlsConfig *tls.Config) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._tlsConfig = tlsConfig.Clone()
+}
+
+// Dialer returns the dialer object of the connector.
+func (c *connAttrs) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); return c._dialer }
+
+// SetDialer sets the dialer object of the connector.
+func (c *connAttrs) SetDialer(dialer dial.Dialer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setDialer(dialer)
+}
+
+// ApplicationName returns the locale of the connector.
+func (c *connAttrs) ApplicationName() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._applicationName
+}
+
+// SetApplicationName sets the application name of the connector.
+func (c *connAttrs) SetApplicationName(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._applicationName = name
+}
+
+// SessionVariables returns the session variables stored in connector.
+func (c *connAttrs) SessionVariables() SessionVariables {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneStringStringMap(c._sessionVariables)
+}
+
+// SetSessionVariables sets the session varibles of the connector.
+func (c *connAttrs) SetSessionVariables(sessionVariables SessionVariables) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._sessionVariables = cloneStringStringMap(sessionVariables)
+}
+
+// Locale returns the locale of the connector.
+func (c *connAttrs) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._locale }
+
+/*
+SetLocale sets the locale of the connector.
+
+For more information please see DSNLocale.
+*/
+func (c *connAttrs) SetLocale(locale string) { c.mu.Lock(); defer c.mu.Unlock(); c._locale = locale }
+
+// FetchSize returns the fetchSize of the connector.
+func (c *connAttrs) FetchSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._fetchSize }
+
+/*
+SetFetchSize sets the fetchSize of the connector.
+
+For more information please see DSNFetchSize.
+*/
+func (c *connAttrs) SetFetchSize(fetchSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setFetchSize(fetchSize)
+}
+
+// LobChunkSize returns the lobChunkSize of the connector.
+func (c *connAttrs) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._lobChunkSize }
+
+// SetLobChunkSize sets the lobChunkSize of the connector.
+func (c *connAttrs) SetLobChunkSize(lobChunkSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setLobChunkSize(lobChunkSize)
+}
+
+// Dfv returns the client data format version of the connector.
+func (c *connAttrs) Dfv() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._dfv }
+
+// SetDfv sets the client data format version of the connector.
+func (c *connAttrs) SetDfv(dfv int) { c.mu.Lock(); defer c.mu.Unlock(); c.setDfv(dfv) }
+
+// Legacy returns the connector legacy flag.
+func (c *connAttrs) Legacy() bool { c.mu.RLock(); defer c.mu.RUnlock(); return c._legacy }
+
+// SetLegacy sets the connector legacy flag.
+func (c *connAttrs) SetLegacy(b bool) { c.mu.Lock(); defer c.mu.Unlock(); c._legacy = b }
+
+// CESU8Decoder returns the CESU-8 decoder of the connector.
+func (c *connAttrs) CESU8Decoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._cesu8Decoder
+}
+
+// SetCESU8Decoder sets the CESU-8 decoder of the connector.
+func (c *connAttrs) SetCESU8Decoder(cesu8Decoder func() transform.Transformer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setCESU8Decoder(cesu8Decoder)
+}
+
+// CESU8Encoder returns the CESU-8 encoder of the connector.
+func (c *connAttrs) CESU8Encoder() func() transform.Transformer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._cesu8Encoder
+}
+
+// SetCESU8Encoder sets the CESU-8 encoder of the connector.
+func (c *connAttrs) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.setCESU8Encoder(cesu8Encoder)
 }

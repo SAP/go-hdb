@@ -27,10 +27,9 @@ func padBytes(size int) int {
 
 // Reader represents a protocol reader.
 type Reader struct {
-	upStream   bool
-	tracer     func(up bool, v interface{}) // performance
-	traceOn    bool
-	sqlTraceOn bool
+	upStream bool
+	tracer   func(up bool, v interface{}) // performance
+	traceOn  bool
 
 	step int // authentication
 
@@ -63,7 +62,6 @@ func NewReader(upStream bool, rd io.Reader, decoder func() transform.Transformer
 		upStream:        upStream,
 		tracer:          tracer,
 		traceOn:         on,
-		sqlTraceOn:      sqltrace.On(),
 		dec:             encoding.NewDecoder(rd, decoder),
 		partReaderCache: map[PartKind]partReader{},
 		mh:              &messageHeader{},
@@ -141,11 +139,9 @@ func (r *Reader) checkError() error {
 	}
 
 	if r.lastErrors.HasWarnings() {
-		if r.sqlTraceOn {
-			r.lastErrors.ErrorsFunc(func(err error) {
-				sqltrace.Traceln(err)
-			})
-		}
+		r.lastErrors.ErrorsFunc(func(err error) {
+			sqltrace.Trace.Println(err)
+		})
 		return nil
 	}
 

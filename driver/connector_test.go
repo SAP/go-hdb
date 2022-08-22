@@ -56,11 +56,9 @@ func testSessionVariables(t *testing.T) {
 }
 
 func printInvalidConnectAttempts(t *testing.T, username string) {
-	connector := NewTestConnector()
-	db := sql.OpenDB(connector)
-	defer db.Close()
+	db := DefaultTestDB()
 
-	if invalidConnectAttempts, err := queryInvalidConnectAttempts(db, connector.Username()); err != nil {
+	if invalidConnectAttempts, err := queryInvalidConnectAttempts(db, username); err != nil {
 		t.Logf("error in selecting invalid connect attempts: %s", err)
 	} else {
 		t.Logf("number of invalid connect attempts: %d", invalidConnectAttempts)
@@ -72,12 +70,12 @@ func testRetryConnect(t *testing.T) {
 
 	connector := NewTestConnector()
 
-	password := connector.authAttrs.password() // safe password
+	password := connector.Password() // safe password
 	refreshPassword := func() (string, bool) {
 		printInvalidConnectAttempts(t, connector.Username())
 		return password, true
 	}
-	connector.authAttrs.setPassword(invalidPassword) // set invalid password
+	connector.SetPassword(invalidPassword) // set invalid password
 	connector.SetRefreshPassword(refreshPassword)
 	db := sql.OpenDB(connector)
 	defer db.Close()

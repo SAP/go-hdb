@@ -7,14 +7,15 @@ package protocol
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 
-	"github.com/SAP/go-hdb/driver/internal/trace"
+	"github.com/SAP/go-hdb/driver/internal/logflag"
 )
 
-var protocolTrace = trace.NewTrace(log.Ldate|log.Ltime, "hdb", "protocol")
+var protocolTrace = log.New(io.Discard, "hdb protocol ", log.Ldate|log.Ltime)
 
-var protocolTraceFlag = trace.NewFlag(protocolTrace)
+var protocolTraceFlag = logflag.New(protocolTrace)
 
 func init() {
 	flag.Var(protocolTraceFlag, "hdb.protocol.trace", "enabling hdb protocol trace")
@@ -54,7 +55,7 @@ func newTracer() (func(up bool, v interface{}), bool) {
 		protocolTrace.Output(2, msg)
 	}
 
-	if protocolTrace.On() {
+	if protocolTrace.Writer() != io.Discard {
 		return traceProtocol, true
 	}
 	return traceNull, false

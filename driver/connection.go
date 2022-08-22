@@ -149,8 +149,8 @@ func (c *dbConn) Read(b []byte) (n int, err error) {
 	}
 	start = time.Now()
 	n, err = c.conn.Read(b)
-	c.metrics.chHistograms <- gaugeMsg{idx: int(StatsTimeRead), v: time.Since(start).Nanoseconds()}
-	c.metrics.chCounters <- counterMsg{idx: counterBytesRead, v: uint64(n)}
+	c.metrics.chMsg <- timeMsg{idx: timeRead, d: time.Since(start)}
+	c.metrics.chMsg <- counterMsg{idx: counterBytesRead, v: uint64(n)}
 	if err == nil {
 		return
 	}
@@ -173,8 +173,8 @@ func (c *dbConn) Write(b []byte) (n int, err error) {
 	}
 	start = time.Now()
 	n, err = c.conn.Write(b)
-	c.metrics.chHistograms <- gaugeMsg{idx: int(StatsTimeWrite), v: time.Since(start).Nanoseconds()}
-	c.metrics.chCounters <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
+	c.metrics.chMsg <- timeMsg{idx: timeWrite, d: time.Since(start)}
+	c.metrics.chMsg <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
 	if err == nil {
 		return
 	}
@@ -247,6 +247,7 @@ type Conn interface {
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
+	*connAttrs
 	metrics *metrics
 	// Holding connection lock in QueryResultSet (see rows.onClose)
 	/*
@@ -278,20 +279,50 @@ type conn struct {
 
 	pr *p.Reader
 	pw *p.Writer
-
-	bulkSize     int
-	lobChunkSize int
-	fetchSize    int
-	legacy       bool
-	cesu8Decoder func() transform.Transformer
-	cesu8Encoder func() transform.Transformer
 }
 
-func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Auth) (driver.Conn, error) {
-	// lock attributes
-	attrs.mu.RLock()
-	defer attrs.mu.RUnlock()
+func isAuthError(checkErr error) bool {
+	var hdbErrors *p.HdbErrors
+	if !errors.As(checkErr, &hdbErrors) {
+		return false
+	}
+	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
+}
 
+func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
+	// can we connect via cookie?
+	if auth := authAttrs.cookieAuth(); auth != nil {
+		conn, err := initConn(ctx, metrics, connAttrs, auth)
+		if err == nil {
+			return conn, nil
+		}
+		if !isAuthError(err) {
+			return nil, err
+		}
+		authAttrs.invalidateCookie() // cookie auth was not possible - do not try again with the same data
+	}
+
+	auth := authAttrs.auth()
+	retries := 1
+	for {
+		conn, err := initConn(ctx, metrics, connAttrs, auth)
+		if err == nil {
+			if method, ok := auth.Method().(p.AuthCookieGetter); ok {
+				authAttrs.setCookie(method.Cookie())
+			}
+			return conn, nil
+		}
+		if !isAuthError(err) {
+			return nil, err
+		}
+		if retries < 1 || !authAttrs.refresh(auth) {
+			return nil, err
+		}
+		retries--
+	}
+}
+
+func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Auth) (driver.Conn, error) {
 	netConn, err := attrs._dialer.DialContext(ctx, attrs._host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
 	if err != nil {
 		return nil, err
@@ -299,7 +330,7 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Au
 
 	// is TLS connection requested?
 	if attrs._tlsConfig != nil {
-		netConn = tls.Client(netConn, attrs._tlsConfig.Clone())
+		netConn = tls.Client(netConn, attrs._tlsConfig)
 	}
 
 	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout}
@@ -307,20 +338,15 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Au
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
 	c := &conn{
-		metrics:      metrics,
-		dbConn:       dbConn,
-		scanner:      &scanner.Scanner{},
-		closed:       make(chan struct{}),
-		trace:        sqltrace.On(),
-		bulkSize:     attrs._bulkSize,
-		lobChunkSize: attrs._lobChunkSize,
-		fetchSize:    attrs._fetchSize,
-		legacy:       attrs._legacy,
-		cesu8Decoder: attrs._cesu8Decoder,
-		cesu8Encoder: attrs._cesu8Encoder,
+		metrics:   metrics,
+		connAttrs: attrs,
+		dbConn:    dbConn,
+		scanner:   &scanner.Scanner{},
+		closed:    make(chan struct{}),
+		trace:     sqltrace.On(),
 	}
 
-	c.pw = p.NewWriter(rw.Writer, attrs._cesu8Encoder, cloneStringStringMap(attrs._sessionVariables)) // write upstream
+	c.pw = p.NewWriter(rw.Writer, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
 	if err := c.pw.WriteProlog(); err != nil {
 		return nil, err
 	}
@@ -352,7 +378,7 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Au
 		go c.pinger(attrs._pingInterval, c.closed)
 	}
 
-	c.metrics.chGauges <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
+	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
 	return c, nil
 }
@@ -474,7 +500,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		if pr.isProcedureCall() {
 			stmt = newCallStmt(c, qd.query, pr)
 		} else {
-			stmt = newStmt(c, qd.query, qd.isBulk, c.bulkSize, pr) //take latest connector bulk size
+			stmt = newStmt(c, qd.query, qd.isBulk, c._bulkSize, pr) //take latest connector bulk size
 		}
 
 	done:
@@ -486,7 +512,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
+		c.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
 		c.lastError = err
 		return stmt, err
 	}
@@ -497,8 +523,8 @@ func (c *conn) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	c.metrics.chGauges <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
-	close(c.closed)                                       // signal connection close
+	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
+	close(c.closed)                                    // signal connection close
 
 	// cleanup query cache
 	stdQueryResultCache.cleanup(c)
@@ -553,7 +579,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 		c.dbConn.cancel()
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.chGauges <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
+		c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
 		c.lastError = err
 		return tx, err
 	}
@@ -720,17 +746,20 @@ func traceSQL(start time.Time, query string, nvargs []driver.NamedValue) {
 	ms := time.Since(start).Milliseconds()
 	switch {
 	case len(nvargs) == 0:
-		sqltrace.Tracef("%s duration %dms", query, ms)
+		sqltrace.Trace.Printf("%s duration %dms", query, ms)
 	case len(nvargs) > maxNumTraceArg:
-		sqltrace.Tracef("%s args(limited to %d) %v duration %dms", query, maxNumTraceArg, nvargs[:maxNumTraceArg], ms)
+		sqltrace.Trace.Printf("%s args(limited to %d) %v duration %dms", query, maxNumTraceArg, nvargs[:maxNumTraceArg], ms)
 	default:
-		sqltrace.Tracef("%s args %v duration %dms", query, nvargs, ms)
+		sqltrace.Trace.Printf("%s args %v duration %dms", query, nvargs, ms)
 	}
 }
 
-func (c *conn) addTimeValue(start time.Time, idx int) {
-	c.metrics.chHistograms <- gaugeMsg{idx: int(idx), v: time.Since(start).Nanoseconds()}
-	// c.metrics.addTimeValue(k, time.Since(start).Nanoseconds())
+func (c *conn) addTimeValue(start time.Time, k int) {
+	c.metrics.chMsg <- timeMsg{idx: k, d: time.Since(start)}
+}
+
+func (c *conn) addSQLTimeValue(start time.Time, k int) {
+	c.metrics.chMsg <- sqlTimeMsg{idx: k, d: time.Since(start)}
 }
 
 //transaction
@@ -763,7 +792,7 @@ func (t *tx) close(rollback bool) (err error) {
 
 	c.inTx = false
 
-	c.metrics.chGauges <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
+	c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
 	if c.isBad() {
 		return driver.ErrBadConn
@@ -853,7 +882,7 @@ func (s *stmt) Close() error {
 	c.lock()
 	defer c.unlock()
 
-	s.conn.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
+	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	if c.isBad() {
 		return driver.ErrBadConn
@@ -1211,7 +1240,7 @@ func (s *callStmt) Close() error {
 		return driver.ErrBadConn
 	}
 
-	s.conn.metrics.chGauges <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
+	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	return c._dropStatementID(s.pr.stmtID)
 }
@@ -1337,7 +1366,7 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 }
 
 func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, locale string) (int64, connectOptions, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeAuth)
+	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
 	clientContext := clientContext{
@@ -1412,7 +1441,7 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 }
 
 func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeQuery)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
 	if err := c.pw.Write(c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
@@ -1447,7 +1476,7 @@ func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
 }
 
 func (c *conn) _execDirect(query string, commit bool) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeExec)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
 	if err := c.pw.Write(c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
 		return nil, err
@@ -1470,7 +1499,7 @@ func (c *conn) _execDirect(query string, commit bool) (driver.Result, error) {
 }
 
 func (c *conn) _prepare(query string) (*prepareResult, error) {
-	defer c.addTimeValue(time.Now(), StatsTimePrepare)
+	defer c.addSQLTimeValue(time.Now(), sqlTimePrepare)
 
 	if err := c.pw.Write(c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
 		return nil, err
@@ -1503,7 +1532,7 @@ func (c *conn) _fetchFirstLobChunk(nvargs []driver.NamedValue) (bool, error) {
 	hasNext := false
 	for _, arg := range nvargs {
 		if lobInDescr, ok := arg.Value.(*p.LobInDescr); ok {
-			last, err := lobInDescr.FetchNext(c.lobChunkSize)
+			last, err := lobInDescr.FetchNext(c._lobChunkSize)
 			if !last {
 				hasNext = true
 			}
@@ -1536,7 +1565,7 @@ Bulk insert containing LOBs:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
 func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeExec)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
 	hasLob := func() bool {
 		for _, f := range pr.parameterFields {
@@ -1635,7 +1664,7 @@ func (c *conn) _exec(pr *prepareResult, nvargs []driver.NamedValue, hasLob, comm
 }
 
 func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeCall)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeCall)
 
 	/*
 		only in args
@@ -1692,7 +1721,7 @@ func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver
 	}
 
 	// legacy mode?
-	if c.legacy {
+	if c._legacy {
 		cr.appendTableRefFields()
 		for _, qr := range cr.qrs {
 			// add to cache
@@ -1705,7 +1734,7 @@ func (c *conn) _queryCall(pr *prepareResult, nvargs []driver.NamedValue) (driver
 }
 
 func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeCall)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeCall)
 
 	/*
 		in,- and output args
@@ -1828,7 +1857,7 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 }
 
 func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Rows, error) {
-	defer c.addTimeValue(time.Now(), StatsTimeQuery)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in exec
 
@@ -1878,9 +1907,9 @@ func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool
 }
 
 func (c *conn) _fetchNext(qr *queryResult) error {
-	defer c.addTimeValue(time.Now(), StatsTimeFetch)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeFetch)
 
-	if err := c.pw.Write(c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.fetchSize)); err != nil {
+	if err := c.pw.Write(c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c._fetchSize)); err != nil {
 		return err
 	}
 
@@ -1911,7 +1940,7 @@ func (c *conn) _closeResultsetID(id uint64) error {
 }
 
 func (c *conn) _commit() error {
-	defer c.addTimeValue(time.Now(), StatsTimeCommit)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeCommit)
 
 	if err := c.pw.Write(c.sessionID, p.MtCommit, false); err != nil {
 		return err
@@ -1923,7 +1952,7 @@ func (c *conn) _commit() error {
 }
 
 func (c *conn) _rollback() error {
-	defer c.addTimeValue(time.Now(), StatsTimeRollback)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeRollback)
 
 	if err := c.pw.Write(c.sessionID, p.MtRollback, false); err != nil {
 		return err
@@ -1956,12 +1985,12 @@ func (c *conn) _disconnect() error {
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
 func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
-	defer c.addTimeValue(time.Now(), StatsTimeFetchLob)
+	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
 	var err error
 
 	if descr.IsCharBased {
-		wrcl := transform.NewWriter(wr, c.cesu8Decoder()) // CESU8 transformer
+		wrcl := transform.NewWriter(wr, c._cesu8Decoder()) // CESU8 transformer
 		err = c._decodeLobs(descr, wrcl, func(b []byte) (int64, error) {
 			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
 			numChars := int64(0)
@@ -1993,7 +2022,7 @@ func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
 }
 
 func (c *conn) _decodeLobs(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
-	lobChunkSize := int64(c.lobChunkSize)
+	lobChunkSize := int64(c._lobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {
 		chunkSize := numChar - ofs
@@ -2091,7 +2120,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 
 		// TODO check total size limit
 		for _, descr := range descrs {
-			if err := descr.FetchNext(c.lobChunkSize); err != nil {
+			if err := descr.FetchNext(c._lobChunkSize); err != nil {
 				return err
 			}
 		}

@@ -6,31 +6,30 @@ package sqltrace
 
 import (
 	"flag"
-	"fmt"
+	"io"
 	"log"
+	"os"
 
-	"github.com/SAP/go-hdb/driver/internal/trace"
+	"github.com/SAP/go-hdb/driver/internal/logflag"
 )
 
-var std = trace.NewTrace(log.Ldate|log.Ltime, "hdb", "sql")
+// Trace is the sqlTrace logging instance.
+var Trace = log.New(io.Discard, "hdb sql ", log.Ldate|log.Ltime)
 
-var traceFlag = trace.NewFlag(std)
+var traceFlag = logflag.New(Trace)
 
 func init() {
 	flag.Var(traceFlag, "hdb.sqlTrace", "enabling hdb sql trace")
 }
 
 // On returns if tracing methods output is active.
-func On() bool { return std.On() }
+func On() bool { return Trace.Writer() != io.Discard }
 
 // SetOn sets tracing methods output active or inactive.
-func SetOn(on bool) { std.SetOn(on) }
-
-// Trace calls trace logger Print method to print to the trace logger.
-func Trace(v ...interface{}) { std.Output(2, fmt.Sprint(v...)) }
-
-// Tracef calls trace logger Printf method to print to the trace logger.
-func Tracef(format string, v ...interface{}) { std.Output(2, fmt.Sprintf(format, v...)) }
-
-// Traceln calls trace logger Println method to print to the trace logger.
-func Traceln(v ...interface{}) { std.Output(2, fmt.Sprintln(v...)) }
+func SetOn(on bool) {
+	if on {
+		Trace.SetOutput(os.Stderr)
+	} else {
+		Trace.SetOutput(io.Discard)
+	}
+}

@@ -48,7 +48,6 @@ func (a *Auth) String() string { return fmt.Sprintf("logonname %s", a.logonname)
 // AddSessionCookie adds session cookie authentication method.
 func (a *Auth) AddSessionCookie(cookie []byte, logonname, clientID string) {
 	a.methods[auth.MtSessionCookie] = auth.NewSessionCookie(cookie, logonname, clientID)
-	auth.Tracef("add session cookie: cookie %v clientID %s", cookie, clientID)
 }
 
 // AddBasic adds basic authentication methods.
@@ -68,9 +67,6 @@ func (a *Auth) Method() auth.Method { return a.method }
 
 func (a *Auth) setMethod(mt string) error {
 	var ok bool
-
-	auth.Tracef("selected method: %s", mt)
-
 	if a.method, ok = a.methods[mt]; !ok {
 		return fmt.Errorf("invalid method type: %s", mt)
 	}
@@ -79,7 +75,6 @@ func (a *Auth) setMethod(mt string) error {
 
 // InitRequest returns the init request part.
 func (a *Auth) InitRequest() (*AuthInitRequest, error) {
-	auth.Trace("authentication: initial request")
 	prms := &auth.Prms{}
 	prms.AddCESU8String(a.logonname)
 	for _, m := range a.methods.order() {
@@ -89,14 +84,10 @@ func (a *Auth) InitRequest() (*AuthInitRequest, error) {
 }
 
 // InitReply returns the init reply part.
-func (a *Auth) InitReply() (*AuthInitReply, error) {
-	auth.Trace("authentication: initial reply")
-	return &AuthInitReply{auth: a}, nil
-}
+func (a *Auth) InitReply() (*AuthInitReply, error) { return &AuthInitReply{auth: a}, nil }
 
 // FinalRequest returns the final request part.
 func (a *Auth) FinalRequest() (*AuthFinalRequest, error) {
-	auth.Trace("authentication: final request")
 	prms := &auth.Prms{}
 	if err := a.method.PrepareFinalReq(prms); err != nil {
 		return nil, err
@@ -105,10 +96,7 @@ func (a *Auth) FinalRequest() (*AuthFinalRequest, error) {
 }
 
 // FinalReply returns the final reply part.
-func (a *Auth) FinalReply() (*AuthFinalReply, error) {
-	auth.Trace("authentication: final reply")
-	return &AuthFinalReply{method: a.method}, nil
-}
+func (a *Auth) FinalReply() (*AuthFinalReply, error) { return &AuthFinalReply{method: a.method}, nil }
 
 // AuthInitRequest represents an authentication initial request.
 type AuthInitRequest struct {

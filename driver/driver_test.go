@@ -220,9 +220,7 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 	}
 
-	db := sql.OpenDB(driver.NewTestConnector())
-	defer db.Close()
-
+	db := driver.DefaultTestDB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(db, t)

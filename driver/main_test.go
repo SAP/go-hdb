@@ -8,8 +8,11 @@
 package driver
 
 import (
+	"bytes"
 	"database/sql"
+	_ "embed" // embed stats template
 	"flag"
+	"html/template"
 	"log"
 	"os"
 	"testing"
@@ -20,6 +23,9 @@ const (
 )
 
 const testGoHDBSchemaPrefix = "goHdbTest_"
+
+//go:embed stats.tmpl
+var statsTemplate string
 
 var (
 	testDSNStr string
@@ -49,18 +55,26 @@ var dropSchema = flag.Bool("dropschema", true, "drop test schema if test ran suc
 // test schemas created by go-hdb unit tests.
 var dropSchemas = flag.Bool("dropschemas", false, "drop all existing test schemas if test ran successfully")
 
-// NewTestConnector return a Connector with the relevant test attributes set.
+// NewTestConnector returns a Connector with the relevant test attributes set.
 func NewTestConnector() *Connector {
 	c, err := newDSNConnector(testDSN)
 	if err != nil {
 		log.Fatal(err)
 	}
-	c.connAttrs._defaultSchema = *schema // important: set test schema!
+	c._defaultSchema = *schema // important: set test schema!
 	return c
 }
 
-func TestMain(m *testing.M) {
+var defaultTestConnector *Connector
+var defaultTestDB *sql.DB
 
+// DefaultTestConnector returns the default Test Connector with the relevant test attributes set.
+func DefaultTestConnector() *Connector { return defaultTestConnector }
+
+// DefaultTestDB return the default database with the relevant test attributes set.
+func DefaultTestDB() *sql.DB { return defaultTestDB }
+
+func TestMain(m *testing.M) {
 	// setup creates the database schema.
 	setup := func(db *sql.DB) {
 		if err := execCreateSchema(db, *schema); err != nil {
@@ -109,6 +123,10 @@ func TestMain(m *testing.M) {
 		flag.Parse()
 	}
 
+	// init default DB and default connector
+	defaultTestConnector = NewTestConnector()
+	defaultTestDB = sql.OpenDB(defaultTestConnector)
+
 	// do not use NewTestConnector as it does set the default schema and the schema creation in setup would be answered by a HDB error.
 	connector, err := newDSNConnector(testDSN)
 	if err != nil {
@@ -120,6 +138,13 @@ func TestMain(m *testing.M) {
 	exitCode := m.Run()
 	teardown(db, exitCode == 0)
 	db.Close()
-	log.Print(connector.NativeDriver().Stats())
+	defaultTestDB.Close()
+
+	t := template.Must(template.New("stats").Parse(statsTemplate))
+	b := new(bytes.Buffer)
+	if err := t.Execute(b, connector.NativeDriver().Stats()); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("\n%s", b.String())
 	os.Exit(exitCode)
 }

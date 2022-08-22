@@ -1,6 +1,13 @@
 Release Notes
 =============
 
+## Release 0.108
+
+#### Release Notes
+
+- Added prometheus collectors for driver and extended database statistics
+- Added driver.DB for support of extended database statistics
+
 ## Release 0.107
 
 Release 0.107.4 (upgrade urgency: medium)

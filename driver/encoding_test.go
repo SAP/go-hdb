@@ -19,8 +19,7 @@ import (
 )
 
 func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
-	db := sql.OpenDB(driver.NewTestConnector())
-	defer db.Close()
+	db := driver.DefaultTestDB()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, s nvarchar(20))", tableName)); err != nil {
@@ -42,8 +41,7 @@ func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
 }
 
 func testDecodeError(tableName driver.Identifier, testData []string, t *testing.T) {
-	db := sql.OpenDB(driver.NewTestConnector())
-	defer db.Close()
+	db := driver.DefaultTestDB()
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
