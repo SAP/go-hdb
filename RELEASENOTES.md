@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.108
 
+Release 0.108.1 (upgrade urgency: medium)
+
+- Fixed driver.Decimal conversion overflow error
+
 #### Release Notes
 
 - Added prometheus collectors for driver and extended database statistics

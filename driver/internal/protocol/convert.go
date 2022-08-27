@@ -471,14 +471,15 @@ func exp10(n int) *big.Int {
 	return r.Exp(natTen, r, nil)
 }
 
+var lg10 = math.Log2(10)
+
 func digits10(p *big.Int) int {
 	k := p.BitLen() // 2^k <= p < 2^(k+1) - 1
-	//i := int(float64(k) / lg10) //minimal digits base 10
-	i := k * 100 / 332
+	i := int(float64(k) / lg10)
 	if i < 1 {
 		i = 1
 	}
-
+	// i <= digit10(p)
 	for ; ; i++ {
 		if p.Cmp(exp10(i)) < 0 {
 			return i

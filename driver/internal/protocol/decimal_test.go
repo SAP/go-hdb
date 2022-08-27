@@ -10,42 +10,44 @@ import (
 )
 
 func testDigits10(t *testing.T) {
-	testData := []struct {
-		x      *big.Int
-		digits int
-	}{
-		{new(big.Int).SetInt64(0), 1},
-		{new(big.Int).SetInt64(1), 1},
-		{new(big.Int).SetInt64(9), 1},
-		{new(big.Int).SetInt64(10), 2},
-		{new(big.Int).SetInt64(99), 2},
-		{new(big.Int).SetInt64(100), 3},
-		{new(big.Int).SetInt64(999), 3},
-		{new(big.Int).SetInt64(1000), 4},
-		{new(big.Int).SetInt64(9999), 4},
-		{new(big.Int).SetInt64(10000), 5},
-		{new(big.Int).SetInt64(99999), 5},
-		{new(big.Int).SetInt64(100000), 6},
-		{new(big.Int).SetInt64(999999), 6},
-		{new(big.Int).SetInt64(1000000), 7},
-		{new(big.Int).SetInt64(9999999), 7},
-		{new(big.Int).SetInt64(10000000), 8},
-		{new(big.Int).SetInt64(99999999), 8},
-		{new(big.Int).SetInt64(100000000), 9},
-		{new(big.Int).SetInt64(999999999), 9},
-		{new(big.Int).SetInt64(1000000000), 10},
-		{new(big.Int).SetInt64(9999999999), 10},
+	natNine := big.NewInt(9)
+
+	// test zero
+	digits := digits10(natZero)
+	if digits != 1 {
+		t.Fatalf("int %s digits %d - expected digits %d", natZero, digits, 1)
 	}
 
-	for i, d := range testData {
-		digits := digits10(d.x)
-		if d.digits != digits {
-			t.Fatalf("value %d int %s digits %d - expected digits %d", i, d.x, digits, d.digits)
+	// test entire range
+	v1 := new(big.Int).SetInt64(1) // 1, 10, 100, ...
+	v2 := new(big.Int).SetInt64(9) // 9, 99, 999, ...
+
+	for i := 1; i <= (dec128MinExp*-1 + dec128Digits); i++ {
+		digits := digits10(v1)
+		if digits != i {
+			t.Fatalf("value %d int %s digits %d - expected digits %d", i, v1, digits, i)
 		}
+		digits = digits10(v2)
+		if digits != i {
+			t.Fatalf("value %d int %s digits %d - expected digits %d", i, v2, digits, i)
+		}
+		v1.Mul(v1, natTen)
+		v2.Mul(v2, natTen)
+		v2.Add(v2, natNine)
 	}
 }
 
 func testConvertRatToDecimal(t *testing.T) {
+
+	parseRat := func(s string) *big.Rat {
+		if r, ok := new(big.Rat).SetString(s); ok {
+			return r
+		}
+		t.Fatal("invalid big.Rat number")
+		return nil
+	}
+	parseInt := func(s string) *big.Int { return parseRat(s).Num() }
+
 	testData := []struct {
 		// in
 		x      *big.Rat
@@ -81,6 +83,7 @@ func testConvertRatToDecimal(t *testing.T) {
 		{new(big.Rat).SetFrac64(3, 2), 1, 0, 1, new(big.Int).SetInt64(2), 0, dfNotExact},         // round 1.5 to 2
 		{new(big.Rat).SetFrac64(14999, 10000), 1, 0, 1, new(big.Int).SetInt64(1), 0, dfNotExact}, // round 1.4999 to 1
 
+		{parseRat("-9.9E6144"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("-9.9E33"), dec128MaxExp, 0},
 	}
 
 	m := new(big.Int)
