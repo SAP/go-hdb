@@ -136,7 +136,7 @@ func decodeClientCert(data []byte) ([]*pem.Block, error) {
 	}
 	switch {
 	case blocks == nil:
-		return nil, errors.New("invalid client cert")
+		return nil, errors.New("invalid client certificate")
 	case len(blocks) < 1:
 		return nil, fmt.Errorf("invalid number of blocks in cert file %d - expected min 1", len(blocks))
 	}
