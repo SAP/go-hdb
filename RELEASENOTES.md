@@ -3,6 +3,12 @@ Release Notes
 
 ## Release 0.108
 
+Release 0.108.2 (upgrade urgency: high)
+
+- Fixed hdb version parsing error using HANA v1
+- Fixed some comments and error message texts
+- Enhanced makefile to install further go versions
+
 Release 0.108.1 (upgrade urgency: medium)
 
 - Fixed driver.Decimal conversion overflow error

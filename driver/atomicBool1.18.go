@@ -5,7 +5,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Delete after go1.17 is out of maintenance.
+// Delete after go1.18 is out of maintenance.
 
 package driver
 

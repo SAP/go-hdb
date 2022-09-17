@@ -24,8 +24,15 @@ tools:
 	go install golang.org/x/lint/golint@latest
 #install staticcheck
 	@echo "install latest staticcheck version"
-	go install honnef.co/go/tools/cmd/staticcheck@latest	
-	
+	go install honnef.co/go/tools/cmd/staticcheck@latest
+
+#install additional go versions
+go:
+	go install golang.org/dl/go1.17.13@latest
+	go1.17.13 download
+	go install golang.org/dl/go1.18.5@latest
+	go1.18.5 download
+
 #install fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 # pre-conditions:
 # - Python 3.6+

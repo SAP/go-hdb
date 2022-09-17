@@ -366,7 +366,7 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 		return nil, fmt.Errorf("invalid session id %d", c.sessionID)
 	}
 
-	c.hdbVersion = parseVersion(c.serverOptions[p.CoFullVersionString].(string))
+	c.hdbVersion = parseVersion(c.versionString())
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
@@ -381,6 +381,17 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
 	return c, nil
+}
+
+func (c *conn) versionString() (version string) {
+	v, ok := c.serverOptions[p.CoFullVersionString]
+	if !ok {
+		return
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return
 }
 
 func (c *conn) isBad() bool {
