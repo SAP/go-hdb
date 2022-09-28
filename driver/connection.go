@@ -157,7 +157,7 @@ func (c *dbConn) Read(b []byte) (n int, err error) {
 retError:
 	dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
 	c.lastError = err
-	return n, driver.ErrBadConn
+	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 }
 
 // Write implements the io.Writer interface.
@@ -181,7 +181,9 @@ func (c *dbConn) Write(b []byte) (n int, err error) {
 retError:
 	dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
 	c.lastError = err
-	return n, driver.ErrBadConn
+	// include err in the returned error to inform why the connection is bad (e.g. when the server certificate cannot
+	// be verified).
+	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 }
 
 const (
