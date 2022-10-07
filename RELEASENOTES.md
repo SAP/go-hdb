@@ -3,6 +3,11 @@ Release Notes
 
 ## Release 0.108
 
+Release 0.108.3 (upgrade urgency: low)
+
+- Error handling improvement (https://github.com/SAP/go-hdb/pull/95)
+- Some minor source code cleanups
+
 Release 0.108.2 (upgrade urgency: high)
 
 - Fixed hdb version parsing error using HANA v1

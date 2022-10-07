@@ -104,13 +104,9 @@ var (
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
-	// atomic access - alignment
-	cancelled int32
-	metrics   *metrics
-	conn      net.Conn
-	timeout   time.Duration
-	lastError error // error bad connection
-	closed    bool
+	metrics *metrics
+	conn    net.Conn
+	timeout time.Duration
 }
 
 func (c *dbConn) deadline() (deadline time.Time) {
@@ -120,28 +116,10 @@ func (c *dbConn) deadline() (deadline time.Time) {
 	return time.Now().Add(c.timeout)
 }
 
-var (
-	errCancelled = errors.New("db connection is canceled")
-	errClosed    = errors.New("db connection is closed")
-)
-
-func (c *dbConn) cancel() {
-	atomic.StoreInt32(&c.cancelled, 1)
-	c.lastError = errCancelled
-}
-
-func (c *dbConn) close() error {
-	c.closed = true
-	c.lastError = errClosed
-	return c.conn.Close()
-}
+func (c *dbConn) close() error { return c.conn.Close() }
 
 // Read implements the io.Reader interface.
 func (c *dbConn) Read(b []byte) (n int, err error) {
-	// check if killed
-	if atomic.LoadInt32(&c.cancelled) == 1 {
-		return 0, driver.ErrBadConn
-	}
 	var start time.Time
 	//set timeout
 	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
@@ -156,16 +134,12 @@ func (c *dbConn) Read(b []byte) (n int, err error) {
 	}
 retError:
 	dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	c.lastError = err
-	return n, driver.ErrBadConn
+	// wrap error in driver.ErrBadConn
+	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 }
 
 // Write implements the io.Writer interface.
 func (c *dbConn) Write(b []byte) (n int, err error) {
-	// check if killed
-	if atomic.LoadInt32(&c.cancelled) == 1 {
-		return 0, driver.ErrBadConn
-	}
 	var start time.Time
 	//set timeout
 	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
@@ -180,8 +154,8 @@ func (c *dbConn) Write(b []byte) (n int, err error) {
 	}
 retError:
 	dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	c.lastError = err
-	return n, driver.ErrBadConn
+	// wrap error in driver.ErrBadConn
+	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 }
 
 const (
@@ -237,6 +211,8 @@ const (
 	choNone = iota
 	choStmtExec
 )
+
+var errCancelled = fmt.Errorf("%w: %s", driver.ErrBadConn, errors.New("db call cancelled"))
 
 // Conn enhances a connection with go-hdb specific connection functions.
 type Conn interface {
@@ -394,18 +370,17 @@ func (c *conn) versionString() (version string) {
 	return
 }
 
+/*
+A better option would be to wrap driver.ErrBadConn directly into a fatal error (instead of using e.ErrFatal).
+Then we could get rid of the isBad check executed on next 'roundrip' completely.
+But unfortunately go database/sql does not return the original error in any case but returns driver.ErrBadConn in some cases instead.
+Tested go versions wrapping driver.ErrBadConn instead of e.ErrFatal:
+- go 1.17.13: works ok
+- go 1.18.5 : does not work
+- go 1.19.2 : does not work
+*/
 func (c *conn) isBad() bool {
-	switch {
-
-	case c.dbConn.lastError != nil:
-		return true
-
-	case c.lastError != nil:
-		if errors.Is(c.lastError, e.ErrFatal) {
-			return true
-		}
-	}
-	return false
+	return errors.Is(c.lastError, driver.ErrBadConn) || errors.Is(c.lastError, e.ErrFatal)
 }
 
 func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
@@ -446,7 +421,7 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return ctx.Err()
 	case <-done:
 		c.lastError = err
@@ -520,7 +495,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
@@ -587,7 +562,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
@@ -652,7 +627,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(onCloser); ok {
@@ -700,7 +675,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.lastError = err
@@ -745,7 +720,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *DBCo
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.lastError = err
@@ -943,7 +918,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(onCloser); ok {
@@ -1007,7 +982,7 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.lastError = err
@@ -1247,11 +1222,11 @@ func (s *callStmt) Close() error {
 	c.lock()
 	defer c.unlock()
 
+	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
+
 	if c.isBad() {
 		return driver.ErrBadConn
 	}
-
-	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	return c._dropStatementID(s.pr.stmtID)
 }
@@ -1290,7 +1265,7 @@ func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue)
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		if onCloser, ok := rows.(onCloser); ok {
@@ -1330,7 +1305,7 @@ func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) 
 
 	select {
 	case <-ctx.Done():
-		c.dbConn.cancel()
+		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
 		c.lastError = err

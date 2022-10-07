@@ -4,6 +4,9 @@
 
 # builds and tests project via go tools
 all:
+	@echo "update dependencies"
+	go get -u ./...
+	go mod tidy
 	@echo "build and test"
 	go build -v ./...
 	go vet ./...
