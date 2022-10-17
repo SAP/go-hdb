@@ -6,7 +6,7 @@ require (
 	github.com/prometheus/client_golang v1.13.0
 	golang.org/x/crypto v0.0.0-20221005025214-4161e89ecf1b
 	golang.org/x/exp v0.0.0-20221006183845-316c7553db56
-	golang.org/x/text v0.3.7
+	golang.org/x/text v0.3.8
 )
 
 require (
