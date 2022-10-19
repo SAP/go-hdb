@@ -16,8 +16,8 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleManyInsert inserts 1000 rows into a database table via a 'many' operation.
-func Example_manyInsert() {
+// ExampleFctInsert inserts 1000 rows into a database table via a bulk 'function' operation.
+func Example_fctInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
 
@@ -38,14 +38,16 @@ func Example_manyInsert() {
 	}
 	defer stmt.Close()
 
-	// Prepare data.
-	data := make([][]any, numRow)
-	for i := 0; i < numRow; i++ {
-		data[i] = []any{i, float64(i)}
-	}
-
-	// Insert many.
-	if _, err := stmt.Exec(data); err != nil {
+	// Bulk insert via function.
+	i := 0
+	if _, err := stmt.Exec(func(args []any) error {
+		if i >= numRow {
+			return driver.ErrEndOfRows
+		}
+		args[0], args[1] = i, float64(i)
+		i++
+		return nil
+	}); err != nil {
 		log.Fatal(err)
 	}
 

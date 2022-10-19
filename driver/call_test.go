@@ -133,10 +133,10 @@ end
 	stringType := reflect.TypeOf((*string)(nil)).Elem()
 	rowsType := reflect.TypeOf((*sql.Rows)(nil)).Elem()
 
-	createObj := func(t reflect.Type) interface{} { return reflect.New(t).Interface() }
+	createObj := func(t reflect.Type) any { return reflect.New(t).Interface() }
 
-	createString := func() interface{} { return createObj(stringType) }
-	createRows := func() interface{} { return createObj(rowsType) }
+	createString := func() any { return createObj(stringType) }
+	createRows := func() any { return createObj(rowsType) }
 
 	testCheck := func(testSet int, rows *sql.Rows, t *testing.T) {
 		j := 0
@@ -163,7 +163,7 @@ end
 		}
 	}
 
-	testCall := func(db *sql.DB, proc driver.Identifier, legacy bool, targets []interface{}, t *testing.T) {
+	testCall := func(db *sql.DB, proc driver.Identifier, legacy bool, targets []any, t *testing.T) {
 		rows, err := db.Query(fmt.Sprintf("call %s(?, ?, ?, ?)", proc), 1)
 		if err != nil {
 			t.Fatal(err)
@@ -207,11 +207,11 @@ end
 	tests := []struct {
 		name    string
 		legacy  bool
-		fct     func(db *sql.DB, proc driver.Identifier, legacy bool, targets []interface{}, t *testing.T)
-		targets []interface{}
+		fct     func(db *sql.DB, proc driver.Identifier, legacy bool, targets []any, t *testing.T)
+		targets []any
 	}{
-		{"tableOutRef", true, testCall, []interface{}{createString(), createString(), createString()}},
-		{"tableOutRows", false, testCall, []interface{}{createRows(), createRows(), createRows()}},
+		{"tableOutRef", true, testCall, []any{createString(), createString(), createString()}},
+		{"tableOutRows", false, testCall, []any{createRows(), createRows(), createRows()}},
 	}
 
 	for _, test := range tests {

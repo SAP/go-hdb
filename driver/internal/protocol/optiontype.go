@@ -13,9 +13,9 @@ import (
 type optType interface {
 	fmt.Stringer
 	typeCode() typeCode
-	size(v interface{}) int
-	encode(e *encoding.Encoder, v interface{})
-	decode(d *encoding.Decoder) interface{}
+	size(v any) int
+	encode(e *encoding.Encoder, v any)
+	decode(d *encoding.Decoder) any
 }
 
 var (
@@ -64,49 +64,49 @@ func (_optDoubleType) typeCode() typeCode  { return tcDouble }
 func (_optStringType) typeCode() typeCode  { return tcString }
 func (_optBstringType) typeCode() typeCode { return tcBstring }
 
-func (_optBooleanType) size(interface{}) int   { return encoding.BooleanFieldSize }
-func (_optTinyintType) size(interface{}) int   { return encoding.TinyintFieldSize }
-func (_optIntegerType) size(interface{}) int   { return encoding.IntegerFieldSize }
-func (_optBigintType) size(interface{}) int    { return encoding.BigintFieldSize }
-func (_optDoubleType) size(interface{}) int    { return encoding.DoubleFieldSize }
-func (_optStringType) size(v interface{}) int  { return 2 + len(v.(string)) } //length int16 + string length
-func (_optBstringType) size(v interface{}) int { return 2 + len(v.([]byte)) } //length int16 + bytes length
+func (_optBooleanType) size(any) int   { return encoding.BooleanFieldSize }
+func (_optTinyintType) size(any) int   { return encoding.TinyintFieldSize }
+func (_optIntegerType) size(any) int   { return encoding.IntegerFieldSize }
+func (_optBigintType) size(any) int    { return encoding.BigintFieldSize }
+func (_optDoubleType) size(any) int    { return encoding.DoubleFieldSize }
+func (_optStringType) size(v any) int  { return 2 + len(v.(string)) } //length int16 + string length
+func (_optBstringType) size(v any) int { return 2 + len(v.([]byte)) } //length int16 + bytes length
 
-func (_optBooleanType) encode(e *encoding.Encoder, v interface{}) { e.Bool(v.(bool)) }
-func (_optTinyintType) encode(e *encoding.Encoder, v interface{}) { e.Int8(v.(int8)) }
-func (_optIntegerType) encode(e *encoding.Encoder, v interface{}) { e.Int32(v.(int32)) }
-func (_optBigintType) encode(e *encoding.Encoder, v interface{})  { e.Int64(v.(int64)) }
-func (_optDoubleType) encode(e *encoding.Encoder, v interface{})  { e.Float64(v.(float64)) }
-func (_optStringType) encode(e *encoding.Encoder, v interface{}) {
+func (_optBooleanType) encode(e *encoding.Encoder, v any) { e.Bool(v.(bool)) }
+func (_optTinyintType) encode(e *encoding.Encoder, v any) { e.Int8(v.(int8)) }
+func (_optIntegerType) encode(e *encoding.Encoder, v any) { e.Int32(v.(int32)) }
+func (_optBigintType) encode(e *encoding.Encoder, v any)  { e.Int64(v.(int64)) }
+func (_optDoubleType) encode(e *encoding.Encoder, v any)  { e.Float64(v.(float64)) }
+func (_optStringType) encode(e *encoding.Encoder, v any) {
 	s := v.(string)
 	e.Int16(int16(len(s)))
 	e.Bytes([]byte(s))
 }
-func (_optBstringType) encode(e *encoding.Encoder, v interface{}) {
+func (_optBstringType) encode(e *encoding.Encoder, v any) {
 	b := v.([]byte)
 	e.Int16(int16(len(b)))
 	e.Bytes(b)
 }
 
-func (_optBooleanType) decode(d *encoding.Decoder) interface{} { return d.Bool() }
-func (_optTinyintType) decode(d *encoding.Decoder) interface{} { return d.Int8() }
-func (_optIntegerType) decode(d *encoding.Decoder) interface{} { return d.Int32() }
-func (_optBigintType) decode(d *encoding.Decoder) interface{}  { return d.Int64() }
-func (_optDoubleType) decode(d *encoding.Decoder) interface{}  { return d.Float64() }
-func (_optStringType) decode(d *encoding.Decoder) interface{} {
+func (_optBooleanType) decode(d *encoding.Decoder) any { return d.Bool() }
+func (_optTinyintType) decode(d *encoding.Decoder) any { return d.Int8() }
+func (_optIntegerType) decode(d *encoding.Decoder) any { return d.Int32() }
+func (_optBigintType) decode(d *encoding.Decoder) any  { return d.Int64() }
+func (_optDoubleType) decode(d *encoding.Decoder) any  { return d.Float64() }
+func (_optStringType) decode(d *encoding.Decoder) any {
 	l := d.Int16()
 	b := make([]byte, l)
 	d.Bytes(b)
 	return string(b)
 }
-func (_optBstringType) decode(d *encoding.Decoder) interface{} {
+func (_optBstringType) decode(d *encoding.Decoder) any {
 	l := d.Int16()
 	b := make([]byte, l)
 	d.Bytes(b)
 	return b
 }
 
-func getOptType(v interface{}) optType {
+func getOptType(v any) optType {
 	switch v := v.(type) {
 	case bool:
 		return optBooleanType

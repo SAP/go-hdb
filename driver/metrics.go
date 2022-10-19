@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -74,7 +76,7 @@ func (h *histogram) add(v float64) { // time in nanoseconds
 	}
 	h.sum += v
 	// determine index
-	idx := binarySearchSliceFloat64(h.upperBounds, v)
+	idx, _ := slices.BinarySearch(h.upperBounds, v)
 	for i := idx; i < len(h.upperBounds); i++ {
 		h.boundCounts[i]++
 	}
@@ -109,7 +111,7 @@ type metrics struct {
 	sqlTimes []*histogram
 
 	wg    *sync.WaitGroup
-	chMsg chan interface{}
+	chMsg chan any
 
 	closed atomicBool
 }
@@ -127,7 +129,7 @@ func newMetrics(parent *metrics, timeUpperBounds []float64) *metrics {
 		sqlTimes: make([]*histogram, numSQLTime),
 
 		wg:    new(sync.WaitGroup),
-		chMsg: make(chan interface{}, numCh),
+		chMsg: make(chan any, numCh),
 	}
 	for i := 0; i < int(numTime); i++ {
 		rv.times[i] = newHistogram(timeUpperBounds)
@@ -164,7 +166,7 @@ func (m *metrics) buildStats() *Stats {
 
 func milliseconds(d time.Duration) float64 { return float64(d.Nanoseconds()) / 1e6 }
 
-func (m *metrics) handleMsg(msg interface{}) {
+func (m *metrics) handleMsg(msg any) {
 	switch msg := msg.(type) {
 	case counterMsg:
 		m.counters[msg.idx] += msg.v
@@ -181,7 +183,7 @@ func (m *metrics) handleMsg(msg interface{}) {
 	}
 }
 
-func (m *metrics) handleParentMsg(msg interface{}) {
+func (m *metrics) handleParentMsg(msg any) {
 	switch msg := msg.(type) {
 	case counterMsg:
 		m.parent.chMsg <- msg
@@ -202,7 +204,7 @@ func (m *metrics) handleParentMsg(msg interface{}) {
 	}
 }
 
-func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan interface{}, msgHandler func(msg interface{})) {
+func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan any, msgHandler func(msg any)) {
 	for msg := range chMsg {
 		msgHandler(msg)
 	}

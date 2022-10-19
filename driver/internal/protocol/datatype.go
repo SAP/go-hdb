@@ -39,7 +39,7 @@ func RegisterScanType(dt DataType, scanType reflect.Type) bool {
 }
 
 var scanTypes = []reflect.Type{
-	DtUnknown:  reflect.TypeOf((*interface{})(nil)).Elem(),
+	DtUnknown:  reflect.TypeOf((*any)(nil)).Elem(),
 	DtBoolean:  reflect.TypeOf((*bool)(nil)).Elem(),
 	DtTinyint:  reflect.TypeOf((*uint8)(nil)).Elem(),
 	DtSmallint: reflect.TypeOf((*int16)(nil)).Elem(),

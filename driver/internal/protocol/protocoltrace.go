@@ -26,7 +26,7 @@ const (
 	downStreamPrefix = "←"
 )
 
-func newTracer() (func(up bool, v interface{}), bool) {
+func newTracer() (func(up bool, v any), bool) {
 
 	prefix := func(up bool) string {
 		if up {
@@ -35,9 +35,9 @@ func newTracer() (func(up bool, v interface{}), bool) {
 		return downStreamPrefix
 	}
 
-	traceNull := func(bool, interface{}) {}
+	traceNull := func(bool, any) {}
 
-	traceProtocol := func(up bool, v interface{}) {
+	traceProtocol := func(up bool, v any) {
 		var msg string
 
 		switch v.(type) {

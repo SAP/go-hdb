@@ -14,7 +14,7 @@ import (
 type Decimal big.Rat
 
 // Scan implements the database/sql/Scanner interface.
-func (d *Decimal) Scan(src interface{}) error {
+func (d *Decimal) Scan(src any) error {
 	r, ok := src.(*big.Rat)
 	if !ok {
 		return fmt.Errorf("decimal: invalid data type %T", src)
@@ -37,7 +37,7 @@ type NullDecimal struct {
 }
 
 // Scan implements the Scanner interface.
-func (n *NullDecimal) Scan(value interface{}) error {
+func (n *NullDecimal) Scan(value any) error {
 	if value == nil {
 		n.Valid = false
 		return nil

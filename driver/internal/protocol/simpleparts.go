@@ -17,7 +17,7 @@ type ClientID []byte
 func (id ClientID) String() string { return string(id) }
 func (id ClientID) size() int      { return len(id) }
 func (id *ClientID) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	*id = resizeByteSlice(*id, int(ph.bufferLength))
+	*id = resizeSlice(*id, int(ph.bufferLength))
 	dec.Bytes(*id)
 	return dec.Error()
 }
@@ -29,7 +29,7 @@ type Command []byte
 func (c Command) String() string { return string(c) }
 func (c Command) size() int      { return cesu8.Size(c) }
 func (c *Command) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	*c = resizeByteSlice(*c, int(ph.bufferLength))
+	*c = resizeSlice(*c, int(ph.bufferLength))
 	var err error
 	*c, err = dec.CESU8Bytes(len(*c))
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // AuthPasswordSetter is implemented by authentication methods supporting password updates.
@@ -32,6 +34,12 @@ type AuthCookieGetter interface {
 }
 
 type authMethods map[string]auth.Method // key equals authentication method type.
+
+func (m authMethods) order() []auth.Method {
+	methods := maps.Values(m)
+	slices.SortFunc(methods, func(a, b auth.Method) bool { return a.Order() < b.Order() })
+	return methods
+}
 
 // Auth holds the client authentication methods dependant on the driver.Connector attributes.
 type Auth struct {

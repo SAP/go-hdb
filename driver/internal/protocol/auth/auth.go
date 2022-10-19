@@ -136,10 +136,10 @@ func (d *Decoder) subSize() int {
 
 // Prms represents authentication parameters.
 type Prms struct {
-	prms []interface{}
+	prms []any
 }
 
-func (p *Prms) String() string { return fmt.Sprintf("%v", []interface{}(p.prms)) }
+func (p *Prms) String() string { return fmt.Sprintf("%v", []any(p.prms)) }
 
 // AddCESU8String adds a CESU8 string parameter.
 func (p *Prms) AddCESU8String(s string) { p.prms = append(p.prms, s) } // unicode string

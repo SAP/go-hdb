@@ -40,8 +40,8 @@ func dttCreateTable(db *sql.DB, column string) (Identifier, error) {
 
 type dttNeg struct { // negative test
 	_columnType columnType
-	checkFn     func(ct columnType, in, out interface{}) (bool, error)
-	testData    []interface{}
+	checkFn     func(ct columnType, in, out any) (bool, error)
+	testData    []any
 }
 
 func (dtt *dttNeg) columnType() columnType { return dtt._columnType }
@@ -72,8 +72,8 @@ func (dtt *dttNeg) run(t *testing.T, db *sql.DB) {
 
 type dttDef struct {
 	_columnType columnType
-	checkFn     func(ct columnType, in, out interface{}) (bool, error)
-	testData    []interface{}
+	checkFn     func(ct columnType, in, out any) (bool, error)
+	testData    []any
 }
 
 func (dtt *dttDef) columnType() columnType { return dtt._columnType }
@@ -192,7 +192,7 @@ type dttSpatial struct {
 
 func (dtt *dttSpatial) columnType() columnType { return dtt._columnType }
 
-func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn func(func(value interface{}))) int {
+func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn func(func(value any))) int {
 	// use trancactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
@@ -206,7 +206,7 @@ func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn
 	}
 
 	i := 0
-	fn(func(value interface{}) {
+	fn(func(value any) {
 		if _, err := stmt.Exec(value, i); err != nil {
 			t.Fatalf("%d - %s", i, err)
 		}
@@ -219,7 +219,7 @@ func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn
 	return i
 }
 
-func (dtt *dttSpatial) withRows(t *testing.T, db *sql.DB, tableName Identifier, numRecs int, fn func(i int), dest ...interface{}) {
+func (dtt *dttSpatial) withRows(t *testing.T, db *sql.DB, tableName Identifier, numRecs int, fn func(i int), dest ...any) {
 	rows, err := db.Query(fmt.Sprintf("select x, i, x.st_aswkb(), x.st_asewkb(), x.st_aswkt(), x.st_asewkt(), x.st_asgeojson() from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func (dtt *dttSpatial) run(t *testing.T, db *sql.DB) {
 
 	srid := dtt._columnType.(spatialColumnType).srid()
 
-	numRec := dtt.withTx(t, db, tableName, func(exec func(value interface{})) {
+	numRec := dtt.withTx(t, db, tableName, func(exec func(value any)) {
 		for _, g := range dtt.testData {
 			ewkb, err := spatial.EncodeEWKB(g, false, srid)
 			if err != nil {
@@ -360,49 +360,49 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
-var tinyintTestData = []interface{}{
+var tinyintTestData = []any{
 	uint8(minTinyint),
 	uint8(maxTinyint),
 	sql.NullInt64{Valid: false, Int64: minTinyint},
 	sql.NullInt64{Valid: true, Int64: maxTinyint},
 }
 
-var smallintTestData = []interface{}{
+var smallintTestData = []any{
 	int16(minSmallint),
 	int16(maxSmallint),
 	sql.NullInt64{Valid: false, Int64: minSmallint},
 	sql.NullInt64{Valid: true, Int64: maxSmallint},
 }
 
-var integerTestData = []interface{}{
+var integerTestData = []any{
 	int32(minInteger),
 	int32(maxInteger),
 	sql.NullInt64{Valid: false, Int64: minInteger},
 	sql.NullInt64{Valid: true, Int64: maxInteger},
 }
 
-var bigintTestData = []interface{}{
+var bigintTestData = []any{
 	int64(minBigint),
 	int64(maxBigint),
 	sql.NullInt64{Valid: false, Int64: minBigint},
 	sql.NullInt64{Valid: true, Int64: maxBigint},
 }
 
-var realTestData = []interface{}{
+var realTestData = []any{
 	float32(-maxReal),
 	float32(maxReal),
 	sql.NullFloat64{Valid: false, Float64: -maxReal},
 	sql.NullFloat64{Valid: true, Float64: maxReal},
 }
 
-var doubleTestData = []interface{}{
+var doubleTestData = []any{
 	float64(-maxDouble),
 	float64(maxDouble),
 	sql.NullFloat64{Valid: false, Float64: -maxDouble},
 	sql.NullFloat64{Valid: true, Float64: maxDouble},
 }
 
-var timeTestData = []interface{}{
+var timeTestData = []any{
 	time.Now(),
 	time.Date(2000, 12, 31, 23, 59, 59, 999999999, time.UTC),
 	sql.NullTime{Valid: false, Time: time.Now()},
@@ -442,7 +442,7 @@ var (
 )
 
 var (
-	decimalTestData = []interface{}{
+	decimalTestData = []any{
 		(*Decimal)(big.NewRat(0, 1)),
 		(*Decimal)(big.NewRat(1, 1)),
 		(*Decimal)(big.NewRat(-1, 1)),
@@ -464,21 +464,21 @@ var (
 	decimalFixed16TestData = append(decimalFixed12TestData, fixed16MinValue, fixed16MaxValue)
 )
 
-var booleanTestData = []interface{}{
+var booleanTestData = []any{
 	true,
 	false,
 	sql.NullBool{Valid: false, Bool: true},
 	sql.NullBool{Valid: true, Bool: false},
 }
 
-var asciiStringTestData = []interface{}{
+var asciiStringTestData = []any{
 	"Hello HDB",
 	"aaaaaaaaaa",
 	sql.NullString{Valid: false, String: "Hello HDB"},
 	sql.NullString{Valid: true, String: "Hello HDB"},
 }
 
-var stringTestData = []interface{}{
+var stringTestData = []any{
 	"Hello HDB",
 	// varchar: UTF-8 4 bytes per char -> size 40 bytes
 	// nvarchar: CESU-8 6 bytes per char -> hdb counts 2 chars per 6 byte encoding -> size 20 bytes
@@ -492,11 +492,11 @@ var stringTestData = []interface{}{
 	sql.NullString{Valid: true, String: "Hello HDB"},
 }
 
-var invalidUnicodeTestData = []interface{}{
+var invalidUnicodeTestData = []any{
 	string([]byte{43, 48, 28, 57, 237, 162, 168, 17, 50, 48, 96, 51}), // invalid unicode
 }
 
-var binaryTestData = []interface{}{
+var binaryTestData = []any{
 	[]byte("Hello HDB"),
 	[]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 	[]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0xff},
@@ -504,7 +504,7 @@ var binaryTestData = []interface{}{
 	NullBytes{Valid: true, Bytes: []byte("Hello HDB")},
 }
 
-var alphanumTestData = []interface{}{
+var alphanumTestData = []any{
 	"0123456789",
 	"1234567890",
 	"abc",
@@ -576,9 +576,9 @@ func testInitLobFiles(t *testing.T) {
 	})
 }
 
-func lobTestData(ascii bool, t *testing.T) []interface{} {
+func lobTestData(ascii bool, t *testing.T) []any {
 	testInitLobFiles(t)
-	testData := make([]interface{}, 0, len(testLobFiles))
+	testData := make([]any, 0, len(testLobFiles))
 	first := true
 	for _, f := range testLobFiles {
 		if !ascii || f.isASCII {
@@ -644,7 +644,7 @@ var stGeometryTestData = []spatial.Geometry{
 	spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}},
 }
 
-func checkInt(ct columnType, in, out interface{}) (bool, error) {
+func checkInt(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullInt64); ok {
 		in := in.(sql.NullInt64)
 		return in.Valid == out.Valid && (!in.Valid || in.Int64 == out.Int64), nil
@@ -652,7 +652,7 @@ func checkInt(ct columnType, in, out interface{}) (bool, error) {
 	return in == out, nil
 }
 
-func checkFloat(ct columnType, in, out interface{}) (bool, error) {
+func checkFloat(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullFloat64); ok {
 		in := in.(sql.NullFloat64)
 		return in.Valid == out.Valid && (!in.Valid || in.Float64 == out.Float64), nil
@@ -660,7 +660,7 @@ func checkFloat(ct columnType, in, out interface{}) (bool, error) {
 	return in == out, nil
 }
 
-func checkDecimal(ct columnType, in, out interface{}) (bool, error) {
+func checkDecimal(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullDecimal); ok {
 		in := in.(NullDecimal)
 		return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0), nil
@@ -668,7 +668,7 @@ func checkDecimal(ct columnType, in, out interface{}) (bool, error) {
 	return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0, nil
 }
 
-func checkBoolean(ct columnType, in, out interface{}) (bool, error) {
+func checkBoolean(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullBool); ok {
 		in := in.(sql.NullBool)
 		return in.Valid == out.Valid && (!in.Valid || in.Bool == out.Bool), nil
@@ -701,7 +701,7 @@ func equalLongdate(t1, t2 time.Time) bool {
 	return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
 }
 
-func checkDate(ct columnType, in, out interface{}) (bool, error) {
+func checkDate(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalDate(in.Time.UTC(), out.Time)), nil
@@ -709,7 +709,7 @@ func checkDate(ct columnType, in, out interface{}) (bool, error) {
 	return equalDate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTime(ct columnType, in, out interface{}) (bool, error) {
+func checkTime(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalTime(in.Time.UTC(), out.Time)), nil
@@ -717,7 +717,7 @@ func checkTime(ct columnType, in, out interface{}) (bool, error) {
 	return equalTime(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkDateTime(ct columnType, in, out interface{}) (bool, error) {
+func checkDateTime(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalDateTime(in.Time.UTC(), out.Time)), nil
@@ -725,7 +725,7 @@ func checkDateTime(ct columnType, in, out interface{}) (bool, error) {
 	return equalDateTime(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func _checkTimestamp(in, out interface{}) (bool, error) {
+func _checkTimestamp(in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalTimestamp(in.Time.UTC(), out.Time)), nil
@@ -733,7 +733,7 @@ func _checkTimestamp(in, out interface{}) (bool, error) {
 	return equalTimestamp(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func _checkLongdate(in, out interface{}) (bool, error) {
+func _checkLongdate(in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalLongdate(in.Time.UTC(), out.Time)), nil
@@ -741,7 +741,7 @@ func _checkLongdate(in, out interface{}) (bool, error) {
 	return equalLongdate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTimestamp(ct columnType, in, out interface{}) (bool, error) {
+func checkTimestamp(ct columnType, in, out any) (bool, error) {
 	if ct.dfv() == 1 {
 		return _checkTimestamp(in, out)
 	}
@@ -760,7 +760,7 @@ func compareStringFixSize(in, out string) bool {
 	return true
 }
 
-func checkFixString(ct columnType, in, out interface{}) (bool, error) {
+func checkFixString(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || compareStringFixSize(in.String, out.String)), nil
@@ -768,7 +768,7 @@ func checkFixString(ct columnType, in, out interface{}) (bool, error) {
 	return compareStringFixSize(in.(string), out.(string)), nil
 }
 
-func checkString(ct columnType, in, out interface{}) (bool, error) {
+func checkString(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || in.String == out.String), nil
@@ -788,7 +788,7 @@ func compareBytesFixSize(in, out []byte) bool {
 	return true
 }
 
-func checkFixBytes(ct columnType, in, out interface{}) (bool, error) {
+func checkFixBytes(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
 		return in.Valid == out.Valid && (!in.Valid || compareBytesFixSize(in.Bytes, out.Bytes)), nil
@@ -796,7 +796,7 @@ func checkFixBytes(ct columnType, in, out interface{}) (bool, error) {
 	return compareBytesFixSize(in.([]byte), out.([]byte)), nil
 }
 
-func checkBytes(ct columnType, in, out interface{}) (bool, error) {
+func checkBytes(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
 		return in.Valid == out.Valid && (!in.Valid || bytes.Equal(in.Bytes, out.Bytes)), nil
@@ -823,7 +823,7 @@ func formatAlphanum(s string) string {
 	return strconv.FormatUint(i, 10)
 }
 
-func _checkAlphanumVarchar(in, out interface{}, length int) (bool, error) {
+func _checkAlphanumVarchar(in, out any, length int) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || formatAlphanumVarchar(in.String, length) == out.String), nil
@@ -831,7 +831,7 @@ func _checkAlphanumVarchar(in, out interface{}, length int) (bool, error) {
 	return formatAlphanumVarchar(in.(string), length) == out.(string), nil
 }
 
-func _checkAlphanum(in, out interface{}) (bool, error) {
+func _checkAlphanum(in, out any) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || formatAlphanum(in.String) == out.String), nil
@@ -839,7 +839,7 @@ func _checkAlphanum(in, out interface{}) (bool, error) {
 	return formatAlphanum(in.(string)) == out.(string), nil
 }
 
-func checkAlphanum(ct columnType, in, out interface{}) (bool, error) {
+func checkAlphanum(ct columnType, in, out any) (bool, error) {
 	if ct.dfv() == 1 {
 		length, ok := ct.length()
 		if !ok {
@@ -862,7 +862,7 @@ func compareLob(in, out Lob) (bool, error) {
 	return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes()), nil
 }
 
-func checkLob(ct columnType, in, out interface{}) (bool, error) {
+func checkLob(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
 		ok, err := compareLob(*in.Lob, *out.Lob)
@@ -876,7 +876,7 @@ func checkLob(ct columnType, in, out interface{}) (bool, error) {
 
 // for text and bintext do not check content as we have seen examples for bintext
 // where the content was slightly modified by hdb (e.g. elimination of spaces)
-func checkText(ct columnType, in, out interface{}) (bool, error) {
+func checkText(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
 		return in.Valid == out.Valid, nil
@@ -885,7 +885,7 @@ func checkText(ct columnType, in, out interface{}) (bool, error) {
 }
 
 func equalJSON(b1, b2 []byte) (bool, error) {
-	var j1, j2 interface{}
+	var j1, j2 any
 
 	if err := json.Unmarshal(b1, &j1); err != nil {
 		return false, err
@@ -979,7 +979,7 @@ func TestDataType(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.Close()
-				conn.Raw(func(driverConn interface{}) error {
+				conn.Raw(func(driverConn any) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil
 				})

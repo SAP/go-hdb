@@ -15,6 +15,7 @@ import (
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"golang.org/x/exp/maps"
 	"golang.org/x/text/transform"
 )
 
@@ -112,7 +113,7 @@ func (c *connAttrs) clone() *connAttrs {
 		_defaultSchema:    c._defaultSchema,
 		_dialer:           c._dialer,
 		_applicationName:  c._applicationName,
-		_sessionVariables: cloneStringStringMap(c._sessionVariables),
+		_sessionVariables: maps.Clone(c._sessionVariables),
 		_locale:           c._locale,
 		_fetchSize:        c._fetchSize,
 		_lobChunkSize:     c._lobChunkSize,
@@ -341,14 +342,14 @@ func (c *connAttrs) SetApplicationName(name string) {
 func (c *connAttrs) SessionVariables() SessionVariables {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return cloneStringStringMap(c._sessionVariables)
+	return maps.Clone(c._sessionVariables)
 }
 
 // SetSessionVariables sets the session varibles of the connector.
 func (c *connAttrs) SetSessionVariables(sessionVariables SessionVariables) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c._sessionVariables = cloneStringStringMap(sessionVariables)
+	c._sessionVariables = maps.Clone(sessionVariables)
 }
 
 // Locale returns the locale of the connector.

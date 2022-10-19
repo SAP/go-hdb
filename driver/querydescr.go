@@ -138,7 +138,7 @@ func newQueryDescr(query string, sc *scanner.Scanner) (*queryDescr, error) {
 		}
 	}
 
-	// TODO release v1.0.0 - scan variables (named parameters)
+	// TODO potentially scan variables for named parameters
 
 	return d, nil
 }

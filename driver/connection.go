@@ -250,7 +250,7 @@ type conn struct {
 	sessionID int64
 
 	// after go.17 support: delete serverOptions and define it again direcly here
-	serverOptions connectOptions
+	serverOptions p.Options[p.ConnectOption]
 	hdbVersion    *Version
 
 	pr *p.Reader
@@ -483,11 +483,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 			goto done
 		}
 
-		if pr.isProcedureCall() {
-			stmt = newCallStmt(c, qd.query, pr)
-		} else {
-			stmt = newStmt(c, qd.query, qd.isBulk, c._bulkSize, pr) //take latest connector bulk size
-		}
+		stmt = newStmt(c, qd, pr)
 
 	done:
 		close(done)
@@ -573,6 +569,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
+	if len(nvargs) != 0 {
+		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+	}
+
 	if err := c.tryLock(lrNestedQuery); err != nil {
 		return nil, err
 	}
@@ -586,10 +586,6 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 	if c.isBad() {
 		return nil, driver.ErrBadConn
-	}
-
-	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
 	qd, err := newQueryDescr(query, c.scanner)
@@ -641,6 +637,10 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 // ExecContext implements the driver.ExecerContext interface.
 func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.NamedValue) (r driver.Result, err error) {
+	if len(nvargs) != 0 {
+		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+	}
+
 	if err := c.tryLock(0); err != nil {
 		return nil, err
 	}
@@ -648,10 +648,6 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 
 	if c.isBad() {
 		return nil, driver.ErrBadConn
-	}
-
-	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 
 	if c.trace {
@@ -792,50 +788,43 @@ func (t *tx) close(rollback bool) (err error) {
 	return
 }
 
-/*
-statements
-
-nvargs // TODO handling of nvargs when real named args are supported (v1.0.0)
-. check support (v1.0.0)
-  . call (most probably as HANA does support parameter names)
-  . query input parameters (most probably not, as HANA does not support them)
-  . exec input parameters (could be done (map to table field name) but is it worth the effort?
-*/
-
 // check if statements implements all required interfaces
 var (
 	_ driver.Stmt              = (*stmt)(nil)
 	_ driver.StmtExecContext   = (*stmt)(nil)
 	_ driver.StmtQueryContext  = (*stmt)(nil)
 	_ driver.NamedValueChecker = (*stmt)(nil)
+)
 
-	_ driver.Stmt              = (*callStmt)(nil)
-	_ driver.StmtExecContext   = (*callStmt)(nil)
-	_ driver.StmtQueryContext  = (*callStmt)(nil)
-	_ driver.NamedValueChecker = (*callStmt)(nil)
+// statement kind
+const (
+	skNone = iota
+	skExec
+	skBulk
+	skCall
 )
 
 type stmt struct {
-	conn              *conn
-	query             string
-	pr                *prepareResult
-	bulk, flush, many bool
-	bulkSize, numBulk int
-	nvargs            []driver.NamedValue // bulk or many
+	stmtKind int
+	conn     *conn
+	query    string
+	pr       *prepareResult
+	flush    bool                // bulk
+	numBulk  int                 // bulk
+	nvargs   []driver.NamedValue // bulk or many
 }
 
-func newStmt(conn *conn, query string, bulk bool, bulkSize int, pr *prepareResult) *stmt {
-	return &stmt{conn: conn, query: query, pr: pr, bulk: bulk, bulkSize: bulkSize}
-}
-
-type callStmt struct {
-	conn  *conn
-	query string
-	pr    *prepareResult
-}
-
-func newCallStmt(conn *conn, query string, pr *prepareResult) *callStmt {
-	return &callStmt{conn: conn, query: query, pr: pr}
+func newStmt(conn *conn, qd *queryDescr, pr *prepareResult) *stmt {
+	stmtKind := skNone
+	switch {
+	case pr.isProcedureCall():
+		stmtKind = skCall
+	case qd.isBulk:
+		stmtKind = skBulk
+	default:
+		stmtKind = skExec
+	}
+	return &stmt{stmtKind: stmtKind, conn: conn, query: qd.query, pr: pr}
 }
 
 /*
@@ -845,8 +834,7 @@ NumInput differs dependent on statement (check is done in QueryContext and ExecC
 - #args == 0:                          exec bulk (control query)
 - #args == #input param:               query call
 */
-func (s *stmt) NumInput() int     { return -1 }
-func (s *callStmt) NumInput() int { return -1 }
+func (s *stmt) NumInput() int { return -1 }
 
 // stmt methods
 
@@ -884,6 +872,61 @@ func (s *stmt) Close() error {
 	return c._dropStatementID(s.pr.stmtID)
 }
 
+func (s *stmt) convert(field *p.ParameterField, arg any) (any, error) {
+	// let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
+	var err error
+	if valuer, ok := arg.(driver.Valuer); ok {
+		if arg, err = valuer.Value(); err != nil {
+			return nil, err
+		}
+	}
+	// convert field
+	return field.Convert(s.conn._cesu8Encoder(), arg)
+}
+
+/*
+central function to extend argiment handling by
+- potentially handle named parameters (HANA does not support them)
+- handle out parameters for function calls (HANA supports named out parameters)
+*/
+func (s *stmt) mapArgs(nvargs []driver.NamedValue) error {
+	for i := 0; i < len(nvargs); i++ {
+
+		field := s.pr.parameterField(i)
+
+		out, isOut := nvargs[i].Value.(sql.Out)
+
+		if isOut {
+			if !field.Out() {
+				return fmt.Errorf("argument %d field %s mismatch - use out argument with non-out field", i, field.Name())
+			}
+			if out.In && !field.In() {
+				return fmt.Errorf("argument %d field %s mismatch - use in argument with out field", i, field.Name())
+			}
+		}
+
+		// currently we do not support out parameters
+		if isOut {
+			return fmt.Errorf("argument %d field %s mismatch - out argument not supported", i, field.Name())
+		}
+
+		var err error
+		if isOut {
+			if out.In { // convert only if in parameter
+				if out.Dest, err = s.convert(field, out.Dest); err != nil {
+					return fmt.Errorf("argument %d field %s conversion error - %w", i, field.Name(), err)
+				}
+				nvargs[i].Value = out
+			}
+		} else {
+			if nvargs[i].Value, err = s.convert(field, nvargs[i].Value); err != nil {
+				return fmt.Errorf("argument %d field %s conversion error - %w", i, field.Name(), err)
+			}
+		}
+	}
+	return nil
+}
+
 func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
 	c := s.conn
 
@@ -902,17 +945,20 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 		return nil, driver.ErrBadConn
 	}
 
-	if len(nvargs) != s.pr.numField() { // all fields needs to be input fields
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numField())
-	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), s.query, nvargs)
 	}
 
 	done := make(chan struct{})
 	go func() {
-		rows, err = c._query(s.pr, nvargs, !c.inTx)
+		switch s.stmtKind {
+		case skExec:
+			rows, err = s._query(nvargs)
+		case skCall:
+			rows, err = s._queryCall(nvargs)
+		default:
+			panic(fmt.Sprintf("unsuported statement kind %d", s.stmtKind)) // should never happen
+		}
 		close(done)
 	}()
 
@@ -930,31 +976,27 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 	}
 }
 
-func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	numArg := len(nvargs)
-	switch {
-	case s.bulk:
-		flush := s.flush
-		s.flush = false
-		if numArg != 0 && numArg != s.pr.numField() {
-			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.numField())
-		}
-		return s.execBulk(ctx, nvargs, flush)
-	case s.many:
-		s.many = false
-		if numArg != 1 {
-			return nil, fmt.Errorf("invalid argument of arguments %d when using composite arguments - 1 expected", numArg)
-		}
-		return s.execMany(ctx, &nvargs[0])
-	default:
-		if numArg != s.pr.numField() {
-			return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, s.pr.numField())
-		}
-		return s.exec(ctx, nvargs)
+func (s *stmt) _query(nvargs []driver.NamedValue) (rows driver.Rows, err error) {
+	if len(nvargs) != s.pr.numField() { // all fields needs to be input fields
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numField())
 	}
+	if err := s.mapArgs(nvargs); err != nil {
+		return nil, err
+	}
+	return s.conn._query(s.pr, nvargs, !s.conn.inTx)
 }
 
-func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
+func (s *stmt) _queryCall(nvargs []driver.NamedValue) (rows driver.Rows, err error) {
+	if len(nvargs) != s.pr.numInputField() { // input fields only
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numInputField())
+	}
+	if err := s.mapArgs(nvargs); err != nil {
+		return nil, err
+	}
+	return s.conn._queryCall(s.pr, nvargs)
+}
+
+func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
 	c := s.conn
 
 	if err := c.tryLock(0); err != nil {
@@ -976,7 +1018,16 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 
 	done := make(chan struct{})
 	go func() {
-		r, err = c._execBulk(s.pr, nvargs, !c.inTx)
+		switch s.stmtKind {
+		case skExec:
+			r, err = s.execMany(nvargs)
+		case skBulk:
+			r, err = s.execBulk(nvargs)
+		case skCall:
+			r, err = s.execCall(nvargs)
+		default:
+			panic(fmt.Sprintf("unsuported statement kind %d", s.stmtKind)) // should never happen
+		}
 		close(done)
 	}()
 
@@ -990,16 +1041,105 @@ func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (r driver.R
 	}
 }
 
-func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush bool) (r driver.Result, err error) {
+type totalRowsAffected int64
+
+func (t *totalRowsAffected) add(r driver.Result) {
+	if r == nil {
+		return
+	}
+	rows, err := r.RowsAffected()
+	if err != nil {
+		return
+	}
+	*t += totalRowsAffected(rows)
+}
+
+/*
+Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
+execMany data might only be written partially to the database in case of hdb stmt errors.
+*/
+func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
+	c := s.conn
+
+	if len(nvargs) == 0 { // no parameters
+		return c._execBulk(s.pr, nil, !c.inTx)
+	}
+
+	numField := s.pr.numField()
+
+	it, err := newArgsScanner(numField, nvargs)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { s.resetArgs() }() // reset args
+
+	totalRowsAffected := totalRowsAffected(0)
+	numRec := 0
+
+	args := make([]driver.NamedValue, numField)
+
+	for {
+		err := it.scan(args)
+		if err == ErrEndOfRows {
+			break
+		}
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+
+		if err := s.mapArgs(args); err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+
+		s.nvargs = append(s.nvargs, args...)
+		numRec++
+		if numRec >= c._bulkSize {
+			r, err := c._execBulk(s.pr, s.nvargs, !c.inTx)
+			totalRowsAffected.add(r)
+			if err != nil {
+				return driver.RowsAffected(totalRowsAffected), err
+			}
+			numRec = 0
+		}
+	}
+
+	if numRec > 0 {
+		r, err := c._execBulk(s.pr, s.nvargs, !c.inTx)
+		totalRowsAffected.add(r)
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+	}
+
+	return driver.RowsAffected(totalRowsAffected), nil
+}
+
+func (s *stmt) execBulk(nvargs []driver.NamedValue) (driver.Result, error) {
+	c := s.conn
+
+	flush := s.flush
+	s.flush = false
+
 	numArg := len(nvargs)
+	numField := s.pr.numField()
+
+	if numArg != 0 && numArg != numField {
+		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", numArg, numField)
+	}
 
 	switch numArg {
 	case 0: // exec without args --> flush
 		flush = true
 	default: // add to argument buffer
+
+		if err := s.mapArgs(nvargs); err != nil {
+			return driver.ResultNoRows, err
+		}
+
 		s.nvargs = append(s.nvargs, nvargs...)
 		s.numBulk++
-		if s.numBulk >= s.bulkSize {
+		if s.numBulk >= c._bulkSize {
 			flush = true
 		}
 	}
@@ -1009,186 +1149,33 @@ func (s *stmt) execBulk(ctx context.Context, nvargs []driver.NamedValue, flush b
 	}
 
 	// flush
-	r, err = s.exec(ctx, s.nvargs)
+	r, err := c._execBulk(s.pr, s.nvargs, !c.inTx)
 	s.resetArgs()
 	s.numBulk = 0
-	return
+	return r, err
 }
 
-/*
-execMany variants
-*/
-
-type execManyer interface {
-	numRow() int
-	fill(conn *conn, pr *prepareResult, startRow, endRow int, nvargs []driver.NamedValue) error
-}
-
-type execManyIntfList []interface{}
-type execManyIntfMatrix [][]interface{}
-type execManyGenList reflect.Value
-type execManyGenMatrix reflect.Value
-
-func (em execManyIntfList) numRow() int   { return len(em) }
-func (em execManyIntfMatrix) numRow() int { return len(em) }
-func (em execManyGenList) numRow() int    { return reflect.Value(em).Len() }
-func (em execManyGenMatrix) numRow() int  { return reflect.Value(em).Len() }
-
-func (em execManyIntfList) fill(conn *conn, pr *prepareResult, startRow, endRow int, nvargs []driver.NamedValue) error {
-	rows := em[startRow:endRow]
-	for i, row := range rows {
-		row, err := convertValue(conn, pr, 0, row)
-		if err != nil {
-			return err
-		}
-		nvargs[i].Value = row
+func (s *stmt) execCall(nvargs []driver.NamedValue) (driver.Result, error) {
+	if len(nvargs) != s.pr.numInputField() { // input fields only
+		return driver.ResultNoRows, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numInputField())
 	}
-	return nil
-}
-
-func (em execManyGenList) fill(conn *conn, pr *prepareResult, startRow, endRow int, nvargs []driver.NamedValue) error {
-	cnt := 0
-	for i := startRow; i < endRow; i++ {
-		row, err := convertValue(conn, pr, 0, reflect.Value(em).Index(i).Interface())
-		if err != nil {
-			return err
-		}
-		nvargs[cnt].Value = row
-		cnt++
+	if err := s.mapArgs(nvargs); err != nil {
+		return driver.ResultNoRows, err
 	}
-	return nil
-}
-
-func (em execManyIntfMatrix) fill(conn *conn, pr *prepareResult, startRow, endRow int, nvargs []driver.NamedValue) error {
-	numField := pr.numField()
-	rows := em[startRow:endRow]
-	cnt := 0
-	for i, row := range rows {
-		if len(row) != numField {
-			return fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, len(row), numField)
-		}
-		for j, col := range row {
-			col, err := convertValue(conn, pr, j, col)
-			if err != nil {
-				return err
-			}
-			nvargs[cnt].Value = col
-			cnt++
-		}
-	}
-	return nil
-}
-
-func (em execManyGenMatrix) fill(conn *conn, pr *prepareResult, startRow, endRow int, nvargs []driver.NamedValue) error {
-	numField := pr.numField()
-	cnt := 0
-	for i := startRow; i < endRow; i++ {
-		v, ok := convertMany(reflect.Value(em).Index(i).Interface())
-		if !ok {
-			return fmt.Errorf("invalid 'many' argument type %[1]T %[1]v", v)
-		}
-		row := reflect.ValueOf(v) // need to be array or slice
-		if row.Len() != numField {
-			return fmt.Errorf("invalid number of fields in row %d - got %d - expected %d", i, row.Len(), numField)
-		}
-		for j := 0; j < numField; j++ {
-			col := row.Index(j).Interface()
-			col, err := convertValue(conn, pr, j, col)
-			if err != nil {
-				return err
-			}
-			nvargs[cnt].Value = col
-			cnt++
-		}
-	}
-	return nil
-}
-
-func (s *stmt) newExecManyVariant(numField int, v interface{}) execManyer {
-	if numField == 1 {
-		if v, ok := v.([]interface{}); ok {
-			return execManyIntfList(v)
-		}
-		return execManyGenList(reflect.ValueOf(v))
-	}
-	if v, ok := v.([][]interface{}); ok {
-		return execManyIntfMatrix(v)
-	}
-	return execManyGenMatrix(reflect.ValueOf(v))
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-/*
-Non 'atomic' (transactional) operation due to the split in packages (maxBulkSize),
-execMany data might only be written partially to the database in case of hdb stmt errors.
-*/
-func (s *stmt) execMany(ctx context.Context, nvarg *driver.NamedValue) (driver.Result, error) {
-
-	if len(s.nvargs) != 0 {
-		return driver.ResultNoRows, fmt.Errorf("execMany: not flushed entries: %d)", len(s.nvargs))
-	}
-
-	numField := s.pr.numField()
-
-	defer func() { s.resetArgs() }() // reset args
-
-	var totalRowsAffected int64
-
-	variant := s.newExecManyVariant(numField, nvarg.Value)
-	numRow := variant.numRow()
-
-	size := min(numRow*numField, s.bulkSize*numField)
-	if s.nvargs == nil || cap(s.nvargs) < size {
-		s.nvargs = make([]driver.NamedValue, size)
-	} else {
-		s.nvargs = s.nvargs[:size]
-	}
-
-	numPack := numRow / s.bulkSize
-	if numRow%s.bulkSize != 0 {
-		numPack++
-	}
-
-	for p := 0; p < numPack; p++ {
-
-		startRow := p * s.bulkSize
-		endRow := min(startRow+s.bulkSize, numRow)
-
-		nvargs := s.nvargs[0 : (endRow-startRow)*numField]
-
-		if err := variant.fill(s.conn, s.pr, startRow, endRow, nvargs); err != nil {
-			return driver.RowsAffected(totalRowsAffected), err
-		}
-
-		// flush
-		r, err := s.exec(ctx, nvargs)
-		if err != nil {
-			return driver.RowsAffected(totalRowsAffected), err
-		}
-		n, err := r.RowsAffected()
-		totalRowsAffected += n
-		if err != nil {
-			return driver.RowsAffected(totalRowsAffected), err
-		}
-	}
-
-	return driver.RowsAffected(totalRowsAffected), nil
+	return s.conn._execCall(s.pr, nvargs)
 }
 
 // CheckNamedValue implements NamedValueChecker interface.
 func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
-	// check on bulk args
+	// check add arguments only
+	// conversion is happening as part of the exec, query call
 	if nv.Name == bulk {
 		if ptr, ok := nv.Value.(**struct{}); ok {
 			switch ptr {
 			case &noFlushTok:
-				s.bulk = true
+				if s.stmtKind == skExec { // turn on bulk
+					s.stmtKind = skBulk
+				}
 				return driver.ErrRemoveArgument
 			case &flushTok:
 				s.flush = true
@@ -1196,126 +1183,7 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 			}
 		}
 	}
-
-	// check on standard value
-	err := convertNamedValue(s.conn, s.pr, nv)
-	if err == nil || s.bulk || nv.Ordinal != 1 {
-		return err // return err in case ordinal != 1
-	}
-
-	// check first argument if 'composite'
-	var ok bool
-	if nv.Value, ok = convertMany(nv.Value); !ok {
-		return err
-	}
-
-	s.many = true
 	return nil
-
-}
-
-// callStmt methods
-
-func (s *callStmt) Close() error {
-	c := s.conn
-
-	c.lock()
-	defer c.unlock()
-
-	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
-
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
-
-	return c._dropStatementID(s.pr.stmtID)
-}
-
-func (s *callStmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
-	c := s.conn
-
-	if err := c.tryLock(lrNestedQuery); err != nil {
-		return nil, err
-	}
-	hasRowsCloser := false
-	defer func() {
-		// unlock connection if rows will not do it
-		if !hasRowsCloser {
-			c.unlock()
-		}
-	}()
-
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
-
-	if len(nvargs) != s.pr.numInputField() { // input fields only
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numInputField())
-	}
-
-	if c.trace {
-		defer traceSQL(time.Now(), s.query, nvargs)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		rows, err = c._queryCall(s.pr, nvargs)
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
-	case <-done:
-		if onCloser, ok := rows.(onCloser); ok {
-			onCloser.setOnClose(c.unlock)
-			hasRowsCloser = true
-		}
-		c.lastError = err
-		return rows, err
-	}
-}
-
-func (s *callStmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
-	c := s.conn
-
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
-
-	if len(nvargs) != s.pr.numField() {
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), s.pr.numField())
-	}
-
-	if c.trace {
-		defer traceSQL(time.Now(), s.query, nvargs)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		r, err = c._execCall(s.pr, nvargs)
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
-	case <-done:
-		c.lastError = err
-		return r, err
-	}
-}
-
-// CheckNamedValue implements NamedValueChecker interface.
-func (s *callStmt) CheckNamedValue(nv *driver.NamedValue) error {
-	return convertNamedValue(s.conn, s.pr, nv)
 }
 
 const defaultSessionID = -1
@@ -1325,7 +1193,7 @@ func (c *conn) _databaseName() string {
 }
 
 func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
-	ci := dbConnectInfo{p.CiDatabaseName: databaseName}
+	ci := p.Options[p.DBConnectInfoType]{p.CiDatabaseName: databaseName}
 	if err := c.pw.Write(c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
 		return nil, err
 	}
@@ -1351,11 +1219,11 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 	}, nil
 }
 
-func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, locale string) (int64, connectOptions, error) {
+func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, locale string) (int64, p.Options[p.ConnectOption], error) {
 	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
-	clientContext := clientContext{
+	clientContext := p.Options[p.ClientContextOption]{
 		p.CcoClientVersion:            DriverVersion,
 		p.CcoClientType:               clientType,
 		p.CcoClientApplicationProgram: applicationName,
@@ -1387,8 +1255,8 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 	}
 	//co := c.defaultClientOptions()
 
-	co := func() connectOptions {
-		co := connectOptions{
+	co := func() p.Options[p.ConnectOption] {
+		co := p.Options[p.ConnectOption]{
 			p.CoDistributionProtocolVersion: false,
 			p.CoSelectForUpdateSupported:    false,
 			p.CoSplitBatchCommands:          true,
@@ -1580,7 +1448,7 @@ func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit b
 
 		hasNext, err := c._fetchFirstLobChunk(nvargs[from:to])
 		if err != nil {
-			return nil, err
+			return driver.RowsAffected(totRowsAffected), err
 		}
 
 		/*
@@ -1740,13 +1608,14 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 				hasInLob = true
 			}
 		}
+		// handle output parameters
 		if f.Out() {
 			outPrmFields = append(outPrmFields, f)
-			// outArgs = append(outArgs, nvargs[i])
+			//outArgs = append(outArgs, nvargs[i])
 		}
 	}
 
-	// TODO release v1.0.0 - assign output parameters
+	// TODO support out parameters
 	if len(outPrmFields) != 0 {
 		return nil, fmt.Errorf("stmt.Exec: support of output parameters not implemented yet")
 	}
@@ -1792,7 +1661,6 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.LocatorID, int64, error) {
 	cr := &callResult{conn: c, outputFields: outputFields}
 
-	//var qrs []*QueryResult
 	var qr *queryResult
 	rows := &p.RowsAffected{}
 	var ids []p.LocatorID

@@ -44,7 +44,7 @@ func TestColumnType(t *testing.T) {
 		return strings.Repeat("?, ", size-1) + "?"
 	}
 
-	testColumnType := func(db *sql.DB, types []columnType, values []interface{}, t *testing.T) {
+	testColumnType := func(db *sql.DB, types []columnType, values []any, t *testing.T) {
 
 		tableName := RandomIdentifier(fmt.Sprintf("%s_", t.Name()))
 
@@ -120,7 +120,7 @@ func TestColumnType(t *testing.T) {
 
 	type testFields []struct {
 		typ   columnType
-		value interface{}
+		value any
 	}
 
 	getTestFields := func(version *Version, dfv int) testFields {
@@ -196,14 +196,14 @@ func TestColumnType(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.Close()
-				conn.Raw(func(driverConn interface{}) error {
+				conn.Raw(func(driverConn any) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil
 				})
 
 				testFields := getTestFields(version, dfv)
 				types := make([]columnType, 0, len(testFields))
-				values := make([]interface{}, 0, len(testFields))
+				values := make([]any, 0, len(testFields))
 				for _, field := range testFields {
 					if field.typ.isSupported() {
 						types = append(types, field.typ)

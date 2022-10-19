@@ -48,6 +48,31 @@ func (*ReadLobReply) kind() PartKind        { return PkReadLobReply }
 func (*WriteLobRequest) kind() PartKind     { return PkWriteLobRequest }
 func (*WriteLobReply) kind() PartKind       { return PkWriteLobReply }
 
+var (
+	typeOfClientContext    = reflect.TypeOf((*Options[ClientContextOption])(nil)).Elem()
+	typeOfConnectOptions   = reflect.TypeOf((*Options[ConnectOption])(nil)).Elem()
+	typeOfTransactionflags = reflect.TypeOf((*Options[transactionFlagType])(nil)).Elem()
+	typeOfStatementContext = reflect.TypeOf((*Options[statementContextType])(nil)).Elem()
+	typeOfDBConnectInfo    = reflect.TypeOf((*Options[DBConnectInfoType])(nil)).Elem()
+)
+
+func (ops Options[K]) kind() PartKind {
+	switch reflect.TypeOf(ops) {
+	case typeOfClientContext:
+		return PkClientContext
+	case typeOfConnectOptions:
+		return PkConnectOptions
+	case typeOfTransactionflags:
+		return PkTransactionFlags
+	case typeOfStatementContext:
+		return PkStatementContext
+	case typeOfDBConnectInfo:
+		return PkDBConnectInfo
+	default:
+		panic("invalid options type") // should never happen
+	}
+}
+
 type partWriter interface {
 	part
 	numArg() int
@@ -94,6 +119,7 @@ var (
 	_ partWriter = (*Fetchsize)(nil)
 	_ partWriter = (*ReadLobRequest)(nil)
 	_ partWriter = (*WriteLobRequest)(nil)
+	_ partWriter = (*Options[ClientContextOption])(nil) // sufficient to check one option.
 )
 
 type partReader interface {
@@ -125,6 +151,7 @@ var (
 	_ partReader = (*WriteLobRequest)(nil)
 	_ partReader = (*ReadLobReply)(nil)
 	_ partReader = (*WriteLobReply)(nil)
+	_ partReader = (*Options[ClientContextOption])(nil) // sufficient to check one option.
 )
 
 // some partReader needs additional parameter set before reading
@@ -163,6 +190,11 @@ var partTypeMap = map[PartKind]reflect.Type{
 	PkReadLobReply:        reflect.TypeOf((*ReadLobReply)(nil)).Elem(),
 	PkWriteLobReply:       reflect.TypeOf((*WriteLobReply)(nil)).Elem(),
 	PkWriteLobRequest:     reflect.TypeOf((*WriteLobRequest)(nil)).Elem(),
+	PkClientContext:       typeOfClientContext,
+	PkConnectOptions:      typeOfConnectOptions,
+	PkTransactionFlags:    typeOfTransactionflags,
+	PkStatementContext:    typeOfStatementContext,
+	PkDBConnectInfo:       typeOfDBConnectInfo,
 }
 
 func partType(pk PartKind) reflect.Type {
@@ -172,21 +204,9 @@ func partType(pk PartKind) reflect.Type {
 	return nil
 }
 
-func partTypeOptions(pk PartKind) reflect.Type {
-	if pt, ok := optionsPartTypeMap[pk]; ok {
-		return pt
-	}
-	return nil
-}
-
 // newGenPartReader returns a generic part reader (part where no additional parameters are needed for reading it).
 func newGenPartReader(pk PartKind) (partReader, bool) {
-	var pt reflect.Type
-
-	pt = partType(pk)
-	if pt == nil {
-		pt = partTypeOptions(pk)
-	}
+	pt := partType(pk)
 	if pt == nil {
 		// part kind is not (yet) supported by driver
 		// need this in case server would send part kinds unknown to the driver

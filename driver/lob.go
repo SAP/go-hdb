@@ -52,7 +52,7 @@ func (l *Lob) SetWriter(wr io.Writer) *Lob {
 }
 
 // Scan implements the database/sql/Scanner interface.
-func (l *Lob) Scan(src interface{}) error {
+func (l *Lob) Scan(src any) error {
 	if l.wr == nil {
 		return fmt.Errorf("lob error: initial writer %[1]T %[1]v", l)
 	}
@@ -82,7 +82,7 @@ type NullLob struct {
 }
 
 // Scan implements the database/sql/Scanner interface.
-func (l *NullLob) Scan(src interface{}) error {
+func (l *NullLob) Scan(src any) error {
 	if src == nil {
 		l.Valid = false
 		return nil

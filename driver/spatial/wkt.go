@@ -81,7 +81,7 @@ func (c CoordZ) encodeWKT(b *wktBuffer)  { b.writeCoord(c.X, c.Y, c.Z) }
 func (c CoordM) encodeWKT(b *wktBuffer)  { b.writeCoord(c.X, c.Y, c.M) }
 func (c CoordZM) encodeWKT(b *wktBuffer) { b.writeCoord(c.X, c.Y, c.Z, c.M) }
 
-func encodeWKTCoord(b *wktBuffer, c interface{}) {
+func encodeWKTCoord(b *wktBuffer, c any) {
 	cv := reflect.ValueOf(c)
 	switch {
 	case cv.Type().ConvertibleTo(coordType):

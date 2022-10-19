@@ -40,11 +40,11 @@ func jsonCoord(v reflect.Value) []*float64 {
 	}
 }
 
-func jsonConvert(rv reflect.Value) interface{} {
+func jsonConvert(rv reflect.Value) any {
 	switch rv.Kind() {
 	case reflect.Slice:
 		size := rv.Len()
-		s := make([]interface{}, size)
+		s := make([]any, size)
 		for i := 0; i < size; i++ {
 			s[i] = jsonConvert(rv.Index(i))
 		}
@@ -56,9 +56,9 @@ func jsonConvert(rv reflect.Value) interface{} {
 	}
 }
 
-func jsonConvertGeometries(rv reflect.Value) interface{} {
+func jsonConvertGeometries(rv reflect.Value) any {
 	size := rv.Len()
-	s := make([]interface{}, size)
+	s := make([]any, size)
 	for i := 0; i < size; i++ {
 		iv := rv.Index(i)
 		s[i] = jsonType{Type: geoTypeName(iv.Interface().(Geometry)), Coordinates: jsonConvert(iv)}
@@ -67,13 +67,13 @@ func jsonConvertGeometries(rv reflect.Value) interface{} {
 }
 
 type jsonType struct {
-	Type        string      `json:"type"`
-	Coordinates interface{} `json:"coordinates"`
+	Type        string `json:"type"`
+	Coordinates any    `json:"coordinates"`
 }
 
 type jsonTypeGeometries struct {
-	Type       string      `json:"type"`
-	Geometries interface{} `json:"geometries"`
+	Type       string `json:"type"`
+	Geometries any    `json:"geometries"`
 }
 
 // EncodeGeoJSON encodes a geometry to the geoJSON format.

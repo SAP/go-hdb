@@ -153,7 +153,7 @@ func (e *HdbErrors) HasWarnings() bool {
 
 func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	e.idx = 0
-	e.errors = resizeHdbErrorSlice(e.errors, ph.numArg())
+	e.errors = resizeSlice(e.errors, ph.numArg())
 
 	numArg := ph.numArg()
 	for i := 0; i < numArg; i++ {

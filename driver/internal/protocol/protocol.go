@@ -28,7 +28,7 @@ func padBytes(size int) int {
 // Reader represents a protocol reader.
 type Reader struct {
 	upStream bool
-	tracer   func(up bool, v interface{}) // performance
+	tracer   func(up bool, v any) // performance
 	traceOn  bool
 
 	step int // authentication
@@ -308,7 +308,7 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 
 // Writer represents a protocol writer.
 type Writer struct {
-	tracer func(up bool, v interface{}) // performance
+	tracer func(up bool, v any) // performance
 
 	wr  *bufio.Writer
 	enc *encoding.Encoder

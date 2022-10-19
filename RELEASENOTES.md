@@ -1,6 +1,16 @@
 Release Notes
 =============
 
+## Release 0.109
+
+#### Release Notes
+
+- Moved prometheus collector from ./driver/prometheus to ./prometheus (incompatible change)
+- Removed deprecated /driver/hdb package
+- Dropped support of Go language versions < Go 1.18
+- Added bulk function execute (experimental - please see Example_fctInsert())
+- Upgraded dependencies (see go.mod)
+
 ## Release 0.108
 
 Release 0.108.3 (upgrade urgency: low)

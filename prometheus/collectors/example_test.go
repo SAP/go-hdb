@@ -16,7 +16,7 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
-	drivercollectors "github.com/SAP/go-hdb/driver/prometheus/collectors"
+	drivercollectors "github.com/SAP/go-hdb/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

@@ -27,7 +27,7 @@ func ExampleConn_HDBVersion() {
 	}
 	defer conn.Close()
 
-	conn.Raw(func(driverConn interface{}) error {
+	conn.Raw(func(driverConn any) error {
 		// Access driver.Conn methods.
 		log.Printf("hdb version: %s", driverConn.(driver.Conn).HDBVersion())
 		return nil
@@ -47,7 +47,7 @@ func ExampleConn_DBConnectInfo() {
 	}
 	defer conn.Close()
 
-	if err := conn.Raw(func(driverConn interface{}) error {
+	if err := conn.Raw(func(driverConn any) error {
 		// Access driver.Conn methods.
 		ci, err := driverConn.(driver.Conn).DBConnectInfo(context.Background(), driverConn.(driver.Conn).DatabaseName())
 		if err != nil {

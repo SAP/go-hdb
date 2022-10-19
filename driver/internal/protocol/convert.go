@@ -32,7 +32,7 @@ var ErrDecimalOutOfRange = errors.New("decimal out of range error")
 type ConvertError struct {
 	err error
 	ft  fieldType
-	v   interface{}
+	v   any
 }
 
 func (e *ConvertError) Error() string {
@@ -41,16 +41,16 @@ func (e *ConvertError) Error() string {
 
 // Unwrap returns the nested error.
 func (e *ConvertError) Unwrap() error { return e.err }
-func newConvertError(ft fieldType, v interface{}, err error) *ConvertError {
+func newConvertError(ft fieldType, v any, err error) *ConvertError {
 	return &ConvertError{ft: ft, v: v, err: err}
 }
 
 /*
 Conversion routines hdb parameters
-  - return value is interface{} to avoid allocations in case
+  - return value is any to avoid allocations in case
     parameter is already of target type
 */
-func convertBool(ft fieldType, v interface{}) (interface{}, error) {
+func convertBool(ft fieldType, v any) (any, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -90,7 +90,7 @@ func convertBool(ft fieldType, v interface{}) (interface{}, error) {
 	return nil, newConvertError(ft, v, nil)
 }
 
-func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, error) {
+func convertInteger(ft fieldType, v any, min, max int64) (any, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -150,7 +150,7 @@ func convertInteger(ft fieldType, v interface{}, min, max int64) (interface{}, e
 	return nil, newConvertError(ft, v, nil)
 }
 
-func convertFloat(ft fieldType, v interface{}, max float64) (interface{}, error) {
+func convertFloat(ft fieldType, v any, max float64) (any, error) {
 	if v == nil {
 		return v, nil
 	}
@@ -188,7 +188,7 @@ func convertFloat(ft fieldType, v interface{}, max float64) (interface{}, error)
 	return nil, newConvertError(ft, v, nil)
 }
 
-func convertTime(ft fieldType, v interface{}) (interface{}, error) {
+func convertTime(ft fieldType, v any) (any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -225,7 +225,7 @@ int??, *big.Int, string, ...
 but as the user needs to use Decimal anyway (scan), we go with
 *big.Rat only for the time being.
 */
-func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
+func convertDecimal(ft fieldType, v any) (any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -235,7 +235,7 @@ func convertDecimal(ft fieldType, v interface{}) (interface{}, error) {
 	return nil, newConvertError(ft, v, nil)
 }
 
-func convertBytes(ft fieldType, v interface{}) (interface{}, error) {
+func convertBytes(ft fieldType, v any) (any, error) {
 	if v == nil {
 		return v, nil
 	}

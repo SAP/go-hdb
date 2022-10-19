@@ -129,7 +129,7 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
-func (f *ResultField) decodeRes(dec *encoding.Decoder) (interface{}, error) {
+func (f *ResultField) decodeRes(dec *encoding.Decoder) (any, error) {
 	return f.ft.decodeRes(dec)
 }
 
@@ -168,7 +168,7 @@ func (r *Resultset) String() string {
 func (r *Resultset) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
 	cols := len(r.ResultFields)
-	r.FieldValues = resizeFieldValues(r.FieldValues, numArg*cols)
+	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 
 	for i := 0; i < numArg; i++ {
 		for j, f := range r.ResultFields {

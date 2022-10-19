@@ -17,7 +17,7 @@ type NullBytes struct {
 }
 
 // Scan implements the Scanner interface.
-func (n *NullBytes) Scan(value interface{}) error {
+func (n *NullBytes) Scan(value any) error {
 	n.Bytes, n.Valid = value.([]byte)
 	return nil
 }

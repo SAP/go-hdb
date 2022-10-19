@@ -28,7 +28,7 @@ const (
 	toAllHostNames     topologyOption = 12
 )
 
-type topologyInformation []map[topologyOption]interface{}
+type topologyInformation []map[topologyOption]any
 
 func (o topologyInformation) String() string {
 	s1 := []string{}
@@ -45,9 +45,9 @@ func (o topologyInformation) String() string {
 
 func (o *topologyInformation) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
-	*o = resizeTopologyInformationSlice(*o, numArg)
+	*o = resizeSlice(*o, numArg)
 	for i := 0; i < numArg; i++ {
-		ops := map[topologyOption]interface{}{}
+		ops := map[topologyOption]any{}
 		(*o)[i] = ops
 		optCnt := int(dec.Int16())
 		for j := 0; j < optCnt; j++ {

@@ -115,7 +115,7 @@ func (f *ParameterField) String() string {
 func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(t transform.Transformer, v interface{}) (interface{}, error) {
+func (f *ParameterField) Convert(t transform.Transformer, v any) (any, error) {
 	switch ft := f.ft.(type) {
 	case fieldConverter:
 		return ft.convert(v)
@@ -162,6 +162,9 @@ func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == PmIn 
 // Out returns true if the parameter field is an output field.
 func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == PmOut }
 
+// InOut returns true if the parameter field is an in,- output field.
+func (f *ParameterField) InOut() bool { return f.mode == pmInout }
+
 // Name returns the parameter field name.
 func (f *ParameterField) Name() string { return f.fieldName() }
 
@@ -180,14 +183,14 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
 }
 
-func (f *ParameterField) prmSize(v interface{}) int {
+func (f *ParameterField) prmSize(v any) int {
 	if v == nil && f.tc.supportNullValue() {
 		return 0
 	}
 	return f.ft.prmSize(v)
 }
 
-func (f *ParameterField) encodePrm(enc *encoding.Encoder, v interface{}) error {
+func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	encTc := f.tc.encTc()
 	if v == nil && f.tc.supportNullValue() {
 		enc.Byte(byte(f.tc.nullValue())) // null value type code
@@ -197,7 +200,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v interface{}) error {
 	return f.ft.encodePrm(enc, v)
 }
 
-func (f *ParameterField) decodeRes(dec *encoding.Decoder) (interface{}, error) {
+func (f *ParameterField) decodeRes(dec *encoding.Decoder) (any, error) {
 	return f.ft.decodeRes(dec)
 }
 
@@ -206,7 +209,7 @@ decode parameter
 - currently not used
 - type code is first byte (see encodePrm)
 */
-func (f *ParameterField) decodePrm(dec *encoding.Decoder) (interface{}, error) {
+func (f *ParameterField) decodePrm(dec *encoding.Decoder) (any, error) {
 	tc := typeCode(dec.Byte())
 	if tc&0x80 != 0 { // high bit set -> null value
 		return nil, nil
@@ -334,7 +337,7 @@ func (p *OutputParameters) String() string {
 func (p *OutputParameters) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
 	cols := len(p.OutputFields)
-	p.FieldValues = resizeFieldValues(p.FieldValues, numArg*cols)
+	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
 
 	for i := 0; i < numArg; i++ {
 		for j, f := range p.OutputFields {

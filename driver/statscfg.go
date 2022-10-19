@@ -8,6 +8,8 @@ import (
 	_ "embed" // embed stats configuration
 	"encoding/json"
 	"fmt"
+
+	"golang.org/x/exp/slices"
 )
 
 //go:embed statscfg.json
@@ -32,8 +34,8 @@ func loadStatsCfg() error {
 	}
 
 	// sort and dedup timeBuckets
-	sortSliceFloat64(statsCfg.TimeUpperBounds)
-	statsCfg.TimeUpperBounds = compactSliceFloat64(statsCfg.TimeUpperBounds)
+	slices.Sort(statsCfg.TimeUpperBounds)
+	statsCfg.TimeUpperBounds = slices.Compact(statsCfg.TimeUpperBounds)
 
 	return nil
 }
