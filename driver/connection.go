@@ -1101,6 +1101,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 				return driver.RowsAffected(totalRowsAffected), err
 			}
 			numRec = 0
+			s.nvargs = s.nvargs[:0]
 		}
 	}
 

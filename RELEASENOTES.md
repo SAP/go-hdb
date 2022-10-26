@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.109
 
+Release 0.109.2 (upgrade urgency: high)
+
+- Fixed bulk function execute issue
+
 Release 0.109.1 (upgrade urgency: no need for upgrade)
 
 - Some minor source code cleanups
