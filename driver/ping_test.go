@@ -1,10 +1,6 @@
 //go:build !unit
 // +build !unit
 
-// SPDX-FileCopyrightText: 2014-2022 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package driver_test
 
 import (

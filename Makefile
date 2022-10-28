@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: 2014-2022 SAP SE
-# 
-# SPDX-License-Identifier: Apache-2.0
-
 # builds and tests project via go tools
 all:
 	@echo "update dependencies"

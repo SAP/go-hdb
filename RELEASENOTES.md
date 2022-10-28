@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.110
 
+Release 0.110.1 (upgrade urgency: no need for upgrade)
+
+- Added .reuse/dep5 to replace individual licence comments / files
+
 #### Release Notes
 
 - Bulk operation (incompatible change)

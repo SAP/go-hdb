@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2014-2022 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
 package driver
 
 import (
@@ -47,9 +43,11 @@ A DSN represents a parsed DSN string. A DSN string is an URL string with the fol
 and optional query parameters (see DSN query parameters and DSN query default values).
 
 Example:
+
 	"hdb://myuser:mypassword@localhost:30015?timeout=60"
 
 Examples TLS connection:
+
 	"hdb://myuser:mypassword@localhost:39013?TLSRootCAFile=trust.pem"
 	"hdb://myuser:mypassword@localhost:39013?TLSRootCAFile=trust.pem&TLSServerName=hostname"
 	"hdb://myuser:mypassword@localhost:39013?TLSInsecureSkipVerify"
@@ -82,7 +80,6 @@ func (e ParseError) Unwrap() error { return e.err }
 // Cause returns the cause of the error.
 func (e ParseError) Cause() error { return e.err }
 
-//
 func parameterNotSupportedError(k string) error {
 	return &ParseError{s: fmt.Sprintf("parameter %s is not supported", k)}
 }

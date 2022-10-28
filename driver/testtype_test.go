@@ -1,8 +1,3 @@
-// SPDX-FileCopyrightText: 2014-2022 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
-// Package datatypes provides hdb data type related functionality mainly for driver testing.
 package driver
 
 import (

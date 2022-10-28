@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2014-2022 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
 // Package collectors provides prometheus collectors for driver and extended database statistics.
 package collectors
 

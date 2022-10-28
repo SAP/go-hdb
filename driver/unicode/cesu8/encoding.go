@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2014-2022 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
 // Package cesu8 implements functions and constants to support text encoded in CESU-8.
 // It implements functions comparable to the unicode/utf8 package for UTF-8 de- and encoding.
 package cesu8
