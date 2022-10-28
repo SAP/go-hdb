@@ -75,6 +75,8 @@ const (
 	setDefaultSchema  = "set schema"
 )
 
+var errBulkExecDeprecated = errors.New("bulk exec option is deprecated")
+
 // bulk statement
 const (
 	bulk = "b$"
@@ -87,8 +89,10 @@ var (
 
 var (
 	// NoFlush is to be used as parameter in bulk statements to delay execution.
+	// Deprecated
 	NoFlush = sql.Named(bulk, &noFlushTok)
 	// Flush can be used as optional parameter in bulk statements but is not required to trigger execution.
+	// Deprecated
 	Flush = sql.Named(bulk, &flushTok)
 )
 
@@ -1067,7 +1071,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 
 	numField := s.pr.numField()
 
-	it, err := newArgsScanner(numField, nvargs)
+	it, err := newArgsScanner(numField, nvargs, c._legacy) //TODO: remove legacy starting with V1.0
 	if err != nil {
 		return nil, err
 	}
@@ -1118,6 +1122,10 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 
 func (s *stmt) execBulk(nvargs []driver.NamedValue) (driver.Result, error) {
 	c := s.conn
+	// check deprecated
+	if !c._legacy {
+		return nil, errBulkExecDeprecated
+	}
 
 	flush := s.flush
 	s.flush = false
@@ -1174,11 +1182,17 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 		if ptr, ok := nv.Value.(**struct{}); ok {
 			switch ptr {
 			case &noFlushTok:
+				if !s.conn._legacy {
+					return errBulkExecDeprecated
+				}
 				if s.stmtKind == skExec { // turn on bulk
 					s.stmtKind = skBulk
 				}
 				return driver.ErrRemoveArgument
 			case &flushTok:
+				if !s.conn._legacy {
+					return errBulkExecDeprecated
+				}
 				s.flush = true
 				return driver.ErrRemoveArgument
 			}

@@ -1,6 +1,23 @@
 Release Notes
 =============
 
+## Release 0.110
+
+#### Release Notes
+
+- Bulk operation (incompatible change)
+  
+  Due to 'historical' reasons go-hdb does support the following alternatives executing 'bulk' operations:  
+  - via query ("bulk insert ...")
+  - via named arguments (Flush / NoFlush)
+  - via 'many' supporting one and two dimensional slices, arrays
+  - via extended parameter list with (len(args)%'#of paramerters' == 0
+  - via function argument (func(args []any) error)
+  
+  As to the restrictions and redundancy comming with some of the options the first three are going to be set to deprecated
+  and the latter two (extended arguments and function argument) are kept going forward. Until go-hdb release V1.0 would
+  be available the deprecated options can be used further by switching on 'legacy mode' on connector level.
+    
 ## Release 0.109
 
 Release 0.109.2 (upgrade urgency: high)

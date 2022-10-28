@@ -49,15 +49,13 @@ func (it *multiArgs) scan(nvargs []driver.NamedValue) error {
 }
 
 type fctArgs struct {
-	init bool
 	fct  func(args []any) error
 	args []any
 }
 
 func (it *fctArgs) scan(nvargs []driver.NamedValue) error {
-	if !it.init {
+	if it.args == nil {
 		it.args = make([]any, len(nvargs))
-		it.init = false
 	}
 	err := it.fct(it.args)
 	if err != nil {
@@ -183,7 +181,7 @@ func (e *argsMismatchError) Error() string {
 	return fmt.Sprintf("argument parameter mismatch - number of arguments %d number of parameters %d", e.numArg, e.numPrm)
 }
 
-func newArgsScanner(numField int, nvargs []driver.NamedValue) (argsScanner, error) {
+func newArgsScanner(numField int, nvargs []driver.NamedValue, legacy bool) (argsScanner, error) {
 	numArg := len(nvargs)
 
 	switch numArg {
@@ -205,9 +203,15 @@ func newArgsScanner(numField int, nvargs []driver.NamedValue) (argsScanner, erro
 				return &fctArgs{fct: v}, nil
 			}
 			if v, ok := arg.([]any); ok {
+				if !legacy {
+					return nil, errBulkExecDeprecated
+				}
 				return &anyListArgs{list: v}, nil
 			}
 			if v, ok := isList(arg); ok {
+				if !legacy {
+					return nil, errBulkExecDeprecated
+				}
 				return &genListArgs{list: reflect.ValueOf(v)}, nil
 			}
 			return &singleArgs{nvargs: nvargs}, nil
@@ -216,9 +220,15 @@ func newArgsScanner(numField int, nvargs []driver.NamedValue) (argsScanner, erro
 				return &fctArgs{fct: v}, nil
 			}
 			if v, ok := arg.([][]any); ok {
+				if !legacy {
+					return nil, errBulkExecDeprecated
+				}
 				return &anyTableArgs{table: v}, nil
 			}
 			if v, ok := isTable(arg); ok {
+				if !legacy {
+					return nil, errBulkExecDeprecated
+				}
 				return &genTableArgs{table: reflect.ValueOf(v)}, nil
 			}
 			return nil, fmt.Errorf("invalid argument type %T", arg)
