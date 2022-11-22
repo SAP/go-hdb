@@ -21,6 +21,7 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/scanner"
+	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 	"github.com/SAP/go-hdb/driver/sqltrace"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
@@ -257,9 +258,14 @@ type conn struct {
 	pw *p.Writer
 }
 
-func isAuthError(checkErr error) bool {
+// isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
+func isAuthError(err error) bool {
+	var validationError *x509.ValidationError
+	if errors.As(err, &validationError) {
+		return true
+	}
 	var hdbErrors *p.HdbErrors
-	if !errors.As(checkErr, &hdbErrors) {
+	if !errors.As(err, &hdbErrors) {
 		return false
 	}
 	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
@@ -291,7 +297,14 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		if !isAuthError(err) {
 			return nil, err
 		}
-		if retries < 1 || !authAttrs.refresh(auth) {
+		if retries < 1 {
+			return nil, err
+		}
+		refresh, refreshErr := authAttrs.refresh(auth)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		if !refresh {
 			return nil, err
 		}
 		retries--
@@ -885,7 +898,7 @@ func (s *stmt) convert(field *p.ParameterField, arg any) (any, error) {
 }
 
 /*
-central function to extend argiment handling by
+central function to extend argument handling by
 - potentially handle named parameters (HANA does not support them)
 - handle out parameters for function calls (HANA supports named out parameters)
 */
@@ -1075,6 +1088,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 	defer func() { s.resetArgs() }() // reset args
 
 	totalRowsAffected := totalRowsAffected(0)
+	recOfs := 0
 	numRec := 0
 
 	args := make([]driver.NamedValue, numField)
@@ -1095,9 +1109,13 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 		s.nvargs = append(s.nvargs, args...)
 		numRec++
 		if numRec >= c._bulkSize {
+			recOfs += c._bulkSize
 			r, err := c._execBulk(s.pr, s.nvargs, !c.inTx)
 			totalRowsAffected.add(r)
 			if err != nil {
+				if hdbErr, ok := err.(*p.HdbErrors); recOfs != 0 && ok {
+					hdbErr.SetStmtsNoOfs(recOfs)
+				}
 				return driver.RowsAffected(totalRowsAffected), err
 			}
 			numRec = 0
@@ -1109,6 +1127,9 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 		r, err := c._execBulk(s.pr, s.nvargs, !c.inTx)
 		totalRowsAffected.add(r)
 		if err != nil {
+			if hdbErr, ok := err.(*p.HdbErrors); recOfs != 0 && ok {
+				hdbErr.SetStmtsNoOfs(recOfs)
+			}
 			return driver.RowsAffected(totalRowsAffected), err
 		}
 	}
@@ -1468,9 +1489,6 @@ func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit b
 		*/
 		if hasNext || i == (numRows-1) {
 			r, err := c._exec(pr, nvargs[lastFrom:to], true, commit)
-			//if err != nil {
-			//	return driver.RowsAffected(totRowsAffected), err
-			//}
 			if rowsAffected, err := r.RowsAffected(); err != nil {
 				totRowsAffected += rowsAffected
 			}

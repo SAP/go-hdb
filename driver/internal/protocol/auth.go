@@ -5,6 +5,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
@@ -21,7 +22,7 @@ type AuthTokenSetter interface {
 
 // AuthCertKeySetter is implemented by authentication methods supporting certificate and key updates.
 type AuthCertKeySetter interface {
-	SetCertKey(cert, key []byte)
+	SetCertKey(certKey *x509.CertKey)
 }
 
 // AuthCookieGetter is implemented by authentication methods supporting cookies to reconnect.
@@ -64,7 +65,7 @@ func (a *Auth) AddBasic(username, password string) {
 func (a *Auth) AddJWT(token string) { a.methods[auth.MtJWT] = auth.NewJWT(token) }
 
 // AddX509 adds X509 authentication method.
-func (a *Auth) AddX509(cert, key []byte) { a.methods[auth.MtX509] = auth.NewX509(cert, key) }
+func (a *Auth) AddX509(certKey *x509.CertKey) { a.methods[auth.MtX509] = auth.NewX509(certKey) }
 
 // Method returns the selected authentication method.
 func (a *Auth) Method() auth.Method { return a.method }
@@ -82,7 +83,9 @@ func (a *Auth) InitRequest() (*AuthInitRequest, error) {
 	prms := &auth.Prms{}
 	prms.AddCESU8String(a.logonname)
 	for _, m := range a.methods.order() {
-		m.PrepareInitReq(prms)
+		if err := m.PrepareInitReq(prms); err != nil {
+			return nil, err
+		}
 	}
 	return &AuthInitRequest{prms: prms}, nil
 }

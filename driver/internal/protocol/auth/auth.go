@@ -36,7 +36,7 @@ type Method interface {
 	fmt.Stringer
 	Typ() string
 	Order() byte
-	PrepareInitReq(prms *Prms)
+	PrepareInitReq(prms *Prms) error
 	InitRepDecode(d *Decoder) error
 	PrepareFinalReq(prms *Prms) error
 	FinalRepDecode(d *Decoder) error

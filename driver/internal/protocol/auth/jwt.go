@@ -29,9 +29,10 @@ func (a *JWT) Typ() string { return MtJWT }
 func (a *JWT) Order() byte { return MoJWT }
 
 // PrepareInitReq implements the Method interface.
-func (a *JWT) PrepareInitReq(prms *Prms) {
+func (a *JWT) PrepareInitReq(prms *Prms) error {
 	prms.addString(a.Typ())
 	prms.addString(a.token)
+	return nil
 }
 
 // InitRepDecode implements the Method interface.

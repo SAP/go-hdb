@@ -1,7 +1,7 @@
 //go:build !unit
 // +build !unit
 
-package driver_test
+package driver
 
 import (
 	"context"
@@ -9,15 +9,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/SAP/go-hdb/driver"
 )
 
 // TestBulkInsertDuplicates
 func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 	ctx := context.Background()
 
-	table := driver.RandomIdentifier("bulkInsertDuplicates")
+	table := RandomIdentifier("bulkInsertDuplicates")
 
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
@@ -33,7 +31,7 @@ func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 	i := 1
 	if _, err := stmt.Exec(func(args []any) error {
 		if i >= 4 {
-			return driver.ErrEndOfRows
+			return ErrEndOfRows
 		}
 		args[0], args[1] = i, i
 		i++
@@ -46,7 +44,7 @@ func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 	i = 0
 	_, err = stmt.Exec(func(args []any) error {
 		if i >= 5 {
-			return driver.ErrEndOfRows
+			return ErrEndOfRows
 		}
 		args[0], args[1] = i, i
 		i++
@@ -56,23 +54,85 @@ func testBulkInsertDuplicates(conn *sql.Conn, t *testing.T) {
 		t.Fatal("error duplicate key expected")
 	}
 
-	dbError, ok := err.(driver.Error)
+	hdbErr, ok := err.(Error)
 	if !ok {
 		t.Fatal("driver.Error expected")
 	}
 
 	// expect 3 errors for statement 1,2 and 3
-	if dbError.NumError() != 3 {
-		t.Fatalf("number of errors: %d - %d expected", dbError.NumError(), 3)
+	if hdbErr.NumError() != 3 {
+		t.Fatalf("number of errors: %d - %d expected", hdbErr.NumError(), 3)
 	}
 
 	stmtNo := []int{1, 2, 3}
 
-	for i := 0; i < dbError.NumError(); i++ {
-		dbError.SetIdx(i)
-		if dbError.StmtNo() != stmtNo[i] {
-			t.Fatalf("statement number: %d - %d expected", dbError.StmtNo(), stmtNo[i])
+	for i := 0; i < hdbErr.NumError(); i++ {
+		hdbErr.SetIdx(i)
+		if hdbErr.StmtNo() != stmtNo[i] {
+			t.Fatalf("statement number: %d - %d expected", hdbErr.StmtNo(), stmtNo[i])
 		}
+	}
+}
+
+// TestBulkInsertStmtNo
+func testBulkInsertStmtNo(conn *sql.Conn, t *testing.T) {
+	ctx := context.Background()
+
+	table := RandomIdentifier("bulkInsertDuplicates")
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?,?)", table))
+	if err != nil {
+		t.Fatalf("prepare bulk insert failed: %s", err)
+	}
+	defer stmt.Close()
+
+	// insert -1 and defaultBulkSize+1 (duplicate)
+	duplID := defaultBulkSize + 1
+	args := []any{-1, -1, duplID, duplID}
+	if _, err := stmt.Exec(args...); err != nil {
+		t.Fatal(err)
+	}
+
+	// insert one row with duplicate
+	args = []any{duplID, duplID}
+	_, err = stmt.Exec(args...)
+	if err == nil {
+		t.Fatal("driver.error expected")
+	}
+
+	hdbErr, ok := err.(Error)
+	if !ok {
+		t.Fatal("driver.Error expected")
+	}
+
+	// check, that StmtNo matches counter
+	if hdbErr.StmtNo() != 0 {
+		t.Fatalf("actual StmtNo %d - expected StmtNo %d", hdbErr.StmtNo(), 0)
+	}
+
+	// insert bulk data with duplicate > defaultBulkSize
+	numRow := defaultBulkSize + 2
+	args = make([]any, numRow*2)
+	for i := 0; i < numRow; i++ {
+		args[i*2], args[i*2+1] = i, i
+	}
+	_, err = stmt.Exec(args...)
+	if err == nil {
+		t.Fatal("driver.error expected")
+	}
+
+	hdbErr, ok = err.(Error)
+	if !ok {
+		t.Fatal("driver.Error expected")
+	}
+
+	// check, that StmtNo matches counter (which equals duplID in this case)
+	if hdbErr.StmtNo() != duplID {
+		t.Fatalf("actual StmtNo %d - expected StmtNo %d", hdbErr.StmtNo(), duplID)
 	}
 }
 
@@ -83,7 +143,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 		return fmt.Sprintf("%s-%d", "Go rocks", i)
 	}
 
-	tmpTableName := driver.RandomIdentifier("#tmpTable")
+	tmpTableName := RandomIdentifier("#tmpTable")
 
 	//keep connection / hdb session for using local temporary tables
 	tx, err := conn.BeginTx(context.Background(), nil)
@@ -106,9 +166,9 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 	i := 0
 	if _, err := stmt.Exec(func(args []any) error {
 		if i >= numRows {
-			return driver.ErrEndOfRows
+			return ErrEndOfRows
 		}
-		args[0], args[1] = i, new(driver.Lob).SetReader(strings.NewReader(lobData(i)))
+		args[0], args[1] = i, new(Lob).SetReader(strings.NewReader(lobData(i)))
 		i++
 		return nil
 	}); err != nil {
@@ -137,7 +197,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 		var j int
 		builder := new(strings.Builder)
 
-		lob := new(driver.Lob).SetWriter(builder)
+		lob := new(Lob).SetWriter(builder)
 
 		if err := rows.Scan(&j, lob); err != nil {
 			t.Fatal(err)
@@ -163,7 +223,7 @@ func testBulkGeo(conn *sql.Conn, t *testing.T) {
 		numRows = 10
 	)
 
-	tableName := driver.RandomIdentifier("bulkGeo")
+	tableName := RandomIdentifier("bulkGeo")
 	ctx := context.Background()
 
 	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (id int, geo st_geometry(3857))", tableName)); err != nil {
@@ -179,9 +239,9 @@ func testBulkGeo(conn *sql.Conn, t *testing.T) {
 	i := 0
 	if _, err := stmt.Exec(func(args []any) error {
 		if i >= numRows {
-			return driver.ErrEndOfRows
+			return ErrEndOfRows
 		}
-		args[0], args[1] = i, new(driver.Lob).SetReader(strings.NewReader(ewkb))
+		args[0], args[1] = i, new(Lob).SetReader(strings.NewReader(ewkb))
 		i++
 		return nil
 	}); err != nil {
@@ -223,11 +283,12 @@ func TestBulk(t *testing.T) {
 		fct  func(conn *sql.Conn, t *testing.T)
 	}{
 		{"testBulkInsertDuplicates", testBulkInsertDuplicates},
+		{"testBulkInsertStmtNo", testBulkInsertStmtNo},
 		{"testBulkBlob", testBulkBlob},
 		{"testBulkGeo", testBulkGeo},
 	}
 
-	db := driver.DefaultTestDB()
+	db := DefaultTestDB()
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)

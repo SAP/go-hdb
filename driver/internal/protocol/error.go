@@ -130,10 +130,17 @@ func (e *HdbErrors) IsError() bool { return e.errors[e.idx].errorLevel == errorL
 // IsFatal implements the driver.Error interface.
 func (e *HdbErrors) IsFatal() bool { return e.errors[e.idx].errorLevel == errorLevelFatalError }
 
-// SetStmtNo sets the staement number of the error.
+// SetStmtNo sets the statement number of the error.
 func (e *HdbErrors) SetStmtNo(idx, no int) {
 	if idx >= 0 && idx < e.NumError() {
 		e.errors[idx].stmtNo = no
+	}
+}
+
+// SetStmtsNoOfs adds an offset to the statement numbers of the errors (bulk operations).
+func (e *HdbErrors) SetStmtsNoOfs(ofs int) {
+	for _, hdbErr := range e.errors {
+		hdbErr.stmtNo += ofs
 	}
 }
 
@@ -159,7 +166,15 @@ func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
 			e.errors[i] = err
 		}
 
-		err.stmtNo = -1
+		// err.stmtNo = -1
+		err.stmtNo = 0
+		/*
+			in case of an hdb error when inserting one record (e.g. duplicate)
+			- hdb does not return a rowsAffected part
+			- SetStmtNo is not called and
+			- the default value (formerly -1) is kept
+			--> initialize stmtNo with zero
+		*/
 		err.errorCode = dec.Int32()
 		err.errorPosition = dec.Int32()
 		err.errorTextLength = dec.Int32()

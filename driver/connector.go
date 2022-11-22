@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"os"
+
+	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
 
 /*
@@ -39,12 +41,14 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 }
 
 // NewX509AuthConnector creates a connector for X509 (client certificate) authentication.
-func NewX509AuthConnector(host string, clientCert, clientKey []byte) *Connector {
+func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector, error) {
 	c := NewConnector()
 	c._host = host
-	c._clientCert = clientCert
-	c._clientKey = clientKey
-	return c
+	var err error
+	if c._certKey, err = x509.NewCertKey(clientCert, clientKey); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // NewX509AuthConnectorByFiles creates a connector for X509 (client certificate) authentication
@@ -58,7 +62,7 @@ func NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile string) (*C
 	if err != nil {
 		return nil, err
 	}
-	return NewX509AuthConnector(host, clientCert, clientKey), nil
+	return NewX509AuthConnector(host, clientCert, clientKey)
 }
 
 // NewJWTAuthConnector creates a connector for token (JWT) based authentication.

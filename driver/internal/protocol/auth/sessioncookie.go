@@ -27,9 +27,10 @@ func (a *SessionCookie) Typ() string { return MtSessionCookie }
 func (a *SessionCookie) Order() byte { return MoSessionCookie }
 
 // PrepareInitReq implements the Method interface.
-func (a *SessionCookie) PrepareInitReq(prms *Prms) {
+func (a *SessionCookie) PrepareInitReq(prms *Prms) error {
 	prms.addString(a.Typ())
 	prms.addBytes(append(a.cookie, a.clientID...)) // cookie + clientID !!!
+	return nil
 }
 
 // InitRepDecode implements the Method interface.

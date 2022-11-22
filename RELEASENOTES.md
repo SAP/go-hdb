@@ -1,6 +1,14 @@
 Release Notes
 =============
 
+## Release 0.111
+
+#### Release Notes
+
+- X509 authentication: check validity period of client certificates before connecting to database (incompatible change)
+
+  added additional error return parameter to NewX509AuthConnector because of early X509 certificate and key validation
+
 ## Release 0.110
 
 Release 0.110.1 (upgrade urgency: no need for upgrade)
@@ -20,7 +28,7 @@ Release 0.110.1 (upgrade urgency: no need for upgrade)
   
   As to the restrictions and redundancy comming with some of the options the first three are going to be set to deprecated
   and the latter two (extended arguments and function argument) are kept going forward. Until go-hdb release V1.0 would
-  be available the deprecated options can be used further by switching on 'legacy mode' on connector level.
+  be available the deprecated options can be used further by switching on connector 'legacy mode'.
     
 ## Release 0.109
 

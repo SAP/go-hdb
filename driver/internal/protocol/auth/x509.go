@@ -5,11 +5,10 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
 	"fmt"
-	"strings"
+	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
 
 const (
@@ -18,20 +17,20 @@ const (
 
 // X509 implements X509 authentication.
 type X509 struct {
-	cert, key   []byte
+	certKey     *x509.CertKey
 	serverNonce []byte
 	logonName   string
 }
 
 // NewX509 creates a new authX509 instance.
-func NewX509(cert, key []byte) *X509 { return &X509{cert: cert, key: key} }
+func NewX509(certKey *x509.CertKey) *X509 { return &X509{certKey: certKey} }
 
 func (a *X509) String() string {
-	return fmt.Sprintf("method type %s cert %v key %v", a.Typ(), a.cert, a.key)
+	return fmt.Sprintf("method type %s %s", a.Typ(), a.certKey)
 }
 
 // SetCertKey implements the AuthCertKeySetter interface.
-func (a *X509) SetCertKey(cert, key []byte) { a.cert = cert; a.key = key }
+func (a *X509) SetCertKey(certKey *x509.CertKey) { a.certKey = certKey }
 
 // Typ implements the CookieGetter interface.
 func (a *X509) Typ() string { return MtX509 }
@@ -40,9 +39,16 @@ func (a *X509) Typ() string { return MtX509 }
 func (a *X509) Order() byte { return MoX509 }
 
 // PrepareInitReq implements the Method interface.
-func (a *X509) PrepareInitReq(prms *Prms) {
+func (a *X509) PrepareInitReq(prms *Prms) error {
+	// prevent auth call to hdb with invalid certificate
+	// as hbd only allows a limited number of unsuccessful authentications
+	// - currently only validity period is checked
+	if err := a.certKey.Validate(time.Now()); err != nil {
+		return err
+	}
 	prms.addString(a.Typ())
 	prms.addEmpty()
+	return nil
 }
 
 // InitRepDecode implements the Method interface.
@@ -61,22 +67,19 @@ func (a *X509) PrepareFinalReq(prms *Prms) error {
 
 	subPrms := prms.addPrms()
 
-	certPEMBlocks, err := decodeClientCert(a.cert)
-	if err != nil {
-		return err
-	}
+	certBlocks := a.certKey.CertBlocks()
 
-	numBlocks := len(certPEMBlocks)
+	numBlocks := len(certBlocks)
 
-	message := bytes.NewBuffer(certPEMBlocks[0].Bytes)
+	message := bytes.NewBuffer(certBlocks[0].Bytes)
 
-	subPrms.addBytes(certPEMBlocks[0].Bytes)
+	subPrms.addBytes(certBlocks[0].Bytes)
 
 	if numBlocks == 1 {
 		subPrms.addEmpty()
 	} else {
 		chainPrms := subPrms.addPrms()
-		for _, block := range certPEMBlocks[1:] {
+		for _, block := range certBlocks[1:] {
 			message.Write(block.Bytes)
 			chainPrms.addBytes(block.Bytes)
 		}
@@ -84,12 +87,7 @@ func (a *X509) PrepareFinalReq(prms *Prms) error {
 
 	message.Write(a.serverNonce)
 
-	certKeyBlock, err := decodeClientKey(a.key)
-	if err != nil {
-		return err
-	}
-
-	signature, err := sign(certKeyBlock, message)
+	signature, err := sign(a.certKey, message)
 	if err != nil {
 		return err
 	}
@@ -115,79 +113,8 @@ func (a *X509) FinalRepDecode(d *Decoder) error {
 	return err
 }
 
-func decodePEM(data []byte) ([]*pem.Block, error) {
-	var blocks []*pem.Block
-	block, rest := pem.Decode(data)
-	for block != nil {
-		blocks = append(blocks, block)
-		block, rest = pem.Decode(rest)
-	}
-	return blocks, nil
-}
-
-func decodeClientCert(data []byte) ([]*pem.Block, error) {
-	blocks, err := decodePEM(data)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case blocks == nil:
-		return nil, errors.New("invalid client certificate")
-	case len(blocks) < 1:
-		return nil, fmt.Errorf("invalid number of blocks in certificate file %d - expected min 1", len(blocks))
-	}
-	return blocks, nil
-}
-
-// encryptedBlock tells whether a private key is
-// encrypted by examining its Proc-Type header
-// for a mention of ENCRYPTED
-// according to RFC 1421 Section 4.6.1.1.
-func encryptedBlock(block *pem.Block) bool {
-	return strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED")
-}
-
-func decodeClientKey(data []byte) (*pem.Block, error) {
-	blocks, err := decodePEM(data)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case blocks == nil:
-		return nil, fmt.Errorf("invalid client key")
-	case len(blocks) != 1:
-		return nil, fmt.Errorf("invalid number of blocks in key file %d - expected 1", len(blocks))
-	}
-	block := blocks[0]
-	if encryptedBlock(block) {
-		return nil, errors.New("client key is password encrypted")
-	}
-	return block, nil
-}
-
-func getSigner(certKeyBlock *pem.Block) (crypto.Signer, error) {
-	switch certKeyBlock.Type {
-	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(certKeyBlock.Bytes)
-	case "PRIVATE KEY":
-		key, err := x509.ParsePKCS8PrivateKey(certKeyBlock.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		signer, ok := key.(crypto.Signer)
-		if !ok {
-			return nil, errors.New("internal error: parsed PKCS8 private key is not a crypto.Signer")
-		}
-		return signer, nil
-	case "EC PRIVATE KEY":
-		return x509.ParseECPrivateKey(certKeyBlock.Bytes)
-	default:
-		return nil, fmt.Errorf("unsupported key type %q", certKeyBlock.Type)
-	}
-}
-
-func sign(certKeyBlock *pem.Block, message *bytes.Buffer) ([]byte, error) {
-	signer, err := getSigner(certKeyBlock)
+func sign(certKey *x509.CertKey, message *bytes.Buffer) ([]byte, error) {
+	signer, err := certKey.Signer()
 	if err != nil {
 		return nil, err
 	}
