@@ -123,6 +123,16 @@ func testQueryAttributeAlias(db *sql.DB, t *testing.T) {
 	}
 }
 
+func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rowsAffected != rowsExpected {
+		t.Fatalf("rows affected %d - expected %d", rowsAffected, rowsExpected)
+	}
+}
+
 func testRowsAffected(db *sql.DB, t *testing.T) {
 	const maxRows = 10
 
@@ -191,13 +201,21 @@ func testUpsert(db *sql.DB, t *testing.T) {
 
 }
 
-func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
+func testQueryArgs(db *sql.DB, t *testing.T) {
+	table := driver.RandomIdentifier("table_")
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
 	}
-	if rowsAffected != rowsExpected {
-		t.Fatalf("rows affected %d - expected %d", rowsAffected, rowsExpected)
+
+	var i = 0
+	// positional args
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = :1 and j = :1", table), 1).Scan(&i); err != nil {
+		t.Fatal(err)
+	}
+
+	// mixed args
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = ? and j = :3", table), 1, "arg not used", 2).Scan(&i); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -214,6 +232,7 @@ func TestDriver(t *testing.T) {
 		{"queryAttributeAlias", testQueryAttributeAlias},
 		{"rowsAffected", testRowsAffected},
 		{"upsert", testUpsert},
+		{"queryArgs", testQueryArgs},
 	}
 
 	db := driver.DefaultTestDB()

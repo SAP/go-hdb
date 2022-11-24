@@ -20,6 +20,7 @@ type authAttrs struct {
 	_refreshPassword     func() (password string, ok bool)
 	_refreshClientCert   func() (clientCert, clientKey []byte, ok bool)
 	_refreshToken        func() (token string, ok bool)
+	cbmu                 sync.RWMutex // prevents refresh callbacks from being called in parallel
 }
 
 /*
@@ -64,70 +65,63 @@ func (c *authAttrs) auth() *p.Auth {
 }
 
 func (c *authAttrs) refreshPassword(passwordSetter p.AuthPasswordSetter) (bool, error) {
-	password := c.Password()     // save password
-	c.mu.RLock()                 // read lock as callback function might call connector read functions
-	if password != c._password { // if password has changed it got refreshed in the meanwhile by another connection
-		c.mu.RUnlock()
-		return true, nil
+	refreshPassword := c.RefreshPassword()
+	if refreshPassword == nil {
+		return false, nil
 	}
-	if c._refreshPassword != nil {
-		if password, ok := c._refreshPassword(); ok && c._password != password {
-			c.mu.RUnlock()
-			c.mu.Lock()
+	c.cbmu.Lock()
+	defer c.cbmu.Unlock()
+	if password, ok := c._refreshPassword(); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if password != c._password {
 			c._password = password
 			passwordSetter.SetPassword(password)
-			c.mu.Unlock()
 			return true, nil
 		}
 	}
-	c.mu.RUnlock()
 	return false, nil
 }
 
 func (c *authAttrs) refreshToken(tokenSetter p.AuthTokenSetter) (bool, error) {
-	token := c.Token()     // save token
-	c.mu.RLock()           // read lock as callback function might call connector read functions
-	if token != c._token { // if token has changed it got refreshed in the meanwhile by another connection
-		c.mu.RUnlock()
-		return true, nil
+	refreshToken := c.RefreshToken()
+	if refreshToken == nil {
+		return false, nil
 	}
-	if c._refreshToken != nil {
-		if token, ok := c._refreshToken(); ok && c._token != token {
-			c.mu.RUnlock()
-			c.mu.Lock()
+	c.cbmu.Lock()
+	defer c.cbmu.Unlock()
+	if token, ok := c._refreshToken(); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if token != c._token {
 			c._token = token
 			tokenSetter.SetToken(token)
-			c.mu.Unlock()
 			return true, nil
 		}
 	}
-	c.mu.RUnlock()
 	return false, nil
 }
 
 func (c *authAttrs) refreshCertKey(certKeySetter p.AuthCertKeySetter) (bool, error) {
-	certKey := c._certKey      // save certKey
-	c.mu.RLock()               // read lock as callback function might call connector read functions
-	if certKey != c._certKey { // if certKey has changed it got refreshed in the meanwhile by another connection
-		c.mu.RUnlock()
-		return true, nil
+	refreshClientCert := c.RefreshClientCert()
+	if refreshClientCert == nil {
+		return false, nil
 	}
-	if c._refreshClientCert != nil {
-		if clientCert, clientKey, ok := c._refreshClientCert(); ok && !c._certKey.Equal(clientCert, clientKey) {
-			c.mu.RUnlock()
-			c.mu.Lock()
+	c.cbmu.Lock()
+	defer c.cbmu.Unlock()
+	if clientCert, clientKey, ok := c._refreshClientCert(); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if !c._certKey.Equal(clientCert, clientKey) {
 			certKey, err := x509.NewCertKey(clientCert, clientKey)
 			if err != nil {
-				c.mu.Unlock()
 				return false, err
 			}
 			c._certKey = certKey
 			certKeySetter.SetCertKey(certKey)
-			c.mu.Unlock()
 			return true, nil
 		}
 	}
-	c.mu.RUnlock()
 	return false, nil
 }
 
@@ -176,7 +170,7 @@ func (c *authAttrs) RefreshPassword() func() (password string, ok bool) {
 }
 
 // SetRefreshPassword sets the callback function for basic authentication password refresh.
-// The callback function might be called simultaneously from multiple goroutines if registered
+// The callback function might be called simultaneously from multiple goroutines only if registered
 // for more than one Connector.
 func (c *authAttrs) SetRefreshPassword(refreshPassword func() (password string, ok bool)) {
 	c.mu.Lock()
@@ -199,7 +193,7 @@ func (c *authAttrs) RefreshClientCert() func() (clientCert, clientKey []byte, ok
 }
 
 // SetRefreshClientCert sets the callback function for X509 authentication client certificate and key refresh.
-// The callback function might be called simultaneously from multiple goroutines if registered
+// The callback function might be called simultaneously from multiple goroutines only if registered
 // for more than one Connector.
 func (c *authAttrs) SetRefreshClientCert(refreshClientCert func() (clientCert, clientKey []byte, ok bool)) {
 	c.mu.Lock()
@@ -218,7 +212,7 @@ func (c *authAttrs) RefreshToken() func() (token string, ok bool) {
 }
 
 // SetRefreshToken sets the callback function for JWT authentication token refresh.
-// The callback function might be called simultaneously from multiple goroutines if registered
+// The callback function might be called simultaneously from multiple goroutines only if registered
 // for more than one Connector.
 func (c *authAttrs) SetRefreshToken(refreshToken func() (token string, ok bool)) {
 	c.mu.Lock()
