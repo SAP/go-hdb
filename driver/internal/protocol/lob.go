@@ -61,16 +61,18 @@ const (
 // }
 // func (f lobFlags) encode(enc *encoding.Encoder) error { enc.Bool(bool(f)); return nil }
 
-// WriterSetter is the interface wrapping the SetWriter method (Lob handling).
-type WriterSetter interface{ SetWriter(w io.Writer) error }
-
-// LobsDecoderSetter is the interface wrapping the setLobsdecoder method (lob handling).
-type LobsDecoderSetter interface {
-	SetLobsDecoder(fn func(descr *LobOutDescr, wr io.Writer) error)
+// LobScanner is the interface wrapping the Scan method for Lob reading.
+type LobScanner interface {
+	Scan(w io.Writer) error
 }
 
-var _ WriterSetter = (*LobOutDescr)(nil)
-var _ LobsDecoderSetter = (*LobOutDescr)(nil)
+// LobDecoderSetter is the interface wrapping the setDecoder method for Lob reading.
+type LobDecoderSetter interface {
+	SetDecoder(fn func(descr *LobOutDescr, wr io.Writer) error)
+}
+
+var _ LobScanner = (*LobOutDescr)(nil)
+var _ LobDecoderSetter = (*LobOutDescr)(nil)
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
@@ -128,7 +130,7 @@ func (d *LobInDescr) writeFirst(enc *encoding.Encoder) {
 
 // LobOutDescr represents a lob output descriptor.
 type LobOutDescr struct {
-	fnLD        func(descr *LobOutDescr, wr io.Writer) error
+	decoder     func(descr *LobOutDescr, wr io.Writer) error
 	IsCharBased bool
 	/*
 		HDB does not return lob type code but undefined only
@@ -147,11 +149,13 @@ func (d *LobOutDescr) String() string {
 	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.Opt, d.NumChar, d.numByte, d.ID, d.B)
 }
 
-// SetLobsDecoder sets the function to decode lobs.
-func (d *LobOutDescr) SetLobsDecoder(fn func(descr *LobOutDescr, wr io.Writer) error) { d.fnLD = fn }
+// SetDecoder implements the LobDecoderSetter interface.
+func (d *LobOutDescr) SetDecoder(decoder func(descr *LobOutDescr, wr io.Writer) error) {
+	d.decoder = decoder
+}
 
-// SetWriter implements the WriterSetter interface.
-func (d *LobOutDescr) SetWriter(wr io.Writer) error { return d.fnLD(d, wr) }
+// Scan implements the LobScanner interface.
+func (d *LobOutDescr) Scan(wr io.Writer) error { return d.decoder(d, wr) }
 
 /*
 write lobs:

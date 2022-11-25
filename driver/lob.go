@@ -53,12 +53,12 @@ func (l *Lob) Scan(src any) error {
 		return fmt.Errorf("lob error: initial writer %[1]T %[1]v", l)
 	}
 
-	ws, ok := src.(p.WriterSetter)
+	scanner, ok := src.(p.LobScanner)
 	if !ok {
 		return fmt.Errorf("lob: invalid scan type %T", src)
 	}
 
-	if err := ws.SetWriter(l.wr); err != nil {
+	if err := scanner.Scan(l.wr); err != nil {
 		return err
 	}
 	return nil

@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.111
 
+Release 0.111.2 (upgrade urgency: no need for upgrade)
+
+- Some source code cleanups
+
 Release 0.111.1 (upgrade urgency: low)
 
 - Some minor fixes and source code cleanups

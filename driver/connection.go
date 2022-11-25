@@ -1867,14 +1867,14 @@ func (c *conn) _disconnect() error {
 // read lob reply
 // - seems like readLobreply returns only a result for one lob - even if more then one is requested
 // --> read single lobs
-func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
+func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
 	var err error
 
 	if descr.IsCharBased {
 		wrcl := transform.NewWriter(wr, c._cesu8Decoder()) // CESU8 transformer
-		err = c._decodeLobs(descr, wrcl, func(b []byte) (int64, error) {
+		err = c._decodeLob(descr, wrcl, func(b []byte) (int64, error) {
 			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
 			numChars := int64(0)
 			for len(b) > 0 {
@@ -1891,7 +1891,7 @@ func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
 			return numChars, nil
 		})
 	} else {
-		err = c._decodeLobs(descr, wr, func(b []byte) (int64, error) { return int64(len(b)), nil })
+		err = c._decodeLob(descr, wr, func(b []byte) (int64, error) { return int64(len(b)), nil })
 	}
 
 	if pw, ok := wr.(*io.PipeWriter); ok { // if the writer is a pipe-end -> close at the end
@@ -1904,7 +1904,7 @@ func (c *conn) decodeLobs(descr *p.LobOutDescr, wr io.Writer) error {
 	return err
 }
 
-func (c *conn) _decodeLobs(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
+func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
 	lobChunkSize := int64(c._lobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {

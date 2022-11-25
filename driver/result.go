@@ -181,8 +181,8 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 	qr.pos++
 
 	for _, v := range dest {
-		if v, ok := v.(p.LobsDecoderSetter); ok {
-			v.SetLobsDecoder(qr.conn.decodeLobs)
+		if v, ok := v.(p.LobDecoderSetter); ok {
+			v.SetDecoder(qr.conn.decodeLob)
 		}
 	}
 	return err
@@ -261,8 +261,8 @@ func (cr *callResult) Next(dest []driver.Value) error {
 	err := cr.decodeErrors.RowError(0)
 	cr.eof = true
 	for _, v := range dest {
-		if v, ok := v.(p.LobsDecoderSetter); ok {
-			v.SetLobsDecoder(cr.conn.decodeLobs)
+		if v, ok := v.(p.LobDecoderSetter); ok {
+			v.SetDecoder(cr.conn.decodeLob)
 		}
 	}
 	return err
