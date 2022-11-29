@@ -8,6 +8,16 @@ Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It imp
 
 For the official SAP HANA client Go support (not this database driver) please see [SAP Help Portal](https://help.sap.com/viewer/0eec0d68141541d1b07893a39944924e/2.0.02/en-US/0ffbe86c9d9f44338441829c6bee15e6.html).
 
+## Version 1.0
+
+go-hdb version 1.0 is going to be released after Go 1.20 is available which is expected to be released in February 2023. The migration should be pretty straight forward. For details please refer to [Version 1.0](https://github.com/SAP/go-hdb/blob/main/VERSION1.0.md).
+
+When starting newly with this driver whether:
+- use the latest version (main branch)
+  - without switching to legacy mode
+  - without using any deprecated type
+- or use the latest 1.0 release candidate branch of this repository
+
 ## Installation
 
 ```
