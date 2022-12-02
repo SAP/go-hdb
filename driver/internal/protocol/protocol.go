@@ -35,10 +35,10 @@ type Reader struct {
 	sh *segmentHeader
 	ph *PartHeader
 
-	msgSize  int64
-	numPart  int
-	cntPart  int
-	partRead bool
+	readBytes int64
+	numPart   int
+	cntPart   int
+	partRead  bool
 
 	partReaderCache map[PartKind]partReader
 
@@ -206,26 +206,36 @@ func (r *Reader) skip() error {
 	return r.Read(part)
 }
 
+func (r *Reader) skipPadding() int64 {
+	if r.cntPart != r.numPart { // padding if not last part
+		padBytes := padBytes(int(r.ph.bufferLength))
+		r.dec.Skip(padBytes)
+		return int64(padBytes)
+	}
+
+	// last part:
+	// skip difference between real read bytes and message header var part length
+	padBytes := int64(r.mh.varPartLength) - r.readBytes
+	switch {
+	case padBytes < 0:
+		panic(fmt.Errorf("protocol error: bytes read %d > variable part length %d", r.readBytes, r.mh.varPartLength))
+	case padBytes > 0:
+		r.dec.Skip(int(padBytes))
+	}
+	return padBytes
+}
+
 func (r *Reader) skipPart() error {
+	r.dec.ResetCnt()
 	r.dec.Skip(int(r.ph.bufferLength))
 	r.tracer(r.upStream, "*skipped")
 
-	/*
-		hdb protocol
-		- in general padding but
-		- in some messages the last record sent is not padded
-		  - message header varPartLength < segment header segmentLength
-		    - msgSize == 0: mh.varPartLength == sh.segmentLength
-			- msgSize < 0 : mh.varPartLength < sh.segmentLength
-	*/
-	if r.cntPart != r.numPart || r.msgSize == 0 {
-		r.dec.Skip(padBytes(int(r.ph.bufferLength)))
-	}
+	r.readBytes += int64(r.dec.Cnt())
+	r.readBytes += r.skipPadding()
 	return nil
 }
 
 func (r *Reader) readPart(part partReader) error {
-
 	r.dec.ResetCnt()
 	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
@@ -234,30 +244,13 @@ func (r *Reader) readPart(part partReader) error {
 	bufferLen := int(r.ph.bufferLength)
 	switch {
 	case cnt < bufferLen: // protocol buffer length > read bytes -> skip the unread bytes
-
-		// Enable for debug
-		// b := make([]byte, bufferLen-cnt)
-		// p.rd.ReadFull(b)
-		// println(fmt.Sprintf("%x", b))
-		// println(string(b))
-
 		r.dec.Skip(bufferLen - cnt)
-
 	case cnt > bufferLen: // read bytes > protocol buffer length -> should never happen
 		panic(fmt.Errorf("protocol error: read bytes %d > buffer length %d", cnt, bufferLen))
 	}
 
-	/*
-		hdb protocol
-		- in general padding but
-		- in some messages the last record sent is not padded
-		  - message header varPartLength < segment header segmentLength
-		    - msgSize == 0: mh.varPartLength == sh.segmentLength
-			- msgSize < 0 : mh.varPartLength < sh.segmentLength
-	*/
-	if r.cntPart != r.numPart || r.msgSize == 0 {
-		r.dec.Skip(padBytes(int(r.ph.bufferLength)))
-	}
+	r.readBytes += int64(r.dec.Cnt())
+	r.readBytes += r.skipPadding()
 	return err
 }
 
@@ -266,18 +259,19 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
+	r.readBytes = 0 // header bytes are not calculated in header varPartBytes: start with zero
+
 	r.tracer(r.upStream, r.mh)
 
-	r.msgSize = int64(r.mh.varPartLength)
-
 	for i := 0; i < int(r.mh.noOfSegm); i++ {
-
 		if err := r.sh.decode(r.dec); err != nil {
 			return err
 		}
+
+		r.readBytes += segmentHeaderSize
+
 		r.tracer(r.upStream, r.sh)
 
-		r.msgSize -= int64(r.sh.segmentLength)
 		r.numPart = int(r.sh.noOfParts)
 		r.cntPart = 0
 
@@ -286,6 +280,9 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 			if err := r.ph.decode(r.dec); err != nil {
 				return err
 			}
+
+			r.readBytes += partHeaderSize
+
 			r.tracer(r.upStream, r.ph)
 
 			r.cntPart++
