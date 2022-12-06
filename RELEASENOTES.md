@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.111
 
+Release 0.111.5 (upgrade urgency: no need for upgrade)
+
+- Upgraded dependencies (see go.mod)
+
 Release 0.111.4 (upgrade urgency: high)
 
 - Fixed protocol read timeout for "optimized" hana backend build
