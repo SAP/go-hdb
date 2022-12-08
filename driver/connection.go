@@ -1489,7 +1489,7 @@ func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit b
 		*/
 		if hasNext || i == (numRows-1) {
 			r, err := c._exec(pr, nvargs[lastFrom:to], true, commit)
-			if rowsAffected, err := r.RowsAffected(); err != nil {
+			if rowsAffected, err := r.RowsAffected(); err == nil {
 				totRowsAffected += rowsAffected
 			}
 			if err != nil {

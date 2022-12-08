@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.111
 
+Release 0.111.6 (upgrade urgency: medium)
+
+- Fixed issue in reporting wrong number of affected rows using LOBs (https://github.com/SAP/go-hdb/pull/100)
+
 Release 0.111.5 (upgrade urgency: no need for upgrade)
 
 - Upgraded dependencies (see go.mod)
