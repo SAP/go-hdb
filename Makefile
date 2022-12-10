@@ -11,7 +11,7 @@ all:
 	@echo execute tests on latest go version	
 	go test ./...
 	@echo execute tests on older supported go versions
-	go1.18.8 test ./...
+	go1.18.9 test ./...
 	@echo "reuse (license) check"
 	reuse lint
 
@@ -26,8 +26,8 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.18.8@latest
-	go1.18.8 download
+	go install golang.org/dl/go1.18.9@latest
+	go1.18.9 download
 
 #install fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 # pre-conditions:

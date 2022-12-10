@@ -3,6 +3,10 @@ Release Notes
 
 ## Release 0.111
 
+Release 0.111.7 (upgrade urgency: no need for upgrade)
+
+- Changed version 1.0 migration description
+
 Release 0.111.6 (upgrade urgency: medium)
 
 - Fixed issue in reporting wrong number of affected rows using LOBs (https://github.com/SAP/go-hdb/pull/100)

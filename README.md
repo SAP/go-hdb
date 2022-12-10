@@ -10,13 +10,9 @@ For the official SAP HANA client Go support (not this database driver) please se
 
 ## Version 1.0
 
-go-hdb version 1.0 is going to be released after Go 1.20 is available which is expected to be released in February 2023. The migration should be pretty straight forward. For details please refer to [Version 1.0](https://github.com/SAP/go-hdb/blob/main/VERSION1.0.md).
+go-hdb version 1.0 is going to be released after Go 1.20 is available which is expected to be released in February 2023. For migration details please refer to [Version 1.0](https://github.com/SAP/go-hdb/blob/main/VERSION1.0.md).
 
-When starting newly with this driver whether:
-- use the latest version (main branch)
-  - without switching to legacy mode
-  - without using any deprecated type
-- or use the latest 1.0 release candidate branch of this repository
+When starting newly with this driver please use the latest 1.0 release candidate branch of this repository
 
 ## Installation
 
