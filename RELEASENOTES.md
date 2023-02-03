@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.0.0
 
+### Minor revisions
+
+#### v1.0.1
+- added Go 1.20 Unwrap() to driver.Error()
+
 ### Incompatible changes
 
 Removal of already deprecated driver.NullTime alias (please use sql.NullTime instead).

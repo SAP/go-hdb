@@ -220,20 +220,27 @@ func testQueryArgs(db *sql.DB, t *testing.T) {
 }
 
 func testComments(db *sql.DB, t *testing.T) {
-	if _, err := db.Query(`select * from dummy
-	-- my comment`); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		query     string
+		supported bool
+	}{
+		{"select * from dummy\n-- my comment", true},
+		{"-- my comment\nselect * from dummy", true},
+		{"\n-- my comment\nselect * from dummy", true},
 	}
 
-	if _, err := db.Query(`-- my comment
-	select * from dummy`); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := db.Query(`
-	-- my comment
-	select * from dummy`); err != nil {
-		t.Fatal(err)
+	for _, test := range tests {
+		rows, err := db.Query(test.query)
+		if err != nil {
+			if test.supported {
+				t.Fatal(err)
+			} else {
+				t.Log(err)
+			}
+		}
+		if rows != nil {
+			rows.Close()
+		}
 	}
 }
 
