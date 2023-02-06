@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.2
+- fixed go.mod Go version
+
 #### v1.0.1
 - added Go 1.20 Unwrap() to driver.Error()
 
