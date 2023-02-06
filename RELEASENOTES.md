@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.3
+- fixed scan type for 'nullable' database fields
+
 #### v1.0.2
 - fixed go.mod Go version
 

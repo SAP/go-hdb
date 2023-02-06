@@ -29,8 +29,8 @@ type _baseType struct {
 	maxMV        *uint64
 	typeName     string
 	fnDBTypeName func(v *Version, dfv int) (bool, string)
-	_scanType    reflect.Type
-	fnScanType   func(v *Version, dfv int) (bool, reflect.Type)
+	dataType     p.DataType
+	fnScanType   func(v *Version, dfv int, nullable bool) (bool, reflect.Type)
 }
 
 func (t *_baseType) isSupported(version *Version, dfv int) bool {
@@ -55,13 +55,13 @@ func (t *_baseType) databaseTypeName(v *Version, dfv int) string {
 	return t.typeName
 }
 
-func (t *_baseType) scanType(v *Version, dfv int) reflect.Type {
+func (t *_baseType) scanType(v *Version, dfv int, nullable bool) reflect.Type {
 	if t.fnScanType != nil {
-		if ok, typ := t.fnScanType(v, dfv); ok {
+		if ok, typ := t.fnScanType(v, dfv, nullable); ok {
 			return typ
 		}
 	}
-	return t._scanType
+	return t.dataType.ScanType(nullable)
 }
 
 type _basicType struct{ _baseType }
@@ -224,9 +224,9 @@ func _alphanumDBTypeName(version *Version, dfv int) (bool, string) {
 
 func _smalldecimalDBTypeName(version *Version, dfv int) (bool, string) { return true, "DECIMAL" }
 
-func _booleanScanType(version *Version, dfv int) (bool, reflect.Type) {
+func _booleanScanType(version *Version, dfv int, nullable bool) (bool, reflect.Type) {
 	if dfv < p.DfvLevel7 {
-		return true, p.DtTinyint.ScanType()
+		return true, p.DtTinyint.ScanType(nullable)
 	}
 	return false, nil
 }
@@ -238,46 +238,46 @@ var (
 )
 
 var basicType = []*_basicType{
-	dtTinyint:    {_baseType{nil, nil, "TINYINT", nil, p.DtTinyint.ScanType(), nil}},
-	dtSmallint:   {_baseType{nil, nil, "SMALLINT", nil, p.DtSmallint.ScanType(), nil}},
-	dtInteger:    {_baseType{nil, nil, "INTEGER", nil, p.DtInteger.ScanType(), nil}},
-	dtBigint:     {_baseType{nil, nil, "BIGINT", nil, p.DtBigint.ScanType(), nil}},
-	dtReal:       {_baseType{nil, nil, "REAL", nil, p.DtReal.ScanType(), nil}},
-	dtDouble:     {_baseType{nil, nil, "DOUBLE", nil, p.DtDouble.ScanType(), nil}},
-	dtDate:       {_baseType{nil, nil, "DATE", _dateDBTypeName, p.DtTime.ScanType(), nil}},
-	dtTime:       {_baseType{nil, nil, "TIME", _timeDBTypeName, p.DtTime.ScanType(), nil}},
-	dtTimestamp:  {_baseType{nil, nil, "TIMESTAMP", _timestampDBTypeName, p.DtTime.ScanType(), nil}},
-	dtLongdate:   {_baseType{nil, nil, "LONGDATE", _longdateDBTypeName, p.DtTime.ScanType(), nil}},
-	dtSeconddate: {_baseType{nil, nil, "SECONDDATE", _seconddateDBTypeName, p.DtTime.ScanType(), nil}},
-	dtDaydate:    {_baseType{nil, nil, "DAYDATE", _daydateDBTypeName, p.DtTime.ScanType(), nil}},
-	dtSecondtime: {_baseType{nil, nil, "SECONDTIME", _secondtimeDBTypeName, p.DtTime.ScanType(), nil}},
-	dtClob:       {_baseType{nil, nil, "CLOB", _clobDBTypeName, p.DtLob.ScanType(), nil}},
-	dtNClob:      {_baseType{nil, nil, "NCLOB", nil, p.DtLob.ScanType(), nil}},
-	dtBlob:       {_baseType{nil, nil, "BLOB", nil, p.DtLob.ScanType(), nil}},
-	dtText:       {_baseType{&dfvLevel4, &mv3, "TEXT", nil, p.DtLob.ScanType(), nil}},
-	dtBintext:    {_baseType{&dfvLevel6, &mv3, "BINTEXT", _bintextDBTypeName, p.DtLob.ScanType(), nil}},
-	dtBoolean:    {_baseType{nil, nil, "BOOLEAN", _booleanDBTypeName, p.DtBoolean.ScanType(), _booleanScanType}},
+	dtTinyint:    {_baseType{nil, nil, "TINYINT", nil, p.DtTinyint, nil}},
+	dtSmallint:   {_baseType{nil, nil, "SMALLINT", nil, p.DtSmallint, nil}},
+	dtInteger:    {_baseType{nil, nil, "INTEGER", nil, p.DtInteger, nil}},
+	dtBigint:     {_baseType{nil, nil, "BIGINT", nil, p.DtBigint, nil}},
+	dtReal:       {_baseType{nil, nil, "REAL", nil, p.DtReal, nil}},
+	dtDouble:     {_baseType{nil, nil, "DOUBLE", nil, p.DtDouble, nil}},
+	dtDate:       {_baseType{nil, nil, "DATE", _dateDBTypeName, p.DtTime, nil}},
+	dtTime:       {_baseType{nil, nil, "TIME", _timeDBTypeName, p.DtTime, nil}},
+	dtTimestamp:  {_baseType{nil, nil, "TIMESTAMP", _timestampDBTypeName, p.DtTime, nil}},
+	dtLongdate:   {_baseType{nil, nil, "LONGDATE", _longdateDBTypeName, p.DtTime, nil}},
+	dtSeconddate: {_baseType{nil, nil, "SECONDDATE", _seconddateDBTypeName, p.DtTime, nil}},
+	dtDaydate:    {_baseType{nil, nil, "DAYDATE", _daydateDBTypeName, p.DtTime, nil}},
+	dtSecondtime: {_baseType{nil, nil, "SECONDTIME", _secondtimeDBTypeName, p.DtTime, nil}},
+	dtClob:       {_baseType{nil, nil, "CLOB", _clobDBTypeName, p.DtLob, nil}},
+	dtNClob:      {_baseType{nil, nil, "NCLOB", nil, p.DtLob, nil}},
+	dtBlob:       {_baseType{nil, nil, "BLOB", nil, p.DtLob, nil}},
+	dtText:       {_baseType{&dfvLevel4, &mv3, "TEXT", nil, p.DtLob, nil}},
+	dtBintext:    {_baseType{&dfvLevel6, &mv3, "BINTEXT", _bintextDBTypeName, p.DtLob, nil}},
+	dtBoolean:    {_baseType{nil, nil, "BOOLEAN", _booleanDBTypeName, p.DtBoolean, _booleanScanType}},
 }
 
 var varType = []*_varType{
-	dtChar:      {_baseType{nil, nil, "CHAR", _charDBTypeName, p.DtString.ScanType(), nil}},
-	dtVarchar:   {_baseType{nil, nil, "VARCHAR", _varcharDBTypeName, p.DtString.ScanType(), nil}},
-	dtNChar:     {_baseType{nil, nil, "NCHAR", nil, p.DtString.ScanType(), nil}},
-	dtNVarchar:  {_baseType{nil, nil, "NVARCHAR", nil, p.DtString.ScanType(), nil}},
-	dtShorttext: {_baseType{nil, &mv3, "SHORTTEXT", _shorttextDBTypeName, p.DtString.ScanType(), nil}},
-	dtAlphanum:  {_baseType{nil, &mv3, "ALPHANUM", _alphanumDBTypeName, p.DtString.ScanType(), nil}},
-	dtBinary:    {_baseType{nil, nil, "BINARY", nil, p.DtBytes.ScanType(), nil}},
-	dtVarbinary: {_baseType{nil, nil, "VARBINARY", nil, p.DtBytes.ScanType(), nil}},
+	dtChar:      {_baseType{nil, nil, "CHAR", _charDBTypeName, p.DtString, nil}},
+	dtVarchar:   {_baseType{nil, nil, "VARCHAR", _varcharDBTypeName, p.DtString, nil}},
+	dtNChar:     {_baseType{nil, nil, "NCHAR", nil, p.DtString, nil}},
+	dtNVarchar:  {_baseType{nil, nil, "NVARCHAR", nil, p.DtString, nil}},
+	dtShorttext: {_baseType{nil, &mv3, "SHORTTEXT", _shorttextDBTypeName, p.DtString, nil}},
+	dtAlphanum:  {_baseType{nil, &mv3, "ALPHANUM", _alphanumDBTypeName, p.DtString, nil}},
+	dtBinary:    {_baseType{nil, nil, "BINARY", nil, p.DtBytes, nil}},
+	dtVarbinary: {_baseType{nil, nil, "VARBINARY", nil, p.DtBytes, nil}},
 }
 
 var decimalType = []*_decimalType{
-	dtDecimal:      {_baseType{nil, nil, "DECIMAL", nil, p.DtDecimal.ScanType(), nil}},
-	dtSmalldecimal: {_baseType{nil, nil, "SMALLDECIMAL", _smalldecimalDBTypeName, p.DtDecimal.ScanType(), nil}},
+	dtDecimal:      {_baseType{nil, nil, "DECIMAL", nil, p.DtDecimal, nil}},
+	dtSmalldecimal: {_baseType{nil, nil, "SMALLDECIMAL", _smalldecimalDBTypeName, p.DtDecimal, nil}},
 }
 
 var spatialType = []*_spatialType{
-	dtSTPoint:    {_baseType{&dfvLevel6, nil, "ST_POINT", nil, p.DtLob.ScanType(), nil}},
-	dtSTGeometry: {_baseType{&dfvLevel6, nil, "ST_GEOMETRY", nil, p.DtLob.ScanType(), nil}},
+	dtSTPoint:    {_baseType{&dfvLevel6, nil, "ST_POINT", nil, p.DtLob, nil}},
+	dtSTGeometry: {_baseType{&dfvLevel6, nil, "ST_GEOMETRY", nil, p.DtLob, nil}},
 }
 
 type basicColumn struct {
@@ -294,7 +294,7 @@ func (t *basicColumn) databaseTypeName() string                          { retur
 func (t *basicColumn) column() string                                    { return formatColumn(t.typeName(), t._nullable) }
 func (t *basicColumn) length() (length int64, ok bool)                   { return 0, false }
 func (t *basicColumn) precisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
-func (t *basicColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv) }
+func (t *basicColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv, t._nullable) }
 func (t *basicColumn) nullable() (nullable, ok bool)                     { return t._nullable, true }
 
 type varColumn struct {
@@ -312,7 +312,7 @@ func (t *varColumn) databaseTypeName() string                          { return 
 func (t *varColumn) column() string                                    { return formatVarColumn(t.typeName(), t._length, t._nullable) }
 func (t *varColumn) length() (length int64, ok bool)                   { return t._length, true }
 func (t *varColumn) precisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
-func (t *varColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv) }
+func (t *varColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv, t._nullable) }
 func (t *varColumn) nullable() (nullable, ok bool)                     { return t._nullable, true }
 
 type decimalColumn struct {
@@ -367,7 +367,7 @@ func (t *decimalColumn) precisionScale() (precision, scale int64, ok bool) {
 	}
 	return t.precision, t.scale, true
 }
-func (t *decimalColumn) scanType() reflect.Type        { return t.dt.scanType(t.version, t._dfv) }
+func (t *decimalColumn) scanType() reflect.Type        { return t.dt.scanType(t.version, t._dfv, t._nullable) }
 func (t *decimalColumn) nullable() (nullable, ok bool) { return t._nullable, true }
 
 type spatialColumn struct {
@@ -387,7 +387,7 @@ func (t *spatialColumn) column() string {
 }
 func (t *spatialColumn) length() (length int64, ok bool)                   { return 0, false }
 func (t *spatialColumn) precisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
-func (t *spatialColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv) }
+func (t *spatialColumn) scanType() reflect.Type                            { return t.dt.scanType(t.version, t._dfv, t._nullable) }
 func (t *spatialColumn) nullable() (nullable, ok bool)                     { return t._nullable, true }
 func (t *spatialColumn) srid() int32                                       { return t._srid }
 

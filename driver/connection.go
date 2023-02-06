@@ -78,8 +78,8 @@ const (
 
 var (
 	// register as var to execute even before init() funcs are called
-	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem())
-	_ = p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem())
+	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem(), reflect.TypeOf((*NullDecimal)(nil)).Elem())
+	_ = p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem(), reflect.TypeOf((*NullLob)(nil)).Elem())
 )
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.

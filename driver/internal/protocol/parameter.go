@@ -123,7 +123,7 @@ func (f *ParameterField) TypeName() string { return f.tc.typeName() }
 
 // ScanType returns the scan type of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *ParameterField) ScanType() reflect.Type { return f.tc.dataType().ScanType() }
+func (f *ParameterField) ScanType() reflect.Type { return f.tc.dataType().ScanType(f.Nullable()) }
 
 // TypeLength returns the type length of the field.
 // see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
