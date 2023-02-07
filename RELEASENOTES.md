@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.5
+- fixed blob bulk sql statement issue
+
 #### v1.0.4
 - fixed panic in case of bulk sql statement execution error
 

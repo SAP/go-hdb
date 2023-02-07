@@ -96,6 +96,9 @@ func (d *LobInDescr) String() string {
 	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, b)
 }
 
+// IsLastData returns true if all data is fetched, else otherwise.
+func (d *LobInDescr) IsLastData() bool { return d.opt.IsLastData() }
+
 // FetchNext fetches the next lob chunk.
 func (d *LobInDescr) FetchNext(chunkSize int) (bool, error) {
 	if cap(d.b) < chunkSize {
