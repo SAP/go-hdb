@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.4
+- fixed panic in case of bulk sql statement execution error
+
 #### v1.0.3
 - fixed scan type for 'nullable' database fields
 
