@@ -65,8 +65,8 @@ func (_optTinyintType) size(any) int   { return encoding.TinyintFieldSize }
 func (_optIntegerType) size(any) int   { return encoding.IntegerFieldSize }
 func (_optBigintType) size(any) int    { return encoding.BigintFieldSize }
 func (_optDoubleType) size(any) int    { return encoding.DoubleFieldSize }
-func (_optStringType) size(v any) int  { return 2 + len(v.(string)) } //length int16 + string length
-func (_optBstringType) size(v any) int { return 2 + len(v.([]byte)) } //length int16 + bytes length
+func (_optStringType) size(v any) int  { return 2 + len(v.(string)) } // length int16 + string length
+func (_optBstringType) size(v any) int { return 2 + len(v.([]byte)) } // length int16 + bytes length
 
 func (_optBooleanType) encode(e *encoding.Encoder, v any) { e.Bool(v.(bool)) }
 func (_optTinyintType) encode(e *encoding.Encoder, v any) { e.Int8(v.(int8)) }

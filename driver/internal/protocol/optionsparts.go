@@ -69,7 +69,7 @@ func (ops Options[K]) String() string {
 }
 
 func (ops Options[K]) size() int {
-	size := 2 * len(ops) //option + type
+	size := 2 * len(ops) // option + type
 	for _, v := range ops {
 		ot := getOptType(v)
 		size += ot.size(v)

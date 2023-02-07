@@ -361,7 +361,7 @@ func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 
 	numWriters := len(writers)
 	partSize := make([]int, numWriters)
-	size := int64(segmentHeaderSize + numWriters*partHeaderSize) //int64 to hold MaxUInt32 in 32bit OS
+	size := int64(segmentHeaderSize + numWriters*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
 
 	for i, part := range writers {
 		s := part.size()

@@ -58,8 +58,8 @@ func testInsertByQuery(db *sql.DB, t *testing.T) {
 }
 
 func testHDBError(db *sql.DB, t *testing.T) {
-	//select from not existing table with different table name length
-	//to check if padding, etc works (see hint in protocol.error.Read(...))
+	// select from not existing table with different table name length
+	// to check if padding, etc works (see hint in protocol.error.Read(...))
 	for i := 0; i < 9; i++ {
 		_, err := db.Query(fmt.Sprintf("select * from %s", strings.Repeat("x", i+1)))
 		if err == nil {

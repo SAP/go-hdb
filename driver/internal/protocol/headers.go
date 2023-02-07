@@ -104,7 +104,7 @@ type segmentHeader struct {
 func (h *segmentHeader) String() string {
 	switch h.segmentKind {
 
-	default: //error
+	default: // error
 		return fmt.Sprintf(
 			"segmentLength %d segmentOfs %d noOfParts %d, segmentNo %d segmentKind %s",
 			h.segmentLength,
@@ -148,19 +148,19 @@ func (h *segmentHeader) encode(enc *encoding.Encoder) error {
 
 	switch h.segmentKind {
 
-	default: //error
-		enc.Zeroes(11) //segmentHeaderLength
+	default: // error
+		enc.Zeroes(11) // segmentHeaderLength
 
 	case skRequest:
 		enc.Int8(int8(h.messageType))
 		enc.Bool(h.commit)
 		enc.Int8(int8(h.commandOptions))
-		enc.Zeroes(8) //segmentHeaderSize
+		enc.Zeroes(8) // segmentHeaderSize
 
 	case skReply:
-		enc.Zeroes(1) //reserved
+		enc.Zeroes(1) // reserved
 		enc.Int16(int16(h.functionCode))
-		enc.Zeroes(8) //segmentHeaderSize
+		enc.Zeroes(8) // segmentHeaderSize
 	}
 	return nil
 }
@@ -175,19 +175,19 @@ func (h *segmentHeader) decode(dec *encoding.Decoder) error {
 
 	switch h.segmentKind {
 
-	default: //error
-		dec.Skip(11) //segmentHeaderLength
+	default: // error
+		dec.Skip(11) // segmentHeaderLength
 
 	case skRequest:
 		h.messageType = MessageType(dec.Int8())
 		h.commit = dec.Bool()
 		h.commandOptions = commandOptions(dec.Int8())
-		dec.Skip(8) //segmentHeaderLength
+		dec.Skip(8) // segmentHeaderLength
 
 	case skReply:
-		dec.Skip(1) //reserved
+		dec.Skip(1) // reserved
 		h.functionCode = FunctionCode(dec.Int16())
-		dec.Skip(8) //segmentHeaderLength
+		dec.Skip(8) // segmentHeaderLength
 	}
 	return dec.Error()
 }
@@ -285,7 +285,7 @@ func (h *PartHeader) encode(enc *encoding.Encoder) error {
 	enc.Int32(h.bigArgumentCount)
 	enc.Int32(h.bufferLength)
 	enc.Int32(h.bufferSize)
-	//no filler
+	// no filler
 	return nil
 }
 

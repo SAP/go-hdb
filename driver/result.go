@@ -129,7 +129,7 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 			return io.EOF
 		}
 		if err := qr.conn._fetchNext(qr); err != nil {
-			qr.lastErr = err //fieldValues and attrs are nil
+			qr.lastErr = err // fieldValues and attrs are nil
 			return err
 		}
 		if qr.numRow() == 0 {

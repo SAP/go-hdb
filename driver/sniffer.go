@@ -26,10 +26,10 @@ type Sniffer struct {
 	conn   net.Conn
 	dbConn net.Conn
 
-	//client
+	// client
 	clRd *bufio.Reader
 	clWr *bufio.Writer
-	//database
+	// database
 	dbRd *bufio.Reader
 	dbWr *bufio.Writer
 
@@ -42,8 +42,8 @@ type Sniffer struct {
 // is listening for hdb protocol calls. The dbAddr is the hdb host port address in "host:port" format.
 func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 
-	//TODO - review setting values here
-	//protocolTraceFlag.Set("true")
+	// TODO - review setting values here
+	// protocolTraceFlag.Set("true")
 
 	s := &Sniffer{
 		conn:   conn,
@@ -54,9 +54,9 @@ func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 		dbWr: bufio.NewWriter(dbConn),
 	}
 
-	//read from client connection and write to db buffer
+	// read from client connection and write to db buffer
 	s.clRd = bufio.NewReader(io.TeeReader(conn, s.dbWr))
-	//read from db and write to client connection buffer
+	// read from db and write to client connection buffer
 	s.dbRd = bufio.NewReader(io.TeeReader(dbConn, s.clWr))
 
 	s.upRd = newSniffUpReader(s.clRd)
@@ -84,16 +84,16 @@ func (s *Sniffer) Run() error {
 	}
 
 	for {
-		//up stream
+		// up stream
 		if err := s.upRd.readMsg(); err != nil {
 			return err // err == io.EOF: connection closed by client
 		}
 		if err := s.dbWr.Flush(); err != nil {
 			return err
 		}
-		//down stream
+		// down stream
 		if err := s.downRd.readMsg(); err != nil {
-			if _, ok := err.(*p.HdbErrors); !ok { //if hdbErrors continue
+			if _, ok := err.(*p.HdbErrors); !ok { // if hdbErrors continue
 				return err
 			}
 		}
@@ -189,8 +189,8 @@ func newSniffDownReader(rd *bufio.Reader) *sniffDownReader {
 
 func (r *sniffDownReader) readMsg() error {
 	var stmtID uint64
-	//resMeta := &resultMetadata{}
-	//prmMeta := &parameterMetadata{}
+	// resMeta := &resultMetadata{}
+	// prmMeta := &parameterMetadata{}
 
 	if err := r.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {

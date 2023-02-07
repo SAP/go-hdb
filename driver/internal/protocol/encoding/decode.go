@@ -211,7 +211,7 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 		return nil, 0, nil
 	}
 
-	if (bs[15] & 0x70) == 0x70 { //null value (bit 4,5,6 set)
+	if (bs[15] & 0x70) == 0x70 { // null value (bit 4,5,6 set)
 		return nil, 0, nil
 	}
 
@@ -225,13 +225,13 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 	// b14 := b[14]  // save b[14]
 	bs[14] &= 0x01 // keep the mantissa bit (rest: sign and exp)
 
-	//most significand byte
+	// most significant byte
 	msb := 14
 	for msb > 0 && bs[msb] == 0 {
 		msb--
 	}
 
-	//calc number of words
+	// calc number of words
 	numWords := (msb / _S) + 1
 	ws := make([]big.Word, numWords)
 
@@ -257,13 +257,13 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 
 	neg := (bs[size-1] & 0x80) != 0 // is negative number (2s complement)
 
-	//most significand byte
+	// most significand byte
 	msb := size - 1
 	for msb > 0 && bs[msb] == 0 {
 		msb--
 	}
 
-	//calc number of words
+	// calc number of words
 	numWords := (msb / _S) + 1
 	ws := make([]big.Word, numWords)
 
@@ -309,7 +309,7 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 
 // varFieldInd decodes a variable field indicator.
 func (d *Decoder) varFieldInd() (n, size int, null bool) {
-	ind := d.Byte() //length indicator
+	ind := d.Byte() // length indicator
 	switch {
 	default:
 		return 1, 0, false

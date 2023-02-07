@@ -111,7 +111,7 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.tc = typeCode(dec.Int8())
 	f.fraction = dec.Int16()
 	f.length = dec.Int16()
-	dec.Skip(2) //filler
+	dec.Skip(2) // filler
 	f.tableNameOfs = dec.Uint32()
 	f.schemaNameOfs = dec.Uint32()
 	f.columnNameOfs = dec.Uint32()

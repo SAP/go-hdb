@@ -482,7 +482,7 @@ func asTime(v any) time.Time {
 	if !ok {
 		panic("invalid time value") // should never happen
 	}
-	//store in utc
+	// store in utc
 	return t.UTC()
 }
 
@@ -644,25 +644,25 @@ func (_integerType) decodePrm(d *encoding.Decoder) (any, error) { return int64(d
 func (_bigintType) decodePrm(d *encoding.Decoder) (any, error)  { return d.Int64(), nil }
 
 func (ft _tinyintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _smallintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _integerType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _bigintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
@@ -714,7 +714,7 @@ func (_timestampType) decodeRes(d *encoding.Decoder) (any, error) {
 // day is 1 byte
 func decodeDate(d *encoding.Decoder) (int, time.Month, int, bool) {
 	year := d.Uint16()
-	null := ((year & 0x8000) == 0) //null value
+	null := ((year & 0x8000) == 0) // null value
 	year &= 0x3fff
 	month := d.Int8()
 	month++
@@ -724,7 +724,7 @@ func decodeDate(d *encoding.Decoder) (int, time.Month, int, bool) {
 
 func decodeTime(d *encoding.Decoder) (int, int, int, int, bool) {
 	hour := d.Byte()
-	null := (hour & 0x80) == 0 //null value
+	null := (hour & 0x80) == 0 // null value
 	hour &= 0x7f
 	min := d.Int8()
 	msec := d.Uint16()
@@ -777,19 +777,19 @@ func (_decimalType) decodeRes(d *encoding.Decoder) (any, error) {
 }
 
 func (ft _fixed8Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return decodeFixed(d, encoding.Fixed8FieldSize, ft.prec, ft.scale)
 }
 func (ft _fixed12Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return decodeFixed(d, encoding.Fixed12FieldSize, ft.prec, ft.scale)
 }
 func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return decodeFixed(d, encoding.Fixed16FieldSize, ft.prec, ft.scale)

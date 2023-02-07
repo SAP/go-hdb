@@ -145,12 +145,12 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 
 	tmpTableName := RandomIdentifier("#tmpTable")
 
-	//keep connection / hdb session for using local temporary tables
+	// keep connection / hdb session for using local temporary tables
 	tx, err := conn.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //cleanup
+	defer tx.Rollback() // cleanup
 
 	if _, err := tx.Exec(fmt.Sprintf("create local temporary table %s (i integer, b blob)", tmpTableName)); err != nil {
 		t.Fatalf("create table failed: %s", err)
@@ -269,7 +269,7 @@ func testBulkGeo(conn *sql.Conn, t *testing.T) {
 		if j != i {
 			t.Fatalf("value %d - expected %d", j, i)
 		}
-		//t.Logf("value: %[1]v%[1]s", b)
+		// t.Logf("value: %[1]v%[1]s", b)
 		i++
 	}
 	if err := rows.Err(); err != nil {

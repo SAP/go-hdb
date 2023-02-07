@@ -163,11 +163,11 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
 	f.mode = ParameterMode(dec.Int8())
-	dec.Skip(1) //filler
+	dec.Skip(1) // filler
 	f.ofs = int(dec.Uint32())
 	f.length = dec.Int16()
 	f.fraction = dec.Int16()
-	dec.Skip(4) //filler
+	dec.Skip(4) // filler
 
 	f.names.insert(uint32(f.ofs))
 
@@ -284,7 +284,7 @@ func (p *InputParameters) numArg() int {
 
 func (p *InputParameters) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	// TODO Sniffer
-	//return fmt.Errorf("not implemented")
+	// return fmt.Errorf("not implemented")
 	return nil
 }
 
@@ -296,7 +296,7 @@ func (p *InputParameters) encode(enc *encoding.Encoder) error {
 
 	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
 		for j := 0; j < numColumns; j++ {
-			//mass insert
+			// mass insert
 			f := p.InputFields[j]
 			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
 				return err

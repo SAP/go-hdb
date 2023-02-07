@@ -101,7 +101,7 @@ func (c *dbConn) close() error { return c.conn.Close() }
 // Read implements the io.Reader interface.
 func (c *dbConn) Read(b []byte) (n int, err error) {
 	var start time.Time
-	//set timeout
+	// set timeout
 	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
 		goto retError
 	}
@@ -121,7 +121,7 @@ retError:
 // Write implements the io.Writer interface.
 func (c *dbConn) Write(b []byte) (n int, err error) {
 	var start time.Time
-	//set timeout
+	// set timeout
 	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
 		goto retError
 	}
@@ -544,7 +544,7 @@ var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statemant beginnin
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
 	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
 	if err := c.tryLock(lrNestedQuery); err != nil {
@@ -596,7 +596,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 // ExecContext implements the driver.ExecerContext interface.
 func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.NamedValue) (r driver.Result, err error) {
 	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
 	if err := c.tryLock(0); err != nil {
@@ -696,7 +696,7 @@ func (c *conn) addSQLTimeValue(start time.Time, k int) {
 	c.metrics.chMsg <- sqlTimeMsg{idx: k, d: time.Since(start)}
 }
 
-//transaction
+// transaction
 
 // check if tx implements all required interfaces
 var (
@@ -1176,7 +1176,7 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 		return nil, err
 	}
 
-	host, _ := ci[p.CiHost].(string) //check existencs and covert to string
+	host, _ := ci[p.CiHost].(string) // check existencs and covert to string
 	port, _ := ci[p.CiPort].(int32)  // check existence and convert to integer
 	isConnected, _ := ci[p.CiIsConnected].(bool)
 
@@ -1222,7 +1222,7 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 	if err != nil {
 		return 0, nil, err
 	}
-	//co := c.defaultClientOptions()
+	// co := c.defaultClientOptions()
 
 	co := func() p.Options[p.ConnectOption] {
 		co := p.Options[p.ConnectOption]{

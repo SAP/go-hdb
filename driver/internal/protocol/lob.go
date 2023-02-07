@@ -184,7 +184,7 @@ func (d *WriteLobDescr) FetchNext(chunkSize int) error {
 		return err
 	}
 	d.Opt = d.LobInDescr.opt
-	d.ofs = -1 //offset (-1 := append)
+	d.ofs = -1 // offset (-1 := append)
 	d.b = d.LobInDescr.b
 	return nil
 }
@@ -309,7 +309,7 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 
 func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(r.ID))
-	enc.Int64(r.Ofs + 1) //1-based
+	enc.Int64(r.Ofs + 1) // 1-based
 	enc.Int32(r.ChunkSize)
 	enc.Zeroes(4)
 	return nil

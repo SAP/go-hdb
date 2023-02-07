@@ -98,7 +98,7 @@ func (e *HdbError) IsFatal() bool { return e.errorLevel == errorLevelFatalError 
 // HdbErrors represent the collection of errors return by the server.
 type HdbErrors struct {
 	errs []*HdbError
-	//numArg int
+	// numArg int
 	idx int
 }
 
