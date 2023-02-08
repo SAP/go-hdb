@@ -597,7 +597,7 @@ func (ft _lobCESU8Type) encodePrm(e *encoding.Encoder, v any) error {
 }
 
 func encodeLobPrm(e *encoding.Encoder, descr *LobInDescr) error {
-	e.Byte(byte(descr.opt))
+	e.Byte(byte(descr.Opt))
 	e.Int32(int32(len(descr.b)))
 	e.Int32(int32(descr.pos))
 	return nil
@@ -871,7 +871,7 @@ func (_cesu8Type) decodeRes(d *encoding.Decoder) (any, error) {
 
 func decodeLobPrm(d *encoding.Decoder) (any, error) {
 	descr := &LobInDescr{}
-	descr.opt = LobOptions(d.Byte())
+	descr.Opt = LobOptions(d.Byte())
 	descr._size = int(d.Int32())
 	descr.pos = int(d.Int32())
 	return nil, nil

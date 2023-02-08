@@ -168,7 +168,7 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 		if i >= numRows {
 			return ErrEndOfRows
 		}
-		args[0], args[1] = i, new(Lob).SetReader(strings.NewReader(lobData(i)))
+		args[0], args[1] = i, lobData(i)
 		i++
 		return nil
 	}); err != nil {
@@ -191,25 +191,117 @@ func testBulkBlob(conn *sql.Conn, t *testing.T) {
 	}
 	defer rows.Close()
 
+	var stringLob stringLob // defined in lob_test
 	i = 0
 	for rows.Next() {
-
 		var j int
-		builder := new(strings.Builder)
-
-		lob := new(Lob).SetWriter(builder)
-
-		if err := rows.Scan(&j, lob); err != nil {
+		if err := rows.Scan(&j, &stringLob); err != nil {
 			t.Fatal(err)
 		}
-
 		if j != i {
 			t.Fatalf("value %d - expected %d", j, i)
 		}
-		if builder.String() != lobData(i) {
-			t.Fatalf("value %s - expected %s", builder.String(), lobData(i))
+		if string(stringLob) != lobData(i) {
+			t.Fatalf("value %s - expected %s", stringLob, lobData(i))
 		}
+		i++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
 
+func testBulkBlob106(conn *sql.Conn, t *testing.T) {
+	/*
+		issue https://github.com/SAP/go-hdb/issues/106
+		precondition:
+			- bulk insert of blob data
+			- most of the blob content does fit into lob chunk size
+			- only some of the blob content did exceed lob chunk size
+	*/
+
+	ctx := context.Background()
+
+	tableName := RandomIdentifier("bulkBlob106")
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create table %s (i integer, b nclob)", tableName)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	const (
+		numRecs           = 1000
+		numRecsPerCall    = numRecs / 10
+		bigChunkSizeRecNo = 77 // record exceeding lob chunk size
+	)
+
+	chunkSize := DefaultTestConnector().LobChunkSize()
+
+	testData := [numRecsPerCall]string{}
+
+	for i := 0; i < numRecsPerCall; i++ {
+		if i == bigChunkSizeRecNo {
+			testData[i] = strings.Repeat("a", chunkSize+1)
+		} else {
+			testData[i] = "b"
+		}
+	}
+
+	tx, err := conn.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	args := make([]any, 2*numRecsPerCall)
+
+	for i := 0; i < (numRecs / numRecsPerCall); i++ {
+		for j := 0; j < numRecsPerCall; j++ {
+			args[j*2] = i*numRecsPerCall + j
+			args[j*2+1] = testData[j]
+		}
+		if _, err := stmt.Exec(args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// check
+	i := 0
+	err = conn.QueryRowContext(ctx, fmt.Sprintf("select count(*) from %s", tableName)).Scan(&i)
+	if err != nil {
+		t.Fatalf("select count failed: %s", err)
+	}
+
+	if i != numRecs {
+		t.Fatalf("invalid number of records %d - %d expected", i, numRecs)
+	}
+
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf("select * from %s order by i", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var stringLob stringLob // defined in lob_test
+	i = 0
+	for rows.Next() {
+		var j int
+		if err := rows.Scan(&j, &stringLob); err != nil {
+			t.Fatal(err)
+		}
+		if j != i {
+			t.Fatalf("value %d - expected %d", j, i)
+		}
+		if string(stringLob) != testData[j%numRecsPerCall] {
+			t.Fatalf("value %s - expected %s", stringLob, testData[j%numRecsPerCall])
+		}
 		i++
 	}
 	if err := rows.Err(); err != nil {
@@ -241,7 +333,7 @@ func testBulkGeo(conn *sql.Conn, t *testing.T) {
 		if i >= numRows {
 			return ErrEndOfRows
 		}
-		args[0], args[1] = i, new(Lob).SetReader(strings.NewReader(ewkb))
+		args[0], args[1] = i, ewkb
 		i++
 		return nil
 	}); err != nil {
@@ -285,6 +377,7 @@ func TestBulk(t *testing.T) {
 		{"testBulkInsertDuplicates", testBulkInsertDuplicates},
 		{"testBulkInsertStmtNo", testBulkInsertStmtNo},
 		{"testBulkBlob", testBulkBlob},
+		{"testBulkBlob106", testBulkBlob106},
 		{"testBulkGeo", testBulkGeo},
 	}
 

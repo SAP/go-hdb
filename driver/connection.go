@@ -1470,7 +1470,12 @@ func (c *conn) _exec(pr *prepareResult, nvargs []driver.NamedValue, hasLob, comm
 			- chunkReaders
 			- nil (no callResult, exec does not have output parameters)
 		*/
-		if err := c.encodeLobs(nil, ids, pr.parameterFields, nvargs); err != nil {
+
+		/*
+			write lob data only for the last record as lob streaming is only available for the last one
+		*/
+		startLastRec := len(nvargs) - len(pr.parameterFields)
+		if err := c.encodeLobs(nil, ids, pr.parameterFields, nvargs[startLastRec:]); err != nil {
 			return nil, err
 		}
 	}
@@ -1840,25 +1845,28 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 	return nil
 }
 
+func assertEqual[T comparable](s string, a, b T) {
+	if a != b {
+		panic(fmt.Sprintf("%s: %v %v", s, a, b))
+	}
+}
+
 // encodeLobs encodes (write to db) input lob parameters.
 func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
+	assertEqual("lob streaming can only be done for one (the last) record", len(inPrmFields), len(nvargs))
 
 	descrs := make([]*p.WriteLobDescr, 0, len(ids))
-
-	numInPrmField := len(inPrmFields)
-
 	j := 0
-	for i, arg := range nvargs { // range over args (mass / bulk operation)
-		f := inPrmFields[i%numInPrmField]
+	for i, f := range inPrmFields {
 		if f.IsLob() {
-			lobInDescr, ok := arg.Value.(*p.LobInDescr)
+			lobInDescr, ok := nvargs[i].Value.(*p.LobInDescr)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", arg)
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", nvargs[i])
 			}
 			if j >= len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			if !lobInDescr.IsLastData() {
+			if !lobInDescr.Opt.IsLastData() {
 				descrs = append(descrs, &p.WriteLobDescr{LobInDescr: lobInDescr, ID: ids[j]})
 				j++
 			}

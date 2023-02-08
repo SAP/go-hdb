@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.6
+- some minor performance improvements and additional test
+
 #### v1.0.5
 - fixed blob bulk sql statement issue
 

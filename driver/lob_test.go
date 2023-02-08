@@ -4,7 +4,6 @@
 package driver
 
 import (
-	//"bytes"
 	"bytes"
 	"context"
 	"crypto/rand"

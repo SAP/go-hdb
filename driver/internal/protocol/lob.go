@@ -77,7 +77,7 @@ var _ LobDecoderSetter = (*LobOutDescr)(nil)
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
 	rd    io.Reader
-	opt   LobOptions
+	Opt   LobOptions
 	_size int
 	pos   int
 	b     []byte
@@ -93,11 +93,8 @@ func (d *LobInDescr) String() string {
 	if len(b) >= 25 {
 		b = d.b[:25]
 	}
-	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d._size, d.pos, b)
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.Opt, d._size, d.pos, b)
 }
-
-// IsLastData returns true if all data is fetched, else otherwise.
-func (d *LobInDescr) IsLastData() bool { return d.opt.IsLastData() }
 
 // FetchNext fetches the next lob chunk.
 func (d *LobInDescr) FetchNext(chunkSize int) (bool, error) {
@@ -115,11 +112,11 @@ func (d *LobInDescr) FetchNext(chunkSize int) (bool, error) {
 	d._size, err = io.ReadFull(d.rd, d.b)
 	d.b = d.b[:d._size]
 
-	d.opt = loDataincluded
+	d.Opt = loDataincluded
 	if err != io.EOF && err != io.ErrUnexpectedEOF {
 		return false, err
 	}
-	d.opt |= loLastdata
+	d.Opt |= loLastdata
 	return true, nil
 }
 
@@ -186,7 +183,7 @@ func (d *WriteLobDescr) FetchNext(chunkSize int) error {
 	if _, err := d.LobInDescr.FetchNext(chunkSize); err != nil {
 		return err
 	}
-	d.Opt = d.LobInDescr.opt
+	d.Opt = d.LobInDescr.Opt
 	d.ofs = -1 //offset (-1 := append)
 	d.b = d.LobInDescr.b
 	return nil
