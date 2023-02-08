@@ -31,7 +31,8 @@ func ExampleNewDSNConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// output:
 }
@@ -93,7 +94,8 @@ func ExampleNewBasicAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// output:
 }
@@ -131,7 +133,8 @@ func ExampleNewX509AuthConnectorByFiles() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// output:
 }
@@ -165,7 +168,8 @@ func ExampleNewJWTAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// output:
 }

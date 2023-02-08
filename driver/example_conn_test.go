@@ -19,7 +19,8 @@ func ExampleConn_HDBVersion() {
 	// Grab connection.
 	conn, err := db.Conn(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer conn.Close()
 
@@ -39,7 +40,8 @@ func ExampleConn_DBConnectInfo() {
 	// Grab connection.
 	conn, err := db.Conn(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer conn.Close()
 
@@ -52,7 +54,8 @@ func ExampleConn_DBConnectInfo() {
 		log.Printf("db connect info: %s", ci)
 		return nil
 	}); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// output:
 }

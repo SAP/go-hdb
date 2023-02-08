@@ -27,27 +27,32 @@ func ExampleScanLobBytes() {
 	table := driver.RandomIdentifier("lob_")
 
 	if _, err := db.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
-		log.Fatalf("create table failed: %s", err)
+		log.Printf("create table failed: %s", err)
+		return
 	}
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// Lob content can be written using a byte slice.
 	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), []byte("scan lob bytes"))
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	var arg BytesLob
 	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select * from %s", table)).Scan(&arg); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	fmt.Println(string(arg))
 	// output: scan lob bytes

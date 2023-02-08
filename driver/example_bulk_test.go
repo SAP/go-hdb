@@ -26,13 +26,15 @@ func Example_bulkInsert() {
 
 	// Create table.
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// Prepare statement.
 	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?, ?)", tableName))
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer stmt.Close()
 
@@ -42,7 +44,8 @@ func Example_bulkInsert() {
 		args[i*2], args[i*2+1] = i, float64(i)
 	}
 	if _, err := stmt.Exec(args...); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// Bulk insert via function.
@@ -55,18 +58,21 @@ func Example_bulkInsert() {
 		i++
 		return nil
 	}); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// Select number of inserted rows.
 	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&numRow); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	fmt.Print(numRow)
 
 	// Drop table.
 	if _, err := db.Exec(fmt.Sprintf("drop table %s", tableName)); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// output: 2000

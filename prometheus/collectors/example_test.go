@@ -61,19 +61,22 @@ func Example() {
 	// register collector for sql.DB stats.
 	sqlDBStatsCollector := collectors.NewDBStatsCollector(db.DB, dbName)
 	if err := prometheus.Register(sqlDBStatsCollector); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// register collector for go-hdb driver stats.
 	driverCollector := drivercollectors.NewDriverStatsCollector(connector.NativeDriver(), dbName)
 	if err := prometheus.Register(driverCollector); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// register collector for extended go-hdb db stats.
 	driverDBExStatsCollector := drivercollectors.NewDBExStatsCollector(db, dbName)
 	if err := prometheus.Register(driverDBExStatsCollector); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	wg := sync.WaitGroup{}

@@ -24,7 +24,8 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 
 		go handler(conn, dbAddr)

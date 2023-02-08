@@ -26,13 +26,15 @@ end
 	procedure := RandomIdentifier("procOut_")
 
 	if _, err := db.Exec(fmt.Sprintf(procOut, procedure)); err != nil { // Create stored procedure.
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	var out string
 
 	if _, err := db.Exec(fmt.Sprintf("call %s(?)", procedure), sql.Named("MESSAGE", sql.Out{Dest: &out})); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	fmt.Print(out)
@@ -66,11 +68,13 @@ end
 	procedure := RandomIdentifier("ProcTable_")
 
 	if _, err := db.Exec(fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	if _, err := db.Exec(fmt.Sprintf(procTable, procedure, tableType)); err != nil { // Create stored procedure.
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	var tableRows sql.Rows // Scan variable of table output parameter.
@@ -78,25 +82,29 @@ end
 	// Call stored procedure via prepare.
 	stmt, err := db.Prepare(fmt.Sprintf("call %s(?)", procedure))
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer stmt.Close()
 
 	if _, err := stmt.Exec(sql.Named("T", sql.Out{Dest: &tableRows})); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	for tableRows.Next() {
 		var x string
 
 		if err := tableRows.Scan(&x); err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 
 		fmt.Println(x)
 	}
 	if err := tableRows.Err(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// output: Hello, 世界

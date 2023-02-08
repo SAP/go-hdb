@@ -1168,8 +1168,7 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 	}
 
 	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
-		switch ph.PartKind {
-		case p.PkDBConnectInfo:
+		if ph.PartKind == p.PkDBConnectInfo {
 			c.pr.Read(&ci)
 		}
 	}); err != nil {

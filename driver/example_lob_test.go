@@ -33,7 +33,8 @@ func ExampleLob_read() {
 	lob.SetWriter(b) // SetWriter sets the io.Writer object, to which the database content of the lob field is written.
 
 	if err := db.QueryRow("select * from test").Scan(lob); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 }
 
@@ -51,31 +52,36 @@ func ExampleLob_write() {
 
 	db, err := sql.Open("hdb", "hdb://user:password@host:port")
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer db.Close()
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	stmt, err := tx.Prepare("insert into test values(?)")
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	lob := new(driver.Lob)
 	lob.SetReader(file) // SetReader sets the io.Reader object, which content is written to the database lob field.
 
 	if _, err := stmt.Exec(lob); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 }
 
@@ -99,18 +105,21 @@ func ExampleLob_pipe() {
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	// Create table.
 	table := driver.RandomIdentifier("fileLob")
 	if _, err := tx.Exec(fmt.Sprintf("create table %s (file nclob)", table)); err != nil {
-		log.Fatalf("create table failed: %s", err)
+		log.Printf("create table failed: %s", err)
+		return
 	}
 
 	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	lob := &driver.Lob{} // Lob field.
@@ -136,14 +145,17 @@ func ExampleLob_pipe() {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if _, err := pipeWriter.Write(scanner.Bytes()); err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 		if _, err := pipeWriter.Write([]byte{'\n'}); err != nil { // Write nl which was stripped off by scanner.
-			log.Fatal(err)
+			log.Print(err)
+			return
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	// Close pipeWriter (end insert into db).
 	pipeWriter.Close()
@@ -153,7 +165,8 @@ func ExampleLob_pipe() {
 	stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 
 	pipeReader, pipeWriter = io.Pipe() // Create pipe for reading Lob.
@@ -177,7 +190,8 @@ func ExampleLob_pipe() {
 		// Do something with scan result.
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	pipeReader.Close()
 

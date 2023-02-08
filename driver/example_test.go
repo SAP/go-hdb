@@ -21,6 +21,7 @@ func Example() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 }
