@@ -101,6 +101,9 @@ func (l *Lob) SetWriter(wr io.Writer) *Lob {
 
 // Scan implements the database/sql/Scanner interface.
 func (l *Lob) Scan(src any) error {
+	if l.wr == nil {
+		l.wr = new(bytes.Buffer)
+	}
 	return ScanLobWriter(src, l.wr)
 }
 
@@ -123,10 +126,13 @@ func (l *NullLob) Scan(src any) error {
 		l.Valid = false
 		return nil
 	}
+	if l.Lob == nil {
+		l.Lob = &Lob{}
+	}
+	l.Valid = true
 	if err := l.Lob.Scan(src); err != nil {
 		return err
 	}
-	l.Valid = true
 	return nil
 }
 

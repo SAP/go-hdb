@@ -102,13 +102,8 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, numRecs
 		in := dtt.testData[i]
 		outRef := reflect.New(reflect.TypeOf(in)).Interface()
 
-		switch outRef := outRef.(type) {
-		case *NullDecimal:
-			outRef.Decimal = (*Decimal)(new(big.Rat))
-		case *Lob:
-			outRef.SetWriter(new(bytes.Buffer))
-		case *NullLob:
-			outRef.Lob = new(Lob).SetWriter(new(bytes.Buffer))
+		if outRef, ok := outRef.(*NullLob); ok {
+			outRef.Lob = new(Lob)
 		}
 
 		if err := rows.Scan(outRef, &i); err != nil {
@@ -861,11 +856,13 @@ func compareLob(in, out Lob) (bool, error) {
 func checkLob(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
-		ok, err := compareLob(*in.Lob, *out.Lob)
-		if err != nil {
-			return ok, err
+		if in.Valid != out.Valid {
+			return false, nil
 		}
-		return in.Valid == out.Valid && (!in.Valid || ok), nil
+		if !in.Valid { // null value - skip comparing values
+			return true, nil
+		}
+		return compareLob(*in.Lob, *out.Lob)
 	}
 	return compareLob(in.(Lob), out.(Lob))
 }
