@@ -130,10 +130,7 @@ func (l *NullLob) Scan(src any) error {
 		l.Lob = &Lob{}
 	}
 	l.Valid = true
-	if err := l.Lob.Scan(src); err != nil {
-		return err
-	}
-	return nil
+	return l.Lob.Scan(src)
 }
 
 // Value implements the database/sql/Valuer interface.

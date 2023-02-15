@@ -538,9 +538,9 @@ func testInitLobFiles(t *testing.T) {
 			return false
 		}
 
-		walk := func(path string, info os.FileInfo, err error) error {
+		walk := func(p string, info os.FileInfo, err error) error {
 			if !info.IsDir() && filter(info.Name()) {
-				content, err := os.ReadFile(path)
+				content, err := os.ReadFile(p)
 				if err != nil {
 					return err
 				}

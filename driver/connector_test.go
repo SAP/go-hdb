@@ -90,12 +90,12 @@ func TestConnector(t *testing.T) {
 		{"testRetryConnect", testRetryConnect},
 	}
 
-	for _, test := range tests {
-		func(name string, fct func(t *testing.T)) {
-			t.Run(name, func(t *testing.T) {
+	for i := range tests {
+		func(i int) {
+			t.Run(tests[i].name, func(t *testing.T) {
 				t.Parallel()
-				fct(t)
+				tests[i].fct(t)
 			})
-		}(test.name, test.fct)
+		}(i)
 	}
 }

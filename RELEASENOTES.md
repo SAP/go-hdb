@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.0.8
+- test performance improvements
+
 #### v1.0.7
 - added implicit instantiation of NullLob and NullDecimal owned references in respective Scan methods
 

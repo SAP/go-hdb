@@ -5,6 +5,7 @@ package driver_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -168,19 +169,27 @@ end
 	tableType := driver.RandomIdentifier("tableType_")
 	proc := driver.RandomIdentifier("procTableOut_")
 
+	// use same connection
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal()
+	}
+	defer conn.Close()
+
 	// create table type
-	if _, err := db.Exec(fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
 		t.Fatal(err)
 	}
 	// create procedure
-	if _, err := db.Exec(fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
 		t.Fatal(err)
 	}
 
 	var resultRows1, resultRows2, resultRows3 sql.Rows
 
 	// need to prepare to keep statement open
-	stmt, err := db.Prepare(fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
+	stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,23 +235,23 @@ end
 `
 	const txt = "Hello World!"
 
-	createDBObjects := func() (driver.Identifier, driver.Identifier) {
+	createDBObjects := func(conn *sql.Conn, ctx context.Context) (driver.Identifier, driver.Identifier) {
 		// create table (stored procedure 'side effect')
 		table := driver.RandomIdentifier("tableNoOut_")
-		if _, err := db.Exec(fmt.Sprintf("create column table %s (x nvarchar(25))", table)); err != nil {
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create column table %s (x nvarchar(25))", table)); err != nil {
 			t.Fatal(err)
 		}
 		// create procedure
 		proc := driver.RandomIdentifier("procNoOut_")
-		if _, err := db.Exec(fmt.Sprintf(procNoOut, proc, table)); err != nil {
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf(procNoOut, proc, table)); err != nil {
 			t.Fatal(err)
 		}
 		return proc, table
 	}
 
-	checkTable := func(table driver.Identifier) {
+	checkTable := func(conn *sql.Conn, ctx context.Context, table driver.Identifier) {
 		var out string
-		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(&out); err != nil {
+		if err := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table)).Scan(&out); err != nil {
 			t.Fatal(err)
 		}
 		if out != txt {
@@ -250,12 +259,20 @@ end
 		}
 	}
 
-	proc, table := createDBObjects()
+	// use same connection
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal()
+	}
+	defer conn.Close()
 
-	if _, err := db.Exec(fmt.Sprintf("call %s(?)", proc), txt); err != nil {
+	proc, table := createDBObjects(conn, ctx)
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?)", proc), txt); err != nil {
 		t.Fatal(err)
 	}
-	checkTable(table)
+	checkTable(conn, ctx, table)
 }
 
 func TestCall(t *testing.T) {
@@ -270,12 +287,14 @@ func TestCall(t *testing.T) {
 		{"noOut", testCallNoOut},
 	}
 
-	db := sql.OpenDB(driver.NewTestConnector())
-	defer db.Close()
+	db := driver.DefaultTestDB()
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, t)
-		})
+	for i := range tests {
+		func(i int) {
+			t.Run(tests[i].name, func(t *testing.T) {
+				t.Parallel() // run in parallel to speed up
+				tests[i].fct(db, t)
+			})
+		}(i)
 	}
 }

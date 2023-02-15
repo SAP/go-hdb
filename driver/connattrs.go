@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -138,7 +139,7 @@ func (c *connAttrs) setTLS(serverName string, insecureSkipVerify bool, rootCAFil
 	}
 	var certPool *x509.CertPool
 	for _, fn := range rootCAFiles {
-		rootPEM, err := os.ReadFile(fn)
+		rootPEM, err := os.ReadFile(path.Clean(fn))
 		if err != nil {
 			return err
 		}

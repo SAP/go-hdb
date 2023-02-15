@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"os"
+	"path"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
@@ -54,11 +55,11 @@ func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector
 // NewX509AuthConnectorByFiles creates a connector for X509 (client certificate) authentication
 // based on client certificate and client key files.
 func NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile string) (*Connector, error) {
-	clientCert, err := os.ReadFile(clientCertFile)
+	clientCert, err := os.ReadFile(path.Clean(clientCertFile))
 	if err != nil {
 		return nil, err
 	}
-	clientKey, err := os.ReadFile(clientKeyFile)
+	clientKey, err := os.ReadFile(path.Clean(clientKeyFile))
 	if err != nil {
 		return nil, err
 	}
