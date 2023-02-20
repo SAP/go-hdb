@@ -228,7 +228,6 @@ type conn struct {
 
 	sessionID int64
 
-	// after go.17 support: delete serverOptions and define it again direcly here
 	serverOptions p.Options[p.ConnectOption]
 	hdbVersion    *Version
 
@@ -454,7 +453,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 	}
 
 	done := make(chan struct{})
-	func() {
+	go func() {
 		var pr *prepareResult
 
 		if pr, err = c._prepare(query); err == nil {

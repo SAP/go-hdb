@@ -6,6 +6,9 @@ Release Notes
 ### Minor revisions
 
 #### v1.0.8
+- upgraded dependencies
+
+#### v1.0.8
 - test performance improvements
 
 #### v1.0.7
