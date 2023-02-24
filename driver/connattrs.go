@@ -222,9 +222,14 @@ func (c *connAttrs) PingInterval() time.Duration {
 /*
 SetPingInterval sets the connection ping interval value of the connector.
 
-If the ping interval is greater than zero, the driver pings all open
-connections (active or idle in connection pool) periodically.
-Parameter d defines the time between the pings in milliseconds.
+Using a ping interval supports detecting broken connections. In case the ping
+is not successful a new or another connection out of the connection pool would
+be used automatically instead of retuning an error.
+
+Parameter d defines the time between the pings as duration.
+If d is zero no ping is executed. If d is not zero a database ping is executed if
+an idle connection out of the connection pool is reused and the time since the
+last connection access is greater or equal than d.
 */
 func (c *connAttrs) SetPingInterval(d time.Duration) {
 	c.mu.Lock()

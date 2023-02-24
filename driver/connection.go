@@ -13,8 +13,6 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
@@ -60,8 +58,11 @@ var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 // ErrNestedTransaction is the error raised if a transaction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("nested transactions are not supported")
 
-// ErrNestedQuery is the error raised if a sql statement is executed before an "active" statement is closed.
-// Example: execute sql statement before rows of previous select statement are closed.
+// ErrNestedQuery is the error raised if a new sql statement is sent to the database server before the resultset
+// processing of a previous sql query statement is finalized.
+// Currently this only can happen if connections are used concurrently and if stream enabled fields (LOBs) are part
+// of the resultset.
+// This error can be avoided in whether using a transaction or a dedicated connection (sql.Tx or sql.Conn).
 var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries
@@ -84,9 +85,11 @@ var (
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
-	metrics *metrics
-	conn    net.Conn
-	timeout time.Duration
+	metrics   *metrics
+	conn      net.Conn
+	timeout   time.Duration
+	lastRead  time.Time
+	lastWrite time.Time
 }
 
 func (c *dbConn) deadline() (deadline time.Time) {
@@ -99,74 +102,39 @@ func (c *dbConn) deadline() (deadline time.Time) {
 func (c *dbConn) close() error { return c.conn.Close() }
 
 // Read implements the io.Reader interface.
-func (c *dbConn) Read(b []byte) (n int, err error) {
-	var start time.Time
+func (c *dbConn) Read(b []byte) (int, error) {
 	//set timeout
-	if err = c.conn.SetReadDeadline(c.deadline()); err != nil {
-		goto retError
+	if err := c.conn.SetReadDeadline(c.deadline()); err != nil {
+		return 0, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
-	start = time.Now()
-	n, err = c.conn.Read(b)
-	c.metrics.chMsg <- timeMsg{idx: timeRead, d: time.Since(start)}
+	c.lastRead = time.Now()
+	n, err := c.conn.Read(b)
+	c.metrics.chMsg <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
 	c.metrics.chMsg <- counterMsg{idx: counterBytesRead, v: uint64(n)}
-	if err == nil {
-		return
+	if err != nil {
+		dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		// wrap error in driver.ErrBadConn
+		return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
-retError:
-	dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	// wrap error in driver.ErrBadConn
-	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
+	return n, nil
 }
 
 // Write implements the io.Writer interface.
-func (c *dbConn) Write(b []byte) (n int, err error) {
-	var start time.Time
+func (c *dbConn) Write(b []byte) (int, error) {
 	//set timeout
-	if err = c.conn.SetWriteDeadline(c.deadline()); err != nil {
-		goto retError
+	if err := c.conn.SetWriteDeadline(c.deadline()); err != nil {
+		return 0, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
-	start = time.Now()
-	n, err = c.conn.Write(b)
-	c.metrics.chMsg <- timeMsg{idx: timeWrite, d: time.Since(start)}
+	c.lastWrite = time.Now()
+	n, err := c.conn.Write(b)
+	c.metrics.chMsg <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
 	c.metrics.chMsg <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
-	if err == nil {
-		return
+	if err != nil {
+		dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		// wrap error in driver.ErrBadConn
+		return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
-retError:
-	dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
-	// wrap error in driver.ErrBadConn
-	return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
-}
-
-const (
-	lrNestedQuery = 1
-)
-
-type connLock struct {
-	// 64 bit alignment
-	lockReason int64 // atomic access
-
-	mu     sync.Mutex // tryLock mutex
-	connMu sync.Mutex // connection mutex
-}
-
-func (l *connLock) tryLock(lockReason int64) error {
-	l.mu.Lock()
-	if atomic.LoadInt64(&l.lockReason) == lrNestedQuery {
-		l.mu.Unlock()
-		return ErrNestedQuery
-	}
-	l.connMu.Lock()
-	atomic.StoreInt64(&l.lockReason, lockReason)
-	l.mu.Unlock()
-	return nil
-}
-
-func (l *connLock) lock() { l.connMu.Lock() }
-
-func (l *connLock) unlock() {
-	atomic.StoreInt64(&l.lockReason, 0)
-	l.connMu.Unlock()
+	return n, nil
 }
 
 // check if conn implements all required interfaces
@@ -215,17 +183,13 @@ type conn struct {
 		- if in between a ping gets executed (ping selects db) hdb raises error
 		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
 	*/
-	connLock
+	//connLock
 
 	dbConn *dbConn
-	closed chan struct{}
 
-	inTx bool // in transaction
-
+	inTx      bool  // in transaction
 	lastError error // last error
-
-	trace bool // call sqlTrace.On() only once
-
+	trace     bool  // call sqlTrace.On() only once
 	sessionID int64
 
 	serverOptions p.Options[p.ConnectOption]
@@ -307,7 +271,6 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 		metrics:   metrics,
 		connAttrs: attrs,
 		dbConn:    dbConn,
-		closed:    make(chan struct{}),
 		trace:     sqltrace.On(),
 	}
 
@@ -339,10 +302,6 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 		}
 	}
 
-	if attrs._pingInterval != 0 {
-		go c.pinger(attrs._pingInterval, c.closed)
-	}
-
 	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
 	return c, nil
@@ -372,32 +331,28 @@ func (c *conn) isBad() bool {
 	return errors.Is(c.lastError, driver.ErrBadConn) || errors.Is(c.lastError, e.ErrFatal)
 }
 
-func (c *conn) pinger(d time.Duration, done <-chan struct{}) {
-	ticker := time.NewTicker(d)
-	defer ticker.Stop()
+// ResetSession implements the driver.SessionResetter interface.
+func (c *conn) ResetSession(ctx context.Context) error {
+	c.lastError = nil
 
-	ctx := context.Background()
-	for {
-		select {
-		case <-done:
-			return
-		case <-ticker.C:
-			c.Ping(ctx)
-		}
+	if c.connAttrs._pingInterval == 0 || time.Since(c.dbConn.lastRead) >= c.connAttrs._pingInterval {
+		return nil
 	}
+
+	if _, err := c._queryDirect(dummyQuery, !c.inTx); err != nil {
+		return driver.ErrBadConn
+	}
+	return nil
 }
+
+// IsValid implements the driver.Validator interface.
+func (c *conn) IsValid() bool { return !c.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) (err error) {
-	if err := c.tryLock(0); err != nil {
-		return err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return driver.ErrBadConn
 	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), dummyQuery, nil)
 	}
@@ -418,36 +373,11 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 	}
 }
 
-// ResetSession implements the driver.SessionResetter interface.
-func (c *conn) ResetSession(ctx context.Context) error {
-	c.lock()
-	defer c.unlock()
-
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
-	return nil
-}
-
-// IsValid implements the driver.Validator interface.
-func (c *conn) IsValid() bool {
-	c.lock()
-	defer c.unlock()
-
-	return !c.isBad()
-}
-
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.Stmt, err error) {
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), query, nil)
 	}
@@ -476,12 +406,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
-	c.lock()
-	defer c.unlock()
-
 	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
-	close(c.closed)                                    // signal connection close
-
 	// if isBad do not disconnect
 	if !c.isBad() {
 		c._disconnect() // ignore error
@@ -491,15 +416,9 @@ func (c *conn) Close() error {
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
 	if c.inTx {
 		return nil, ErrNestedTransaction
 	}
@@ -542,32 +461,18 @@ var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statemant beginnin
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
-	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
-	}
-
-	if err := c.tryLock(lrNestedQuery); err != nil {
-		return nil, err
-	}
-	hasRowsCloser := false
-	defer func() {
-		// unlock connection if rows will not do it
-		if !hasRowsCloser {
-			c.unlock()
-		}
-	}()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
+	if len(nvargs) != 0 {
+		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+	}
 	if callStmt.MatchString(query) {
 		// direct execution of call procedure
 		// - returns no parameter metadata (sps 82) but only field values
 		// --> let's take the 'prepare way' for stored procedures
 		return nil, driver.ErrSkip
 	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), query, nvargs)
 	}
@@ -583,10 +488,6 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		if onCloser, ok := rows.(onCloser); ok {
-			onCloser.setOnClose(c.unlock)
-			hasRowsCloser = true
-		}
 		c.lastError = err
 		return rows, err
 	}
@@ -594,19 +495,12 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 // ExecContext implements the driver.ExecerContext interface.
 func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.NamedValue) (r driver.Result, err error) {
-	if len(nvargs) != 0 {
-		return nil, driver.ErrSkip //fast path not possible (prepare needed)
-	}
-
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
+	if len(nvargs) != 0 {
+		return nil, driver.ErrSkip //fast path not possible (prepare needed)
+	}
 	if c.trace {
 		defer traceSQL(time.Now(), query, nvargs)
 	}
@@ -650,11 +544,6 @@ func (c *conn) DatabaseName() string { return c._databaseName() }
 
 // DBConnectInfo implements the Conn interface.
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *DBConnectInfo, err error) {
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
@@ -715,21 +604,17 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) (err error) {
 	c := t.conn
 
-	c.lock()
-	defer c.unlock()
+	c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
+	if c.isBad() {
+		return driver.ErrBadConn
+	}
 	if t.closed {
 		return nil
 	}
 	t.closed = true
 
 	c.inTx = false
-
-	c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
-
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
 
 	if rollback {
 		err = c._rollback()
@@ -773,43 +658,25 @@ func (s *stmt) NumInput() int { return -1 }
 func (s *stmt) Close() error {
 	c := s.conn
 
-	c.lock()
-	defer c.unlock()
-
 	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
-
-	if s.rows != nil {
-		s.rows.Close()
-	}
 
 	if c.isBad() {
 		return driver.ErrBadConn
+	}
+	if s.rows != nil {
+		s.rows.Close()
 	}
 	return c._dropStatementID(s.pr.stmtID)
 }
 
 func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
 	c := s.conn
-
-	if err := c.tryLock(lrNestedQuery); err != nil {
-		return nil, err
-	}
-	hasRowsCloser := false
-	defer func() {
-		// unlock connection if rows will not do it
-		if !hasRowsCloser {
-			c.unlock()
-		}
-	}()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), s.query, nvargs)
 	}
-
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
@@ -825,10 +692,6 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		if onCloser, ok := rows.(onCloser); ok {
-			onCloser.setOnClose(c.unlock)
-			hasRowsCloser = true
-		}
 		c.lastError = err
 		return rows, err
 	}
@@ -837,19 +700,12 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r driver.Result, err error) {
 	c := s.conn
 
-	if err := c.tryLock(0); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-
 	if connHook != nil {
 		connHook(c, choStmtExec)
 	}
-
 	if c.trace {
 		defer traceSQL(time.Now(), s.query, nvargs)
 	}
@@ -1531,8 +1387,6 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 		}
 	}
 
-	// TODO map names if possible
-	cr.appendTableRowsFields()
 	outArgs = append(outArgs, tableArgs...)
 
 	// no output fields -> done
@@ -1542,9 +1396,6 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 
 	scanArgs := []any{}
 	for i := range cr.outputFields {
-		if v, ok := cr.fieldValues[i].(p.LobDecoderSetter); ok {
-			v.SetDecoder(c.decodeLob)
-		}
 		scanArgs = append(scanArgs, outArgs[i].Value.(sql.Out).Dest)
 	}
 
@@ -1581,6 +1432,7 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 	resSet := &p.Resultset{}
 	lobReply := &p.WriteLobReply{}
 	var numRow int64
+	tableRowIdx := 0
 
 	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
@@ -1601,7 +1453,9 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 				- so, 'additional' query result is detected by new metadata part
 			*/
 			qr = &queryResult{conn: c}
-			cr.qrs = append(cr.qrs, qr)
+			cr.outputFields = append(cr.outputFields, p.NewTableRowsParameterField(tableRowIdx))
+			cr.fieldValues = append(cr.fieldValues, qr)
+			tableRowIdx++
 			c.pr.Read(meta)
 			qr.fields = meta.ResultFields
 		case p.PkResultset:

@@ -3,6 +3,7 @@ package driver
 import (
 	"bytes"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 
@@ -15,6 +16,10 @@ func scanLob(src any, wr io.Writer) error {
 		return fmt.Errorf("lob: invalid scan type %T", src)
 	}
 	if err := scanner.Scan(wr); err != nil {
+		var dbErr Error
+		if errors.As(err, &dbErr) && dbErr.Code() == 1033 {
+			return ErrNestedQuery
+		}
 		return err
 	}
 	return nil

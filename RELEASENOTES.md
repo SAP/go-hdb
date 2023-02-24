@@ -1,11 +1,22 @@
 Release Notes
 =============
 
+## v1.1.0
+
+This version is mainly about performance improvements and source code cleanups.
+
+### Changes
+
+Formerly with a ping interval defined the driver pinged all open connections periodically. Now a ping
+is executed only when an idle connection is reused and the time since the last connection access
+is greater than the ping interval. This avoids keeping idle connections to the server alive, improves
+performance and is a compatible change from a driver's usage perspective.
+
 ## v1.0.0
 
 ### Minor revisions
 
-#### v1.0.8
+#### v1.0.9
 - upgraded dependencies
 
 #### v1.0.8

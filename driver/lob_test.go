@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -234,22 +235,16 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 
 	row := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table))
 
-	err = conn.PingContext(ctx)
+	if err = conn.PingContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	err = row.Scan(lob)
 	switch {
 	case err == nil:
 		t.Fatalf("got error: <nil> - expected: %s", ErrNestedQuery)
-	case err != ErrNestedQuery:
+	case !errors.Is(err, ErrNestedQuery):
 		t.Fatalf("got error: %s - expected: %s", err, ErrNestedQuery)
 	}
-
-	if err := row.Scan(lob); err != nil {
-		t.Fatal(err)
-	}
-
-	// if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
-	// 	t.Fatalf("read buffer is not equal to write buffer")
-	// }
-
 }
 
 func TestLob(t *testing.T) {

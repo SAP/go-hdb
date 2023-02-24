@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 const (
@@ -57,7 +58,8 @@ func NewTestConnector() *Connector {
 	if err != nil {
 		log.Fatal(err)
 	}
-	c._defaultSchema = *schema // important: set test schema!
+	c._defaultSchema = *schema        // important: set test schema!
+	c._pingInterval = 1 * time.Second // turn on connection validity check while resetting
 	return c
 }
 
