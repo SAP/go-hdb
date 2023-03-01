@@ -209,7 +209,7 @@ func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan any, msgHandler func(
 }
 
 func (m *metrics) stats() *Stats {
-	if m.closed.Load() { // if closed return stas directly as we do not have write conflicts anymore
+	if m.closed.Load() { // if closed return stats directly as we do not have write conflicts anymore
 		return m.stats()
 	}
 	chStats := make(chan *Stats)

@@ -173,17 +173,6 @@ type Conn interface {
 type conn struct {
 	*connAttrs
 	metrics *metrics
-	// Holding connection lock in QueryResultSet (see rows.onClose)
-	/*
-		As long as a session is in query mode no other sql statement must be executed.
-		Example:
-		- pinger is active
-		- select with blob fields is executed
-		- scan is hitting the database again (blob streaming)
-		- if in between a ping gets executed (ping selects db) hdb raises error
-		  "SQL Error 1033 - error while parsing protocol: invalid lob locator id (piecewise lob reading)"
-	*/
-	//connLock
 
 	dbConn *dbConn
 

@@ -37,6 +37,7 @@ const (
 // HANA Database errors.
 const (
 	HdbErrAuthenticationFailed = 10
+	HdbErrWhileParsingProtocol = 1033
 )
 
 type sqlState [sqlStateSize]byte

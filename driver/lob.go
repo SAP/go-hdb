@@ -17,7 +17,7 @@ func scanLob(src any, wr io.Writer) error {
 	}
 	if err := scanner.Scan(wr); err != nil {
 		var dbErr Error
-		if errors.As(err, &dbErr) && dbErr.Code() == 1033 {
+		if errors.As(err, &dbErr) && dbErr.Code() == p.HdbErrWhileParsingProtocol {
 			return ErrNestedQuery
 		}
 		return err
