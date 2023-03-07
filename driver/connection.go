@@ -211,7 +211,7 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		if !isAuthError(err) {
 			return nil, err
 		}
-		authAttrs.invalidateCookie() // cookie auth was not possible - do not try again with the same data
+		authAttrs.invalidateCookie() // cookie auth was not successful - do not try again with the same data
 	}
 
 	auth := authAttrs.auth()
@@ -446,7 +446,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx
 	}
 }
 
-var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statemant beginning with call
+var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statement beginning with call
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (rows driver.Rows, err error) {
@@ -740,7 +740,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 	c := s.conn
 
 	if len(nvargs) == 0 { // no parameters
-		return c._execBulk(s.pr, nil, !c.inTx)
+		return c._execMany(s.pr, nil, !c.inTx)
 	}
 
 	numField := s.pr.numField()
@@ -770,7 +770,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 		numRec++
 		if numRec >= c._bulkSize {
 			recOfs += c._bulkSize
-			r, err := c._execBulk(s.pr, args, !c.inTx)
+			r, err := c._execMany(s.pr, args, !c.inTx)
 			totalRowsAffected.add(r)
 			if err != nil {
 				if hdbErr, ok := err.(*p.HdbErrors); recOfs != 0 && ok {
@@ -784,7 +784,7 @@ func (s *stmt) execMany(nvargs []driver.NamedValue) (driver.Result, error) {
 	}
 
 	if numRec > 0 {
-		r, err := c._execBulk(s.pr, args, !c.inTx)
+		r, err := c._execMany(s.pr, args, !c.inTx)
 		totalRowsAffected.add(r)
 		if err != nil {
 			if hdbErr, ok := err.(*p.HdbErrors); recOfs != 0 && ok {
@@ -831,79 +831,75 @@ func _reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	}
 }
 
-// _mapExecBulkArgs
+// _mapExecArgs
 // - all fields need to be input fields
 // - out parameters are not supported
 // - named parameters are not supported
-func (c *conn) _mapExecBulkArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (hasInLob bool, err error) {
+func (c *conn) _mapExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (bool, error) {
+	hasInLob := false
 	numField := len(fields)
 	if numField == 0 {
-		return false, nil
+		return hasInLob, nil
 	}
 
-	err = func() error {
-		if (len(nvargs) % numField) != 0 {
-			return fmt.Errorf("invalid number of arguments %d - multiple of %d expected", len(nvargs), numField)
+	if (len(nvargs) % numField) != 0 {
+		return hasInLob, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", len(nvargs), numField)
+	}
+
+	for i, nvarg := range nvargs {
+
+		field := fields[i%numField]
+
+		if field.Out() {
+			return hasInLob, fmt.Errorf("invalid parameter %s - output not allowed", field)
 		}
-
-		for i, nvarg := range nvargs {
-
-			field := fields[i%numField]
-
-			if field.Out() {
-				return fmt.Errorf("invalid parameter %s - output not allowed", field)
-			}
-			if _, ok := nvarg.Value.(sql.Out); ok {
-				return fmt.Errorf("invalid argument %v - output not allowed", nvarg)
-			}
-			if nvarg.Name != "" {
-				return fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
-			}
-			if field.IsLob() {
-				hasInLob = true
-			}
-			if nvargs[i].Value, err = c._convert(field, nvargs[i].Value); err != nil {
-				return fmt.Errorf("field %s conversion error - %w", field, err)
-			}
+		if _, ok := nvarg.Value.(sql.Out); ok {
+			return hasInLob, fmt.Errorf("invalid argument %v - output not allowed", nvarg)
 		}
-		return nil
-	}()
-	return
+		if nvarg.Name != "" {
+			return hasInLob, fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
+		}
+		if field.IsLob() {
+			hasInLob = true
+		}
+		var err error
+		if nvargs[i].Value, err = c._convert(field, nvargs[i].Value); err != nil {
+			return hasInLob, fmt.Errorf("field %s conversion error - %w", field, err)
+		}
+	}
+	return hasInLob, nil
 }
 
 // _mapQueryArgs
 // - all fields need to be input fields
 // - out parameters are not supported
 // - named parameters are not supported
-func (c *conn) _mapQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (hasInLob bool, err error) {
-	err = func() error {
-		if len(nvargs) != len(fields) {
-			return fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
+func (c *conn) _mapQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (bool, error) {
+	hasInLob := false
+	if len(nvargs) != len(fields) {
+		return hasInLob, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
+	}
+
+	for i, field := range fields {
+		nvarg := nvargs[i]
+		if field.Out() {
+			return hasInLob, fmt.Errorf("invalid parameter %s - output not allowed", field)
 		}
-
-		for i, field := range fields {
-
-			nvarg := nvargs[i]
-
-			if field.Out() {
-				return fmt.Errorf("invalid parameter %s - output not allowed", field)
-			}
-			if _, ok := nvarg.Value.(sql.Out); ok {
-				return fmt.Errorf("invalid argument %v - output not allowed", nvarg)
-			}
-			if nvarg.Name != "" {
-				return fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
-			}
-			if field.IsLob() {
-				hasInLob = true
-			}
-			if nvargs[i].Value, err = c._convert(field, nvargs[i].Value); err != nil {
-				return fmt.Errorf("field %s conversion error - %w", field, err)
-			}
+		if _, ok := nvarg.Value.(sql.Out); ok {
+			return hasInLob, fmt.Errorf("invalid argument %v - output not allowed", nvarg)
 		}
-		return nil
-	}()
-	return
+		if nvarg.Name != "" {
+			return hasInLob, fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
+		}
+		if field.IsLob() {
+			hasInLob = true
+		}
+		var err error
+		if nvargs[i].Value, err = c._convert(field, nvargs[i].Value); err != nil {
+			return hasInLob, fmt.Errorf("field %s conversion error - %w", field, err)
+		}
+	}
+	return hasInLob, nil
 }
 
 type names []string // lazy init via get
@@ -919,86 +915,96 @@ func (n *names) get(fields []*p.ParameterField) []string {
 	return *n
 }
 
-func (c *conn) _splitExecCallArgs(nvargs []driver.NamedValue) (args, tableArgs []driver.NamedValue) {
-	args = []driver.NamedValue{}
-	tableArgs = []driver.NamedValue{}
-
-	for _, arg := range nvargs {
-		if out, isOut := arg.Value.(sql.Out); isOut {
-			if _, ok := out.Dest.(*sql.Rows); ok {
-				tableArgs = append(tableArgs, arg)
-				continue
-			}
-		}
-		args = append(args, arg)
-	}
-	return
-}
-
 // _mapQueryCallArgs
 // - fields could be input or output fields
 // - number of args needs to be equal to number of fields
 // - named parameters are supported
-func (c *conn) _mapExecCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (hasInLob bool, inFields, outFields []*p.ParameterField, inArgs, outArgs []driver.NamedValue, err error) {
-	inFields = []*p.ParameterField{}
-	outFields = []*p.ParameterField{}
-	inArgs = []driver.NamedValue{}
-	outArgs = []driver.NamedValue{}
 
+type _callArgs struct {
+	hasInLob            bool
+	inFields, outFields []*p.ParameterField
+	inArgs, outArgs     []driver.NamedValue
+}
+
+func _newCallArgs() *_callArgs {
+	return &_callArgs{
+		inFields:  []*p.ParameterField{},
+		outFields: []*p.ParameterField{},
+		inArgs:    []driver.NamedValue{},
+		outArgs:   []driver.NamedValue{},
+	}
+}
+
+func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (*_callArgs, error) {
+
+	callArgs := _newCallArgs()
 	var names names
 
-	err = func() error {
-		if len(nvargs) != len(fields) { // number of fields needs to match number of args
-			return fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
+	if len(nvargs) < len(fields) { // number of fields needs to match number of args or be greater (add table output args)
+		return callArgs, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
+	}
+
+	prmnvargs := nvargs[:len(fields)]
+
+	for i, field := range fields {
+		_reorderNVArgs(i, field.Name(), prmnvargs)
+
+		nvarg := &prmnvargs[i]
+
+		if nvarg.Name != "" && nvarg.Name != field.Name() {
+			likeName := levenshtein.MinDistance(false, names.get(fields), nvarg.Name)
+			return callArgs, fmt.Errorf("invalid argument name %s - did you mean %s?", nvarg.Name, likeName)
 		}
 
-		for i, field := range fields {
-			_reorderNVArgs(i, field.Name(), nvargs)
+		out, isOut := nvarg.Value.(sql.Out)
 
-			nvarg := nvargs[i]
-
-			if nvarg.Name != "" && nvarg.Name != field.Name() {
-				likeName := levenshtein.MinDistance(false, names.get(fields), nvarg.Name)
-				return fmt.Errorf("invalid argument name %s - did you mean %s?", nvarg.Name, likeName)
+		var err error
+		if field.In() {
+			if isOut {
+				if !out.In {
+					return callArgs, fmt.Errorf("argument field %s mismatch - use in argument with out field", field)
+				}
+				if out.Dest, err = c._convert(field, out.Dest); err != nil {
+					return callArgs, fmt.Errorf("field %s conversion error - %w", field, err)
+				}
+				nvarg.Value = out
+			} else {
+				if nvarg.Value, err = c._convert(field, nvarg.Value); err != nil {
+					return callArgs, fmt.Errorf("field %s conversion error - %w", field, err)
+				}
 			}
-
-			out, isOut := nvarg.Value.(sql.Out)
-
-			if field.In() {
-				if isOut {
-					if !out.In {
-						return fmt.Errorf("argument field %s mismatch - use in argument with out field", field)
-					}
-					if out.Dest, err = c._convert(field, out.Dest); err != nil {
-						return fmt.Errorf("field %s conversion error - %w", field, err)
-					}
-					nvargs[i].Value = out
-				} else {
-					if nvargs[i].Value, err = c._convert(field, nvargs[i].Value); err != nil {
-						return fmt.Errorf("field %s conversion error - %w", field, err)
-					}
-				}
-				if field.IsLob() {
-					hasInLob = true
-				}
-				inArgs = append(inArgs, nvargs[i])
-				inFields = append(inFields, field)
+			if field.IsLob() {
+				callArgs.hasInLob = true
 			}
-
-			if field.Out() {
-				if !isOut {
-					return fmt.Errorf("argument field %s mismatch - use out argument with non-out field", field)
-				}
-				if _, ok := out.Dest.(*sql.Rows); ok {
-					return fmt.Errorf("invalid output parameter type %T", out.Dest)
-				}
-				outArgs = append(outArgs, nvargs[i])
-				outFields = append(outFields, field)
-			}
+			callArgs.inArgs = append(callArgs.inArgs, *nvarg)
+			callArgs.inFields = append(callArgs.inFields, field)
 		}
-		return nil
-	}()
-	return
+
+		if field.Out() {
+			if !isOut {
+				return callArgs, fmt.Errorf("argument field %s mismatch - use out argument with non-out field", field)
+			}
+			if _, ok := out.Dest.(*sql.Rows); ok {
+				return callArgs, fmt.Errorf("invalid output parameter type %T", out.Dest)
+			}
+			callArgs.outArgs = append(callArgs.outArgs, *nvarg)
+			callArgs.outFields = append(callArgs.outFields, field)
+		}
+	}
+
+	// table output args
+	for i := len(fields); i < len(nvargs); i++ {
+		nvarg := &nvargs[i]
+		out, ok := nvarg.Value.(sql.Out)
+		if !ok {
+			return callArgs, fmt.Errorf("invalid parameter type %T at %d - output parameter expected", nvarg.Value, i)
+		}
+		if _, ok := out.Dest.(*sql.Rows); !ok {
+			return callArgs, fmt.Errorf("invalid output parameter %T at %d - sql.Rows expected", out.Dest, i)
+		}
+		callArgs.outArgs = append(callArgs.outArgs, *nvarg)
+	}
+	return callArgs, nil
 }
 
 func (c *conn) _databaseName() string {
@@ -1212,7 +1218,7 @@ func (c *conn) _fetchFirstLobChunk(nvargs []driver.NamedValue) (bool, error) {
 }
 
 /*
-Exec executes a sql statement.
+ExecMany executes a sql statement.
 
 Bulk insert containing LOBs:
   - Precondition:
@@ -1231,10 +1237,10 @@ Bulk insert containing LOBs:
   - Package invariant:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
-func (c *conn) _execBulk(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Result, error) {
+func (c *conn) _execMany(pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Result, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
-	hasInLob, err := c._mapExecBulkArgs(pr.parameterFields, nvargs)
+	hasInLob, err := c._mapExecArgs(pr.parameterFields, nvargs)
 	if err != nil {
 		return driver.ResultNoRows, err
 	}
@@ -1333,19 +1339,17 @@ func (c *conn) _exec(pr *prepareResult, nvargs []driver.NamedValue, hasLob, comm
 func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeCall)
 
-	args, tableArgs := c._splitExecCallArgs(nvargs)
-
-	hasInLob, inFields, outFields, inArgs, outArgs, err := c._mapExecCallArgs(pr.parameterFields, args)
+	callArgs, err := c._mapCallArgs(pr.parameterFields, nvargs)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if hasInLob {
-		if _, err := c._fetchFirstLobChunk(inArgs); err != nil {
+	if callArgs.hasInLob {
+		if _, err := c._fetchFirstLobChunk(callArgs.inArgs); err != nil {
 			return nil, nil, err
 		}
 	}
-	inputParameters, err := p.NewInputParameters(inFields, inArgs, hasInLob)
+	inputParameters, err := p.NewInputParameters(callArgs.inFields, callArgs.inArgs, callArgs.hasInLob)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1360,7 +1364,7 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, ids, numRow, err := c._readCall(outFields)
+	cr, ids, numRow, err := c._readCall(callArgs.outFields)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1371,12 +1375,10 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 			- chunkReaders
 			- cr (callResult output parameters are set after all lob input parameters are written)
 		*/
-		if err := c.encodeLobs(cr, ids, inFields, inArgs); err != nil {
+		if err := c.encodeLobs(cr, ids, callArgs.inFields, callArgs.inArgs); err != nil {
 			return nil, nil, err
 		}
 	}
-
-	outArgs = append(outArgs, tableArgs...)
 
 	// no output fields -> done
 	if len(cr.outputFields) == 0 {
@@ -1385,11 +1387,11 @@ func (c *conn) _execCall(pr *prepareResult, nvargs []driver.NamedValue) (driver.
 
 	scanArgs := []any{}
 	for i := range cr.outputFields {
-		scanArgs = append(scanArgs, outArgs[i].Value.(sql.Out).Dest)
+		scanArgs = append(scanArgs, callArgs.outArgs[i].Value.(sql.Out).Dest)
 	}
 
 	// no table output parameters -> QueryRow
-	if len(tableArgs) == 0 {
+	if len(callArgs.outFields) == len(callArgs.outArgs) {
 		if err := callConverter.QueryRow("", cr).Scan(scanArgs...); err != nil {
 			return nil, nil, err
 		}

@@ -52,23 +52,17 @@ func (it *fctArgs) scan(nvargs []driver.NamedValue) error {
 	if it.args == nil {
 		it.args = make([]any, len(nvargs))
 	}
-	err := it.fct(it.args)
-	if err != nil {
+	if err := it.fct(it.args); err != nil {
 		return err
 	}
-	for i := 0; i < len(nvargs); i++ {
-		nvargs[i] = convertToNamedValue(i, it.args[i])
+	for i, arg := range it.args {
+		if t, ok := arg.(sql.NamedArg); ok {
+			nvargs[i] = driver.NamedValue{Name: t.Name, Ordinal: i + 1, Value: t.Value}
+		} else {
+			nvargs[i] = driver.NamedValue{Ordinal: i + 1, Value: arg}
+		}
 	}
 	return nil
-}
-
-func convertToNamedValue(idx int, arg any) driver.NamedValue {
-	switch t := arg.(type) {
-	case sql.NamedArg:
-		return driver.NamedValue{Name: t.Name, Ordinal: idx + 1, Value: t.Value}
-	default:
-		return driver.NamedValue{Ordinal: idx + 1, Value: arg}
-	}
 }
 
 type argsMismatchError struct {

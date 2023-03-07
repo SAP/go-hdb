@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.1.2
+- updated dependencies
+
 #### v1.1.1
 - fixed slice resize runtime error: slice bounds out of range
 

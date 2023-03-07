@@ -79,6 +79,46 @@ func testInvalidCESU8(t *testing.T) {
 	}
 }
 
+func testIncorrectDate(t *testing.T) {
+	connector := driver.NewTestConnector()
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	tableName := driver.RandomIdentifier("table_")
+	// fmt.Println(tableName)
+	// Create table.
+	if _, err := db.Exec(fmt.Sprintf("create table %s (a date)", tableName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('0000-00-00')", tableName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('0001-01-01')", tableName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values(NULL)", tableName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('2020-10-10')", tableName)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var date interface{}
+	for rows.Next() {
+		rows.Scan(&date)
+		t.Log(date)
+	}
+
+	cnt := 0
+	db.QueryRow(fmt.Sprintf("select count(*) from %s where A is NULL", tableName)).Scan(&cnt)
+	t.Logf("number of NULL records %d\n", cnt)
+}
+
 // TestX has extended tests for specific systems
 func TestX(t *testing.T) {
 	tests := []struct {
@@ -87,6 +127,7 @@ func TestX(t *testing.T) {
 		enabled bool
 	}{
 		{"invalid cesu-8", testInvalidCESU8, false},
+		{"test incorrect date", testIncorrectDate, false},
 	}
 
 	anyTestEnabled := func() bool {
