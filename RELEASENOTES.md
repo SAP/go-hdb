@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.1.3
+- updated dependencies
+
 #### v1.1.2
 - updated dependencies
 
