@@ -183,17 +183,10 @@ func (e *HdbErrors) IsError() bool { return e.errs[e.idx].IsError() }
 // IsFatal implements the driver.Error interface.
 func (e *HdbErrors) IsFatal() bool { return e.errs[e.idx].IsFatal() }
 
-// SetStmtNo sets the statement number of the error.
-func (e *HdbErrors) SetStmtNo(idx, no int) {
+// setStmtNo sets the statement number of the error.
+func (e *HdbErrors) setStmtNo(idx, no int) {
 	if idx >= 0 && idx < e.NumError() {
 		e.errs[idx].stmtNo = no
-	}
-}
-
-// SetStmtsNoOfs adds an offset to the statement numbers of the errors (bulk operations).
-func (e *HdbErrors) SetStmtsNoOfs(ofs int) {
-	for _, hdbErr := range e.errs {
-		hdbErr.stmtNo += ofs
 	}
 }
 

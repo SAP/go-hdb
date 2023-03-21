@@ -126,9 +126,9 @@ func (r *Reader) checkError() error {
 
 	if r.lastRowsAffected != nil { // link statement to error
 		j := 0
-		for i, rows := range *r.lastRowsAffected {
+		for i, rows := range r.lastRowsAffected.rows {
 			if rows == RaExecutionFailed {
-				r.lastErrors.SetStmtNo(j, i)
+				r.lastErrors.setStmtNo(j, r.lastRowsAffected.Ofs+i)
 				j++
 			}
 		}

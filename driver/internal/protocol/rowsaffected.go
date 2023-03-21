@@ -13,37 +13,28 @@ const (
 )
 
 // RowsAffected represents a rows affected part.
-type RowsAffected []int32
-
-func (r RowsAffected) String() string {
-	return fmt.Sprintf("%v", []int32(r))
+type RowsAffected struct {
+	Ofs  int
+	rows []int32
 }
 
-func (r *RowsAffected) reset(numArg int) {
-	if r == nil || numArg > cap(*r) {
-		*r = make(RowsAffected, numArg)
-	} else {
-		*r = (*r)[:numArg]
-	}
+func (r RowsAffected) String() string {
+	return fmt.Sprintf("%v", r.rows)
 }
 
 func (r *RowsAffected) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	r.reset(ph.numArg())
+	r.rows = resizeSlice(r.rows, ph.numArg())
 
 	for i := 0; i < ph.numArg(); i++ {
-		(*r)[i] = dec.Int32()
+		r.rows[i] = dec.Int32()
 	}
 	return dec.Error()
 }
 
 // Total return the total number of all affected rows.
 func (r RowsAffected) Total() int64 {
-	if r == nil {
-		return 0
-	}
-
 	total := int64(0)
-	for _, rows := range r {
+	for _, rows := range r.rows {
 		if rows > 0 {
 			total += int64(rows)
 		}

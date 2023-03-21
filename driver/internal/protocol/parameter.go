@@ -233,12 +233,11 @@ func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error 
 type InputParameters struct {
 	InputFields []*ParameterField
 	nvargs      []driver.NamedValue
-	hasLob      bool
 }
 
 // NewInputParameters returns a InputParameters instance.
-func NewInputParameters(inputFields []*ParameterField, nvargs []driver.NamedValue, hasLob bool) (*InputParameters, error) {
-	return &InputParameters{InputFields: inputFields, nvargs: nvargs, hasLob: hasLob}, nil
+func NewInputParameters(inputFields []*ParameterField, nvargs []driver.NamedValue) (*InputParameters, error) {
+	return &InputParameters{InputFields: inputFields, nvargs: nvargs}, nil
 }
 
 func (p *InputParameters) String() string {
@@ -256,13 +255,18 @@ func (p *InputParameters) size() int {
 
 		size += numColumns
 
+		hasInLob := false
+
 		for j := 0; j < numColumns; j++ {
 			f := p.InputFields[j]
 			size += f.prmSize(p.nvargs[i*numColumns+j].Value)
+			if f.IsLob() && f.In() {
+				hasInLob = true
+			}
 		}
 
 		// lob input parameter: set offset position of lob data
-		if p.hasLob {
+		if hasInLob {
 			for j := 0; j < numColumns; j++ {
 				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*LobInDescr); ok {
 					lobInDescr.setPos(size)
@@ -295,15 +299,21 @@ func (p *InputParameters) encode(enc *encoding.Encoder) error {
 	}
 
 	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
+
+		hasInLob := false
+
 		for j := 0; j < numColumns; j++ {
 			//mass insert
 			f := p.InputFields[j]
 			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
 				return err
 			}
+			if f.IsLob() && f.In() {
+				hasInLob = true
+			}
 		}
 		// lob input parameter: write first data chunk
-		if p.hasLob {
+		if hasInLob {
 			for j := 0; j < numColumns; j++ {
 				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*LobInDescr); ok {
 					lobInDescr.writeFirst(enc)
