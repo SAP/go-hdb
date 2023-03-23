@@ -23,7 +23,6 @@ type Decoder struct {
 	b   []byte // scratch buffer (used for skip, CESU8Bytes - define size not too small!)
 	tr  transform.Transformer
 	cnt int
-	dfv int
 }
 
 // NewDecoder creates a new Decoder instance based on an io.Reader.
@@ -35,30 +34,14 @@ func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 	}
 }
 
-// Dfv returns the data format version.
-func (d *Decoder) Dfv() int {
-	return d.dfv
-}
-
-// SetDfv sets the data format version.
-func (d *Decoder) SetDfv(dfv int) {
-	d.dfv = dfv
-}
-
 // ResetCnt resets the byte read counter.
-func (d *Decoder) ResetCnt() {
-	d.cnt = 0
-}
+func (d *Decoder) ResetCnt() { d.cnt = 0 }
 
 // Cnt returns the value of the byte read counter.
-func (d *Decoder) Cnt() int {
-	return d.cnt
-}
+func (d *Decoder) Cnt() int { return d.cnt }
 
 // Error returns the last decoder error.
-func (d *Decoder) Error() error {
-	return d.err
-}
+func (d *Decoder) Error() error { return d.err }
 
 // ResetError return and resets reader error.
 func (d *Decoder) ResetError() error {

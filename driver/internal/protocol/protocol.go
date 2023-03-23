@@ -66,9 +66,6 @@ func NewReader(upStream bool, rd io.Reader, decoder func() transform.Transformer
 	}
 }
 
-// SetDfv sets the data format version fpr the protocol reader.
-func (r *Reader) SetDfv(dfv int) { r.dec.SetDfv(dfv) }
-
 // ReadSkip reads the server reply without returning the results.
 func (r *Reader) ReadSkip() error { return r.IterateParts(nil) }
 

@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/text/transform"
 
+	"github.com/SAP/go-hdb/driver/internal/build"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
@@ -93,7 +94,6 @@ var (
 	secondtimeType = _secondtimeType{}
 	decimalType    = _decimalType{}
 	varType        = _varType{}
-	alphaType      = _alphaType{}
 	hexType        = _hexType{}
 	cesu8Type      = _cesu8Type{}
 	lobVarType     = _lobVarType{}
@@ -120,7 +120,7 @@ type (
 	_fixed12Type    struct{ prec, scale int }
 	_fixed16Type    struct{ prec, scale int }
 	_varType        struct{}
-	_alphaType      struct{}
+	_alphaType      struct{ dfv int }
 	_hexType        struct{}
 	_cesu8Type      struct{}
 	_lobVarType     struct{}
@@ -752,7 +752,7 @@ func (_seconddateType) decodeRes(d *encoding.Decoder) (any, error) {
 }
 func (_daydateType) decodeRes(d *encoding.Decoder) (any, error) {
 	daydate := d.Int32()
-	if daydate == daydateNullValue {
+	if daydate == daydateNullValue || (build.EmptyDateAsNull && daydate == 0) {
 		return nil, nil
 	}
 	return convertDaydateToTime(int64(daydate)), nil
@@ -816,7 +816,7 @@ func (_varType) decodeRes(d *encoding.Decoder) (any, error) {
 	return b, nil
 }
 
-func (_alphaType) decodeRes(d *encoding.Decoder) (any, error) {
+func (ft _alphaType) decodeRes(d *encoding.Decoder) (any, error) {
 	_, b := d.LIBytes()
 	/*
 	   caution:
@@ -826,7 +826,7 @@ func (_alphaType) decodeRes(d *encoding.Decoder) (any, error) {
 	if b == nil {
 		return nil, nil
 	}
-	if d.Dfv() == DfvLevel1 { // like _varType
+	if ft.dfv == DfvLevel1 { // like _varType
 		return b, nil
 	}
 	/*

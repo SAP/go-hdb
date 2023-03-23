@@ -159,7 +159,7 @@ func (f *ParameterField) InOut() bool { return f.mode == pmInout }
 // Name returns the parameter field name.
 func (f *ParameterField) Name() string { return f.fieldName() }
 
-func (f *ParameterField) decode(dec *encoding.Decoder) {
+func (f *ParameterField) decode(dec *encoding.Decoder, dfv int) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
 	f.mode = ParameterMode(dec.Int8())
@@ -171,7 +171,7 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 
 	f.names.insert(uint32(f.ofs))
 
-	f.ft = f.tc.fieldType(int(f.length), int(f.fraction))
+	f.ft = f.tc.fieldType(dfv, int(f.length), int(f.fraction))
 }
 
 func (f *ParameterField) prmSize(v any) int {
@@ -210,6 +210,7 @@ func (f *ParameterField) decodePrm(dec *encoding.Decoder) (any, error) {
 
 // ParameterMetadata represents the metadata of a parameter.
 type ParameterMetadata struct {
+	Dfv             int
 	ParameterFields []*ParameterField
 }
 
@@ -222,7 +223,7 @@ func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error 
 	names := &fieldNames{}
 	for i := 0; i < len(m.ParameterFields); i++ {
 		f := &ParameterField{names: names}
-		f.decode(dec)
+		f.decode(dec, m.Dfv)
 		m.ParameterFields[i] = f
 	}
 	names.decode(dec)

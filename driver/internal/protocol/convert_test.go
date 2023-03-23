@@ -10,7 +10,7 @@ import (
 )
 
 func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) {
-	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) {
 }
 
 func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v any) {
-	_, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	_, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrIntegerOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
@@ -67,7 +67,7 @@ func testConvertInteger(t *testing.T) {
 }
 
 func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
-	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
 }
 
 func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v any) {
-	_, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	_, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrFloatOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
@@ -116,7 +116,7 @@ func testConvertFloat(t *testing.T) {
 }
 
 func assertEqualTime(t *testing.T, tc typeCode, v any, r time.Time) {
-	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func testConvertTime(t *testing.T) {
 }
 
 func assertEqualString(t *testing.T, tc typeCode, v any, r string) {
-	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func testConvertString(t *testing.T) {
 }
 
 func assertEqualBytes(t *testing.T, tc typeCode, v any, r []byte) {
-	cv, err := tc.fieldType(0, 0).(fieldConverter).convert(v)
+	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
