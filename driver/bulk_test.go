@@ -139,8 +139,15 @@ func testBulkInsertStmtNo(ctr *Connector, db *sql.DB, t *testing.T) {
 // TestBulkBlob
 func testBulkBlob(ctr *Connector, db *sql.DB, t *testing.T) {
 	const numRows = 100
-	lobData := func(i int) string {
+	chunkSize := ctr.LobChunkSize()
+	bigData := strings.Repeat("a", chunkSize)
+
+	smallLobData := func(i int) string {
 		return fmt.Sprintf("%s-%d", "Go rocks", i)
+	}
+
+	bigLobData := func(i int) string {
+		return fmt.Sprintf("%s-%d", bigData, i)
 	}
 
 	tmpTableName := RandomIdentifier("#tmpTable")
@@ -152,11 +159,11 @@ func testBulkBlob(ctr *Connector, db *sql.DB, t *testing.T) {
 	}
 	defer tx.Rollback() //cleanup
 
-	if _, err := tx.Exec(fmt.Sprintf("create local temporary table %s (i integer, b blob)", tmpTableName)); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf("create local temporary table %s (i integer, b1 blob, b2 blob)", tmpTableName)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?, ?)", tmpTableName))
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?, ?, ?)", tmpTableName))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -168,7 +175,7 @@ func testBulkBlob(ctr *Connector, db *sql.DB, t *testing.T) {
 		if i >= numRows {
 			return ErrEndOfRows
 		}
-		args[0], args[1] = i, lobData(i)
+		args[0], args[1], args[2] = i, bigLobData(i), smallLobData(i)
 		i++
 		return nil
 	}); err != nil {
@@ -191,18 +198,21 @@ func testBulkBlob(ctr *Connector, db *sql.DB, t *testing.T) {
 	}
 	defer rows.Close()
 
-	var stringLob stringLob // defined in lob_test
+	var stringLob1, stringLob2 stringLob // defined in lob_test
 	i = 0
 	for rows.Next() {
 		var j int
-		if err := rows.Scan(&j, &stringLob); err != nil {
+		if err := rows.Scan(&j, &stringLob1, &stringLob2); err != nil {
 			t.Fatal(err)
 		}
 		if j != i {
 			t.Fatalf("value %d - expected %d", j, i)
 		}
-		if string(stringLob) != lobData(i) {
-			t.Fatalf("value %s - expected %s", stringLob, lobData(i))
+		if string(stringLob1) != bigLobData(i) {
+			t.Fatalf("value %s - expected %s", stringLob1, bigLobData(i))
+		}
+		if string(stringLob2) != smallLobData(i) {
+			t.Fatalf("value %s - expected %s", stringLob2, smallLobData(i))
 		}
 		i++
 	}

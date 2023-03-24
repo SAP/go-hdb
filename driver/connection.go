@@ -1711,7 +1711,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 			if !ok {
 				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", nvargs[i])
 			}
-			if j >= len(ids) {
+			if j > len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
 			if !lobInDescr.Opt.IsLastData() {

@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.1.6
+- fixed https://github.com/SAP/go-hdb/issues/113
+
 #### v1.1.5
 - added build tag 'edan' to return NULL in case of empty dates for all data format versions
 - removed old build tags from source code
