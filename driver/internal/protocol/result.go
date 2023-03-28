@@ -106,7 +106,7 @@ func (f *ResultField) Nullable() bool { return f.columnOptions == coOptional }
 // Name returns the result field name.
 func (f *ResultField) Name() string { return f.names.name(f.columnDisplayNameOfs) }
 
-func (f *ResultField) decode(dec *encoding.Decoder, dfv int) {
+func (f *ResultField) decode(dec *encoding.Decoder, ftc *FieldTypeCtx) {
 	f.columnOptions = columnOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
 	f.fraction = dec.Int16()
@@ -122,7 +122,7 @@ func (f *ResultField) decode(dec *encoding.Decoder, dfv int) {
 	f.names.insert(f.columnNameOfs)
 	f.names.insert(f.columnDisplayNameOfs)
 
-	f.ft = f.tc.fieldType(dfv, int(f.length), int(f.fraction))
+	f.ft = ftc.fieldType(f.tc, int(f.length), int(f.fraction))
 }
 
 func (f *ResultField) decodeRes(dec *encoding.Decoder) (any, error) {
@@ -131,7 +131,7 @@ func (f *ResultField) decodeRes(dec *encoding.Decoder) (any, error) {
 
 // ResultMetadata represents the metadata of a set of database result fields.
 type ResultMetadata struct {
-	Dfv          int
+	FieldTypeCtx *FieldTypeCtx
 	ResultFields []*ResultField
 }
 
@@ -144,7 +144,7 @@ func (r *ResultMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	names := &fieldNames{}
 	for i := 0; i < len(r.ResultFields); i++ {
 		f := &ResultField{names: names}
-		f.decode(dec, r.Dfv)
+		f.decode(dec, r.FieldTypeCtx)
 		r.ResultFields[i] = f
 	}
 	names.decode(dec)

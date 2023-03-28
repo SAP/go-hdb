@@ -71,7 +71,7 @@ func (ops Options[K]) String() string {
 func (ops Options[K]) size() int {
 	size := 2 * len(ops) //option + type
 	for _, v := range ops {
-		ot := getOptType(v)
+		ot := optTypeViaType(v)
 		size += ot.size(v)
 	}
 	return size
@@ -84,7 +84,7 @@ func (ops *Options[K]) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	for i := 0; i < ph.numArg(); i++ {
 		k := K(dec.Int8())
 		tc := typeCode(dec.Byte())
-		ot := tc.optType()
+		ot := optTypeViaTypeCode(tc)
 		(*ops)[k] = ot.decode(dec)
 	}
 	return dec.Error()
@@ -93,7 +93,7 @@ func (ops *Options[K]) decode(dec *encoding.Decoder, ph *PartHeader) error {
 func (ops Options[K]) encode(enc *encoding.Encoder) error {
 	for k, v := range ops {
 		enc.Int8(int8(k))
-		ot := getOptType(v)
+		ot := optTypeViaType(v)
 		enc.Int8(int8(ot.typeCode()))
 		ot.encode(enc, v)
 	}

@@ -102,7 +102,7 @@ func (_optBstringType) decode(d *encoding.Decoder) any {
 	return b
 }
 
-func getOptType(v any) optType {
+func optTypeViaType(v any) optType {
 	switch v := v.(type) {
 	case bool:
 		return optBooleanType
@@ -120,5 +120,26 @@ func getOptType(v any) optType {
 		return optBstringType
 	default:
 		panic(fmt.Sprintf("type %T not implemented", v)) // should never happen
+	}
+}
+
+func optTypeViaTypeCode(tc typeCode) optType {
+	switch tc {
+	case tcBoolean:
+		return optBooleanType
+	case tcTinyint:
+		return optTinyintType
+	case tcInteger:
+		return optIntegerType
+	case tcBigint:
+		return optBigintType
+	case tcDouble:
+		return optDoubleType
+	case tcString:
+		return optStringType
+	case tcBstring:
+		return optBstringType
+	default:
+		panic(fmt.Sprintf("missing optType for typeCode %s", tc))
 	}
 }

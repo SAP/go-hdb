@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) {
-	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualInt(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r int64) {
+	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,44 +30,44 @@ func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) {
 	}
 }
 
-func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v any) {
-	_, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualIntOutOfRangeError(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any) {
+	_, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrIntegerOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
 	}
 }
 
-func testConvertInteger(t *testing.T) {
+func testConvertInteger(t *testing.T, ftc *FieldTypeCtx) {
 	type testCustomInt int
 
 	// integer data types
-	assertEqualInt(t, tcTinyint, 42, 42)
-	assertEqualInt(t, tcSmallint, 42, 42)
-	assertEqualInt(t, tcInteger, 42, 42)
-	assertEqualInt(t, tcBigint, 42, 42)
+	assertEqualInt(t, ftc, tcTinyint, 42, 42)
+	assertEqualInt(t, ftc, tcSmallint, 42, 42)
+	assertEqualInt(t, ftc, tcInteger, 42, 42)
+	assertEqualInt(t, ftc, tcBigint, 42, 42)
 
 	// custom integer data type
-	assertEqualInt(t, tcInteger, testCustomInt(42), 42)
+	assertEqualInt(t, ftc, tcInteger, testCustomInt(42), 42)
 
 	// integer reference
 	i := 42
-	assertEqualInt(t, tcBigint, &i, 42)
+	assertEqualInt(t, ftc, tcBigint, &i, 42)
 
 	// min max values
-	assertEqualIntOutOfRangeError(t, tcTinyint, minTinyint-1)
-	assertEqualIntOutOfRangeError(t, tcTinyint, maxTinyint+1)
-	assertEqualIntOutOfRangeError(t, tcSmallint, minSmallint-1)
-	assertEqualIntOutOfRangeError(t, tcSmallint, maxSmallint+1)
-	assertEqualIntOutOfRangeError(t, tcInteger, int64(minInteger)-1) // cast to int64 to avoid overflow in 32-bit systems
-	assertEqualIntOutOfRangeError(t, tcInteger, int64(maxInteger)+1) // cast to int64 to avoid overflow in 32-bit systems
+	assertEqualIntOutOfRangeError(t, ftc, tcTinyint, minTinyint-1)
+	assertEqualIntOutOfRangeError(t, ftc, tcTinyint, maxTinyint+1)
+	assertEqualIntOutOfRangeError(t, ftc, tcSmallint, minSmallint-1)
+	assertEqualIntOutOfRangeError(t, ftc, tcSmallint, maxSmallint+1)
+	assertEqualIntOutOfRangeError(t, ftc, tcInteger, int64(minInteger)-1) // cast to int64 to avoid overflow in 32-bit systems
+	assertEqualIntOutOfRangeError(t, ftc, tcInteger, int64(maxInteger)+1) // cast to int64 to avoid overflow in 32-bit systems
 
 	// integer as string
-	assertEqualInt(t, tcInteger, "42", 42)
+	assertEqualInt(t, ftc, tcInteger, "42", 42)
 }
 
-func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
-	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualFloat(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r float64) {
+	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,15 +82,15 @@ func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
 	}
 }
 
-func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v any) {
-	_, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualFloatOutOfRangeError(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any) {
+	_, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 
 	if !errors.Is(err, ErrFloatOutOfRange) {
 		t.Fatalf("assert equal out of range error failed %s %v", tc, v)
 	}
 }
 
-func testConvertFloat(t *testing.T) {
+func testConvertFloat(t *testing.T, ftc *FieldTypeCtx) {
 	type testCustomFloat float32
 
 	realValue := float32(42.42)
@@ -98,25 +98,25 @@ func testConvertFloat(t *testing.T) {
 	stringDoubleValue := "42.42"
 
 	// float data types
-	assertEqualFloat(t, tcReal, realValue, float64(realValue))
-	assertEqualFloat(t, tcDouble, doubleValue, doubleValue)
+	assertEqualFloat(t, ftc, tcReal, realValue, float64(realValue))
+	assertEqualFloat(t, ftc, tcDouble, doubleValue, doubleValue)
 
 	// custom float data type
-	assertEqualFloat(t, tcReal, testCustomFloat(realValue), float64(realValue))
+	assertEqualFloat(t, ftc, tcReal, testCustomFloat(realValue), float64(realValue))
 
 	// float reference
-	assertEqualFloat(t, tcReal, &realValue, float64(realValue))
+	assertEqualFloat(t, ftc, tcReal, &realValue, float64(realValue))
 
 	// min max values
-	assertEqualFloatOutOfRangeError(t, tcReal, math.Nextafter(maxReal, maxDouble))
-	assertEqualFloatOutOfRangeError(t, tcReal, math.Nextafter(maxReal, maxDouble)*-1)
+	assertEqualFloatOutOfRangeError(t, ftc, tcReal, math.Nextafter(maxReal, maxDouble))
+	assertEqualFloatOutOfRangeError(t, ftc, tcReal, math.Nextafter(maxReal, maxDouble)*-1)
 
 	// float as string
-	assertEqualFloat(t, tcDouble, stringDoubleValue, doubleValue)
+	assertEqualFloat(t, ftc, tcDouble, stringDoubleValue, doubleValue)
 }
 
-func assertEqualTime(t *testing.T, tc typeCode, v any, r time.Time) {
-	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualTime(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r time.Time) {
+	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,23 +125,23 @@ func assertEqualTime(t *testing.T, tc typeCode, v any, r time.Time) {
 	}
 }
 
-func testConvertTime(t *testing.T) {
+func testConvertTime(t *testing.T, ftc *FieldTypeCtx) {
 	type testCustomTime time.Time
 
 	timeValue := time.Now()
 
 	// time data type
-	assertEqualTime(t, tcTimestamp, timeValue, timeValue)
+	assertEqualTime(t, ftc, tcTimestamp, timeValue, timeValue)
 
 	// custom time data type
-	assertEqualTime(t, tcTimestamp, testCustomTime(timeValue), timeValue)
+	assertEqualTime(t, ftc, tcTimestamp, testCustomTime(timeValue), timeValue)
 
 	// time reference
-	assertEqualTime(t, tcTimestamp, &timeValue, timeValue)
+	assertEqualTime(t, ftc, tcTimestamp, &timeValue, timeValue)
 }
 
-func assertEqualString(t *testing.T, tc typeCode, v any, r string) {
-	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualString(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r string) {
+	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,23 +150,23 @@ func assertEqualString(t *testing.T, tc typeCode, v any, r string) {
 	}
 }
 
-func testConvertString(t *testing.T) {
+func testConvertString(t *testing.T, ftc *FieldTypeCtx) {
 	type testCustomString string
 
 	stringValue := "Hello World"
 
 	// string data types
-	assertEqualString(t, tcString, stringValue, stringValue)
+	assertEqualString(t, ftc, tcString, stringValue, stringValue)
 
 	// custom string data type
-	assertEqualString(t, tcString, testCustomString(stringValue), stringValue)
+	assertEqualString(t, ftc, tcString, testCustomString(stringValue), stringValue)
 
 	// string reference
-	assertEqualString(t, tcString, &stringValue, stringValue)
+	assertEqualString(t, ftc, tcString, &stringValue, stringValue)
 }
 
-func assertEqualBytes(t *testing.T, tc typeCode, v any, r []byte) {
-	cv, err := tc.fieldType(defaultDfv, 0, 0).(fieldConverter).convert(v)
+func assertEqualBytes(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r []byte) {
+	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,29 +175,29 @@ func assertEqualBytes(t *testing.T, tc typeCode, v any, r []byte) {
 	}
 }
 
-func testConvertBytes(t *testing.T) {
+func testConvertBytes(t *testing.T, ftc *FieldTypeCtx) {
 	type testCustomBytes []byte
 
 	bytesValue := []byte("Hello World")
 
 	// bytes data types
-	assertEqualBytes(t, tcString, bytesValue, bytesValue)
-	assertEqualBytes(t, tcBinary, bytesValue, bytesValue)
+	assertEqualBytes(t, ftc, tcString, bytesValue, bytesValue)
+	assertEqualBytes(t, ftc, tcBinary, bytesValue, bytesValue)
 
 	// custom bytes data type
-	assertEqualBytes(t, tcString, testCustomBytes(bytesValue), bytesValue)
-	assertEqualBytes(t, tcBinary, testCustomBytes(bytesValue), bytesValue)
+	assertEqualBytes(t, ftc, tcString, testCustomBytes(bytesValue), bytesValue)
+	assertEqualBytes(t, ftc, tcBinary, testCustomBytes(bytesValue), bytesValue)
 
 	// bytes reference
-	assertEqualBytes(t, tcString, &bytesValue, bytesValue)
-	assertEqualBytes(t, tcBinary, &bytesValue, bytesValue)
+	assertEqualBytes(t, ftc, tcString, &bytesValue, bytesValue)
+	assertEqualBytes(t, ftc, tcBinary, &bytesValue, bytesValue)
 
 }
 
 func TestConverter(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fct  func(t *testing.T, ftc *FieldTypeCtx)
 	}{
 		{"convertInteger", testConvertInteger},
 		{"convertFloat", testConvertFloat},
@@ -206,9 +206,11 @@ func TestConverter(t *testing.T) {
 		{"convertBytes", testConvertBytes},
 	}
 
+	ftc := NewFieldTypeCtx(defaultDfv, false)
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t)
+			test.fct(t, ftc)
 		})
 	}
 }

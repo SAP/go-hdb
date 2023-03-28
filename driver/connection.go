@@ -183,7 +183,7 @@ type conn struct {
 
 	serverOptions p.Options[p.ConnectOption]
 	hdbVersion    *Version
-	hdbDfv        int
+	fieldTypeCtx  *p.FieldTypeCtx
 
 	pr *p.Reader
 	pw *p.Writer
@@ -285,7 +285,7 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 	}
 
 	c.hdbVersion = parseVersion(c.versionString())
-	c.hdbDfv = int(c.serverOptions[p.CoDataFormatVersion2].(int32))
+	c.fieldTypeCtx = p.NewFieldTypeCtx(int(c.serverOptions[p.CoDataFormatVersion2].(int32)), attrs.clone()._emptyDateAsNull)
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
@@ -1180,7 +1180,7 @@ func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
 	}
 
 	qr := &queryResult{conn: c}
-	meta := &p.ResultMetadata{Dfv: c.hdbDfv}
+	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	resSet := &p.Resultset{}
 
 	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
@@ -1237,8 +1237,8 @@ func (c *conn) _prepare(query string) (*prepareResult, error) {
 	}
 
 	pr := &prepareResult{}
-	resMeta := &p.ResultMetadata{Dfv: c.hdbDfv}
-	prmMeta := &p.ParameterMetadata{Dfv: c.hdbDfv}
+	resMeta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
+	prmMeta := &p.ParameterMetadata{FieldTypeCtx: c.fieldTypeCtx}
 
 	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
@@ -1430,7 +1430,7 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 	rows := &p.RowsAffected{}
 	var ids []p.LocatorID
 	outPrms := &p.OutputParameters{}
-	meta := &p.ResultMetadata{Dfv: c.hdbDfv}
+	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	resSet := &p.Resultset{}
 	lobReply := &p.WriteLobReply{}
 	var numRow int64

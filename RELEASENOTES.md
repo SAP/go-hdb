@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.1.7
+- replaced build tag 'edan' by connector attribute EmptyDateAsNull
+
 #### v1.1.6
 - fixed https://github.com/SAP/go-hdb/issues/113
 

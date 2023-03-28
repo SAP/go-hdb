@@ -69,6 +69,7 @@ type connAttrs struct {
 	_dfv              int
 	_cesu8Decoder     func() transform.Transformer
 	_cesu8Encoder     func() transform.Transformer
+	_emptyDateAsNull  bool
 }
 
 func newConnAttrs() *connAttrs {
@@ -114,6 +115,7 @@ func (c *connAttrs) clone() *connAttrs {
 		_dfv:              c._dfv,
 		_cesu8Decoder:     c._cesu8Decoder,
 		_cesu8Encoder:     c._cesu8Encoder,
+		_emptyDateAsNull:  c._emptyDateAsNull,
 	}
 }
 
@@ -416,4 +418,25 @@ func (c *connAttrs) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.setCESU8Encoder(cesu8Encoder)
+}
+
+// EmptyDateAsNull returns NULL for empty dates ('0000-00-00') if true, otherwise:
+//
+//	For data format version 1 the backend does return the NULL indicator for empty date fields.
+//	For data format version non equal 1 (field type daydate) the NULL indicator is not set and the return value is 0.
+//	As value 1 represents '0001-01-01' (the minimal valid date) without setting EmptyDateAsNull '0000-12-31' is returned,
+//	so that NULL, empty and valid dates can be distinguished.
+//
+// https://help.sap.com/docs/HANA_SERVICE_CF/7c78579ce9b14a669c1f3295b0d8ca16/3f81ccc7e35d44cbbc595c7d552c202a.html?locale=en-US
+func (c *connAttrs) EmptyDateAsNull() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._emptyDateAsNull
+}
+
+// SetEmptyDateAsNull sets the EmptyDateAsNull flag of the connector.
+func (c *connAttrs) SetEmptyDateAsNull(emptyDateAsNull bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._emptyDateAsNull = emptyDateAsNull
 }

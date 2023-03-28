@@ -14,7 +14,6 @@ import (
 
 	"golang.org/x/text/transform"
 
-	"github.com/SAP/go-hdb/driver/internal/build"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
@@ -64,6 +63,83 @@ type cesu8FieldConverter interface {
 	convertCESU8(t transform.Transformer, v any) (any, error)
 }
 
+// FieldTypeCtx represents a field type context for creating field types.
+type FieldTypeCtx struct {
+	dfv             int
+	emptyDateAsNull bool
+}
+
+// NewFieldTypeCtx returns a new field type context instance.
+func NewFieldTypeCtx(dfv int, emptyDateAsNull bool) *FieldTypeCtx {
+	return &FieldTypeCtx{dfv: dfv, emptyDateAsNull: emptyDateAsNull}
+}
+
+func (ctx *FieldTypeCtx) fieldType(tc typeCode, length, fraction int) fieldType {
+	// performance: use switch instead of map
+	switch tc {
+	case tcBoolean:
+		return booleanType
+	case tcTinyint:
+		return tinyintType
+	case tcSmallint:
+		return smallintType
+	case tcInteger:
+		return integerType
+	case tcBigint:
+		return bigintType
+	case tcReal:
+		return realType
+	case tcDouble:
+		return doubleType
+	case tcDate:
+		return dateType
+	case tcTime:
+		return timeType
+	case tcTimestamp:
+		return timestampType
+	case tcLongdate:
+		return longdateType
+	case tcSeconddate:
+		return seconddateType
+	case tcDaydate:
+		if ctx.emptyDateAsNull {
+			return daydateTypeEmptyDateAsNull
+		}
+		return daydateType
+	case tcSecondtime:
+		return secondtimeType
+	case tcDecimal:
+		return decimalType
+	case tcChar, tcVarchar, tcString:
+		return varType
+	case tcAlphanum:
+		if ctx.dfv == DfvLevel1 {
+			return alphaTypeDFV1
+		}
+		return alphaType
+	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
+		return cesu8Type
+	case tcBinary, tcVarbinary:
+		return varType
+	case tcStPoint, tcStGeometry:
+		return hexType
+	case tcBlob, tcClob, tcLocator:
+		return lobVarType
+	case tcNclob, tcText, tcNlocator:
+		return lobCESU8Type
+	case tcBintext: // ?? lobCESU8Type
+		return lobVarType
+	case tcFixed8:
+		return _fixed8Type{prec: length, scale: fraction} // used for decimals(x,y) 2^63 - 1 (int64)
+	case tcFixed12:
+		return _fixed12Type{prec: length, scale: fraction} // used for decimals(x,y) 2^96 - 1 (int96)
+	case tcFixed16:
+		return _fixed16Type{prec: length, scale: fraction} // used for decimals(x,y) 2^63 - 1 (int128)
+	default:
+		panic(fmt.Sprintf("missing fieldType for typeCode %s", tc))
+	}
+}
+
 type fieldType interface {
 	/*
 		statements:
@@ -78,26 +154,29 @@ type fieldType interface {
 }
 
 var (
-	booleanType    = _booleanType{}
-	tinyintType    = _tinyintType{}
-	smallintType   = _smallintType{}
-	integerType    = _integerType{}
-	bigintType     = _bigintType{}
-	realType       = _realType{}
-	doubleType     = _doubleType{}
-	dateType       = _dateType{}
-	timeType       = _timeType{}
-	timestampType  = _timestampType{}
-	longdateType   = _longdateType{}
-	seconddateType = _seconddateType{}
-	daydateType    = _daydateType{}
-	secondtimeType = _secondtimeType{}
-	decimalType    = _decimalType{}
-	varType        = _varType{}
-	hexType        = _hexType{}
-	cesu8Type      = _cesu8Type{}
-	lobVarType     = _lobVarType{}
-	lobCESU8Type   = _lobCESU8Type{}
+	booleanType                = _booleanType{}
+	tinyintType                = _tinyintType{}
+	smallintType               = _smallintType{}
+	integerType                = _integerType{}
+	bigintType                 = _bigintType{}
+	realType                   = _realType{}
+	doubleType                 = _doubleType{}
+	dateType                   = _dateType{}
+	timeType                   = _timeType{}
+	timestampType              = _timestampType{}
+	longdateType               = _longdateType{}
+	seconddateType             = _seconddateType{}
+	daydateTypeEmptyDateAsNull = _daydateType{emptyDateAsNull: true}
+	daydateType                = _daydateType{emptyDateAsNull: false}
+	secondtimeType             = _secondtimeType{}
+	decimalType                = _decimalType{}
+	varType                    = _varType{}
+	alphaTypeDFV1              = _alphaType{isDfv1: true}
+	alphaType                  = _alphaType{isDfv1: false}
+	hexType                    = _hexType{}
+	cesu8Type                  = _cesu8Type{}
+	lobVarType                 = _lobVarType{}
+	lobCESU8Type               = _lobCESU8Type{}
 )
 
 type (
@@ -113,14 +192,14 @@ type (
 	_timestampType  struct{}
 	_longdateType   struct{}
 	_seconddateType struct{}
-	_daydateType    struct{}
+	_daydateType    struct{ emptyDateAsNull bool }
 	_secondtimeType struct{}
 	_decimalType    struct{}
 	_fixed8Type     struct{ prec, scale int }
 	_fixed12Type    struct{ prec, scale int }
 	_fixed16Type    struct{ prec, scale int }
 	_varType        struct{}
-	_alphaType      struct{ dfv int }
+	_alphaType      struct{ isDfv1 bool }
 	_hexType        struct{}
 	_cesu8Type      struct{}
 	_lobVarType     struct{}
@@ -750,9 +829,9 @@ func (_seconddateType) decodeRes(d *encoding.Decoder) (any, error) {
 	}
 	return convertSeconddateToTime(seconddate), nil
 }
-func (_daydateType) decodeRes(d *encoding.Decoder) (any, error) {
+func (ft _daydateType) decodeRes(d *encoding.Decoder) (any, error) {
 	daydate := d.Int32()
-	if daydate == daydateNullValue || (build.EmptyDateAsNull && daydate == 0) {
+	if daydate == daydateNullValue || (ft.emptyDateAsNull && daydate == 0) {
 		return nil, nil
 	}
 	return convertDaydateToTime(int64(daydate)), nil
@@ -826,7 +905,7 @@ func (ft _alphaType) decodeRes(d *encoding.Decoder) (any, error) {
 	if b == nil {
 		return nil, nil
 	}
-	if ft.dfv == DfvLevel1 { // like _varType
+	if ft.isDfv1 { // like _varType
 		return b, nil
 	}
 	/*

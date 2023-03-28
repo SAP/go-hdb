@@ -84,7 +84,7 @@ func (o *topologyInformation) decode(dec *encoding.Decoder, ph *PartHeader) erro
 		for j := 0; j < optCnt; j++ {
 			k := topologyOption(dec.Int8())
 			tc := typeCode(dec.Byte())
-			ot := tc.optType()
+			ot := optTypeViaTypeCode(tc)
 			ops[k] = ot.decode(dec)
 		}
 	}
