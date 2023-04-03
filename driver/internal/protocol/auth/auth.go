@@ -200,6 +200,15 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 	return nil
 }
 
+// Decode decodes the parameters.
+func (p *Prms) Decode(dec *encoding.Decoder) error {
+	numPrms := int(dec.Int16())
+	for i := 0; i < numPrms; i++ {
+
+	}
+	return nil
+}
+
 func checkAuthMethodType(mt, expected string) error {
 	if mt != expected {
 		return fmt.Errorf("invalid method %s - expected %s", mt, expected)

@@ -38,7 +38,7 @@ func (m authMethods) order() []auth.Method {
 	return methods
 }
 
-// Auth holds the client authentication methods dependant on the driver.Connector attributes.
+// Auth holds the client authentication methods dependent on the driver.Connector attributes.
 type Auth struct {
 	logonname string
 	methods   authMethods
@@ -113,7 +113,7 @@ type AuthInitRequest struct {
 func (r *AuthInitRequest) String() string { return r.prms.String() }
 func (r *AuthInitRequest) size() int      { return r.prms.Size() }
 func (r *AuthInitRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	panic("not implemented yet")
+	return r.prms.Decode(dec)
 }
 func (r *AuthInitRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
 
@@ -124,6 +124,11 @@ type AuthInitReply struct {
 
 func (r *AuthInitReply) String() string { return r.auth.String() }
 func (r *AuthInitReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
+
+	if r.auth == nil {
+		return nil
+	}
+
 	d := auth.NewDecoder(dec)
 
 	if err := d.NumPrm(2); err != nil {
@@ -148,7 +153,8 @@ type AuthFinalRequest struct {
 func (r *AuthFinalRequest) String() string { return r.prms.String() }
 func (r *AuthFinalRequest) size() int      { return r.prms.Size() }
 func (r *AuthFinalRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	panic("not implemented yet")
+	return nil
+	//panic("not implemented yet")
 }
 func (r *AuthFinalRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
 
@@ -159,6 +165,10 @@ type AuthFinalReply struct {
 
 func (r *AuthFinalReply) String() string { return r.method.String() }
 func (r *AuthFinalReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
+	if r.method == nil {
+		return nil
+	}
+
 	if err := r.method.FinalRepDecode(auth.NewDecoder(dec)); err != nil {
 		return err
 	}

@@ -7,12 +7,16 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
@@ -20,7 +24,6 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
-	"github.com/SAP/go-hdb/driver/sqltrace"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -174,19 +177,21 @@ type conn struct {
 	*connAttrs
 	metrics *metrics
 
+	sqlTrace  bool
+	sqlTracer *log.Logger
+
 	dbConn *dbConn
 
 	inTx      bool  // in transaction
 	lastError error // last error
-	trace     bool  // call sqlTrace.On() only once
 	sessionID int64
 
 	serverOptions p.Options[p.ConnectOption]
 	hdbVersion    *Version
 	fieldTypeCtx  *p.FieldTypeCtx
 
-	pr *p.Reader
-	pw *p.Writer
+	pr p.Reader
+	pw p.Writer
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -242,6 +247,27 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 	}
 }
 
+var (
+	protTrace bool
+	sqlTrace  bool
+)
+
+func init() {
+	flag.BoolVar(&protTrace, "hdb.protTrace", false, "enabling hdb protocol trace")
+	flag.BoolVar(&sqlTrace, "hdb.sqlTrace", false, "enabling hdb sql trace")
+}
+
+// SQLTrace returns if sql tracing output is active.
+func SQLTrace() bool {
+	return sqlTrace
+}
+
+// SetSQLTrace sets sql tracing output active or inactive.
+func SetSQLTrace(on bool) { sqlTrace = on }
+
+// unique connection number.
+var connNo atomic.Uint64
+
 func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Auth) (driver.Conn, error) {
 	netConn, err := attrs._dialer.DialContext(ctx, attrs._host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
 	if err != nil {
@@ -257,19 +283,26 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
+	no := connNo.Add(1)
 	c := &conn{
 		metrics:   metrics,
 		connAttrs: attrs,
 		dbConn:    dbConn,
-		trace:     sqltrace.On(),
+		sqlTrace:  sqlTrace,
+		sqlTracer: log.New(os.Stderr, fmt.Sprintf("hdb sql (%d) ", no), log.Ldate|log.Ltime),
 	}
 
-	c.pw = p.NewWriter(rw.Writer, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
+	var tracer *log.Logger
+	if protTrace {
+		tracer = log.New(os.Stderr, fmt.Sprintf("hdb prot (%d) ", no), log.Ldate|log.Ltime)
+	}
+
+	c.pw = p.NewWriter(rw.Writer, tracer, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
 	if err := c.pw.WriteProlog(); err != nil {
 		return nil, err
 	}
 
-	c.pr = p.NewReader(false, rw.Reader, attrs._cesu8Decoder) // read downstream
+	c.pr = p.NewDBReader(rw.Reader, tracer, attrs._cesu8Decoder) // read downstream
 	if err := c.pr.ReadProlog(); err != nil {
 		return nil, err
 	}
@@ -344,8 +377,8 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 	if c.isBad() {
 		return driver.ErrBadConn
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), dummyQuery, nil)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), dummyQuery, nil)
 	}
 
 	done := make(chan struct{})
@@ -369,8 +402,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), query, nil)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), query, nil)
 	}
 
 	done := make(chan struct{})
@@ -461,8 +494,8 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), query, nvargs)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -489,8 +522,8 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), query, nvargs)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -550,15 +583,15 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *DBCo
 	}
 }
 
-func traceSQL(start time.Time, query string, nvargs []driver.NamedValue) {
+func (c *conn) traceSQL(start time.Time, query string, nvargs []driver.NamedValue) {
 	ms := time.Since(start).Milliseconds()
 	switch {
 	case len(nvargs) == 0:
-		sqltrace.Trace.Printf("%s duration %dms", query, ms)
+		c.sqlTracer.Printf("%s duration %dms", query, ms)
 	case len(nvargs) > maxNumTraceArg:
-		sqltrace.Trace.Printf("%s args(limited to %d) %v duration %dms", query, maxNumTraceArg, nvargs[:maxNumTraceArg], ms)
+		c.sqlTracer.Printf("%s args(limited to %d) %v duration %dms", query, maxNumTraceArg, nvargs[:maxNumTraceArg], ms)
 	default:
-		sqltrace.Trace.Printf("%s args %v duration %dms", query, nvargs, ms)
+		c.sqlTracer.Printf("%s args %v duration %dms", query, nvargs, ms)
 	}
 }
 
@@ -658,8 +691,8 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 	if c.isBad() {
 		return nil, driver.ErrBadConn
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), s.query, nvargs)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), s.query, nvargs)
 	}
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
@@ -690,8 +723,8 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r d
 	if connHook != nil {
 		connHook(c, choStmtExec)
 	}
-	if c.trace {
-		defer traceSQL(time.Now(), s.query, nvargs)
+	if c.sqlTrace {
+		defer c.traceSQL(time.Now(), s.query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -1069,6 +1102,19 @@ func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedVal
 	return callArgs, nil
 }
 
+func (c *conn) _checkError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if hdbErrors, ok := err.(*p.HdbErrors); ok && hdbErrors.HasOnlyWarnings() {
+		hdbErrors.ErrorsFunc(func(err error) {
+			c.sqlTracer.Println(err)
+		})
+		return nil
+	}
+	return err
+}
+
 func (c *conn) _databaseName() string {
 	return c.serverOptions[p.CoDatabaseName].(string)
 }
@@ -1079,12 +1125,12 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 		return nil, err
 	}
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkDBConnectInfo:
 			c.pr.Read(&ci)
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 
@@ -1122,11 +1168,11 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		if ph.PartKind == p.PkAuthentication {
 			c.pr.Read(initReply)
 		}
-	}); err != nil {
+	})); err != nil {
 		return 0, nil, err
 	}
 
@@ -1158,14 +1204,14 @@ func (c *conn) _authenticate(auth *p.Auth, applicationName string, dfv int, loca
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkAuthentication:
 			c.pr.Read(finalReply)
 		case p.PkConnectOptions:
 			c.pr.Read(&co)
 		}
-	}); err != nil {
+	})); err != nil {
 		return 0, nil, err
 	}
 	return c.pr.SessionID(), co, nil
@@ -1183,7 +1229,7 @@ func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
 	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkResultMetadata:
 			c.pr.Read(meta)
@@ -1197,7 +1243,7 @@ func (c *conn) _queryDirect(query string, commit bool) (driver.Rows, error) {
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attributes = ph.PartAttributes
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 	if qr.rsID == 0 { // non select query
@@ -1215,12 +1261,12 @@ func (c *conn) _execDirect(query string, commit bool) (driver.Result, error) {
 
 	rows := &p.RowsAffected{}
 	var numRow int64
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		if ph.PartKind == p.PkRowsAffected {
 			c.pr.Read(rows)
 			numRow = rows.Total()
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 	if c.pr.FunctionCode() == p.FcDDL {
@@ -1240,7 +1286,7 @@ func (c *conn) _prepare(query string) (*prepareResult, error) {
 	resMeta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	prmMeta := &p.ParameterMetadata{FieldTypeCtx: c.fieldTypeCtx}
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkStatementID:
 			c.pr.Read((*p.StatementID)(&pr.stmtID))
@@ -1251,7 +1297,7 @@ func (c *conn) _prepare(query string) (*prepareResult, error) {
 			c.pr.Read(prmMeta)
 			pr.parameterFields = prmMeta.ParameterFields
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 	pr.fc = c.pr.FunctionCode()
@@ -1317,7 +1363,7 @@ func (c *conn) _execBatch(pr *prepareResult, nvargs []driver.NamedValue, commit 
 	lobReply := &p.WriteLobReply{}
 	var rowsAffected int64
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkRowsAffected:
 			c.pr.Read(rows)
@@ -1326,7 +1372,7 @@ func (c *conn) _execBatch(pr *prepareResult, nvargs []driver.NamedValue, commit 
 			c.pr.Read(lobReply)
 			ids = lobReply.IDs
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 	fc := c.pr.FunctionCode()
@@ -1436,7 +1482,7 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 	var numRow int64
 	tableRowIdx := 0
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkRowsAffected:
 			c.pr.Read(rows)
@@ -1472,7 +1518,7 @@ func (c *conn) _readCall(outputFields []*p.ParameterField) (*callResult, []p.Loc
 			c.pr.Read(lobReply)
 			ids = lobReply.IDs
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, nil, 0, err
 	}
 	return cr, ids, numRow, nil
@@ -1497,7 +1543,7 @@ func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool
 	qr := &queryResult{conn: c, fields: pr.resultFields}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+	if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		switch ph.PartKind {
 		case p.PkResultsetID:
 			c.pr.Read((*p.ResultsetID)(&qr.rsID))
@@ -1508,7 +1554,7 @@ func (c *conn) _query(pr *prepareResult, nvargs []driver.NamedValue, commit bool
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attributes = ph.PartAttributes
 		}
-	}); err != nil {
+	})); err != nil {
 		return nil, err
 	}
 	if qr.rsID == 0 { // non select query
@@ -1526,28 +1572,28 @@ func (c *conn) _fetchNext(qr *queryResult) error {
 
 	resSet := &p.Resultset{ResultFields: qr.fields, FieldValues: qr.fieldValues} // reuse field values
 
-	return c.pr.IterateParts(func(ph *p.PartHeader) {
+	return c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 		if ph.PartKind == p.PkResultset {
 			c.pr.Read(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attributes = ph.PartAttributes
 		}
-	})
+	}))
 }
 
 func (c *conn) _dropStatementID(id uint64) error {
 	if err := c.pw.Write(c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
-	return c.pr.ReadSkip()
+	return c._checkError(c.pr.ReadSkip())
 }
 
 func (c *conn) _closeResultsetID(id uint64) error {
 	if err := c.pw.Write(c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
-	return c.pr.ReadSkip()
+	return c._checkError(c.pr.ReadSkip())
 }
 
 func (c *conn) _commit() error {
@@ -1556,7 +1602,7 @@ func (c *conn) _commit() error {
 	if err := c.pw.Write(c.sessionID, p.MtCommit, false); err != nil {
 		return err
 	}
-	if err := c.pr.ReadSkip(); err != nil {
+	if err := c._checkError(c.pr.ReadSkip()); err != nil {
 		return err
 	}
 	return nil
@@ -1568,7 +1614,7 @@ func (c *conn) _rollback() error {
 	if err := c.pw.Write(c.sessionID, p.MtRollback, false); err != nil {
 		return err
 	}
-	if err := c.pr.ReadSkip(); err != nil {
+	if err := c._checkError(c.pr.ReadSkip()); err != nil {
 		return err
 	}
 	return nil
@@ -1668,11 +1714,11 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 			return err
 		}
 
-		if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+		if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 			if ph.PartKind == p.PkReadLobReply {
 				c.pr.Read(lobReply)
 			}
-		}); err != nil {
+		})); err != nil {
 			return err
 		}
 
@@ -1750,7 +1796,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 		lobReply := &p.WriteLobReply{}
 		outPrms := &p.OutputParameters{}
 
-		if err := c.pr.IterateParts(func(ph *p.PartHeader) {
+		if err := c._checkError(c.pr.IterateParts(func(ph *p.PartHeader) {
 			switch ph.PartKind {
 			case p.PkOutputParameters:
 				outPrms.OutputFields = cr.outputFields
@@ -1761,7 +1807,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 				c.pr.Read(lobReply)
 				ids = lobReply.IDs
 			}
-		}); err != nil {
+		})); err != nil {
 			return err
 		}
 

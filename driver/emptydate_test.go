@@ -29,11 +29,10 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 	}
 	defer rows.Close()
 
-	for rows.Next() {
+	if rows.Next() {
 		if err := rows.Scan(&nt); err != nil {
 			t.Fatal(err)
 		}
-		break
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)

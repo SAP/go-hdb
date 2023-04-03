@@ -85,8 +85,6 @@ func (ResultsetID) numArg() int       { return 1 }
 func (Fetchsize) numArg() int         { return 1 }
 func (*ReadLobRequest) numArg() int   { return 1 }
 
-// func (lobFlags) numArg() int                   { return 1 }
-
 // size methods (fixed size)
 const (
 	statementIDSize    = 8
@@ -150,24 +148,7 @@ var (
 	_ partReader = (*Options[ClientContextOption])(nil) // sufficient to check one option.
 )
 
-// some partReader needs additional parameter set before reading
-type prmPartReader interface {
-	partReader
-	prm() // marker interface
-}
-
-// prm marker methods
-func (*InputParameters) prm()  {}
-func (*OutputParameters) prm() {}
-func (*Resultset) prm()        {}
-
-var (
-	_ prmPartReader = (*InputParameters)(nil)
-	_ prmPartReader = (*OutputParameters)(nil)
-	_ prmPartReader = (*Resultset)(nil)
-)
-
-var partTypeMap = map[PartKind]reflect.Type{
+var genPartTypeMap = map[PartKind]reflect.Type{
 	PkError:               reflect.TypeOf((*HdbErrors)(nil)).Elem(),
 	PkClientID:            reflect.TypeOf((*ClientID)(nil)).Elem(),
 	PkClientInfo:          reflect.TypeOf((*clientInfo)(nil)).Elem(),
@@ -175,12 +156,7 @@ var partTypeMap = map[PartKind]reflect.Type{
 	PkCommand:             reflect.TypeOf((*Command)(nil)).Elem(),
 	PkRowsAffected:        reflect.TypeOf((*RowsAffected)(nil)).Elem(),
 	PkStatementID:         reflect.TypeOf((*StatementID)(nil)).Elem(),
-	PkParameterMetadata:   reflect.TypeOf((*ParameterMetadata)(nil)).Elem(),
-	PkParameters:          reflect.TypeOf((*InputParameters)(nil)).Elem(),
-	PkOutputParameters:    reflect.TypeOf((*OutputParameters)(nil)).Elem(),
-	PkResultMetadata:      reflect.TypeOf((*ResultMetadata)(nil)).Elem(),
 	PkResultsetID:         reflect.TypeOf((*ResultsetID)(nil)).Elem(),
-	PkResultset:           reflect.TypeOf((*Resultset)(nil)).Elem(),
 	PkFetchSize:           reflect.TypeOf((*Fetchsize)(nil)).Elem(),
 	PkReadLobRequest:      reflect.TypeOf((*ReadLobRequest)(nil)).Elem(),
 	PkReadLobReply:        reflect.TypeOf((*ReadLobReply)(nil)).Elem(),
@@ -191,33 +167,32 @@ var partTypeMap = map[PartKind]reflect.Type{
 	PkTransactionFlags:    typeOfTransactionflags,
 	PkStatementContext:    typeOfStatementContext,
 	PkDBConnectInfo:       typeOfDBConnectInfo,
+	/*
+	   parts that cannot be used generically as additional parameters are needed
+
+	   PkParameterMetadata:   reflect.TypeOf((*ParameterMetadata)(nil)).Elem(),
+	   PkParameters:          reflect.TypeOf((*InputParameters)(nil)).Elem(),
+	   PkOutputParameters:    reflect.TypeOf((*OutputParameters)(nil)).Elem(),
+	   PkResultMetadata:      reflect.TypeOf((*ResultMetadata)(nil)).Elem(),
+	   PkResultset:           reflect.TypeOf((*Resultset)(nil)).Elem(),
+	*/
 }
 
-func partType(pk PartKind) reflect.Type {
-	if pt, ok := partTypeMap[pk]; ok {
-		return pt
+// newGenPartReader returns a generic part reader.
+func newGenPartReader(pk PartKind) partReader {
+	if pk == PkAuthentication {
+		return nil // cannot instantiate generically
 	}
-	return nil
-}
-
-// newGenPartReader returns a generic part reader (part where no additional parameters are needed for reading it).
-func newGenPartReader(pk PartKind) (partReader, bool) {
-	pt := partType(pk)
-	if pt == nil {
-		// part kind is not (yet) supported by driver
-		// need this in case server would send part kinds unknown to the driver
-		return nil, false
+	pt, ok := genPartTypeMap[pk]
+	if !ok {
+		// whether part cannot be instantiated generically or
+		// part is not (yet) known to the driver
+		return nil
 	}
-
 	// create instance
-	part := reflect.New(pt).Interface()
-	if _, ok := part.(prmPartReader); ok {
-		// part kinds which do need additional parameters cannot be used
-		return nil, false
-	}
-	partReader, ok := part.(partReader)
+	partReader, ok := reflect.New(pt).Interface().(partReader)
 	if !ok {
 		panic(fmt.Sprintf("part kind %s does not implement part reader interface", pk)) // should never happen
 	}
-	return partReader, true
+	return partReader
 }

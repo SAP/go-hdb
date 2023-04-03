@@ -34,3 +34,4 @@ _testmain.go
 .vscode
 metrics.prom
 bulkbench
+sniffer

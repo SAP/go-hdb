@@ -190,8 +190,8 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 	}
 }
 
-// HasWarnings returns true if the error collection contains warnings, false otherwise.
-func (e *HdbErrors) HasWarnings() bool {
+// HasOnlyWarnings returns true if the error collection contains warnings, false otherwise.
+func (e *HdbErrors) HasOnlyWarnings() bool {
 	for _, err := range e.errs {
 		if err.errorLevel != errorLevelWarning {
 			return false

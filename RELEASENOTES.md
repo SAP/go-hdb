@@ -1,6 +1,17 @@
 Release Notes
 =============
 
+## v1.2.0
+
+This version is mainly about performance improvements and source code cleanups.
+
+### Incompatible changes
+
+- Package driver/sqltrace was removed. For enabling / disabling connection SQL trace please use driver method driver.SetSQLTrace instead.
+- Flag hdb.protocol.trace was renamed to hdb.protTrace. 
+
+Most go-hdb users shouldn't be affected by these incompatible changes.
+
 ## v1.1.0
 
 ### Minor revisions

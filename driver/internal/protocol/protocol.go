@@ -4,11 +4,16 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"math"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/sqltrace"
 	"golang.org/x/text/transform"
+)
+
+const (
+	clientPrefix = "→"
+	dbPrefix     = "←"
 )
 
 // padding
@@ -21,13 +26,25 @@ func padBytes(size int) int {
 	return 0
 }
 
-// Reader represents a protocol reader.
-type Reader struct {
-	upStream bool
-	tracer   func(up bool, v any) // performance
-	traceOn  bool
+// Reader is the protocol reader interface.
+type Reader interface {
+	ReadProlog() error
+	IterateParts(partFn func(ph *PartHeader)) error
+	Read(part partReader) error
+	ReadSkip() error
+	SessionID() int64
+	FunctionCode() FunctionCode
+}
 
-	step int // authentication
+// Writer is the protocol writer interface.
+type Writer interface {
+	WriteProlog() error
+	Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error
+}
+
+type baseReader struct {
+	tracer      *log.Logger
+	tracePrefix string
 
 	dec *encoding.Decoder
 
@@ -51,13 +68,10 @@ type Reader struct {
 	err error
 }
 
-// NewReader returns an instance of a protocol reader.
-func NewReader(upStream bool, rd io.Reader, decoder func() transform.Transformer) *Reader {
-	tracer, on := newTracer()
-	return &Reader{
-		upStream:        upStream,
+func newBaseReader(rd io.Reader, tracer *log.Logger, tracePrefix string, decoder func() transform.Transformer) *baseReader {
+	return &baseReader{
 		tracer:          tracer,
-		traceOn:         on,
+		tracePrefix:     tracePrefix,
 		dec:             encoding.NewDecoder(rd, decoder),
 		partReaderCache: map[PartKind]partReader{},
 		mh:              &messageHeader{},
@@ -66,42 +80,49 @@ func NewReader(upStream bool, rd io.Reader, decoder func() transform.Transformer
 	}
 }
 
-// ReadSkip reads the server reply without returning the results.
-func (r *Reader) ReadSkip() error { return r.IterateParts(nil) }
-
-// SessionID returns the message header session id.
-func (r *Reader) SessionID() int64 { return r.mh.sessionID }
-
-// FunctionCode returns the segment header function code.
-func (r *Reader) FunctionCode() FunctionCode { return r.sh.functionCode }
-
-func (r *Reader) readInitRequest() error {
-	req := &initRequest{}
-	if err := req.decode(r.dec); err != nil {
-		return err
-	}
-	r.tracer(r.upStream, req)
-	return nil
+type dbReader struct {
+	*baseReader
+}
+type clientReader struct {
+	*baseReader
 }
 
-func (r *Reader) readInitReply() error {
+// NewDBReader returns an instance of a database protocol reader.
+func NewDBReader(rd io.Reader, tracer *log.Logger, decoder func() transform.Transformer) Reader {
+	return &dbReader{baseReader: newBaseReader(rd, tracer, dbPrefix, decoder)}
+}
+
+// NewClientReader returns an instance of a client protocol reader.
+func NewClientReader(rd io.Reader, tracer *log.Logger, decoder func() transform.Transformer) Reader {
+	return &clientReader{baseReader: newBaseReader(rd, tracer, clientPrefix, decoder)}
+}
+
+func (r *baseReader) ReadSkip() error            { return r.IterateParts(nil) }
+func (r *baseReader) SessionID() int64           { return r.mh.sessionID }
+func (r *baseReader) FunctionCode() FunctionCode { return r.sh.functionCode }
+
+func (r *dbReader) ReadProlog() error {
 	rep := &initReply{}
 	if err := rep.decode(r.dec); err != nil {
 		return err
 	}
-	r.tracer(r.upStream, rep)
+	if r.tracer != nil {
+		r.tracer.Printf(fmt.Sprintf("%sINI %s", r.tracePrefix, rep))
+	}
+	return nil
+}
+func (r *clientReader) ReadProlog() error {
+	req := &initRequest{}
+	if err := req.decode(r.dec); err != nil {
+		return err
+	}
+	if r.tracer != nil {
+		r.tracer.Printf(fmt.Sprintf("%sINI %s", r.tracePrefix, req))
+	}
 	return nil
 }
 
-// ReadProlog reads the protocol prolog.
-func (r *Reader) ReadProlog() error {
-	if r.upStream {
-		return r.readInitRequest()
-	}
-	return r.readInitReply()
-}
-
-func (r *Reader) checkError() error {
+func (r *baseReader) checkError() error {
 	defer func() { // init readFlags
 		r.lastErrors = nil
 		r.lastRowsAffected = nil
@@ -130,18 +151,10 @@ func (r *Reader) checkError() error {
 			}
 		}
 	}
-
-	if r.lastErrors.HasWarnings() {
-		r.lastErrors.ErrorsFunc(func(err error) {
-			sqltrace.Trace.Println(err)
-		})
-		return nil
-	}
-
 	return r.lastErrors
 }
 
-func (r *Reader) Read(part partReader) error {
+func (r *baseReader) Read(part partReader) error {
 	r.partRead = true
 
 	err := r.readPart(part)
@@ -158,33 +171,12 @@ func (r *Reader) Read(part partReader) error {
 	return err
 }
 
-func (r *Reader) authPart() partReader {
-	defer func() { r.step++ }()
-
-	switch {
-	case r.upStream && r.step == 0:
-		return &AuthInitRequest{}
-	case r.upStream:
-		return &AuthFinalRequest{}
-	case !r.upStream && r.step == 0:
-		return &AuthInitReply{}
-	case !r.upStream:
-		return &AuthFinalReply{}
-	default:
-		panic(fmt.Errorf("invalid auth step in protocol reader %d", r.step))
-	}
-}
-
-func (r *Reader) skip() error {
+func (r *baseReader) skip() error {
 	pk := r.ph.PartKind
 
 	// if trace is on or mandatory parts need to be read we cannot skip
-	if !(r.traceOn || pk == PkError || pk == PkRowsAffected) {
+	if !(r.tracer != nil || pk == PkError || pk == PkRowsAffected) {
 		return r.skipPart()
-	}
-
-	if pk == PkAuthentication {
-		return r.Read(r.authPart())
 	}
 
 	// check part cache
@@ -192,8 +184,8 @@ func (r *Reader) skip() error {
 		return r.Read(part)
 	}
 
-	part, ok := newGenPartReader(pk)
-	if !ok { // part is not yet supported -> skip
+	part := newGenPartReader(pk)
+	if part == nil { // part cannot be instantiated generically -> skip
 		return r.skipPart()
 	}
 
@@ -203,7 +195,7 @@ func (r *Reader) skip() error {
 	return r.Read(part)
 }
 
-func (r *Reader) skipPadding() int64 {
+func (r *baseReader) skipPadding() int64 {
 	if r.cntPart != r.numPart { // padding if not last part
 		padBytes := padBytes(int(r.ph.bufferLength))
 		r.dec.Skip(padBytes)
@@ -222,21 +214,25 @@ func (r *Reader) skipPadding() int64 {
 	return padBytes
 }
 
-func (r *Reader) skipPart() error {
+func (r *baseReader) skipPart() error {
 	r.dec.ResetCnt()
 	r.dec.Skip(int(r.ph.bufferLength))
-	r.tracer(r.upStream, "*skipped")
-
+	if r.tracer != nil {
+		r.tracer.Printf(fmt.Sprintf("*skipped %s", r.ph.PartKind))
+	}
 	r.readBytes += int64(r.dec.Cnt())
 	r.readBytes += r.skipPadding()
 	return nil
 }
 
-func (r *Reader) readPart(part partReader) error {
+func (r *baseReader) readPart(part partReader) error {
 	r.dec.ResetCnt()
 	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
-	r.tracer(r.upStream, part)
+
+	if r.tracer != nil {
+		r.tracer.Printf(fmt.Sprintf("     %s", part))
+	}
 
 	bufferLen := int(r.ph.bufferLength)
 	switch {
@@ -251,14 +247,14 @@ func (r *Reader) readPart(part partReader) error {
 	return err
 }
 
-// IterateParts is iterating over the parts returned by the server.
-func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
+func (r *baseReader) IterateParts(partFn func(ph *PartHeader)) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
 	r.readBytes = 0 // header bytes are not calculated in header varPartBytes: start with zero
-
-	r.tracer(r.upStream, r.mh)
+	if r.tracer != nil {
+		r.tracer.Printf(fmt.Sprintf("%sMSG %s", r.tracePrefix, r.mh))
+	}
 
 	for i := 0; i < int(r.mh.noOfSegm); i++ {
 		if err := r.sh.decode(r.dec); err != nil {
@@ -267,7 +263,9 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 
 		r.readBytes += segmentHeaderSize
 
-		r.tracer(r.upStream, r.sh)
+		if r.tracer != nil {
+			r.tracer.Printf(fmt.Sprintf(" SEG %s", r.sh))
+		}
 
 		r.numPart = int(r.sh.noOfParts)
 		r.cntPart = 0
@@ -280,7 +278,9 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 
 			r.readBytes += partHeaderSize
 
-			r.tracer(r.upStream, r.ph)
+			if r.tracer != nil {
+				r.tracer.Printf(fmt.Sprintf(" PAR %s", r.ph))
+			}
 
 			r.cntPart++
 
@@ -296,9 +296,9 @@ func (r *Reader) IterateParts(partFn func(ph *PartHeader)) error {
 	return r.checkError()
 }
 
-// Writer represents a protocol writer.
-type Writer struct {
-	tracer func(up bool, v any) // performance
+// writer represents a protocol writer.
+type writer struct {
+	tracer *log.Logger
 
 	wr  *bufio.Writer
 	enc *encoding.Encoder
@@ -313,9 +313,8 @@ type Writer struct {
 }
 
 // NewWriter returns an instance of a protocol writer.
-func NewWriter(wr *bufio.Writer, encoder func() transform.Transformer, sv map[string]string) *Writer {
-	tracer, _ := newTracer()
-	return &Writer{
+func NewWriter(wr *bufio.Writer, tracer *log.Logger, encoder func() transform.Transformer, sv map[string]string) Writer {
+	return &writer{
 		tracer: tracer,
 		wr:     wr,
 		sv:     sv,
@@ -333,8 +332,7 @@ const (
 	protocolVersionMinor = 1
 )
 
-// WriteProlog writes the protocol prolog.
-func (w *Writer) WriteProlog() error {
+func (w *writer) WriteProlog() error {
 	req := &initRequest{}
 	req.product.major = productVersionMajor
 	req.product.minor = productVersionMinor
@@ -345,11 +343,13 @@ func (w *Writer) WriteProlog() error {
 	if err := req.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer(true, req)
+	if w.tracer != nil {
+		w.tracer.Printf(fmt.Sprintf("%sINI %s", clientPrefix, req))
+	}
 	return w.wr.Flush()
 }
 
-func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
+func (w *writer) Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
 	// check on session variables to be send as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
 		writers = append([]partWriter{clientInfo(w.sv)}, writers...)
@@ -380,7 +380,9 @@ func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 	if err := w.mh.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer(true, w.mh)
+	if w.tracer != nil {
+		w.tracer.Printf(fmt.Sprintf("%sMSG %s", clientPrefix, w.mh))
+	}
 
 	if size > math.MaxInt32 {
 		return fmt.Errorf("message size %d exceeds maximum part header value %d", size, math.MaxInt32)
@@ -397,7 +399,9 @@ func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 	if err := w.sh.encode(w.enc); err != nil {
 		return err
 	}
-	w.tracer(true, w.sh)
+	if w.tracer != nil {
+		w.tracer.Printf(fmt.Sprintf(" SEG %s", w.sh))
+	}
 
 	bufferSize -= segmentHeaderSize
 
@@ -416,12 +420,16 @@ func (w *Writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 		if err := w.ph.encode(w.enc); err != nil {
 			return err
 		}
-		w.tracer(true, w.ph)
+		if w.tracer != nil {
+			w.tracer.Printf(fmt.Sprintf(" PAR %s", w.ph))
+		}
 
 		if err := part.encode(w.enc); err != nil {
 			return err
 		}
-		w.tracer(true, part)
+		if w.tracer != nil {
+			w.tracer.Printf(fmt.Sprintf("     %s", part))
+		}
 
 		w.enc.Zeroes(pad)
 
