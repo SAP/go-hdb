@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.2.0
 
+### Minor revisions
+
+#### v1.2.1
+- updated dependencies
+
 This version is mainly about performance improvements and source code cleanups.
 
 ### Incompatible changes
