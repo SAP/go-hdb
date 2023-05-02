@@ -13,7 +13,7 @@ import (
 
 const writeScratchSize = 4096
 
-// Encoder encodes hdb protocol datatypes an basis of an io.Writer.
+// Encoder encodes hdb protocol datatypes on basis of an io.Writer.
 type Encoder struct {
 	wr io.Writer
 	b  []byte // scratch buffer (min 15 Bytes - Decimal)

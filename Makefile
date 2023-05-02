@@ -12,8 +12,9 @@ all:
 	go test ./...
 	@echo execute tests on older supported go versions
 	go1.19.8 test ./...
+#see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
-	reuse lint
+	pipx run reuse lint
 
 #install additional tools
 tools:
@@ -28,13 +29,3 @@ tools:
 go:
 	go install golang.org/dl/go1.19.8@latest
 	go1.19.8 download
-
-#install fsfe reuse tool (https://git.fsfe.org/reuse/tool)
-# pre-conditions:
-# - Python 3.6+
-# - pip
-# install pre-conditions in Debian like linux distros:
-# - sudo apt install python3
-# - sudo apt install python3-pip
-reuse:
-	pip3 install --user --upgrade reuse

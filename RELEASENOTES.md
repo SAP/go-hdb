@@ -5,6 +5,11 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.2.2
+- updated dependencies
+- pipx reuse check in Makefile
+- use errors.Join for go versions greater 1.19
+
 #### v1.2.1
 - updated dependencies
 

@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	e "github.com/SAP/go-hdb/driver/internal/errors"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
@@ -340,19 +339,6 @@ func (c *conn) versionString() (version string) {
 		return s
 	}
 	return
-}
-
-/*
-A better option would be to wrap driver.ErrBadConn directly into a fatal error (instead of using e.ErrFatal).
-Then we could get rid of the isBad check executed on next 'roundrip' completely.
-But unfortunately go database/sql does not return the original error in any case but returns driver.ErrBadConn in some cases instead.
-Tested go versions wrapping driver.ErrBadConn instead of e.ErrFatal:
-- go 1.17.13: works ok
-- go 1.18.5 : does not work
-- go 1.19.2 : does not work
-*/
-func (c *conn) isBad() bool {
-	return errors.Is(c.lastError, driver.ErrBadConn) || errors.Is(c.lastError, e.ErrFatal)
 }
 
 // ResetSession implements the driver.SessionResetter interface.

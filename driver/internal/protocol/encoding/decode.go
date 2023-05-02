@@ -12,7 +12,7 @@ import (
 
 const readScratchSize = 4096
 
-// Decoder decodes hdb protocol datatypes an basis of an io.Reader.
+// Decoder decodes hdb protocol datatypes on basis of an io.Reader.
 type Decoder struct {
 	rd io.Reader
 	/* err: fatal read error
