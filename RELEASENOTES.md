@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.2.3
+- updated dependencies
+
 #### v1.2.2
 - updated dependencies
 - pipx reuse check in Makefile
