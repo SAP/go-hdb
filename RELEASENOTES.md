@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.2.4
+- updated dependencies
+- removed outdated utf8 code in cesu8 encoding
+
 #### v1.2.3
 - updated dependencies
 

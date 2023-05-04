@@ -33,14 +33,14 @@ func TestCP(t *testing.T) {
 	for _, d := range testCPData {
 		n1 := EncodeRune(b, d.cp)
 		if !bytes.Equal(b[:n1], d.utf8) {
-			t.Logf("encode code point %x char %c cesu-8 %x - expected %x", d.cp, d.cp, b[:n1], d.utf8)
+			t.Fatalf("encode code point %x char %c cesu-8 %x - expected %x", d.cp, d.cp, b[:n1], d.utf8)
 		} else {
 			t.Logf("encode code point %x char %c cesu-8 %x", d.cp, d.cp, b[:n1])
 		}
 
 		cp, n2 := DecodeRune(b[:n1])
 		if cp != d.cp || n2 != n1 {
-			t.Logf("decode code point %x size %d - expected %x size %d", cp, n2, d.cp, n1)
+			t.Fatalf("decode code point %x size %d - expected %x size %d", cp, n2, d.cp, n1)
 		} else {
 			t.Logf("decode code point %x size %d", cp, n2)
 		}

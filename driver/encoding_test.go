@@ -13,7 +13,7 @@ import (
 	"golang.org/x/text/transform"
 )
 
-func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
+func setupEncodingTestTable(testData []struct{ s, r string }, t *testing.T) driver.Identifier {
 	db := driver.DefaultTestDB()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
@@ -27,15 +27,15 @@ func setupEncodingTestTable(testData []string, t *testing.T) driver.Identifier {
 	}
 	defer stmt.Close()
 
-	for i, s := range testData {
-		if _, err := stmt.Exec(i, s); err != nil {
+	for i, td := range testData {
+		if _, err := stmt.Exec(i, td.s); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return tableName
 }
 
-func testDecodeError(tableName driver.Identifier, testData []string, t *testing.T) {
+func testDecodeError(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
 	db := driver.DefaultTestDB()
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
@@ -56,7 +56,7 @@ func testDecodeError(tableName driver.Identifier, testData []string, t *testing.
 
 }
 
-func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *testing.T) {
+func testDecodeErrorHandler(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
 	connector := driver.NewTestConnector()
 
 	// register decoder with replace error handler
@@ -77,41 +77,12 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *t
 		s string
 	)
 
-	resultData := []string{
-		"2b301c39efbfbd32306033", // invalid sequence "eda2a811" gets replaces by replacement char "fffd" -> UTF-8 "efbfbd"
-		"243036301defbfbdceb63714",
-		"24302837323245efbfbd6c",
-		"2443306eefbfbd2e19517c",
-		"243035027f03353245efbfbd",
-		"246a3066ed828f5d303054efbfbd",
-		"245d66301d5a383435efbfbd",
-		"24d9973048287342efbfbd78",
-		"24306a36efbfbd39393738",
-		"30393fefbfbd312c391936",
-		"303735efbfbd3425256135",
-		"24efbfbd33334d374c3736",
-		"1130691932593303efbfbd",
-		"30154301326b133334efbfbd",
-		"24efbfbd33611037370a38",
-		"24efbfbd61223433390674",
-		"2443307f61313aefbfbd34",
-		"08303438013624efbfbd33",
-		"24350730345f1a373fefbfbd",
-		"240d30efbfbd7738044132",
-		"24301bde964cefbfbd357229",
-		"306e3631324eefbfbd3036",
-		"243b303434613742efbfbd",
-		"2430772b4533360164efbfbd",
-		"2430d28763efbfbd3f333830",
-		"303535376bd8a80936efbfbd",
-	}
-
 	for rows.Next() {
 		if err := rows.Scan(&i, &s); err != nil {
 			t.Fatal(err)
 		}
 
-		r, err := hex.DecodeString(resultData[i])
+		r, err := hex.DecodeString(testData[i].r)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -126,7 +97,7 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []string, t *t
 
 }
 
-func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T) {
+func testDecodeRaw(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
 	connector := driver.NewTestConnector()
 
 	// register nop decoder to receive 'raw' undecoded data
@@ -150,7 +121,7 @@ func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T)
 		if err := rows.Scan(&i, &s); err != nil {
 			t.Fatal(err)
 		}
-		cmp, err := hex.DecodeString(testData[i])
+		cmp, err := hex.DecodeString(testData[i].s)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,40 +136,41 @@ func testDecodeRaw(tableName driver.Identifier, testData []string, t *testing.T)
 }
 
 func TestEncoding(t *testing.T) {
-	testData := []string{
-		"2b301c39eda2a81132306033",
-		"243036301dedb1a060ceb63714",
-		"24302837323245edb1a9146c",
-		"2443306eedbaae382e19517c",
-		"243035027f03353245edac89",
-		"246a3066ed828f5d303054eda6bf",
-		"245d66301d5a383435edb1ba",
-		"24d9973048287342edb8945078",
-		"24306a36edb1ab3039393738",
-		"30393feda48f30312c391936",
-		"303735eda898613425256135",
-		"24edb1a93033334d374c3736",
-		"1130691932593303edaf9f4c",
-		"30154301326b133334edae8e",
-		"24eda6b43033611037370a38",
-		"24eda3ab3061223433390674",
-		"2443307f61313aedbeac3734",
-		"08303438013624edbc963133",
-		"24350730345f1a373fedb8ae",
-		"240d30edbdbb1e7738044132",
-		"24301bde964cedbeac36357229",
-		"306e3631324eedaf85303036",
-		"243b303434613742eda9910c",
-		"2430772b4533360164eda69d",
-		"2430d28763eda2996d3f333830",
-		"303535376bd8a80936edb19134",
+	testData := []struct{ s, r string }{
+		// invalid sequence "eda2a8" (only high surrogate pair) gets replaced by replacement char "fffd" -> UTF-8 "efbfbd"
+		{"2b301c39eda2a81132306033", "2b301c39efbfbd1132306033"},
+		{"243036301dedb1a060ceb63714", "243036301defbfbd60ceb63714"},
+		{"24302837323245edb1a9146c", "24302837323245efbfbd146c"},
+		{"2443306eedbaae382e19517c", "2443306eefbfbd382e19517c"},
+		{"243035027f03353245edac89", "243035027f03353245efbfbd"},
+		{"246a3066ed828f5d303054eda6bf", "246a3066ed828f5d303054efbfbd"},
+		{"245d66301d5a383435edb1ba", "245d66301d5a383435efbfbd"},
+		{"24d9973048287342edb8945078", "24d9973048287342efbfbd5078"},
+		{"24306a36edb1ab3039393738", "24306a36efbfbd3039393738"},
+		{"30393feda48f30312c391936", "30393fefbfbd30312c391936"},
+		{"303735eda898613425256135", "303735efbfbd613425256135"},
+		{"24edb1a93033334d374c3736", "24efbfbd3033334d374c3736"},
+		{"1130691932593303edaf9f4c", "1130691932593303efbfbd4c"},
+		{"30154301326b133334edae8e", "30154301326b133334efbfbd"},
+		{"24eda6b43033611037370a38", "24efbfbd3033611037370a38"},
+		{"24eda3ab3061223433390674", "24efbfbd3061223433390674"},
+		{"2443307f61313aedbeac3734", "2443307f61313aefbfbd3734"},
+		{"08303438013624edbc963133", "08303438013624efbfbd3133"},
+		{"24350730345f1a373fedb8ae", "24350730345f1a373fefbfbd"},
+		{"240d30edbdbb1e7738044132", "240d30efbfbd1e7738044132"},
+		{"24301bde964cedbeac36357229", "24301bde964cefbfbd36357229"},
+		{"306e3631324eedaf85303036", "306e3631324eefbfbd303036"},
+		{"243b303434613742eda9910c", "243b303434613742efbfbd0c"},
+		{"2430772b4533360164eda69d", "2430772b4533360164efbfbd"},
+		{"2430d28763eda2996d3f333830", "2430d28763efbfbd6d3f333830"},
+		{"303535376bd8a80936edb19134", "303535376bd8a80936efbfbd34"},
 	}
 
 	tableName := setupEncodingTestTable(testData, t)
 
 	tests := []struct {
 		name string
-		fct  func(tableName driver.Identifier, testData []string, t *testing.T)
+		fct  func(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T)
 	}{
 		{"testDecodeError", testDecodeError},
 		{"testDecodeErrorHandler", testDecodeErrorHandler},
