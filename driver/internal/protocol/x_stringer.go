@@ -8,7 +8,7 @@ func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
-	_ = x[tcNullL-0]
+	_ = x[tcNull-0]
 	_ = x[tcTinyint-1]
 	_ = x[tcSmallint-2]
 	_ = x[tcInteger-3]
@@ -75,7 +75,7 @@ func _() {
 }
 
 const (
-	_typeCode_name_0 = "tcNullLtcTinyinttcSmallinttcIntegertcBiginttcDecimaltcRealtcDoubletcChartcVarchartcNchartcNvarchartcBinarytcVarbinarytcDatetcTimetcTimestamptcTimetztcTimeltztcTimestampTztcTimestampLtztcIntervalYmtcIntervalDstcRowidtcUrowidtcClobtcNclobtcBlobtcBooleantcStringtcNstringtcLocatortcNlocatortcBstringtcDecimalDigitArraytcVarchar2"
+	_typeCode_name_0 = "tcNulltcTinyinttcSmallinttcIntegertcBiginttcDecimaltcRealtcDoubletcChartcVarchartcNchartcNvarchartcBinarytcVarbinarytcDatetcTimetcTimestamptcTimetztcTimeltztcTimestampTztcTimestampLtztcIntervalYmtcIntervalDstcRowidtcUrowidtcClobtcNclobtcBlobtcBooleantcStringtcNstringtcLocatortcNlocatortcBstringtcDecimalDigitArraytcVarchar2"
 	_typeCode_name_1 = "tcTable"
 	_typeCode_name_2 = "tcSmalldecimaltcAbapstreamtcAbapstructtcAarraytcTexttcShorttexttcBintext"
 	_typeCode_name_3 = "tcAlphanum"
@@ -88,7 +88,7 @@ const (
 )
 
 var (
-	_typeCode_index_0 = [...]uint16{0, 7, 16, 26, 35, 43, 52, 58, 66, 72, 81, 88, 98, 106, 117, 123, 129, 140, 148, 157, 170, 184, 196, 208, 215, 223, 229, 236, 242, 251, 259, 268, 277, 287, 296, 315, 325}
+	_typeCode_index_0 = [...]uint16{0, 6, 15, 25, 34, 42, 51, 57, 65, 71, 80, 87, 97, 105, 116, 122, 128, 139, 147, 156, 169, 183, 195, 207, 214, 222, 228, 235, 241, 250, 258, 267, 276, 286, 295, 314, 324}
 	_typeCode_index_2 = [...]uint8{0, 14, 26, 38, 46, 52, 63, 72}
 	_typeCode_index_4 = [...]uint8{0, 10, 22, 31, 43}
 	_typeCode_index_5 = [...]uint8{0, 10, 28, 46, 65, 77, 86, 95, 105, 121, 140}

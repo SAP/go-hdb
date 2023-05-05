@@ -16,6 +16,11 @@ all:
 	@echo "reuse (license) check"
 	pipx run reuse lint
 
+#go generate
+generate:
+	@echo "generate"
+	go generate ./...
+
 #install additional tools
 tools:
 #install linter
