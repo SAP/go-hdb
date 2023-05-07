@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.2.6
+- fixed bug in cesu8 encoding
+
 #### v1.2.5
 - updated dependencies
 - fixed typo in constant

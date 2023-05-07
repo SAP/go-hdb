@@ -310,7 +310,11 @@ func testBulkBlob106(ctr *Connector, db *sql.DB, t *testing.T) {
 			t.Fatalf("value %d - expected %d", j, i)
 		}
 		if string(stringLob) != testData[j%numRecsPerCall] {
-			t.Fatalf("value %s - expected %s", stringLob, testData[j%numRecsPerCall])
+			t.Fatalf("value %s len %d - expected %s len %d",
+				stringLob,
+				len(string(stringLob)),
+				testData[j%numRecsPerCall],
+				len(testData[j%numRecsPerCall]))
 		}
 		i++
 	}

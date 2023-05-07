@@ -1634,24 +1634,24 @@ func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
 
 	if descr.IsCharBased {
 		wrcl := transform.NewWriter(wr, c._cesu8Decoder()) // CESU8 transformer
-		err = c._decodeLob(descr, wrcl, func(b []byte) (int64, error) {
-			// Caution: hdb counts 4 byte utf-8 encodings (cesu-8 6 bytes) as 2 (3 byte) chars
-			numChars := int64(0)
+		err = c._decodeLob(descr, wrcl, func(b []byte) (size int, numChar int) {
 			for len(b) > 0 {
-				if !cesu8.FullRune(b) { //
-					return 0, fmt.Errorf("lob chunk consists of incomplete CESU-8 runes")
+				if !cesu8.FullRune(b) {
+					return
 				}
-				_, size := cesu8.DecodeRune(b)
-				b = b[size:]
-				numChars++
-				if size == cesu8.CESUMax {
-					numChars++
+				_, width := cesu8.DecodeRune(b)
+				size += width
+				if width == cesu8.CESUMax {
+					numChar += 2 // caution: hdb counts 2 chars in case of surrogate pair
+				} else {
+					numChar++
 				}
+				b = b[width:]
 			}
-			return numChars, nil
+			return
 		})
 	} else {
-		err = c._decodeLob(descr, wr, func(b []byte) (int64, error) { return int64(len(b)), nil })
+		err = c._decodeLob(descr, wr, func(b []byte) (int, int) { return len(b), len(b) })
 	}
 
 	if pw, ok := wr.(*io.PipeWriter); ok { // if the writer is a pipe-end -> close at the end
@@ -1664,7 +1664,7 @@ func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
 	return err
 }
 
-func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int64, error)) error {
+func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int, int)) error {
 	lobChunkSize := int64(c._lobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {
@@ -1675,7 +1675,8 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 		return int32(chunkSize)
 	}
 
-	if _, err := wr.Write(descr.B); err != nil {
+	size, numChar := countChars(descr.B)
+	if _, err := wr.Write(descr.B[:size]); err != nil {
 		return err
 	}
 
@@ -1686,15 +1687,10 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 
 	eof := descr.Opt.IsLastData()
 
-	ofs, err := countChars(descr.B)
-	if err != nil {
-		return err
-	}
-
 	for !eof {
 
-		lobRequest.Ofs += ofs
-		lobRequest.ChunkSize = chunkSize(descr.NumChar, ofs)
+		lobRequest.Ofs += int64(numChar)
+		lobRequest.ChunkSize = chunkSize(descr.NumChar, lobRequest.Ofs)
 
 		if err := c.pw.Write(c.sessionID, p.MtWriteLob, false, lobRequest); err != nil {
 			return err
@@ -1712,12 +1708,8 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 			return fmt.Errorf("internal error: invalid lob locator %d - expected %d", lobReply.ID, lobRequest.ID)
 		}
 
-		if _, err := wr.Write(lobReply.B); err != nil {
-			return err
-		}
-
-		ofs, err = countChars(lobReply.B)
-		if err != nil {
+		size, numChar = countChars(lobReply.B)
+		if _, err := wr.Write(lobReply.B[:size]); err != nil {
 			return err
 		}
 		eof = lobReply.Opt.IsLastData()

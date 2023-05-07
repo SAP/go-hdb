@@ -12,11 +12,8 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -507,83 +504,51 @@ var alphanumTestData = []any{
 	sql.NullString{Valid: true, String: "42"},
 }
 
-type testLobFile struct {
-	content []byte
-	isASCII bool
-}
-
-var testLobFiles = make([]*testLobFile, 0)
-
-var initLobFilesOnce sync.Once
-
-func testInitLobFiles(t *testing.T) {
-	initLobFilesOnce.Do(func() { // lazy (lob file test might not be executed at allss)
-
-		isASCII := func(content []byte) bool {
-			for _, b := range content {
-				if b >= utf8.RuneSelf {
-					return false
-				}
-			}
-			return true
-		}
-
-		filter := func(name string) bool {
-			for _, ext := range []string{".go"} {
-				if filepath.Ext(name) == ext {
-					return true
-				}
-			}
-			return false
-		}
-
-		walk := func(p string, info os.FileInfo, err error) error {
-			if !info.IsDir() && filter(info.Name()) {
-				content, err := os.ReadFile(p)
-				if err != nil {
-					return err
-				}
-				testLobFiles = append(testLobFiles, &testLobFile{isASCII: isASCII(content), content: content})
-			}
-			return nil
-		}
-
-		root, err := os.Getwd()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := filepath.Walk(root, walk); err != nil {
-			t.Fatal(err)
-		}
-
-		// add random
-		// Lob size 1MB
-		b := make([]byte, 1e6)
-		if _, err := randAlphanumReader.Read(b); err != nil {
-			t.Fatal(err)
-		}
-		testLobFiles = append(testLobFiles, &testLobFile{isASCII: true, content: b})
-	})
-}
-
-func lobTestData(ascii bool, t *testing.T) []any {
-	testInitLobFiles(t)
-	testData := make([]any, 0, len(testLobFiles))
-	first := true
-	for _, f := range testLobFiles {
-		if !ascii || f.isASCII {
-			if first {
-				testData = append(
-					testData,
-					NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(f.content)}},
-					NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(f.content)}},
-				)
-				first = false
-			}
-			testData = append(testData, Lob{rd: bytes.NewReader(f.content)})
+var unicodeData = func() []byte {
+	b := make([]byte, 0, utf8.MaxRune)
+	rb := make([]byte, utf8.UTFMax)
+	for r := rune(0); r <= utf8.MaxRune; r++ {
+		l := utf8.EncodeRune(rb, r)
+		if r, _ := utf8.DecodeRune(rb); r != utf8.RuneError {
+			b = append(b, rb[:l]...)
 		}
 	}
-	return testData
+	return b
+}()
+
+var asciiData = func() []byte {
+	b := make([]byte, utf8.RuneSelf)
+	for r := rune(0); r < utf8.RuneSelf; r++ {
+		b[r] = byte(r)
+	}
+	return b
+}()
+
+var randAlphanumData = func() []byte {
+	b := make([]byte, 1e6) // random Lob size 1MB
+	if _, err := randAlphanumReader.Read(b); err != nil {
+		panic(err) // should never happen
+	}
+	return b
+}()
+
+func lobASCIITestData() []any {
+	return []any{
+		NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(asciiData)}},
+		NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(asciiData)}},
+		Lob{rd: bytes.NewReader(asciiData)},
+		Lob{rd: bytes.NewReader(randAlphanumData)},
+	}
+}
+
+func lobTestData() []any {
+	return []any{
+		NullLob{Valid: false, Lob: &Lob{rd: bytes.NewReader(asciiData)}},
+		NullLob{Valid: true, Lob: &Lob{rd: bytes.NewReader(asciiData)}},
+		Lob{rd: bytes.NewReader(unicodeData)},
+		Lob{rd: bytes.NewReader(asciiData)},
+		Lob{rd: bytes.NewReader(randAlphanumData)},
+	}
 }
 
 var stPointTestData = []spatial.Geometry{
@@ -911,14 +876,14 @@ func TestDataType(t *testing.T) {
 			&dttDef{&basicColumn{version, dfv, basicType[dtTimestamp], true}, checkTimestamp, timeTestData},
 			&dttDef{&basicColumn{version, dfv, basicType[dtLongdate], true}, checkTimestamp, timeTestData},
 
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtClob], true}, checkLob, lobTestData(true, t)}},   // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtNClob], true}, checkLob, lobTestData(false, t)}}, // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBlob], true}, checkLob, lobTestData(false, t)}},  // tests executed in parallel -> do not reuse lobs
+			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtClob], true}, checkLob, lobASCIITestData()}}, // tests executed in parallel -> do not reuse lobs
+			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtNClob], true}, checkLob, lobTestData()}},     // tests executed in parallel -> do not reuse lobs
+			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBlob], true}, checkLob, lobTestData()}},      // tests executed in parallel -> do not reuse lobs
 
 			&dttDef{&basicColumn{version, dfv, basicType[dtBoolean], true}, checkBoolean, booleanTestData},
 
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtText], true}, checkText, lobTestData(false, t)}},   // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBintext], true}, checkText, lobTestData(true, t)}}, // tests executed in parallel -> do not reuse lobs
+			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtText], true}, checkText, lobTestData()}},         // tests executed in parallel -> do not reuse lobs
+			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBintext], true}, checkText, lobASCIITestData()}}, // tests executed in parallel -> do not reuse lobs
 			/*
 			 using unicode (CESU-8) data for char HDB
 			 - successful insert into table

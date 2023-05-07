@@ -63,8 +63,8 @@ func EncodeRune(p []byte, r rune) int {
 
 // FullRune reports whether the bytes in p begin with a full CESU-8 encoding of a rune.
 func FullRune(p []byte) bool {
-	if isSurrogate(p) && isSurrogate(p[3:]) {
-		return true
+	if isSurrogate(p) {
+		return isSurrogate(p[3:])
 	}
 	return utf8.FullRune(p)
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"sync"
@@ -39,14 +40,14 @@ const (
 
 const (
 	defaultFetchSize    = 128         // Default value fetchSize.
-	defaultLobChunkSize = 8192        // Default value lobChunkSize.
+	defaultLobChunkSize = 1 << 16     // Default value lobChunkSize.
 	defaultDfv          = p.DfvLevel8 // Default data version format level.
 )
 
 const (
-	minFetchSize    = 1       // Minimal fetchSize value.
-	minLobChunkSize = 128     // Minimal lobChunkSize
-	maxLobChunkSize = 1 << 14 // Maximal lobChunkSize (TODO check)
+	minFetchSize    = 1             // Minimal fetchSize value.
+	minLobChunkSize = 128           // Minimal lobChunkSize
+	maxLobChunkSize = math.MaxInt32 // Maximal lobChunkSize
 )
 
 // connAttrs is holding connection relevant attributes.
