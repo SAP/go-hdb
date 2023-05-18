@@ -6,14 +6,15 @@ package protocol
 
 import (
 	"bufio"
-	"log"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/slog"
 )
 
 // writer represents a protocol writer.
 type writer struct {
-	tracer *log.Logger
+	protTrace bool
+	logger    *slog.Logger
 
 	wr  *bufio.Writer
 	enc *encoding.Encoder

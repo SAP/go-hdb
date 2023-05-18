@@ -12,6 +12,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/slog"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/exp/maps"
 	"golang.org/x/text/transform"
@@ -71,6 +72,7 @@ type connAttrs struct {
 	_cesu8Decoder     func() transform.Transformer
 	_cesu8Encoder     func() transform.Transformer
 	_emptyDateAsNull  bool
+	_logger           *slog.Logger // provide slog setter+getter after go1.19 is out of maintenance
 }
 
 func newConnAttrs() *connAttrs {
@@ -86,6 +88,7 @@ func newConnAttrs() *connAttrs {
 		_dfv:             defaultDfv,
 		_cesu8Decoder:    cesu8.DefaultDecoder,
 		_cesu8Encoder:    cesu8.DefaultEncoder,
+		_logger:          slog.Default(),
 	}
 }
 
@@ -117,6 +120,7 @@ func (c *connAttrs) clone() *connAttrs {
 		_cesu8Decoder:     c._cesu8Decoder,
 		_cesu8Encoder:     c._cesu8Encoder,
 		_emptyDateAsNull:  c._emptyDateAsNull,
+		_logger:           c._logger,
 	}
 }
 
@@ -184,18 +188,6 @@ func (c *connAttrs) setDfv(dfv int) {
 		dfv = defaultDfv
 	}
 	c._dfv = dfv
-}
-func (c *connAttrs) setCESU8Decoder(cesu8Decoder func() transform.Transformer) {
-	if cesu8Decoder == nil {
-		cesu8Decoder = cesu8.DefaultDecoder
-	}
-	c._cesu8Decoder = cesu8Decoder
-}
-func (c *connAttrs) setCESU8Encoder(cesu8Encoder func() transform.Transformer) {
-	if cesu8Encoder == nil {
-		cesu8Encoder = cesu8.DefaultEncoder
-	}
-	c._cesu8Encoder = cesu8Encoder
 }
 
 // Host returns the host of the connector.
@@ -404,7 +396,10 @@ func (c *connAttrs) CESU8Decoder() func() transform.Transformer {
 func (c *connAttrs) SetCESU8Decoder(cesu8Decoder func() transform.Transformer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setCESU8Decoder(cesu8Decoder)
+	if cesu8Decoder == nil {
+		cesu8Decoder = cesu8.DefaultDecoder
+	}
+	c._cesu8Decoder = cesu8Decoder
 }
 
 // CESU8Encoder returns the CESU-8 encoder of the connector.
@@ -418,7 +413,10 @@ func (c *connAttrs) CESU8Encoder() func() transform.Transformer {
 func (c *connAttrs) SetCESU8Encoder(cesu8Encoder func() transform.Transformer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setCESU8Encoder(cesu8Encoder)
+	if cesu8Encoder == nil {
+		cesu8Encoder = cesu8.DefaultEncoder
+	}
+	c._cesu8Encoder = cesu8Encoder
 }
 
 /*

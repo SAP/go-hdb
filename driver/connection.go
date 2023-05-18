@@ -10,9 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net"
-	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -23,6 +21,7 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
+	"github.com/SAP/go-hdb/driver/internal/slog"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -75,10 +74,6 @@ const (
 	setDefaultSchema  = "set schema"
 )
 
-const (
-	maxNumTraceArg = 20
-)
-
 var (
 	// register as var to execute even before init() funcs are called
 	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem(), reflect.TypeOf((*NullDecimal)(nil)).Elem())
@@ -90,6 +85,7 @@ type dbConn struct {
 	metrics   *metrics
 	conn      net.Conn
 	timeout   time.Duration
+	logger    *slog.Logger
 	lastRead  time.Time
 	lastWrite time.Time
 }
@@ -114,7 +110,7 @@ func (c *dbConn) Read(b []byte) (int, error) {
 	c.metrics.chMsg <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
 	c.metrics.chMsg <- counterMsg{idx: counterBytesRead, v: uint64(n)}
 	if err != nil {
-		dlog.Printf("Connection read error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		c.logger.Error("DB conn read error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
 		return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
@@ -132,7 +128,7 @@ func (c *dbConn) Write(b []byte) (int, error) {
 	c.metrics.chMsg <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
 	c.metrics.chMsg <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
 	if err != nil {
-		dlog.Printf("Connection write error local address %s remote address %s: %s", c.conn.LocalAddr(), c.conn.RemoteAddr(), err)
+		c.logger.Error("DB conn write error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
 		return n, fmt.Errorf("%w: %s", driver.ErrBadConn, err)
 	}
@@ -171,13 +167,15 @@ type Conn interface {
 	DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error)
 }
 
+const traceMsg = "SQL"
+
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
 	*connAttrs
 	metrics *metrics
 
-	sqlTrace  bool
-	sqlTracer *log.Logger
+	sqlTrace bool
+	logger   *slog.Logger
 
 	dbConn *dbConn
 
@@ -247,22 +245,32 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 }
 
 var (
-	protTrace bool
-	sqlTrace  bool
+	protTrace atomicBoolFlag
+	sqlTrace  atomicBoolFlag
 )
 
 func init() {
-	flag.BoolVar(&protTrace, "hdb.protTrace", false, "enabling hdb protocol trace")
-	flag.BoolVar(&sqlTrace, "hdb.sqlTrace", false, "enabling hdb sql trace")
+	flag.Var(&protTrace, "hdb.protTrace", "enabling hdb protocol trace")
+	flag.Var(&sqlTrace, "hdb.sqlTrace", "enabling hdb sql trace")
 }
 
 // SQLTrace returns if sql tracing output is active.
-func SQLTrace() bool {
-	return sqlTrace
-}
+func SQLTrace() bool { return sqlTrace.Load() }
 
 // SetSQLTrace sets sql tracing output active or inactive.
-func SetSQLTrace(on bool) { sqlTrace = on }
+func SetSQLTrace(on bool) { sqlTrace.Store(on) }
+
+func argsAttrs(nvargs []driver.NamedValue) []any {
+	attrs := make([]any, len(nvargs))
+	for i, nvarg := range nvargs {
+		if nvarg.Name != "" {
+			attrs[i] = slog.Any(nvarg.Name, fmt.Sprintf("%v", nvarg.Value))
+		} else {
+			attrs[i] = slog.Any(fmt.Sprintf("%d", nvarg.Ordinal), fmt.Sprintf("%v", nvarg.Value))
+		}
+	}
+	return attrs
+}
 
 // unique connection number.
 var connNo atomic.Uint64
@@ -278,30 +286,22 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 		netConn = tls.Client(netConn, attrs._tlsConfig)
 	}
 
-	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout}
+	no := connNo.Add(1)
+	logger := attrs._logger.With(slog.Uint64("conn", no))
+
+	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
-	no := connNo.Add(1)
-	c := &conn{
-		metrics:   metrics,
-		connAttrs: attrs,
-		dbConn:    dbConn,
-		sqlTrace:  sqlTrace,
-		sqlTracer: log.New(os.Stderr, fmt.Sprintf("hdb sql (%d) ", no), log.Ldate|log.Ltime),
-	}
+	c := &conn{metrics: metrics, connAttrs: attrs, dbConn: dbConn, sqlTrace: sqlTrace.Load(), logger: logger}
 
-	var tracer *log.Logger
-	if protTrace {
-		tracer = log.New(os.Stderr, fmt.Sprintf("hdb prot (%d) ", no), log.Ldate|log.Ltime)
-	}
-
-	c.pw = p.NewWriter(rw.Writer, tracer, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
+	protTrace := protTrace.Load()
+	c.pw = p.NewWriter(rw.Writer, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
 	if err := c.pw.WriteProlog(); err != nil {
 		return nil, err
 	}
 
-	c.pr = p.NewDBReader(rw.Reader, tracer, attrs._cesu8Decoder) // read downstream
+	c.pr = p.NewDBReader(rw.Reader, protTrace, logger, attrs._cesu8Decoder) // read downstream
 	if err := c.pr.ReadProlog(); err != nil {
 		return nil, err
 	}
@@ -364,7 +364,9 @@ func (c *conn) Ping(ctx context.Context) (err error) {
 		return driver.ErrBadConn
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), dummyQuery, nil)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", dummyQuery), slog.Int64("ms", time.Since(start).Milliseconds()))
+		}(time.Now())
 	}
 
 	done := make(chan struct{})
@@ -389,7 +391,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 		return nil, driver.ErrBadConn
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), query, nil)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
+		}(time.Now())
 	}
 
 	done := make(chan struct{})
@@ -481,7 +485,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), query, nvargs)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+		}(time.Now())
 	}
 
 	done := make(chan struct{})
@@ -509,7 +515,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 		return nil, driver.ErrSkip //fast path not possible (prepare needed)
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), query, nvargs)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+		}(time.Now())
 	}
 
 	done := make(chan struct{})
@@ -566,18 +574,6 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (ci *DBCo
 	case <-done:
 		c.lastError = err
 		return ci, err
-	}
-}
-
-func (c *conn) traceSQL(start time.Time, query string, nvargs []driver.NamedValue) {
-	ms := time.Since(start).Milliseconds()
-	switch {
-	case len(nvargs) == 0:
-		c.sqlTracer.Printf("%s duration %dms", query, ms)
-	case len(nvargs) > maxNumTraceArg:
-		c.sqlTracer.Printf("%s args(limited to %d) %v duration %dms", query, maxNumTraceArg, nvargs[:maxNumTraceArg], ms)
-	default:
-		c.sqlTracer.Printf("%s args %v duration %dms", query, nvargs, ms)
 	}
 }
 
@@ -678,7 +674,9 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 		return nil, driver.ErrBadConn
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), s.query, nvargs)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+		}(time.Now())
 	}
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
@@ -710,7 +708,9 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r d
 		connHook(c, choStmtExec)
 	}
 	if c.sqlTrace {
-		defer c.traceSQL(time.Now(), s.query, nvargs)
+		defer func(start time.Time) {
+			c.logger.Info(traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+		}(time.Now())
 	}
 
 	done := make(chan struct{})
@@ -1094,7 +1094,7 @@ func (c *conn) _checkError(err error) error {
 	}
 	if hdbErrors, ok := err.(*p.HdbErrors); ok && hdbErrors.HasOnlyWarnings() {
 		hdbErrors.ErrorsFunc(func(err error) {
-			c.sqlTracer.Println(err)
+			c.logger.Warn(err.Error())
 		})
 		return nil
 	}
@@ -1120,7 +1120,7 @@ func (c *conn) _dbConnectInfo(databaseName string) (*DBConnectInfo, error) {
 		return nil, err
 	}
 
-	host, _ := ci[p.CiHost].(string) //check existencs and covert to string
+	host, _ := ci[p.CiHost].(string) // check existence and convert to string
 	port, _ := ci[p.CiPort].(int32)  // check existence and convert to integer
 	isConnected, _ := ci[p.CiIsConnected].(bool)
 

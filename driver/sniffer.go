@@ -1,20 +1,19 @@
 package driver
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/slog"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
 type Sniffer struct {
-	logger *log.Logger
+	logger *slog.Logger
 	conn   net.Conn
 	dbConn net.Conn
 }
@@ -23,7 +22,7 @@ type Sniffer struct {
 // is listening for hdb protocol calls. The dbAddr is the hdb host port address in "host:port" format.
 func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 	return &Sniffer{
-		logger: log.New(os.Stdout, fmt.Sprintf("%s ", conn.RemoteAddr()), log.Ldate|log.Ltime),
+		logger: slog.Default().With(slog.String("conn", conn.RemoteAddr().String())),
 		conn:   conn,
 		dbConn: dbConn,
 	}
@@ -72,8 +71,8 @@ func (s *Sniffer) Run() error {
 	go pipeData(wg, s.conn, s.dbConn, clientWr)
 	go pipeData(wg, s.dbConn, s.conn, dbWr)
 
-	pClientRd := p.NewClientReader(clientRd, s.logger, cesu8.DefaultDecoder)
-	pDBRd := p.NewDBReader(dbRd, s.logger, cesu8.DefaultDecoder)
+	pClientRd := p.NewClientReader(clientRd, true, s.logger, cesu8.DefaultDecoder)
+	pDBRd := p.NewDBReader(dbRd, true, s.logger, cesu8.DefaultDecoder)
 
 	go logData(wg, pClientRd)
 	go logData(wg, pDBRd)
