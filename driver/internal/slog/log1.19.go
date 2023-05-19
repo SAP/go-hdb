@@ -5,11 +5,21 @@
 package slog
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+)
+
+type Level int
+
+const (
+	LevelDebug Level = -4
+	LevelInfo  Level = 0
+	LevelWarn  Level = 4
+	LevelError Level = 8
 )
 
 var defLogger *Logger = &Logger{Logger: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)}
@@ -27,26 +37,25 @@ func (l *Logger) With(args ...any) *Logger {
 
 func (l *Logger) output(msg string) { l.Logger.Output(3, msg) }
 
-func (l *Logger) Info(msg string, args ...any) {
-	l.output(fmt.Sprintf("%s %s %s %s", "INFO", msg, l.args, formatArgs("", args...)))
+func (l *Logger) LogAttrs(ctx context.Context, level Level, msg string, attrs ...any) {
+	switch level {
+	case LevelInfo:
+		l.output(fmt.Sprintf("%s %s %s %s", "INFO", msg, l.args, formatArgs("", attrs...)))
+	case LevelWarn:
+		l.output(fmt.Sprintf("%s %s %s %s", "WARN", msg, l.args, formatArgs("", attrs...)))
+	case LevelError:
+		l.output(fmt.Sprintf("%s %s %s %s", "ERROR", msg, l.args, formatArgs("", attrs...)))
+	}
 }
 
-func (l *Logger) Error(msg string, args ...any) {
-	l.output(fmt.Sprintf("%s %s %s %s", "ERROR", msg, l.args, formatArgs("", args...)))
-}
-
-func (l *Logger) Warn(msg string, args ...any) {
-	l.output(fmt.Sprintf("%s %s %s %s", "WARN", msg, l.args, formatArgs("", args...)))
-}
-
-func formatArgs(prefix string, args ...any) string {
-	l := make([]string, 0, len(args))
-	for _, arg := range args {
-		if arg, ok := arg.(fmt.Stringer); ok {
+func formatArgs(prefix string, attrs ...any) string {
+	l := make([]string, 0, len(attrs))
+	for _, attr := range attrs {
+		if attr, ok := attr.(fmt.Stringer); ok {
 			if prefix != "" {
-				l = append(l, fmt.Sprintf("%s.%s", prefix, arg.String()))
+				l = append(l, fmt.Sprintf("%s.%s", prefix, attr.String()))
 			} else {
-				l = append(l, arg.String())
+				l = append(l, attr.String())
 			}
 		}
 	}

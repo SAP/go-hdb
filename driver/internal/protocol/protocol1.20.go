@@ -6,6 +6,7 @@ package protocol
 
 import (
 	"bufio"
+	"context"
 	"database/sql/driver"
 	"errors"
 
@@ -32,8 +33,8 @@ type writer struct {
 
 // Writer is the protocol writer interface.
 type Writer interface {
-	WriteProlog() error
-	Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error
+	WriteProlog(ctx context.Context) error
+	Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error
 }
 
 func (w *writer) lastErrorHandler(err error) error { // remove after merging back into protocol

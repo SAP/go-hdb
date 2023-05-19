@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -41,22 +42,22 @@ func pipeData(wg *sync.WaitGroup, conn net.Conn, dbConn net.Conn, wr io.Writer) 
 	}
 }
 
-func readMsg(prd p.Reader) error {
+func readMsg(ctx context.Context, prd p.Reader) error {
 	// TODO complete for non generic parts, see internal/protocol/parts/newGenPartReader for details
-	return prd.IterateParts(func(ph *p.PartHeader) {
+	return prd.IterateParts(ctx, func(ph *p.PartHeader) {
 	})
 }
 
-func logData(wg *sync.WaitGroup, prd p.Reader) {
+func logData(ctx context.Context, wg *sync.WaitGroup, prd p.Reader) {
 	defer wg.Done()
 
-	if err := prd.ReadProlog(); err != nil {
+	if err := prd.ReadProlog(ctx); err != nil {
 		panic(err)
 	}
 
 	var err error
 	for err != io.EOF {
-		err = readMsg(prd)
+		err = readMsg(ctx, prd)
 	}
 }
 
@@ -65,6 +66,7 @@ func (s *Sniffer) Run() error {
 	clientRd, clientWr := io.Pipe()
 	dbRd, dbWr := io.Pipe()
 
+	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 
 	wg.Add(4)
@@ -74,8 +76,8 @@ func (s *Sniffer) Run() error {
 	pClientRd := p.NewClientReader(clientRd, true, s.logger, cesu8.DefaultDecoder)
 	pDBRd := p.NewDBReader(dbRd, true, s.logger, cesu8.DefaultDecoder)
 
-	go logData(wg, pClientRd)
-	go logData(wg, pDBRd)
+	go logData(ctx, wg, pClientRd)
+	go logData(ctx, wg, pDBRd)
 
 	wg.Wait()
 	log.Println("end run")

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -39,10 +40,10 @@ func padBytes(size int) int {
 
 // Reader is the protocol reader interface.
 type Reader interface {
-	ReadProlog() error
-	IterateParts(partFn func(ph *PartHeader)) error
-	Read(part partReader) error
-	ReadSkip() error
+	ReadProlog(ctx context.Context) error
+	IterateParts(ctx context.Context, partFn func(ph *PartHeader)) error
+	Read(ctx context.Context, part partReader) error
+	ReadSkip(ctx context.Context) error
 	SessionID() int64
 	FunctionCode() FunctionCode
 }
@@ -104,27 +105,27 @@ func NewClientReader(rd io.Reader, protTrace bool, logger *slog.Logger, decoder 
 	return &clientReader{baseReader: newBaseReader(rd, protTrace, logger, clientTexts, decoder)}
 }
 
-func (r *baseReader) ReadSkip() error            { return r.IterateParts(nil) }
-func (r *baseReader) SessionID() int64           { return r.mh.sessionID }
-func (r *baseReader) FunctionCode() FunctionCode { return r.sh.functionCode }
+func (r *baseReader) ReadSkip(ctx context.Context) error { return r.IterateParts(ctx, nil) }
+func (r *baseReader) SessionID() int64                   { return r.mh.sessionID }
+func (r *baseReader) FunctionCode() FunctionCode         { return r.sh.functionCode }
 
-func (r *dbReader) ReadProlog() error {
+func (r *dbReader) ReadProlog(ctx context.Context) error {
 	rep := &initReply{}
 	if err := rep.decode(r.dec); err != nil {
 		return err
 	}
 	if r.protTrace {
-		r.logger.Info(traceMsg, slog.String(r.traceTexts[idxIni], rep.String()))
+		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxIni], rep.String()))
 	}
 	return nil
 }
-func (r *clientReader) ReadProlog() error {
+func (r *clientReader) ReadProlog(ctx context.Context) error {
 	req := &initRequest{}
 	if err := req.decode(r.dec); err != nil {
 		return err
 	}
 	if r.protTrace {
-		r.logger.Info(traceMsg, slog.String(r.traceTexts[idxIni], req.String()))
+		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxIni], req.String()))
 	}
 	return nil
 }
@@ -161,10 +162,10 @@ func (r *baseReader) checkError() error {
 	return r.lastErrors
 }
 
-func (r *baseReader) Read(part partReader) error {
+func (r *baseReader) Read(ctx context.Context, part partReader) error {
 	r.partRead = true
 
-	err := r.readPart(part)
+	err := r.readPart(ctx, part)
 	if err != nil {
 		r.err = err
 	}
@@ -178,28 +179,28 @@ func (r *baseReader) Read(part partReader) error {
 	return err
 }
 
-func (r *baseReader) skip() error {
+func (r *baseReader) skip(ctx context.Context) error {
 	pk := r.ph.PartKind
 
 	// if trace is on or mandatory parts need to be read we cannot skip
 	if !(r.protTrace || pk == PkError || pk == PkRowsAffected) {
-		return r.skipPart()
+		return r.skipPart(ctx)
 	}
 
 	// check part cache
 	if part, ok := r.partReaderCache[pk]; ok {
-		return r.Read(part)
+		return r.Read(ctx, part)
 	}
 
 	part := newGenPartReader(pk)
 	if part == nil { // part cannot be instantiated generically -> skip
-		return r.skipPart()
+		return r.skipPart(ctx)
 	}
 
 	// cache part
 	r.partReaderCache[pk] = part
 
-	return r.Read(part)
+	return r.Read(ctx, part)
 }
 
 func (r *baseReader) skipPadding() int64 {
@@ -221,24 +222,24 @@ func (r *baseReader) skipPadding() int64 {
 	return padBytes
 }
 
-func (r *baseReader) skipPart() error {
+func (r *baseReader) skipPart(ctx context.Context) error {
 	r.dec.ResetCnt()
 	r.dec.Skip(int(r.ph.bufferLength))
 	if r.protTrace {
-		r.logger.Info(traceMsg, slog.String(r.traceTexts[idxSkip], r.ph.PartKind.String()))
+		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxSkip], r.ph.PartKind.String()))
 	}
 	r.readBytes += int64(r.dec.Cnt())
 	r.readBytes += r.skipPadding()
 	return nil
 }
 
-func (r *baseReader) readPart(part partReader) error {
+func (r *baseReader) readPart(ctx context.Context, part partReader) error {
 	r.dec.ResetCnt()
 	err := part.decode(r.dec, r.ph) // do not return here in case of error -> read stream would be broken
 	cnt := r.dec.Cnt()
 
 	if r.protTrace {
-		r.logger.Info(traceMsg, slog.String(r.traceTexts[idxPar], part.String()))
+		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxPar], part.String()))
 	}
 
 	bufferLen := int(r.ph.bufferLength)
@@ -254,13 +255,13 @@ func (r *baseReader) readPart(part partReader) error {
 	return err
 }
 
-func (r *baseReader) IterateParts(partFn func(ph *PartHeader)) error {
+func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeader)) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
 	r.readBytes = 0 // header bytes are not calculated in header varPartBytes: start with zero
 	if r.protTrace {
-		r.logger.Info(traceMsg, slog.String(r.traceTexts[idxMsgHdr], r.mh.String()))
+		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxMsgHdr], r.mh.String()))
 	}
 
 	for i := 0; i < int(r.mh.noOfSegm); i++ {
@@ -271,7 +272,7 @@ func (r *baseReader) IterateParts(partFn func(ph *PartHeader)) error {
 		r.readBytes += segmentHeaderSize
 
 		if r.protTrace {
-			r.logger.Info(traceMsg, slog.String(r.traceTexts[idxSegHdr], r.sh.String()))
+			r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxSegHdr], r.sh.String()))
 		}
 
 		r.numPart = int(r.sh.noOfParts)
@@ -286,7 +287,7 @@ func (r *baseReader) IterateParts(partFn func(ph *PartHeader)) error {
 			r.readBytes += partHeaderSize
 
 			if r.protTrace {
-				r.logger.Info(traceMsg, slog.String(r.traceTexts[idxParHdr], r.ph.String()))
+				r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.traceTexts[idxParHdr], r.ph.String()))
 			}
 
 			r.cntPart++
@@ -296,7 +297,7 @@ func (r *baseReader) IterateParts(partFn func(ph *PartHeader)) error {
 				partFn(r.ph)
 			}
 			if !r.partRead {
-				r.skip()
+				r.skip(ctx)
 			}
 		}
 	}
@@ -324,7 +325,7 @@ const (
 	protocolVersionMinor = 1
 )
 
-func (w *writer) WriteProlog() error {
+func (w *writer) WriteProlog(ctx context.Context) error {
 	req := &initRequest{}
 	req.product.major = productVersionMajor
 	req.product.minor = productVersionMinor
@@ -336,12 +337,12 @@ func (w *writer) WriteProlog() error {
 		return err
 	}
 	if w.protTrace {
-		w.logger.Info(traceMsg, slog.String(clientTexts[idxIni], req.String()))
+		w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxIni], req.String()))
 	}
 	return w.wr.Flush()
 }
 
-func (w *writer) Write(sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
+func (w *writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
 	write := func() error {
 		// check on session variables to be send as ClientInfo
 		if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
@@ -374,7 +375,7 @@ func (w *writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 			return err
 		}
 		if w.protTrace {
-			w.logger.Info(traceMsg, slog.String(clientTexts[idxMsgHdr], w.mh.String()))
+			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxMsgHdr], w.mh.String()))
 		}
 
 		if size > math.MaxInt32 {
@@ -393,7 +394,7 @@ func (w *writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 			return err
 		}
 		if w.protTrace {
-			w.logger.Info(traceMsg, slog.String(clientTexts[idxSegHdr], w.sh.String()))
+			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxSegHdr], w.sh.String()))
 		}
 
 		bufferSize -= segmentHeaderSize
@@ -414,14 +415,14 @@ func (w *writer) Write(sessionID int64, messageType MessageType, commit bool, wr
 				return err
 			}
 			if w.protTrace {
-				w.logger.Info(traceMsg, slog.String(clientTexts[idxParHdr], w.ph.String()))
+				w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxParHdr], w.ph.String()))
 			}
 
 			if err := part.encode(w.enc); err != nil {
 				return err
 			}
 			if w.protTrace {
-				w.logger.Info(traceMsg, slog.String(clientTexts[idxPar], part.String()))
+				w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxPar], part.String()))
 			}
 
 			w.enc.Zeroes(pad)

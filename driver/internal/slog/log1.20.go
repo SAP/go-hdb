@@ -9,6 +9,14 @@ import (
 	sl "golang.org/x/exp/slog"
 )
 
+// Level aliases.
+const (
+	LevelDebug = sl.LevelDebug
+	LevelInfo  = sl.LevelInfo
+	LevelWarn  = sl.LevelWarn
+	LevelError = sl.LevelError
+)
+
 var defLogger *Logger = &Logger{Logger: sl.Default()}
 
 // Default is an alias for slog.Default

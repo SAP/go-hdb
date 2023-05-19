@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.3.0
 
+### Minor revisions
+
+#### v1.3.1
+- use slog LogAttrs to improve performance and provide context if available
+
 ### New features
 
 With go1.20 go-hdb is using [slog](https://pkg.go.dev/golang.org/x/exp/slog). This package does provide structured logging and replaces
