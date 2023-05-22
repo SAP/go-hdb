@@ -21,8 +21,8 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
-	"github.com/SAP/go-hdb/driver/internal/slog"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"golang.org/x/exp/slog"
 	"golang.org/x/text/transform"
 )
 
@@ -260,16 +260,19 @@ func SQLTrace() bool { return sqlTrace.Load() }
 // SetSQLTrace sets sql tracing output active or inactive.
 func SetSQLTrace(on bool) { sqlTrace.Store(on) }
 
-func argsAttrs(nvargs []driver.NamedValue) []any {
-	attrs := make([]any, len(nvargs))
-	for i, nvarg := range nvargs {
-		if nvarg.Name != "" {
-			attrs[i] = slog.Any(nvarg.Name, fmt.Sprintf("%v", nvarg.Value))
+type namedValues []driver.NamedValue
+
+// LogValue implements the slog.LogValuer interface.
+func (nvs namedValues) LogValue() slog.Value {
+	attrs := make([]slog.Attr, len(nvs))
+	for i, nv := range nvs {
+		if nv.Name != "" {
+			attrs[i] = slog.String(nv.Name, fmt.Sprintf("%v", nv.Value))
 		} else {
-			attrs[i] = slog.Any(fmt.Sprintf("%d", nvarg.Ordinal), fmt.Sprintf("%v", nvarg.Value))
+			attrs[i] = slog.String(fmt.Sprintf("%d", nv.Ordinal), fmt.Sprintf("%v", nv.Value))
 		}
 	}
-	return attrs
+	return slog.GroupValue(attrs...)
 }
 
 // unique connection number.
@@ -486,7 +489,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
 		}(time.Now())
 	}
 
@@ -516,7 +519,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
 		}(time.Now())
 	}
 
@@ -675,7 +678,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (ro
 	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
 		}(time.Now())
 	}
 	if s.pr.isProcedureCall() {
@@ -709,7 +712,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (r d
 	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Group("arg", argsAttrs(nvargs)...))
+			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
 		}(time.Now())
 	}
 

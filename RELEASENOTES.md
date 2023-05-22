@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.4
+- updated dependencies
+- slog go1.19 support
+
 #### v1.3.3
 - updated dependencies
 
@@ -17,9 +21,8 @@ Release Notes
 
 ### New features
 
-With go1.20 go-hdb is using [slog](https://pkg.go.dev/golang.org/x/exp/slog). This package does provide structured logging and replaces
+go-hdb [slog](https://pkg.go.dev/golang.org/x/exp/slog) support. The slog package does provide structured logging and replaces
 the standard logging output including SQL and protocol traces.
-As slog does not support go1.19, go-hdb implements a temporary solution, for which the logging output is quite similar to slog's output.
 
 ### Incompatible changes
 

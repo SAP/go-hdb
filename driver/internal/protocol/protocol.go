@@ -8,7 +8,7 @@ import (
 	"math"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/slog"
+	"golang.org/x/exp/slog"
 	"golang.org/x/text/transform"
 )
 

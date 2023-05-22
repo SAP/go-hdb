@@ -12,9 +12,9 @@ import (
 
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/slog"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slog"
 	"golang.org/x/text/transform"
 )
 
@@ -72,7 +72,7 @@ type connAttrs struct {
 	_cesu8Decoder     func() transform.Transformer
 	_cesu8Encoder     func() transform.Transformer
 	_emptyDateAsNull  bool
-	_logger           *slog.Logger // provide slog setter+getter after go1.19 is out of maintenance
+	_logger           *slog.Logger
 }
 
 func newConnAttrs() *connAttrs {
@@ -440,4 +440,18 @@ func (c *connAttrs) SetEmptyDateAsNull(emptyDateAsNull bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c._emptyDateAsNull = emptyDateAsNull
+}
+
+// Logger returns the Logger instance of the connector.
+func (c *connAttrs) Logger() *slog.Logger {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._logger
+}
+
+// SetLogger sets the Logger instance of the connector.
+func (c *connAttrs) SetLogger(logger *slog.Logger) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c._logger = logger
 }
