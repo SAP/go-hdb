@@ -17,20 +17,11 @@ const (
 	LevelError = sl.LevelError
 )
 
-var defLogger *Logger = &Logger{Logger: sl.Default()}
+// Logger is an alias for slog.Logger
+type Logger = sl.Logger
 
 // Default is an alias for slog.Default
-func Default() *Logger { return defLogger }
-
-// Logger is an alias for slog.Logger
-type Logger struct {
-	*sl.Logger
-}
-
-// With is an alias for slog.Logger.With
-func (l *Logger) With(args ...any) *Logger {
-	return &Logger{Logger: l.Logger.With(args...)}
-}
+func Default() *Logger { return sl.Default() }
 
 // Uint64 is an alias for slog.Uint64
 func Uint64(key string, value uint64) sl.Attr { return sl.Uint64(key, value) }
