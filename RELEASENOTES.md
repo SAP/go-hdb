@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.3
+- updated dependencies
+
 #### v1.3.2
 - updated dependencies
 - connection attribute logger instance getter and setter available for go1.20
