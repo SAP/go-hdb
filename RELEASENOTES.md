@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.2
+- updated dependencies
+- connection attribute logger instance getter and setter available for go1.20
+
 #### v1.3.1
 - use slog LogAttrs to improve performance and provide context if available
 
@@ -13,8 +17,6 @@ Release Notes
 With go1.20 go-hdb is using [slog](https://pkg.go.dev/golang.org/x/exp/slog). This package does provide structured logging and replaces
 the standard logging output including SQL and protocol traces.
 As slog does not support go1.19, go-hdb implements a temporary solution, for which the logging output is quite similar to slog's output.
-Nonetheless, connection attribute logger instance getter and setter are only going to be provided after go1.19 support is ended with
-the availability of go1.21.
 
 ### Incompatible changes
 
