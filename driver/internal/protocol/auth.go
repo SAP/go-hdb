@@ -10,21 +10,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// AuthPasswordSetter is implemented by authentication methods supporting password updates.
-type AuthPasswordSetter interface {
-	SetPassword(string)
-}
-
-// AuthTokenSetter is implemented by authentication methods supporting token updates.
-type AuthTokenSetter interface {
-	SetToken(string)
-}
-
-// AuthCertKeySetter is implemented by authentication methods supporting certificate and key updates.
-type AuthCertKeySetter interface {
-	SetCertKey(certKey *x509.CertKey)
-}
-
 // AuthCookieGetter is implemented by authentication methods supporting cookies to reconnect.
 type AuthCookieGetter interface {
 	Cookie() (logonname string, cookie []byte)

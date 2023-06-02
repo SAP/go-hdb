@@ -217,9 +217,12 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		authAttrs.invalidateCookie() // cookie auth was not successful - do not try again with the same data
 	}
 
-	auth := authAttrs.auth()
-	retries := 1
+	const maxRetry = 1
+	numRetry := 0
+
 	for {
+		auth := authAttrs.auth()
+
 		conn, err := initConn(ctx, metrics, connAttrs, auth)
 		if err == nil {
 			if method, ok := auth.Method().(p.AuthCookieGetter); ok {
@@ -230,17 +233,14 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		if !isAuthError(err) {
 			return nil, err
 		}
-		if retries < 1 {
+		if numRetry >= maxRetry {
 			return nil, err
 		}
-		refresh, refreshErr := authAttrs.refresh(auth)
-		if refreshErr != nil {
+
+		if refreshErr := authAttrs.refresh(); refreshErr != nil {
 			return nil, refreshErr
 		}
-		if !refresh {
-			return nil, err
-		}
-		retries--
+		numRetry++
 	}
 }
 

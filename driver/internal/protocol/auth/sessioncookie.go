@@ -20,10 +20,10 @@ func (a *SessionCookie) String() string {
 	return fmt.Sprintf("method type %s cookie %v", a.Typ(), a.cookie)
 }
 
-// Typ implements the CookieGetter interface.
+// Typ implements the Mthod interface.
 func (a *SessionCookie) Typ() string { return MtSessionCookie }
 
-// Order implements the CookieGetter interface.
+// Order implements the Method interface.
 func (a *SessionCookie) Order() byte { return MoSessionCookie }
 
 // PrepareInitReq implements the Method interface.

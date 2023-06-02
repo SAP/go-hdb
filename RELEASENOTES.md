@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.5
+- fixed authentication refresh issue when using more than one authentication method
+
 #### v1.3.4
 - updated dependencies
 - slog go1.19 support

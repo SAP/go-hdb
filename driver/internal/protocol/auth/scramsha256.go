@@ -23,13 +23,10 @@ func (a *SCRAMSHA256) String() string {
 	return fmt.Sprintf("method type %s clientChallenge %v", a.Typ(), a.clientChallenge)
 }
 
-// SetPassword implemets the AuthPasswordSetter interface.
-func (a *SCRAMSHA256) SetPassword(password string) { a.password = password }
-
-// Typ implements the CookieGetter interface.
+// Typ implements the Method interface.
 func (a *SCRAMSHA256) Typ() string { return MtSCRAMSHA256 }
 
-// Order implements the CookieGetter interface.
+// Order implements the Method interface.
 func (a *SCRAMSHA256) Order() byte { return MoSCRAMSHA256 }
 
 // PrepareInitReq implements the Method interface.

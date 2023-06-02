@@ -16,16 +16,13 @@ func NewJWT(token string) *JWT { return &JWT{token: token} }
 
 func (a *JWT) String() string { return fmt.Sprintf("method type %s token %s", a.Typ(), a.token) }
 
-// SetToken implements the AuthTokenSetter interface.
-func (a *JWT) SetToken(token string) { a.token = token }
-
-// Cookie implements the CookieGetter interface.
+// Cookie implements the AuthCookieGetter interface.
 func (a *JWT) Cookie() (string, []byte) { return a.logonname, a._cookie }
 
-// Typ implements the CookieGetter interface.
+// Typ implements the Method interface.
 func (a *JWT) Typ() string { return MtJWT }
 
-// Order implements the CookieGetter interface.
+// Order implements the Method interface.
 func (a *JWT) Order() byte { return MoJWT }
 
 // PrepareInitReq implements the Method interface.

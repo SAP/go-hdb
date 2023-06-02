@@ -29,13 +29,10 @@ func (a *X509) String() string {
 	return fmt.Sprintf("method type %s %s", a.Typ(), a.certKey)
 }
 
-// SetCertKey implements the AuthCertKeySetter interface.
-func (a *X509) SetCertKey(certKey *x509.CertKey) { a.certKey = certKey }
-
-// Typ implements the CookieGetter interface.
+// Typ implements the Method interface.
 func (a *X509) Typ() string { return MtX509 }
 
-// Order implements the CookieGetter interface.
+// Order implements the Method interface.
 func (a *X509) Order() byte { return MoX509 }
 
 // PrepareInitReq implements the Method interface.
