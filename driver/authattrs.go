@@ -31,7 +31,7 @@ type authAttrs struct {
 
 func isJWTToken(token string) bool { return strings.HasPrefix(token, "ey") }
 
-func (c *authAttrs) cookieAuth() *p.Auth {
+func (c *authAttrs) cookieAuth() *p.AuthHnd {
 	if !c.hasCookie.Load() { // fastpath without lock
 		return nil
 	}
@@ -39,30 +39,30 @@ func (c *authAttrs) cookieAuth() *p.Auth {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	auth := p.NewAuth(c._logonname)                                 // important: for session cookie auth we do need the logonname from JWT auth,
+	auth := p.NewAuthHnd(c._logonname)                              // important: for session cookie auth we do need the logonname from JWT auth,
 	auth.AddSessionCookie(c._sessionCookie, c._logonname, clientID) // and for HANA onPrem the final session cookie req needs the logonname as well.
 	return auth
 }
 
-func (c *authAttrs) auth() *p.Auth {
+func (c *authAttrs) authHnd() *p.AuthHnd {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	auth := p.NewAuth(c._username) // use username as logonname
+	authHnd := p.NewAuthHnd(c._username) // use username as logonname
 	if c._certKey != nil {
-		auth.AddX509(c._certKey)
+		authHnd.AddX509(c._certKey)
 	}
 	if c._token != "" {
-		auth.AddJWT(c._token)
+		authHnd.AddJWT(c._token)
 	}
 	// mimic standard drivers and use password as token if user is empty
 	if c._token == "" && c._username == "" && isJWTToken(c._password) {
-		auth.AddJWT(c._password)
+		authHnd.AddJWT(c._password)
 	}
 	if c._password != "" {
-		auth.AddBasic(c._username, c._password)
+		authHnd.AddBasic(c._username, c._password)
 	}
-	return auth
+	return authHnd
 }
 
 func (c *authAttrs) callRefreshPasswordWithLock() (string, bool) {

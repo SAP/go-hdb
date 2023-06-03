@@ -19,6 +19,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -221,11 +222,11 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 	numRetry := 0
 
 	for {
-		auth := authAttrs.auth()
+		authHnd := authAttrs.authHnd()
 
-		conn, err := initConn(ctx, metrics, connAttrs, auth)
+		conn, err := initConn(ctx, metrics, connAttrs, authHnd)
 		if err == nil {
-			if method, ok := auth.Method().(p.AuthCookieGetter); ok {
+			if method, ok := authHnd.Selected().(auth.CookieGetter); ok {
 				authAttrs.setCookie(method.Cookie())
 			}
 			return conn, nil
@@ -278,7 +279,7 @@ func (nvs namedValues) LogValue() slog.Value {
 // unique connection number.
 var connNo atomic.Uint64
 
-func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.Auth) (driver.Conn, error) {
+func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (driver.Conn, error) {
 	netConn, err := attrs._dialer.DialContext(ctx, attrs._host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
 	if err != nil {
 		return nil, err
@@ -311,7 +312,7 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, auth *p.A
 
 	c.sessionID = defaultSessionID
 
-	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, auth, attrs._applicationName, attrs._dfv, attrs._locale); err != nil {
+	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, authHnd, attrs._applicationName, attrs._dfv, attrs._locale); err != nil {
 		return nil, err
 	}
 
@@ -1135,7 +1136,7 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 	}, nil
 }
 
-func (c *conn) _authenticate(ctx context.Context, auth *p.Auth, applicationName string, dfv int, locale string) (int64, p.Options[p.ConnectOption], error) {
+func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, applicationName string, dfv int, locale string) (int64, p.Options[p.ConnectOption], error) {
 	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
@@ -1145,7 +1146,7 @@ func (c *conn) _authenticate(ctx context.Context, auth *p.Auth, applicationName 
 		p.CcoClientApplicationProgram: applicationName,
 	}
 
-	initRequest, err := auth.InitRequest()
+	initRequest, err := authHnd.InitRequest()
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1153,7 +1154,7 @@ func (c *conn) _authenticate(ctx context.Context, auth *p.Auth, applicationName 
 		return 0, nil, err
 	}
 
-	initReply, err := auth.InitReply()
+	initReply, err := authHnd.InitReply()
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1165,7 +1166,7 @@ func (c *conn) _authenticate(ctx context.Context, auth *p.Auth, applicationName 
 		return 0, nil, err
 	}
 
-	finalRequest, err := auth.FinalRequest()
+	finalRequest, err := authHnd.FinalRequest()
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1189,7 +1190,7 @@ func (c *conn) _authenticate(ctx context.Context, auth *p.Auth, applicationName 
 		return 0, nil, err
 	}
 
-	finalReply, err := auth.FinalReply()
+	finalReply, err := authHnd.FinalReply()
 	if err != nil {
 		return 0, nil, err
 	}

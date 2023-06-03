@@ -8,6 +8,8 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // authentication method types supported by the driver:
@@ -40,6 +42,21 @@ type Method interface {
 	InitRepDecode(d *Decoder) error
 	PrepareFinalReq(prms *Prms) error
 	FinalRepDecode(d *Decoder) error
+}
+
+// Methods defines a collection of methods.
+type Methods map[string]Method // key equals authentication method type.
+
+// Order returns an ordered method slice.
+func (m Methods) Order() []Method {
+	methods := maps.Values(m)
+	slices.SortFunc(methods, func(a, b Method) bool { return a.Order() < b.Order() })
+	return methods
+}
+
+// CookieGetter is implemented by authentication methods supporting cookies to reconnect.
+type CookieGetter interface {
+	Cookie() (logonname string, cookie []byte)
 }
 
 var (

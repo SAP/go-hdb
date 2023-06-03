@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.6
+- source code cleanups
+
 #### v1.3.5
 - fixed authentication refresh issue when using more than one authentication method
 

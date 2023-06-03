@@ -29,7 +29,7 @@ func authDecodeStep(part partReader, data []byte, t *testing.T) {
 }
 
 func testJWTAuth(t *testing.T) {
-	a := NewAuth("")
+	a := NewAuthHnd("")
 	a.AddJWT("dummy token")
 
 	successful := t.Run("init request", func(t *testing.T) {
@@ -55,7 +55,7 @@ func testJWTAuth(t *testing.T) {
 
 			authDecodeStep(initReply, []byte("\x02\x00\x03JWT\x07USER123"), t)
 
-			authJWT := a.Method().(*auth.JWT)
+			authJWT := a.Selected().(*auth.JWT)
 
 			logonname, _ := authJWT.Cookie()
 			if logonname != "USER123" {
@@ -91,7 +91,7 @@ func testJWTAuth(t *testing.T) {
 
 			const expectedCookie = "5be8f43e064e0589ce07ba9de6fce107"
 
-			authJWT := a.Method().(*auth.JWT)
+			authJWT := a.Selected().(*auth.JWT)
 			_, cookie := authJWT.Cookie()
 			if string(cookie) != expectedCookie {
 				t.Fatalf("expected %q, got %q", expectedCookie, string(cookie))
