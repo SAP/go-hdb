@@ -349,7 +349,7 @@ func (c *conn) versionString() (version string) {
 func (c *conn) ResetSession(ctx context.Context) error {
 	c.lastError = nil
 
-	if c.connAttrs._pingInterval == 0 || time.Since(c.dbConn.lastRead) >= c.connAttrs._pingInterval {
+	if c.connAttrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.connAttrs._pingInterval {
 		return nil
 	}
 

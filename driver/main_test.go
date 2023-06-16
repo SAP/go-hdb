@@ -58,7 +58,7 @@ func NewTestConnector() *Connector {
 		log.Fatal(err)
 	}
 	c._defaultSchema = *schema        // important: set test schema!
-	c._pingInterval = 1 * time.Second // turn on connection validity check while resetting
+	c._pingInterval = 1 * time.Minute // turn on connection validity check while resetting
 	return c
 }
 

@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.7
+- fixed bug pinging the database to often on resetting a connection
+- updated dependencies
+
 #### v1.3.6
 - source code cleanups
 

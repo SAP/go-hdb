@@ -3,10 +3,10 @@ module github.com/SAP/go-hdb
 go 1.20
 
 require (
-	github.com/prometheus/client_golang v1.15.1
-	golang.org/x/crypto v0.9.0
+	github.com/prometheus/client_golang v1.16.0
+	golang.org/x/crypto v0.10.0
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
-	golang.org/x/text v0.9.0
+	golang.org/x/text v0.10.0
 )
 
 require (
@@ -16,7 +16,7 @@ require (
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
-	github.com/prometheus/procfs v0.10.1 // indirect
-	golang.org/x/sys v0.8.0 // indirect
+	github.com/prometheus/procfs v0.11.0 // indirect
+	golang.org/x/sys v0.9.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
