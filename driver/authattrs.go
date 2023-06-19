@@ -92,21 +92,23 @@ func (c *authAttrs) callRefreshClientCertWithLock() ([]byte, []byte, bool) {
 	return refreshClientCert()
 }
 
-func (c *authAttrs) refresh() error {
+func (c *authAttrs) refresh() (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	refresh := false
 
 	if c._refreshPassword != nil {
 		if password, ok := c.callRefreshPasswordWithLock(); ok {
 			if password != c._password {
-				c._password = password
+				refresh, c._password = true, password
 			}
 		}
 	}
 	if c._refreshToken != nil {
 		if token, ok := c.callRefreshTokenWithLock(); ok {
 			if token != c._token {
-				c._token = token
+				refresh, c._token = true, token
 			}
 		}
 	}
@@ -115,13 +117,13 @@ func (c *authAttrs) refresh() error {
 			if !c._certKey.Equal(clientCert, clientKey) {
 				certKey, err := x509.NewCertKey(clientCert, clientKey)
 				if err != nil {
-					return err
+					return refresh, err
 				}
-				c._certKey = certKey
+				refresh, c._certKey = true, certKey
 			}
 		}
 	}
-	return nil
+	return refresh, nil
 }
 
 func (c *authAttrs) invalidateCookie() { c.hasCookie.Store(false) }

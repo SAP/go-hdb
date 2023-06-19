@@ -238,8 +238,12 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 			return nil, err
 		}
 
-		if refreshErr := authAttrs.refresh(); refreshErr != nil {
+		refresh, refreshErr := authAttrs.refresh()
+		if refreshErr != nil {
 			return nil, refreshErr
+		}
+		if !refresh { // no connection retry in case refresh callback would not provide updates
+			return nil, err
 		}
 		numRetry++
 	}

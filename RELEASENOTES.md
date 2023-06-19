@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.8
+- fixed bug: connection retry even in case refresh callback would not provide updates
+
 #### v1.3.7
 - fixed bug pinging the database to often on resetting a connection
 - updated dependencies
