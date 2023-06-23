@@ -65,56 +65,50 @@ func (c *authAttrs) authHnd() *p.AuthHnd {
 	return authHnd
 }
 
-func (c *authAttrs) callRefreshPasswordWithLock() (string, bool) {
-	refreshPassword := c._refreshPassword // copy within lock
-	c.cbmu.Lock()
-	defer c.cbmu.Unlock()
-	c.mu.Unlock() // unlock attr, so that callback can call attr methods
-	defer c.mu.Lock()
+func (c *authAttrs) callRefreshPasswordWithLock(refreshPassword func() (string, bool)) (string, bool) {
+	defer c.mu.Lock() // finally lock attr again
+	c.mu.Unlock()     // unlock attr, so that callback can call attr methods
 	return refreshPassword()
 }
 
-func (c *authAttrs) callRefreshTokenWithLock() (string, bool) {
-	refreshToken := c._refreshToken // copy within lock
-	c.cbmu.Lock()
-	defer c.cbmu.Unlock()
-	c.mu.Unlock() // unlock attr, so that callback can call attr methods
-	defer c.mu.Lock()
+func (c *authAttrs) callRefreshTokenWithLock(refreshToken func() (token string, ok bool)) (string, bool) {
+	defer c.mu.Lock() // finally lock attr again
+	c.mu.Unlock()     // unlock attr, so that callback can call attr methods
 	return refreshToken()
 }
 
-func (c *authAttrs) callRefreshClientCertWithLock() ([]byte, []byte, bool) {
-	refreshClientCert := c._refreshClientCert // copy within lock
-	c.cbmu.Lock()
-	defer c.cbmu.Unlock()
-	c.mu.Unlock() // unlock attr, so that callback can call attr methods
-	defer c.mu.Lock()
+func (c *authAttrs) callRefreshClientCertWithLock(refreshClientCert func() (clientCert, clientKey []byte, ok bool)) ([]byte, []byte, bool) {
+	defer c.mu.Lock() // finally lock attr again
+	c.mu.Unlock()     // unlock attr, so that callback can call attr methods
 	return refreshClientCert()
 }
 
 func (c *authAttrs) refresh() (bool, error) {
+	c.cbmu.Lock() // synchronize refresh calls
+	defer c.cbmu.Unlock()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	refresh := false
 
 	if c._refreshPassword != nil {
-		if password, ok := c.callRefreshPasswordWithLock(); ok {
+		if password, ok := c.callRefreshPasswordWithLock(c._refreshPassword); ok {
 			if password != c._password {
 				refresh, c._password = true, password
 			}
 		}
 	}
 	if c._refreshToken != nil {
-		if token, ok := c.callRefreshTokenWithLock(); ok {
+		if token, ok := c.callRefreshTokenWithLock(c._refreshToken); ok {
 			if token != c._token {
 				refresh, c._token = true, token
 			}
 		}
 	}
 	if c._refreshClientCert != nil {
-		if clientCert, clientKey, ok := c.callRefreshClientCertWithLock(); ok {
-			if !c._certKey.Equal(clientCert, clientKey) {
+		if clientCert, clientKey, ok := c.callRefreshClientCertWithLock(c._refreshClientCert); ok {
+			if c._certKey == nil || !c._certKey.Equal(clientCert, clientKey) {
 				certKey, err := x509.NewCertKey(clientCert, clientKey)
 				if err != nil {
 					return refresh, err

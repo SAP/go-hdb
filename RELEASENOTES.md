@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.9
+- fixed bug: deadlock if refresh is called concurrently
+
 #### v1.3.8
 - fixed bug: connection retry even in case refresh callback would not provide updates
 
