@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// test if refresh in parallel would dead lock
-func testParallelRefresh(t *testing.T) {
-	const numParallelRefresh = 100
+// test if concurrent refresh would deadlock
+func testConcurrentRefresh(t *testing.T) {
+	const numConcurrent = 100
 
 	attrs := &authAttrs{}
 	attrs.SetRefreshPassword(func() (string, bool) { return "", true })
@@ -15,16 +15,16 @@ func testParallelRefresh(t *testing.T) {
 	attrs.SetRefreshClientCert(func() ([]byte, []byte, bool) { return nil, nil, true })
 
 	wg := new(sync.WaitGroup)
-	wg.Add(numParallelRefresh)
+	wg.Add(numConcurrent)
 	start := make(chan struct{})
-	for i := 0; i < numParallelRefresh; i++ { // start 10 refresh go routines
+	for i := 0; i < numConcurrent; i++ {
 		go func(start <-chan struct{}, wg *sync.WaitGroup) {
 			defer wg.Done()
 			<-start
 			attrs.refresh()
 		}(start, wg)
 	}
-	// start refresh in parallel
+	// start refresh concurrently
 	close(start)
 	// wait for all go routines to end
 	wg.Wait()
@@ -35,7 +35,7 @@ func TestAuthAttrs(t *testing.T) {
 		name string
 		fct  func(t *testing.T)
 	}{
-		{"testParallelRefresh", testParallelRefresh},
+		{"testConcurrentRefresh", testConcurrentRefresh},
 	}
 
 	for _, test := range tests {

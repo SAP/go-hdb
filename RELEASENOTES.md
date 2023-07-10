@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.10
+- updated dependencies
+
 #### v1.3.9
 - fixed bug: deadlock if refresh is called concurrently
 
