@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.11
+- fixed compiling bug due to incompatible changes in https://github.com/golang/exp/commit/302865e7556b4ae5de27248ce625d443ef4ad3ed
+
 #### v1.3.10
 - updated dependencies
 

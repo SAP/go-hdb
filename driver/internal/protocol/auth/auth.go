@@ -50,7 +50,17 @@ type Methods map[string]Method // key equals authentication method type.
 // Order returns an ordered method slice.
 func (m Methods) Order() []Method {
 	methods := maps.Values(m)
-	slices.SortFunc(methods, func(a, b Method) bool { return a.Order() < b.Order() })
+	slices.SortFunc(methods, func(m1, m2 Method) int {
+		o1, o2 := m1.Order(), m2.Order()
+		switch {
+		case o1 == o2:
+			return 0
+		case o1 < o2:
+			return -1
+		default:
+			return 1
+		}
+	})
 	return methods
 }
 

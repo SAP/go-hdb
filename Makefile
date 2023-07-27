@@ -11,7 +11,7 @@ all:
 	@echo execute tests on latest go version	
 	go test ./...
 	@echo execute tests on older supported go versions
-	go1.19.10 test ./...
+	go1.19.11 test ./...
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
 	pipx run reuse lint
@@ -32,5 +32,5 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.19.10@latest
-	go1.19.10 download
+	go install golang.org/dl/go1.19.11@latest
+	go1.19.11 download
