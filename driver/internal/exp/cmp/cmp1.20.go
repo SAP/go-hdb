@@ -2,11 +2,7 @@
 
 // Delete after go1.20 is out of maintenance.
 
-// This is just a g1.21 copy of the standard lib.
-
-// Copyright 2023 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// This is just a go1.21 copy of the standard lib until go1.20 is out of maintenance.
 
 // Package cmp provides types and functions related to comparing
 // ordered values.
