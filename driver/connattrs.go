@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
+	"github.com/SAP/go-hdb/driver/internal/exp/maps"
+	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slog"
 	"golang.org/x/text/transform"
 )
 

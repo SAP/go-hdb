@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/SAP/go-hdb/driver/internal/exp/cmp"
+	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
@@ -44,6 +46,16 @@ type Method interface {
 
 // Methods defines a collection of methods.
 type Methods map[string]Method // key equals authentication method type.
+
+// Order returns an ordered method slice.
+func (m Methods) Order() []Method {
+	methods := make([]Method, 0, len(m))
+	for _, e := range m {
+		methods = append(methods, e)
+	}
+	slices.SortFunc(methods, func(m1, m2 Method) int { return cmp.Compare(m1.Order(), m2.Order()) })
+	return methods
+}
 
 // CookieGetter is implemented by authentication methods supporting cookies to reconnect.
 type CookieGetter interface {

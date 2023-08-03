@@ -8,8 +8,8 @@ import (
 	"bufio"
 	"context"
 
+	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/exp/slog"
 )
 
 // writer represents a protocol writer.

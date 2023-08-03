@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/exp/slices"
+	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 )
 
 const (

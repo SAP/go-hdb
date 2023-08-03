@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"golang.org/x/exp/slices"
+	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 )
 
 //go:embed statscfg.json

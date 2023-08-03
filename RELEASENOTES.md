@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.14
+- preparation of go1.21 release
+
 #### v1.3.13
 - updated dependencies
 
