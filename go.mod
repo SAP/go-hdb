@@ -4,9 +4,9 @@ go 1.20
 
 require (
 	github.com/prometheus/client_golang v1.16.0
-	golang.org/x/crypto v0.11.0
-	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
-	golang.org/x/text v0.11.0
+	golang.org/x/crypto v0.12.0
+	golang.org/x/exp v0.0.0-20230807204917-050eac23e9de
+	golang.org/x/text v0.12.0
 )
 
 require (
@@ -17,6 +17,6 @@ require (
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect
-	golang.org/x/sys v0.10.0 // indirect
+	golang.org/x/sys v0.11.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )

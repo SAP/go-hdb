@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.3.16
+- updated dependencies
+
 #### v1.3.15
 - fixed REUSE warnings
 
