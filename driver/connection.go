@@ -363,6 +363,8 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
+func (c *conn) isBad() bool { return errors.Is(c.lastError, driver.ErrBadConn) }
+
 // IsValid implements the driver.Validator interface.
 func (c *conn) IsValid() bool { return !c.isBad() }
 

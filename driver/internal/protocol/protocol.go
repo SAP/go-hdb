@@ -3,6 +3,8 @@ package protocol
 import (
 	"bufio"
 	"context"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -46,6 +48,12 @@ type Reader interface {
 	ReadSkip(ctx context.Context) error
 	SessionID() int64
 	FunctionCode() FunctionCode
+}
+
+// Writer is the protocol writer interface.
+type Writer interface {
+	WriteProlog(ctx context.Context) error
+	Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error
 }
 
 type baseReader struct {
@@ -304,6 +312,23 @@ func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeade
 	return r.checkError()
 }
 
+// writer represents a protocol writer.
+type writer struct {
+	protTrace bool
+	logger    *slog.Logger
+
+	wr  *bufio.Writer
+	enc *encoding.Encoder
+
+	sv     map[string]string
+	svSent bool
+
+	// reuse header
+	mh *messageHeader
+	sh *segmentHeader
+	ph *PartHeader
+}
+
 // NewWriter returns an instance of a protocol writer.
 func NewWriter(wr *bufio.Writer, protTrace bool, logger *slog.Logger, encoder func() transform.Transformer, sv map[string]string) Writer {
 	return &writer{
@@ -340,6 +365,13 @@ func (w *writer) WriteProlog(ctx context.Context) error {
 		w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxIni], req.String()))
 	}
 	return w.wr.Flush()
+}
+
+func (w *writer) lastErrorHandler(err error) error { // remove after merging back into protocol
+	if err != nil {
+		return errors.Join(err, driver.ErrBadConn)
+	}
+	return nil
 }
 
 func (w *writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {

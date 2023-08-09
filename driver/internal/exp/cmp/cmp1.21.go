@@ -2,6 +2,7 @@
 
 // Delete after go1.20 is out of maintenance.
 
+// Package cmp provides a compatibility layer until g1.20 is out of maintenance.
 package cmp
 
 import gocmp "cmp"

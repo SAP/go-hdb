@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/internal/minmax"
 	"github.com/SAP/go-hdb/driver/internal/protocol/julian"
 )
 
@@ -361,7 +362,7 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 
 	switch {
 	default:
-		exp = max(exp-digits+1, minExp)
+		exp = minmax.MaxInt(exp-digits+1, minExp)
 	case exp < minExp:
 		df |= dfUnderflow
 		exp = exp - digits + 1
@@ -386,7 +387,7 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 		if a.Add(a, a).Cmp(b) >= 0 {
 			m.Add(m, natOne)
 			if m.Cmp(exp10(digits)) == 0 {
-				shift := min(digits, maxExp-exp)
+				shift := minmax.MinInt(digits, maxExp-exp)
 				if shift < 1 { // overflow -> shift one at minimum
 					df |= dfOverflow
 					shift = 1
@@ -484,20 +485,6 @@ func digits10(p *big.Int) int {
 			return i
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // Longdate

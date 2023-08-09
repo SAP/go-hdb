@@ -2,6 +2,8 @@ module github.com/SAP/go-hdb
 
 go 1.20
 
+//toolchain go1.21
+
 require (
 	github.com/prometheus/client_golang v1.16.0
 	golang.org/x/crypto v0.12.0

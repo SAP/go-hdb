@@ -1,6 +1,17 @@
 Release Notes
 =============
 
+## v1.4.0
+
+### Changes
+
+- Added support of Go 1.21.
+- Dropped support of Go language versions < Go 1.20.
+
+### Incompatible changes
+
+- None.
+
 ## v1.3.0
 
 ### Minor revisions

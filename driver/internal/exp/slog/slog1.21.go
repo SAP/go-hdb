@@ -2,6 +2,7 @@
 
 // Delete after go1.20 is out of maintenance.
 
+// Package slog provides a compatibility layer until g1.20 is out of maintenance.
 package slog
 
 import goslog "log/slog"
