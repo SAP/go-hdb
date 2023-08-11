@@ -220,6 +220,7 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 
 	const maxRetry = 1
 	numRetry := 0
+	lastVersion := authAttrs.version.Load()
 
 	for {
 		authHnd := authAttrs.authHnd()
@@ -238,13 +239,16 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 			return nil, err
 		}
 
-		refresh, refreshErr := authAttrs.refresh()
-		if refreshErr != nil {
-			return nil, refreshErr
-		}
-		if !refresh { // no connection retry in case refresh callback would not provide updates
+		if err := authAttrs.refresh(); err != nil {
 			return nil, err
 		}
+
+		version := authAttrs.version.Load()
+		if version == lastVersion { // no connection retry in case no new version available
+			return nil, err
+		}
+		lastVersion = version
+
 		numRetry++
 	}
 }

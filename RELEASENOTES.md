@@ -3,6 +3,12 @@ Release Notes
 
 ## v1.4.0
 
+### Minor revisions
+
+#### v1.4.1
+- fixed bug: connection retry in case refresh callback has new version
+- updated dependencies
+
 ### Changes
 
 - Added support of Go 1.21.
