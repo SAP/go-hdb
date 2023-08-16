@@ -59,12 +59,12 @@ type Driver interface {
 }
 
 // hdbDriver represents the go sql driver implementation for hdb.
-type hdbDriver struct {
+type HdbDriver struct {
 	metrics *metrics
 }
 
 // Open implements the driver.Driver interface.
-func (d *hdbDriver) Open(dsn string) (driver.Conn, error) {
+func (d *HdbDriver) Open(dsn string) (driver.Conn, error) {
 	connector, err := NewDSNConnector(dsn)
 	if err != nil {
 		return nil, err
@@ -73,16 +73,16 @@ func (d *hdbDriver) Open(dsn string) (driver.Conn, error) {
 }
 
 // OpenConnector implements the driver.DriverContext interface.
-func (d *hdbDriver) OpenConnector(dsn string) (driver.Connector, error) { return NewDSNConnector(dsn) }
+func (d *HdbDriver) OpenConnector(dsn string) (driver.Connector, error) { return NewDSNConnector(dsn) }
 
 // Name returns the driver name.
-func (d *hdbDriver) Name() string { return DriverName }
+func (d *HdbDriver) Name() string { return DriverName }
 
 // Version returns the driver version.
-func (d *hdbDriver) Version() string { return DriverVersion }
+func (d *HdbDriver) Version() string { return DriverVersion }
 
 // Stats returns aggregated driver statistics.
-func (d *hdbDriver) Stats() *Stats { return d.metrics.stats() }
+func (d *HdbDriver) Stats() *Stats { return d.metrics.stats() }
 
 // DB represents a driver database and can be used as a replacement for sql.DB.
 // It provides all of the sql.DB methods plus additional methods only available for driver.DB.
