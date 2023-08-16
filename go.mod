@@ -1,4 +1,4 @@
-module github.com/SAP/go-hdb
+module github.com/SidhMj/go-hdb
 
 go 1.20
 
