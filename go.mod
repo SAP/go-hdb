@@ -1,6 +1,6 @@
 module github.com/SidhMj/go-hdb
 
-go 1.20
+go 1.19
 
 //toolchain go1.21
 
