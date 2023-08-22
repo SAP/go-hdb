@@ -320,7 +320,7 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *
 
 	c.sessionID = defaultSessionID
 
-	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, authHnd, attrs._applicationName, attrs._dfv, attrs._locale); err != nil {
+	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, authHnd, attrs); err != nil {
 		return nil, err
 	}
 
@@ -329,7 +329,7 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *
 	}
 
 	c.hdbVersion = parseVersion(c.versionString())
-	c.fieldTypeCtx = p.NewFieldTypeCtx(int(c.serverOptions[p.CoDataFormatVersion2].(int32)), attrs.clone()._emptyDateAsNull)
+	c.fieldTypeCtx = p.NewFieldTypeCtx(int(c.serverOptions[p.CoDataFormatVersion2].(int32)), attrs._emptyDateAsNull)
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
@@ -1146,14 +1146,14 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 	}, nil
 }
 
-func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, applicationName string, dfv int, locale string) (int64, p.Options[p.ConnectOption], error) {
+func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *connAttrs) (int64, p.Options[p.ConnectOption], error) {
 	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
 	clientContext := p.Options[p.ClientContextOption]{
 		p.CcoClientVersion:            DriverVersion,
 		p.CcoClientType:               clientType,
-		p.CcoClientApplicationProgram: applicationName,
+		p.CcoClientApplicationProgram: attrs._applicationName,
 	}
 
 	initRequest, err := authHnd.InitRequest()
@@ -1186,12 +1186,12 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, applicatio
 			p.CoDistributionProtocolVersion: false,
 			p.CoSelectForUpdateSupported:    false,
 			p.CoSplitBatchCommands:          true,
-			p.CoDataFormatVersion2:          int32(dfv),
+			p.CoDataFormatVersion2:          int32(attrs._dfv),
 			p.CoCompleteArrayExecution:      true,
 			p.CoClientDistributionMode:      int32(p.CdmOff),
 		}
-		if locale != "" {
-			co[p.CoClientLocale] = locale
+		if attrs._locale != "" {
+			co[p.CoClientLocale] = attrs._locale
 		}
 		return co
 	}()

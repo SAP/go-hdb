@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.4.2
+- updated dependencies
+
 #### v1.4.1
 - fixed bug: connection retry in case refresh callback has new version
 - updated dependencies
