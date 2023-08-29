@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// DSN parameters. For parameter client locale see http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf.
+// DSN parameters.
 const (
 	DSNDefaultSchema = "defaultSchema" // Database default schema.
 	DSNTimeout       = "timeout"       // Driver side connection timeout in seconds.

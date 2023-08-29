@@ -317,7 +317,7 @@ func (c *connAttrs) SetDialer(dialer dial.Dialer) {
 	c.setDialer(dialer)
 }
 
-// ApplicationName returns the locale of the connector.
+// ApplicationName returns the application name of the connector.
 func (c *connAttrs) ApplicationName() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -351,7 +351,7 @@ func (c *connAttrs) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return
 /*
 SetLocale sets the locale of the connector.
 
-For more information please see DSNLocale.
+For more information please see http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf.
 */
 func (c *connAttrs) SetLocale(locale string) { c.mu.Lock(); defer c.mu.Unlock(); c._locale = locale }
 

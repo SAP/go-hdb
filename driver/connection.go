@@ -263,7 +263,7 @@ func init() {
 	flag.Var(&sqlTrace, "hdb.sqlTrace", "enabling hdb sql trace")
 }
 
-// SQLTrace returns if sql tracing output is active.
+// SQLTrace returns true if sql tracing output is active, false otherwise.
 func SQLTrace() bool { return sqlTrace.Load() }
 
 // SetSQLTrace sets sql tracing output active or inactive.
