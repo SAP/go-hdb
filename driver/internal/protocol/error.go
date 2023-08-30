@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
@@ -99,30 +98,29 @@ func (e *HdbError) IsFatal() bool { return e.errorLevel == errorLevelFatalError 
 // HdbErrors represent the collection of errors return by the server.
 type HdbErrors struct {
 	errs []*HdbError
-	//numArg int
-	idx int
+	*HdbError
 }
 
 func (e *HdbErrors) String() string {
-	if len(e.errs) == 1 {
-		return e.errs[0].String()
+	var b []byte
+	for i, err := range e.errs {
+		if i > 0 {
+			b = append(b, '\n')
+		}
+		b = append(b, err.String()...)
 	}
-	strs := make([]string, 0, len(e.errs))
-	for _, err := range e.errs {
-		strs = append(strs, err.String())
-	}
-	return strings.Join(strs, " ")
+	return string(b)
 }
 
 func (e *HdbErrors) Error() string {
-	if len(e.errs) == 1 {
-		return e.errs[0].Error()
+	var b []byte
+	for i, err := range e.errs {
+		if i > 0 {
+			b = append(b, '\n')
+		}
+		b = append(b, err.Error()...)
 	}
-	strs := make([]string, 0, len(e.errs))
-	for _, err := range e.errs {
-		strs = append(strs, err.Error())
-	}
-	return strings.Join(strs, " ")
+	return string(b)
 }
 
 // ErrorsFunc executes fn on all hdb errors.
@@ -148,44 +146,14 @@ func (e *HdbErrors) Unwrap() []error {
 
 // SetIdx implements the driver.Error interface.
 func (e *HdbErrors) SetIdx(idx int) {
-	numError := e.NumError()
-	switch {
-	case idx < 0:
-		e.idx = 0
-	case idx >= numError:
-		e.idx = numError - 1
-	default:
-		e.idx = idx
+	if idx >= 0 && idx < len(e.errs) {
+		e.HdbError = e.errs[idx]
 	}
 }
 
-// StmtNo implements the driver.Error interface.
-func (e *HdbErrors) StmtNo() int { return e.errs[e.idx].StmtNo() }
-
-// Code implements the driver.Error interface.
-func (e *HdbErrors) Code() int { return e.errs[e.idx].Code() }
-
-// Position implements the driver.Error interface.
-func (e *HdbErrors) Position() int { return e.errs[e.idx].Position() }
-
-// Level implements the driver.Error interface.
-func (e *HdbErrors) Level() int { return e.errs[e.idx].Level() }
-
-// Text implements the driver.Error interface.
-func (e *HdbErrors) Text() string { return e.errs[e.idx].Text() }
-
-// IsWarning implements the driver.Error interface.
-func (e *HdbErrors) IsWarning() bool { return e.errs[e.idx].IsWarning() }
-
-// IsError implements the driver.Error interface.
-func (e *HdbErrors) IsError() bool { return e.errs[e.idx].IsError() }
-
-// IsFatal implements the driver.Error interface.
-func (e *HdbErrors) IsFatal() bool { return e.errs[e.idx].IsFatal() }
-
 // setStmtNo sets the statement number of the error.
 func (e *HdbErrors) setStmtNo(idx, no int) {
-	if idx >= 0 && idx < e.NumError() {
+	if idx >= 0 && idx < len(e.errs) {
 		e.errs[idx].stmtNo = no
 	}
 }
@@ -201,7 +169,6 @@ func (e *HdbErrors) HasOnlyWarnings() bool {
 }
 
 func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	e.idx = 0
 	e.errs = resizeSlice(e.errs, ph.numArg())
 
 	numArg := ph.numArg()
@@ -210,6 +177,9 @@ func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
 		if err == nil {
 			err = new(HdbError)
 			e.errs[i] = err
+		}
+		if i == 0 {
+			e.HdbError = err // set default to first error
 		}
 
 		// err.stmtNo = -1
