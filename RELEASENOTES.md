@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.4.6
+- added go1.22 database/sql Null[T any] support
+
 #### v1.4.5
 - updated dependencies
 
