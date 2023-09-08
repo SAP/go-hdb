@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.5.0
 
+### Minor revisions
+
+#### v1.5.1
+- updated dependencies
+
 ### New features
 
 - Added support of tenant database connection via tenant database name:
