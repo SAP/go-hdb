@@ -72,6 +72,7 @@ type connAttrs struct {
 	_cesu8Decoder     func() transform.Transformer
 	_cesu8Encoder     func() transform.Transformer
 	_emptyDateAsNull  bool
+	_databaseName     string
 	_logger           *slog.Logger
 }
 
@@ -120,6 +121,7 @@ func (c *connAttrs) clone() *connAttrs {
 		_cesu8Decoder:     c._cesu8Decoder,
 		_cesu8Encoder:     c._cesu8Encoder,
 		_emptyDateAsNull:  c._emptyDateAsNull,
+		_databaseName:     c._databaseName,
 		_logger:           c._logger,
 	}
 }
@@ -440,6 +442,13 @@ func (c *connAttrs) SetEmptyDateAsNull(emptyDateAsNull bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c._emptyDateAsNull = emptyDateAsNull
+}
+
+// DatabaseName returns the tenant database name of the connector.
+func (c *connAttrs) DatabaseName() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._databaseName
 }
 
 // Logger returns the Logger instance of the connector.

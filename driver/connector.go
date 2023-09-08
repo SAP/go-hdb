@@ -17,8 +17,9 @@ type Connector struct {
 	*connAttrs
 	*authAttrs
 
+	metrics *metrics
+
 	connHook func(driver.Conn) driver.Conn
-	newConn  func(ctx context.Context, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error)
 }
 
 // NewConnector returns a new Connector instance with default values.
@@ -26,9 +27,7 @@ func NewConnector() *Connector {
 	return &Connector{
 		connAttrs: newConnAttrs(),
 		authAttrs: &authAttrs{},
-		newConn: func(ctx context.Context, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
-			return newConn(ctx, stdHdbDriver.metrics, connAttrs, authAttrs) // use default stdHdbDriver metrics
-		},
+		metrics:   stdHdbDriver.metrics, // use default stdHdbDriver metrics
 	}
 }
 
@@ -77,6 +76,7 @@ func NewJWTAuthConnector(host, token string) *Connector {
 func newDSNConnector(dsn *DSN) (*Connector, error) {
 	c := NewConnector()
 	c._host = dsn.host
+	c._databaseName = dsn.databaseName
 	c._pingInterval = dsn.pingInterval
 	c._defaultSchema = dsn.defaultSchema
 	c.setTimeout(dsn.timeout)
@@ -104,7 +104,7 @@ func (c *Connector) NativeDriver() Driver { return stdHdbDriver }
 
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
-	conn, err := c.newConn(ctx, c.connAttrs.clone(), c.authAttrs)
+	conn, err := connect(ctx, c.metrics, c.connAttrs.clone(), c.authAttrs)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +116,22 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 // Driver implements the database/sql/driver/Connector interface.
 func (c *Connector) Driver() driver.Driver { return stdHdbDriver }
+
+func (c *Connector) clone() *Connector {
+	return &Connector{
+		connAttrs: c.connAttrs.clone(),
+		authAttrs: c.authAttrs.clone(),
+		metrics:   c.metrics,
+		connHook:  c.connHook,
+	}
+}
+
+// WithDatabase returns a new Connector supporting tenant database connections via database name.
+func (c *Connector) WithDatabase(databaseName string) *Connector {
+	nc := c.clone()
+	nc._databaseName = databaseName
+	return nc
+}
 
 // SetConnHook sets a function for intercepting connection creation.
 // This is for internal use only and might be changed or disabled in future.

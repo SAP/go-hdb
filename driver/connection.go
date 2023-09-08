@@ -13,6 +13,7 @@ import (
 	"net"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -205,10 +206,17 @@ func isAuthError(err error) bool {
 	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
 }
 
-func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
+func connect(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
+	// if database name fetch tenant database host
+	if connAttrs._databaseName != "" {
+		if err := fetchHost(ctx, metrics, connAttrs); err != nil {
+			return nil, err
+		}
+	}
+
 	// can we connect via cookie?
 	if auth := authAttrs.cookieAuth(); auth != nil {
-		conn, err := initConn(ctx, metrics, connAttrs, auth)
+		conn, err := newSession(ctx, metrics, connAttrs, auth)
 		if err == nil {
 			return conn, nil
 		}
@@ -225,7 +233,7 @@ func newConn(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 	for {
 		authHnd := authAttrs.authHnd()
 
-		conn, err := initConn(ctx, metrics, connAttrs, authHnd)
+		conn, err := newSession(ctx, metrics, connAttrs, authHnd)
 		if err == nil {
 			if method, ok := authHnd.Selected().(auth.CookieGetter); ok {
 				authAttrs.setCookie(method.Cookie())
@@ -287,7 +295,7 @@ func (nvs namedValues) LogValue() slog.Value {
 // unique connection number.
 var connNo atomic.Uint64
 
-func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (driver.Conn, error) {
+func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs) (*conn, error) {
 	netConn, err := attrs._dialer.DialContext(ctx, attrs._host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
 	if err != nil {
 		return nil, err
@@ -298,34 +306,73 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *
 		netConn = tls.Client(netConn, attrs._tlsConfig)
 	}
 
-	no := connNo.Add(1)
-	logger := attrs._logger.With(slog.Uint64("conn", no))
+	logger := attrs._logger.With(slog.Uint64("conn", connNo.Add(1)))
 
 	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
-	c := &conn{metrics: metrics, connAttrs: attrs, dbConn: dbConn, sqlTrace: sqlTrace.Load(), logger: logger}
-
 	protTrace := protTrace.Load()
-	c.pw = p.NewWriter(rw.Writer, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
+
+	c := &conn{
+		metrics:   metrics,
+		connAttrs: attrs,
+		dbConn:    dbConn,
+		sqlTrace:  sqlTrace.Load(),
+		logger:    logger,
+		pw:        p.NewWriter(rw.Writer, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables), // write upstream
+		pr:        p.NewDBReader(rw.Reader, protTrace, logger, attrs._cesu8Decoder),                        // read downstream
+		sessionID: defaultSessionID,
+	}
+
 	if err := c.pw.WriteProlog(ctx); err != nil {
+		dbConn.close()
 		return nil, err
 	}
 
-	c.pr = p.NewDBReader(rw.Reader, protTrace, logger, attrs._cesu8Decoder) // read downstream
 	if err := c.pr.ReadProlog(ctx); err != nil {
+		dbConn.close()
 		return nil, err
 	}
 
-	c.sessionID = defaultSessionID
+	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
+	return c, nil
+}
 
+func fetchHost(ctx context.Context, metrics *metrics, attrs *connAttrs) error {
+	c, err := newConn(ctx, metrics, attrs)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	dbi, err := c._dbConnectInfo(ctx, attrs._databaseName)
+	if err != nil {
+		return err
+	}
+	if !dbi.IsConnected { // if databaseName == "SYSTEMDB" and isConnected == true host and port are initial
+		attrs._host = net.JoinHostPort(dbi.Host, strconv.Itoa(dbi.Port))
+	}
+	return nil
+}
+
+func newSession(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (driver.Conn, error) {
+	c, err := newConn(ctx, metrics, attrs)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.initSession(ctx, attrs, authHnd); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+func (c *conn) initSession(ctx context.Context, attrs *connAttrs, authHnd *p.AuthHnd) (err error) {
 	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, authHnd, attrs); err != nil {
-		return nil, err
+		return err
 	}
-
 	if c.sessionID <= 0 {
-		return nil, fmt.Errorf("invalid session id %d", c.sessionID)
+		return fmt.Errorf("invalid session id %d", c.sessionID)
 	}
 
 	c.hdbVersion = parseVersion(c.versionString())
@@ -333,13 +380,10 @@ func initConn(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
-	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
-
-	return c, nil
+	return nil
 }
 
 func (c *conn) versionString() (version string) {
@@ -435,8 +479,8 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (stmt driver.St
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
 	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
-	// if isBad do not disconnect
-	if !c.isBad() {
+	// do not disconnect if isBad or invalid sessionID
+	if !c.isBad() && c.sessionID != defaultSessionID {
 		c._disconnect(context.Background()) // ignore error
 	}
 	return c.dbConn.close()

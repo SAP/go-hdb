@@ -11,7 +11,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleNewBasicAuthConnector shows how to open a database with the help of a connector using basic authentication.
+// ExampleNewDSNConnector shows how to open a database with the help of a connector using DSN.
 func ExampleNewDSNConnector() {
 	const (
 		envDSN = "GOHDBDSN"
@@ -69,6 +69,7 @@ func ExampleNewBasicAuthConnector() {
 		envHost     = "GOHDBHOST"
 		envUsername = "GOHDBUSERNAME"
 		envPassword = "GOHDBPASSWORD"
+		envDatabase = "GOHDBDATABASE"
 	)
 
 	host, ok := os.LookupEnv(envHost)
@@ -83,11 +84,16 @@ func ExampleNewBasicAuthConnector() {
 	if !ok {
 		return
 	}
+	database, ok := os.LookupEnv(envDatabase)
 
 	connector := driver.NewBasicAuthConnector(host, username, password)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
 		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
 	}
+	if database != "" {
+		connector = connector.WithDatabase(database)
+	}
+
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
@@ -160,6 +166,45 @@ func ExampleNewJWTAuthConnector() {
 	// in case JWT authentication fails provide a (new) valid token.
 	connector.SetRefreshToken(func() (string, bool) { return token, true })
 
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatal(err)
+	}
+	// output:
+}
+
+// ExampleConnector_WithDatabase shows how to open a tenant database with the help of a connector using basic authentication.
+func ExampleConnector_WithDatabase() {
+	const (
+		envHost     = "GOHDBHOST"
+		envUsername = "GOHDBUSERNAME"
+		envPassword = "GOHDBPASSWORD"
+		envDatabase = "GOHDBDATABASE"
+	)
+
+	host, ok := os.LookupEnv(envHost)
+	if !ok {
+		return
+	}
+	username, ok := os.LookupEnv(envUsername)
+	if !ok {
+		return
+	}
+	password, ok := os.LookupEnv(envPassword)
+	if !ok {
+		return
+	}
+	database, ok := os.LookupEnv(envDatabase)
+	if !ok {
+		return
+	}
+
+	connector := driver.NewBasicAuthConnector(host, username, password).WithDatabase(database)
+	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
+		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
+	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

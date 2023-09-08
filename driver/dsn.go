@@ -10,6 +10,7 @@ import (
 
 // DSN parameters.
 const (
+	DSNDatabaseName  = "databaseName"  // Tenant database name.
 	DSNDefaultSchema = "defaultSchema" // Database default schema.
 	DSNTimeout       = "timeout"       // Driver side connection timeout in seconds.
 	DSNPingInterval  = "pingInterval"  // Connection ping interval in seconds.
@@ -42,19 +43,21 @@ A DSN represents a parsed DSN string. A DSN string is an URL string with the fol
 
 and optional query parameters (see DSN query parameters and DSN query default values).
 
-Example:
+Examples:
 
-	"hdb://myuser:mypassword@localhost:30015?timeout=60"
+	"hdb://myUser:myPassword@localhost:30015?databaseName=myTenantDatabaseName"
+	"hdb://myUser:myPassword@localhost:30015?timeout=60"
 
 Examples TLS connection:
 
-	"hdb://myuser:mypassword@localhost:39013?TLSRootCAFile=trust.pem"
-	"hdb://myuser:mypassword@localhost:39013?TLSRootCAFile=trust.pem&TLSServerName=hostname"
-	"hdb://myuser:mypassword@localhost:39013?TLSInsecureSkipVerify"
+	"hdb://myUser:myPassword@localhost:39013?TLSRootCAFile=trust.pem"
+	"hdb://myUser:myPassword@localhost:39013?TLSRootCAFile=trust.pem&TLSServerName=hostname"
+	"hdb://myUser:myPassword@localhost:39013?TLSInsecureSkipVerify"
 */
 type DSN struct {
 	host               string
 	username, password string
+	databaseName       string
 	defaultSchema      string
 	timeout            time.Duration
 	pingInterval       time.Duration
@@ -119,6 +122,12 @@ func parseDSN(s string) (*DSN, error) {
 
 		default:
 			return nil, parameterNotSupportedError(k)
+
+		case DSNDatabaseName:
+			if len(v) != 1 {
+				return nil, invalidNumberOfParametersError(k, len(v), 1)
+			}
+			dsn.databaseName = v[0]
 
 		case DSNDefaultSchema:
 			if len(v) != 1 {
@@ -187,6 +196,9 @@ func parseDSN(s string) (*DSN, error) {
 // String reassembles the DSN into a valid DSN string.
 func (dsn *DSN) String() string {
 	values := url.Values{}
+	if dsn.databaseName != "" {
+		values.Set(DSNDatabaseName, dsn.databaseName)
+	}
 	if dsn.defaultSchema != "" {
 		values.Set(DSNDefaultSchema, dsn.defaultSchema)
 	}

@@ -1,6 +1,14 @@
 Release Notes
 =============
 
+## v1.5.0
+
+### New features
+
+- Added support of tenant database connection via tenant database name:
+  - see new Connector method WithDatabase and
+  - new DSN parameter DSNDatabaseName
+
 ## v1.4.0
 
 ### Minor revisions
@@ -224,7 +232,7 @@ Stored procedures:
 - Calling stored procedures with sql.Query methods are no longer supported.
 - Please use sql.Exec methods instead and [sql.Rows](https://golang.org/pkg/database/sql/#Rows) for table output parameters.
 
-### New features:
+### New features
 
 - Stored procedures executed by sql.Exec with parameters do
   - support [named](https://pkg.go.dev/database/sql#Named) parameters and

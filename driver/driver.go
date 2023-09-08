@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.4.7"
+const DriverVersion = "1.5.0"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -100,9 +100,7 @@ func OpenDB(c *Connector) *DB {
 	nc := &Connector{
 		connAttrs: c.connAttrs,
 		authAttrs: c.authAttrs,
-		newConn: func(ctx context.Context, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
-			return newConn(ctx, metrics, connAttrs, authAttrs) // use db specific metrics
-		},
+		metrics:   metrics, // use db specific metrics
 	}
 	return &DB{
 		metrics: metrics,

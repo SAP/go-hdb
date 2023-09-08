@@ -25,12 +25,27 @@ type authAttrs struct {
 	cbmu                 sync.RWMutex // prevents refresh callbacks from being called in parallel
 }
 
+func isJWTToken(token string) bool { return strings.HasPrefix(token, "ey") }
+
 /*
 	keep c as the instance name, so that the generated help does have
 	the same instance variable name when included in connector
 */
 
-func isJWTToken(token string) bool { return strings.HasPrefix(token, "ey") }
+func (c *authAttrs) clone() *authAttrs {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return &authAttrs{
+		_username:          c._username,
+		_password:          c._password,
+		_certKey:           c._certKey,
+		_token:             c._token,
+		_refreshPassword:   c._refreshPassword,
+		_refreshClientCert: c._refreshClientCert,
+		_refreshToken:      c._refreshToken,
+	}
+}
 
 func (c *authAttrs) cookieAuth() *p.AuthHnd {
 	if !c.hasCookie.Load() { // fastpath without lock
