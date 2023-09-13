@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.5.2
+- fixed race condition in connection conn and stmt methods in case of context cancelling
+
 #### v1.5.1
 - updated dependencies
 
