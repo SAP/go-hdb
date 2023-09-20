@@ -206,17 +206,10 @@ func isAuthError(err error) bool {
 	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
 }
 
-func connect(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
-	// if database name fetch tenant database host
-	if connAttrs._databaseName != "" {
-		if err := fetchHost(ctx, metrics, connAttrs); err != nil {
-			return nil, err
-		}
-	}
-
+func connect(ctx context.Context, host string, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
 	// can we connect via cookie?
 	if auth := authAttrs.cookieAuth(); auth != nil {
-		conn, err := newSession(ctx, metrics, connAttrs, auth)
+		conn, err := newSession(ctx, host, metrics, connAttrs, auth)
 		if err == nil {
 			return conn, nil
 		}
@@ -226,14 +219,13 @@ func connect(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		authAttrs.invalidateCookie() // cookie auth was not successful - do not try again with the same data
 	}
 
-	const maxRetry = 1
-	numRetry := 0
+	refreshed := false
 	lastVersion := authAttrs.version.Load()
 
 	for {
 		authHnd := authAttrs.authHnd()
 
-		conn, err := newSession(ctx, metrics, connAttrs, authHnd)
+		conn, err := newSession(ctx, host, metrics, connAttrs, authHnd)
 		if err == nil {
 			if method, ok := authHnd.Selected().(auth.CookieGetter); ok {
 				authAttrs.setCookie(method.Cookie())
@@ -243,7 +235,7 @@ func connect(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		if !isAuthError(err) {
 			return nil, err
 		}
-		if numRetry >= maxRetry {
+		if refreshed {
 			return nil, err
 		}
 
@@ -257,7 +249,7 @@ func connect(ctx context.Context, metrics *metrics, connAttrs *connAttrs, authAt
 		}
 		lastVersion = version
 
-		numRetry++
+		refreshed = true
 	}
 }
 
@@ -295,8 +287,8 @@ func (nvs namedValues) LogValue() slog.Value {
 // unique connection number.
 var connNo atomic.Uint64
 
-func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs) (*conn, error) {
-	netConn, err := attrs._dialer.DialContext(ctx, attrs._host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
+func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttrs) (*conn, error) {
+	netConn, err := attrs._dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
 	if err != nil {
 		return nil, err
 	}
@@ -339,24 +331,24 @@ func newConn(ctx context.Context, metrics *metrics, attrs *connAttrs) (*conn, er
 	return c, nil
 }
 
-func fetchHost(ctx context.Context, metrics *metrics, attrs *connAttrs) error {
-	c, err := newConn(ctx, metrics, attrs)
+func fetchRedirectHost(ctx context.Context, host, databaseName string, metrics *metrics, attrs *connAttrs) (string, error) {
+	c, err := newConn(ctx, host, metrics, attrs)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer c.Close()
-	dbi, err := c._dbConnectInfo(ctx, attrs._databaseName)
+	dbi, err := c._dbConnectInfo(ctx, databaseName)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if !dbi.IsConnected { // if databaseName == "SYSTEMDB" and isConnected == true host and port are initial
-		attrs._host = net.JoinHostPort(dbi.Host, strconv.Itoa(dbi.Port))
+	if dbi.IsConnected { // if databaseName == "SYSTEMDB" and isConnected == true host and port are initial
+		return host, nil
 	}
-	return nil
+	return net.JoinHostPort(dbi.Host, strconv.Itoa(dbi.Port)), nil
 }
 
-func newSession(ctx context.Context, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (driver.Conn, error) {
-	c, err := newConn(ctx, metrics, attrs)
+func newSession(ctx context.Context, host string, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (driver.Conn, error) {
+	c, err := newConn(ctx, host, metrics, attrs)
 	if err != nil {
 		return nil, err
 	}

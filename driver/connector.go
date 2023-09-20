@@ -5,21 +5,29 @@ import (
 	"database/sql/driver"
 	"os"
 	"path"
+	"sync"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
+
+type redirectCacheKey struct {
+	host, databaseName string
+}
+
+var redirectCache sync.Map
 
 /*
 A Connector represents a hdb driver in a fixed configuration.
 A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
 */
 type Connector struct {
+	_host         string
+	_databaseName string
+
 	*connAttrs
 	*authAttrs
 
 	metrics *metrics
-
-	connHook func(driver.Conn) driver.Conn
 }
 
 // NewConnector returns a new Connector instance with default values.
@@ -102,16 +110,41 @@ func NewDSNConnector(dsnStr string) (*Connector, error) {
 // NativeDriver returns the concrete underlying Driver of the Connector.
 func (c *Connector) NativeDriver() Driver { return stdHdbDriver }
 
-// Connect implements the database/sql/driver/Connector interface.
-func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
-	conn, err := connect(ctx, c.metrics, c.connAttrs.clone(), c.authAttrs)
+// Host returns the host of the connector.
+func (c *Connector) Host() string { return c._host }
+
+// DatabaseName returns the tenant database name of the connector.
+func (c *Connector) DatabaseName() string { return c._databaseName }
+
+func (c *Connector) redirect(ctx context.Context) (driver.Conn, error) {
+	connAttrs := c.connAttrs.clone()
+
+	if redirectHost, found := redirectCache.Load(redirectCacheKey{host: c._host, databaseName: c._databaseName}); found {
+		if conn, err := connect(ctx, redirectHost.(string), c.metrics, connAttrs, c.authAttrs); err == nil {
+			return conn, nil
+		}
+	}
+
+	redirectHost, err := fetchRedirectHost(ctx, c._host, c._databaseName, c.metrics, connAttrs)
 	if err != nil {
 		return nil, err
 	}
-	if c.connHook != nil {
-		conn = c.connHook(conn)
+	conn, err := connect(ctx, redirectHost, c.metrics, connAttrs, c.authAttrs)
+	if err != nil {
+		return nil, err
 	}
+
+	redirectCache.Store(redirectCacheKey{host: c._host, databaseName: c._databaseName}, redirectHost)
+
 	return conn, err
+}
+
+// Connect implements the database/sql/driver/Connector interface.
+func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
+	if c._databaseName != "" {
+		return c.redirect(ctx)
+	}
+	return connect(ctx, c._host, c.metrics, c.connAttrs.clone(), c.authAttrs)
 }
 
 // Driver implements the database/sql/driver/Connector interface.
@@ -119,10 +152,11 @@ func (c *Connector) Driver() driver.Driver { return stdHdbDriver }
 
 func (c *Connector) clone() *Connector {
 	return &Connector{
-		connAttrs: c.connAttrs.clone(),
-		authAttrs: c.authAttrs.clone(),
-		metrics:   c.metrics,
-		connHook:  c.connHook,
+		_host:         c._host,
+		_databaseName: c._databaseName,
+		connAttrs:     c.connAttrs.clone(),
+		authAttrs:     c.authAttrs.clone(),
+		metrics:       c.metrics,
 	}
 }
 
@@ -132,7 +166,3 @@ func (c *Connector) WithDatabase(databaseName string) *Connector {
 	nc._databaseName = databaseName
 	return nc
 }
-
-// SetConnHook sets a function for intercepting connection creation.
-// This is for internal use only and might be changed or disabled in future.
-func (c *Connector) SetConnHook(fn func(driver.Conn) driver.Conn) { c.connHook = fn }

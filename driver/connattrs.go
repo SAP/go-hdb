@@ -54,7 +54,6 @@ const (
 // connAttrs is holding connection relevant attributes.
 type connAttrs struct {
 	mu                sync.RWMutex
-	_host             string
 	_timeout          time.Duration
 	_pingInterval     time.Duration
 	_bufferSize       int
@@ -72,7 +71,6 @@ type connAttrs struct {
 	_cesu8Decoder     func() transform.Transformer
 	_cesu8Encoder     func() transform.Transformer
 	_emptyDateAsNull  bool
-	_databaseName     string
 	_logger           *slog.Logger
 }
 
@@ -103,7 +101,6 @@ func (c *connAttrs) clone() *connAttrs {
 	defer c.mu.RUnlock()
 
 	return &connAttrs{
-		_host:             c._host,
 		_timeout:          c._timeout,
 		_pingInterval:     c._pingInterval,
 		_bufferSize:       c._bufferSize,
@@ -121,7 +118,6 @@ func (c *connAttrs) clone() *connAttrs {
 		_cesu8Decoder:     c._cesu8Decoder,
 		_cesu8Encoder:     c._cesu8Encoder,
 		_emptyDateAsNull:  c._emptyDateAsNull,
-		_databaseName:     c._databaseName,
 		_logger:           c._logger,
 	}
 }
@@ -191,9 +187,6 @@ func (c *connAttrs) setDfv(dfv int) {
 	}
 	c._dfv = dfv
 }
-
-// Host returns the host of the connector.
-func (c *connAttrs) Host() string { c.mu.RLock(); defer c.mu.RUnlock(); return c._host }
 
 // Timeout returns the timeout of the connector.
 func (c *connAttrs) Timeout() time.Duration { c.mu.RLock(); defer c.mu.RUnlock(); return c._timeout }
@@ -444,13 +437,6 @@ func (c *connAttrs) SetEmptyDateAsNull(emptyDateAsNull bool) {
 	c._emptyDateAsNull = emptyDateAsNull
 }
 
-// DatabaseName returns the tenant database name of the connector.
-func (c *connAttrs) DatabaseName() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c._databaseName
-}
-
 // Logger returns the Logger instance of the connector.
 func (c *connAttrs) Logger() *slog.Logger {
 	c.mu.RLock()
@@ -462,5 +448,8 @@ func (c *connAttrs) Logger() *slog.Logger {
 func (c *connAttrs) SetLogger(logger *slog.Logger) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if logger == nil {
+		logger = slog.Default()
+	}
 	c._logger = logger
 }
