@@ -120,6 +120,13 @@ func TestX509Authentication(t *testing.T) {
 	}{
 		{"testuser_rsa_pkcs1", "CN=GoHDBTestUser_rsa", "rsa.pkcs1.key", "rsa.crt"},
 		{"testuser_rsa_pkcs8", "CN=GoHDBTestUser_rsa", "rsa.pkcs8.key", "rsa.crt"},
+		{"testuser_ec_p256", "CN=GoHDBTestUser_ec_p256", "ec_p256.ec.key", "ec_p256.crt"},
+		{"testuser_ec_p256_pkcs8", "CN=GoHDBTestUser_ec_p256", "ec_p256.pkcs8.key", "ec_p256.crt"},
+		{"testuser_ec_p384", "CN=GoHDBTestUser_ec_p384", "ec_p384.ec.key", "ec_p384.crt"},
+		{"testuser_ec_p384_pkcs8", "CN=GoHDBTestUser_ec_p384", "ec_p384.pkcs8.key", "ec_p384.crt"},
+		{"testuser_ec_p521", "CN=GoHDBTestUser_ec_p521", "ec_p521.ec.key", "ec_p521.crt"},
+		{"testuser_ec_p521_pkcs8", "CN=GoHDBTestUser_ec_p521", "ec_p521.pkcs8.key", "ec_p521.crt"},
+		{"testuser_ed25519", "CN=GoHDBTestUser_ed25519", "ed25519.key", "ed25519.crt"},
 	}
 
 	// open admin connection
