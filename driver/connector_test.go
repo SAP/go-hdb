@@ -4,6 +4,13 @@ package driver
 
 import (
 	"database/sql"
+	"fmt"
+	"log"
+	"os"
+	"path"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +103,165 @@ func TestConnector(t *testing.T) {
 				tests[i].fct(t)
 			})
 		}(i)
+	}
+}
+
+const X509_POVIDER_NAME = "X509_TEST_PROVIDER"
+const X509_POVIDER_ISSUER = "CN=Go-HDB X.509 Tests RootCA"
+const X509_CERT_NAME = "X509_TEST_CERT"
+const X509_PSE_NAME = "X509_TEST_PSE"
+
+func TestX509Authentication(t *testing.T) {
+	tests := []struct {
+		name    string
+		subject string
+		key     string
+		cert    string
+	}{
+		{"testuser_rsa_pkcs1", "CN=GoHDBTestUser_rsa", "rsa.pkcs1.key", "rsa.crt"},
+		{"testuser_rsa_pkcs8", "CN=GoHDBTestUser_rsa", "rsa.pkcs8.key", "rsa.crt"},
+	}
+
+	// open admin connection
+	connector := NewTestConnector()
+	db := sql.OpenDB(connector)
+	defer db.Close()
+
+	// create the provider
+	if err := createX509Provider(db, X509_POVIDER_NAME, X509_POVIDER_ISSUER); err != nil {
+		t.Fatal(err)
+	}
+	defer dropX509Provider(db, X509_POVIDER_NAME)
+
+	// create the certificate
+	certFolder := certFolder()
+	if err := createCertificateByFile(db, X509_CERT_NAME, filepath.Join(certFolder, "rootCA.crt")); err != nil {
+		t.Fatal(err)
+	}
+	defer dropCertificate(db, X509_CERT_NAME)
+
+	// create the PSE
+	if err := createPSE(db, X509_PSE_NAME); err != nil {
+		t.Fatal(err)
+	}
+	defer dropPSE(db, X509_PSE_NAME)
+
+	// setup the PSE
+	if _, err := db.Exec(fmt.Sprintf("ALTER PSE %s ADD CERTIFICATE %s", X509_PSE_NAME, X509_CERT_NAME)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("SET PSE %s PURPOSE X509 FOR PROVIDER %s", X509_PSE_NAME, X509_POVIDER_NAME)); err != nil {
+		t.Fatal(err)
+	}
+
+	// test with different key types
+	for i := range tests {
+		func(i int) {
+			t.Run(tests[i].name, func(t *testing.T) {
+				// create the user
+				userName := strings.ToUpper(tests[i].name)
+				subject := tests[i].subject
+				if _, err := db.Exec(fmt.Sprintf("CREATE USER %s WITH IDENTITY '%s' FOR X509 PROVIDER %s", userName, subject, X509_POVIDER_NAME)); err != nil {
+					t.Fatal(err)
+				}
+				defer dropUser(db, userName)
+				log.Printf("created user %s", userName)
+
+				// test the connection
+				clientCertFile := filepath.Join(certFolder, tests[i].cert)
+				clientKeyFile := filepath.Join(certFolder, tests[i].key)
+				userConnector, err := NewX509AuthConnectorByFiles(connector.Host(), clientCertFile, clientKeyFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				userDb := sql.OpenDB(userConnector)
+				defer userDb.Close()
+
+				// check the user
+				currentUser, err := queryCurrentUser(userDb)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if currentUser != userName {
+					t.Fatalf("Unexpected current user '%s' - '%s' expected", currentUser, userName)
+				}
+			})
+		}(i)
+	}
+}
+
+func certFolder() string {
+	_, b, _, _ := runtime.Caller(0)
+
+	// Root folder of this project
+	return filepath.Join(filepath.Dir(b), "../testdata/x509")
+}
+
+func createX509Provider(db *sql.DB, name string, issuer string) error {
+	_, err := db.Exec(fmt.Sprintf("CREATE X509 PROVIDER %s WITH ISSUER '%s'", name, issuer))
+	if err == nil {
+		log.Printf("created X.509 provider %s", name)
+	}
+	return err
+}
+
+func dropX509Provider(db *sql.DB, name string) {
+	_, err := db.Exec(fmt.Sprintf("DROP X509 PROVIDER %s CASCADE", name))
+	if err == nil {
+		log.Printf("dropped X.509 provider %s", name)
+	} else {
+		log.Printf("failed to drop X.509 provider %s: %v: ", name, err)
+	}
+}
+
+func createCertificate(db *sql.DB, name string, pem string) error {
+	_, err := db.Exec(fmt.Sprintf("CREATE CERTIFICATE %s FROM '%s'", name, pem))
+	if err == nil {
+		log.Printf("created certificate %s", name)
+	}
+	return err
+}
+
+func createCertificateByFile(db *sql.DB, name string, certFilePath string) error {
+	certPem, err := os.ReadFile(path.Clean(certFilePath))
+	if err != nil {
+		return err
+	}
+	return createCertificate(db, name, string(certPem))
+}
+
+func dropCertificate(db *sql.DB, name string) {
+	_, err := db.Exec(fmt.Sprintf("DROP CERTIFICATE %s", name))
+	if err == nil {
+		log.Printf("dropped certificate %s", name)
+	} else {
+		log.Printf("failed to drop certificate %s: %v: ", name, err)
+	}
+}
+
+func createPSE(db *sql.DB, name string) error {
+	_, err := db.Exec(fmt.Sprintf("CREATE PSE %s", name))
+	if err == nil {
+		log.Printf("created PSE %s", name)
+	}
+	return err
+}
+
+func dropPSE(db *sql.DB, name string) {
+	_, err := db.Exec(fmt.Sprintf("DROP PSE %s", name))
+	if err == nil {
+		log.Printf("dropped PSE %s", name)
+	} else {
+		log.Printf("failed to drop PSE %s: %v: ", name, err)
+	}
+}
+
+func dropUser(db *sql.DB, name string) {
+	_, err := db.Exec(fmt.Sprintf("DROP USER %s CASCADE", name))
+	if err == nil {
+		log.Printf("dropped user %s", name)
+	} else {
+		log.Printf("failed to drop user %s: %v: ", name, err)
 	}
 }
