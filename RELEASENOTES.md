@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.5.6
+- updated dependencies
+
 #### v1.5.5
 - fixed driver.OpenDB dial tcp: missing address
 
