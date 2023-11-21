@@ -1,6 +1,12 @@
 Release Notes
 =============
 
+## v1.6.0
+
+### New features
+
+- Added experimental sqlscript package
+
 ## v1.5.0
 
 ### Minor revisions
