@@ -46,7 +46,7 @@ DROP TABLE #my_local_temp_table
 
 	scanner := bufio.NewScanner(strings.NewReader(ddlScript))
 	// Include comments as part of the sql statements.
-	scanner.Split(sqlscript.SplitFunc(sqlscript.DefaultSeparator, true))
+	scanner.Split(sqlscript.ScanFunc(sqlscript.DefaultSeparator, true))
 
 	for scanner.Scan() {
 		if _, err := db.Exec(scanner.Text()); err != nil {

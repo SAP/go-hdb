@@ -13,7 +13,7 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 		scanner.Split(Scan)
 	} else {
 		// else use SplitFunc 'getter'
-		scanner.Split(SplitFunc(separator, comments))
+		scanner.Split(ScanFunc(separator, comments))
 	}
 
 	l := len(result)

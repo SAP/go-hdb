@@ -222,10 +222,10 @@ func Scan(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	return s.scan(data, atEOF)
 }
 
-// SplitFunc returns a split function for a bufio.Scanner that returns each command as a token.
+// ScanFunc returns a split function for a bufio.Scanner that returns each command as a token.
 // In contrast of using the Scan function directly, the command separator can be specified.
 // If comments is true, leading comments are added to each statement and discarded otherwise.
-func SplitFunc(separator rune, comments bool) bufio.SplitFunc {
+func ScanFunc(separator rune, comments bool) bufio.SplitFunc {
 	s := scanner{separator: separator, comments: true}
 	return s.scan
 }

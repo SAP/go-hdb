@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.1
+- renamed sqlscript SplitFunc to ScanFunc
+
 ### New features
 
 - Added experimental sqlscript package
