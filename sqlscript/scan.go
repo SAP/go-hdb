@@ -165,11 +165,10 @@ func (s *scanner) scanStatement() (bool, error) {
 }
 
 func (s *scanner) _scan() (bool, error) {
-	if err := s.scanWhitespace(); err != nil {
-		return false, err
-	}
-
 	for {
+		if err := s.scanWhitespace(); err != nil {
+			return false, err
+		}
 		ok, err := s.scanComment()
 		if err != nil {
 			return false, err

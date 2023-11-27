@@ -20,11 +20,9 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 	i := 0
 	for scanner.Scan() {
 		//t.Logf("statement %d\n%s", i, scanner.Bytes())
-
 		if l <= i {
 			t.Fatalf("for scan line %d result line is missing", i)
 		}
-
 		text := scanner.Text()
 		if text != result[i] {
 			t.Fatalf("line %d got text\n%s\nexpected\n%s", i, text, result[i])
@@ -41,6 +39,8 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 
 func TestScript(t *testing.T) {
 	testScript := `
+--Comment 0 followed by a newline
+
 --Comment 1
 --Comment 2
 STATEMENT;
@@ -80,7 +80,7 @@ MULTI LINE STATEMENT WITH DOUBLE QUOTED PARAMER "
 	}
 
 	commentsResult := []string{
-		"--Comment 1\n--Comment 2\nSTATEMENT",
+		"--Comment 0 followed by a newline\n--Comment 1\n--Comment 2\nSTATEMENT",
 		"--Comment 3\nSTATEMENT WITH PARAMETERS",
 		"--Comment 4\nSTATEMENT WITH QUOTED LIST 'a,b,c'",
 		"STATEMENT WITHOUT COMMENT",
