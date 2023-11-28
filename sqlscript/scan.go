@@ -27,6 +27,10 @@ type scanner struct {
 	token     []byte
 }
 
+func (s *scanner) init(data []byte, atEOF bool) {
+	s.data, s.atEOF, s.token = data, atEOF, nil
+}
+
 func (s *scanner) nextRune() (rune, int, error) {
 	if len(s.data) < 1 {
 		return -1, 0, io.EOF
@@ -184,14 +188,10 @@ func (s *scanner) _scan() (bool, error) {
 }
 
 func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
-
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
-
-	s.data = data
-	s.atEOF = atEOF
-	s.token = nil
+	s.init(data, atEOF)
 
 	ok, err := s._scan()
 	if err == io.EOF {

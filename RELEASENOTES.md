@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.3
+- updated dependencies
+
 #### v1.6.2
 - fixed sqlscript parsing bug
 - updated dependencies
