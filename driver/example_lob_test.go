@@ -15,7 +15,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleLobRead reads data from a largs data object database field into a bytes.Buffer.
+// ExampleLobRead reads data from a large data object database field into a bytes.Buffer.
 // Precondition: the test database table with one field of type BLOB, CLOB or NCLOB must exist.
 // For illustrative purposes we assume, that the database table has exactly one record, so
 // that we can use db.QueryRow.
@@ -24,7 +24,7 @@ func ExampleLob_read() {
 
 	db, err := sql.Open("hdb", "hdb://user:password@host:port")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer db.Close()
 
@@ -32,7 +32,7 @@ func ExampleLob_read() {
 	lob.SetWriter(b) // SetWriter sets the io.Writer object, to which the database content of the lob field is written.
 
 	if err := db.QueryRow("select * from test").Scan(lob); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -44,37 +44,36 @@ func ExampleLob_read() {
 func ExampleLob_write() {
 	file, err := os.Open("test.txt") // Open file.
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer file.Close()
 
 	db, err := sql.Open("hdb", "hdb://user:password@host:port")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer db.Close()
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	stmt, err := tx.Prepare("insert into test values(?)")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	lob := new(driver.Lob)
 	lob.SetReader(file) // SetReader sets the io.Reader object, which content is written to the database lob field.
 
 	if _, err := stmt.Exec(lob); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
-
-	stmt.Close()
+	defer stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -88,7 +87,7 @@ func ExampleLob_pipe() {
 	// Open test file.
 	file, err := os.Open("example_lob_test.go")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer file.Close()
 
@@ -98,18 +97,18 @@ func ExampleLob_pipe() {
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// Create table.
 	table := driver.RandomIdentifier("fileLob")
 	if _, err := tx.Exec(fmt.Sprintf("create table %s (file nclob)", table)); err != nil {
-		log.Fatalf("create table failed: %s", err)
+		log.Panicf("create table failed: %s", err)
 	}
 
 	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	lob := &driver.Lob{} // Lob field.
@@ -125,7 +124,7 @@ func ExampleLob_pipe() {
 	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
 	go func() {
 		if _, err := stmt.Exec(lob); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 		fmt.Println("exec finalized")
 		wg.Done()
@@ -135,14 +134,14 @@ func ExampleLob_pipe() {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if _, err := pipeWriter.Write(scanner.Bytes()); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 		if _, err := pipeWriter.Write([]byte{'\n'}); err != nil { // Write nl which was stripped off by scanner.
-			log.Fatal(err)
+			log.Panic(err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// Close pipeWriter (end insert into db).
 	pipeWriter.Close()
@@ -152,7 +151,7 @@ func ExampleLob_pipe() {
 	stmt.Close()
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	pipeReader, pipeWriter = io.Pipe() // Create pipe for reading Lob.
@@ -164,7 +163,7 @@ func ExampleLob_pipe() {
 	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
 	go func() {
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 		fmt.Println("scan finalized")
 		wg.Done()
@@ -176,7 +175,7 @@ func ExampleLob_pipe() {
 		// Do something with scan result.
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	pipeReader.Close()
 

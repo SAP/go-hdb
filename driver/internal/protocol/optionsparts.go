@@ -41,7 +41,7 @@ const (
 	scServerMemoryUsage             statementContextType = 8
 )
 
-// transaction flags
+// transaction flags.
 type transactionFlagType int8
 
 const (
@@ -62,14 +62,14 @@ type Options[K ~int8] map[K]any
 func (ops Options[K]) String() string {
 	s := []string{}
 	for i, typ := range ops {
-		s = append(s, fmt.Sprintf("%v: %v", K(i), typ))
+		s = append(s, fmt.Sprintf("%v: %v", i, typ))
 	}
 	slices.Sort(s)
 	return fmt.Sprintf("%v", s)
 }
 
 func (ops Options[K]) size() int {
-	size := 2 * len(ops) //option + type
+	size := 2 * len(ops) // option + type
 	for _, v := range ops {
 		ot := optTypeViaType(v)
 		size += ot.size(v)

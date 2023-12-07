@@ -15,23 +15,25 @@ const (
 	versionCount
 )
 
-// versionNumber holds the information of a hdb semantic version.
-//
-// u.vv.wwx.yy.zzzzzzzzzz
-//
-// u.vv:       hdb version (major.minor)
-// ww:         SPS number
-// wwx:        revision number
-// yy:         patch number
-// zzzzzzzzzz: build id
-//
-// Example: 2.00.045.00.1575639312
-//
-// hdb version:     2.00
-// SPS number:      04
-// revision number: 045
-// patch number:    0
-// build id:        1575639312
+/*
+versionNumber holds the information of a hdb semantic version.
+
+u.vv.wwx.yy.zzzzzzzzzz
+
+u.vv:       hdb version (major.minor)
+ww:         SPS number
+wwx:        revision number
+yy:         patch number
+zzzzzzzzzz: build id
+
+Example: 2.00.045.00.1575639312
+
+	hdb version:     2.00
+	SPS number:      04
+	revision number: 045
+	patch number:    0
+	build id:        1575639312
+*/
 type versionNumber []uint64 // assumption: all fields are numeric
 
 func (vn versionNumber) String() string {

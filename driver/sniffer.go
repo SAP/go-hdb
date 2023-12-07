@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -44,7 +45,8 @@ func pipeData(wg *sync.WaitGroup, conn net.Conn, dbConn net.Conn, wr io.Writer) 
 
 func readMsg(ctx context.Context, prd p.Reader) error {
 	// TODO complete for non generic parts, see internal/protocol/parts/newGenPartReader for details
-	return prd.IterateParts(ctx, func(ph *p.PartHeader) {
+	return prd.IterateParts(ctx, func(ph *p.PartHeader) error {
+		return nil
 	})
 }
 
@@ -56,7 +58,7 @@ func logData(ctx context.Context, wg *sync.WaitGroup, prd p.Reader) {
 	}
 
 	var err error
-	for err != io.EOF {
+	for !errors.Is(err, io.EOF) {
 		err = readMsg(ctx, prd)
 	}
 }

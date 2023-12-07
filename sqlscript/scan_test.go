@@ -19,7 +19,7 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 	l := len(result)
 	i := 0
 	for scanner.Scan() {
-		//t.Logf("statement %d\n%s", i, scanner.Bytes())
+		// t.Logf("statement %d\n%s", i, scanner.Bytes())
 		if l <= i {
 			t.Fatalf("for scan line %d result line is missing", i)
 		}

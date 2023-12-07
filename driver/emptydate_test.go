@@ -5,7 +5,6 @@ package driver
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 	// Query db.
 	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	defer rows.Close()
 
@@ -64,11 +63,11 @@ func TestEmptyDate(t *testing.T) {
 
 	// Create table.
 	if _, err := db.Exec(fmt.Sprintf("create table %s (d date)", tableName)); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	// Insert empty date value.
 	if _, err := db.Exec(fmt.Sprintf("insert into %s values ('0000-00-00')", tableName)); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {

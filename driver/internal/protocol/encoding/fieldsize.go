@@ -24,7 +24,7 @@ const (
 	Fixed16FieldSize    = 16
 )
 
-// string / binary length indicators
+// string / binary length indicators.
 const (
 	bytesLenIndNullValue byte = 255
 	bytesLenIndSmall     byte = 245

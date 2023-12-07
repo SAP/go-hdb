@@ -61,7 +61,6 @@ func convertBool(ft fieldType, v any) (any, error) {
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-
 	case reflect.Bool:
 		return rv.Bool(), nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -241,7 +240,6 @@ func convertBytes(ft fieldType, v any) (any, error) {
 	}
 
 	switch v := v.(type) {
-
 	case string, []byte:
 		return v, nil
 	}
@@ -249,7 +247,6 @@ func convertBytes(ft fieldType, v any) (any, error) {
 	rv := reflect.ValueOf(v)
 
 	switch rv.Kind() {
-
 	case reflect.String:
 		return rv.String(), nil
 
@@ -273,7 +270,7 @@ func convertBytes(ft fieldType, v any) (any, error) {
 	return nil, newConvertError(ft, v, nil)
 }
 
-// decimals
+// decimals.
 const (
 	// http://en.wikipedia.org/wiki/Decimal128_floating-point_format
 	dec128Digits = 34
@@ -299,7 +296,7 @@ func init() {
 	}
 }
 
-// decimal flag
+// decimal flag.
 const (
 	dfNotExact byte = 1 << iota
 	dfOverflow
@@ -339,7 +336,8 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 	a := c.Num()
 	b := c.Denom()
 
-	exp, shift := 0, 0
+	var exp int
+	shift := 0
 
 	if c.IsInt() {
 		exp = digits10(a) - 1
@@ -461,8 +459,10 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 	return df
 }
 
-// performance: tested with reference work variable
-// - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
+/*
+performance: tested with reference work variable
+  - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
+*/
 func exp10(n int) *big.Int {
 	if n < len(natExp10) {
 		return natExp10[n]
@@ -487,7 +487,7 @@ func digits10(p *big.Int) int {
 	}
 }
 
-// Longdate
+// Longdate.
 func convertLongdateToTime(longdate int64) time.Time {
 	const dayfactor = 10000000 * 24 * 60 * 60
 	longdate--
@@ -496,12 +496,12 @@ func convertLongdateToTime(longdate int64) time.Time {
 	return t.Add(time.Duration(d))
 }
 
-// nanosecond: HDB - 7 digits precision (not 9 digits)
+// nanosecond: HDB - 7 digits precision (not 9 digits).
 func convertTimeToLongdate(t time.Time) int64 {
 	return (((((((convertTimeToDayDate(t)-1)*24)+int64(t.Hour()))*60)+int64(t.Minute()))*60)+int64(t.Second()))*1e7 + int64(t.Nanosecond()/1e2) + 1
 }
 
-// Seconddate
+// Seconddate.
 func convertSeconddateToTime(seconddate int64) time.Time {
 	const dayfactor = 24 * 60 * 60
 	seconddate--
@@ -515,7 +515,7 @@ func convertTimeToSeconddate(t time.Time) int64 {
 
 const julianHdb = 1721423 // 1 January 0001 00:00:00 (1721424) - 1
 
-// Daydate
+// Daydate.
 func convertDaydateToTime(daydate int64) time.Time {
 	return julian.DayToTime(int(daydate) + julianHdb)
 }
@@ -523,7 +523,7 @@ func convertTimeToDayDate(t time.Time) int64 {
 	return int64(julian.TimeToDay(t) - julianHdb)
 }
 
-// Secondtime
+// Secondtime.
 func convertSecondtimeToTime(secondtime int) time.Time {
 	return time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(int64(secondtime-1) * 1e9))
 }

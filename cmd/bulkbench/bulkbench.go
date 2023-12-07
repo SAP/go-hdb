@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -37,8 +39,7 @@ func main() {
 	// Create handlers.
 	dbHandler, err := newDBHandler(log.Printf)
 	checkErr(err)
-	testHandler, err := newTestHandler(log.Printf)
-	checkErr(err)
+	testHandler := newTestHandler(log.Printf)
 	indexHandler, err := newIndexHandler(testHandler, dbHandler)
 	checkErr(err)
 
@@ -59,11 +60,11 @@ func main() {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	svr := http.Server{Addr: net.JoinHostPort(host, port), Handler: mux}
+	svr := http.Server{Addr: net.JoinHostPort(host, port), Handler: mux, ReadHeaderTimeout: 30 * time.Second}
 	log.Println("listening...")
 
 	go func() {
-		if err := svr.ListenAndServe(); err != http.ErrServerClosed {
+		if err := svr.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
 	}()

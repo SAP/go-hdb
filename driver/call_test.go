@@ -13,7 +13,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-func testCallEcho(db *sql.DB, t *testing.T) {
+func testCallEcho(t *testing.T, db *sql.DB) {
 	const procEcho = `create procedure %[1]s (in idata nvarchar(25), out odata nvarchar(25))
 language SQLSCRIPT as
 begin
@@ -71,7 +71,7 @@ end
 	}
 }
 
-func testCallBlobEcho(db *sql.DB, t *testing.T) {
+func testCallBlobEcho(t *testing.T, db *sql.DB) {
 	const procBlobEcho = `create procedure %[1]s (in idata nclob, out odata nclob)
 language SQLSCRIPT as
 begin
@@ -100,7 +100,7 @@ end
 	}
 }
 
-func testCallTableOut(db *sql.DB, t *testing.T) {
+func testCallTableOut(t *testing.T, db *sql.DB) {
 	const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
 language SQLSCRIPT as
 begin
@@ -208,7 +208,7 @@ end
 	check(data[2], &resultRows3)
 }
 
-func testCallNoPrm(db *sql.DB, t *testing.T) {
+func testCallNoPrm(t *testing.T, db *sql.DB) {
 	const procNoPrm = `create procedure %[1]s
 language SQLSCRIPT as
 begin
@@ -225,7 +225,7 @@ end
 	}
 }
 
-func testCallNoOut(db *sql.DB, t *testing.T) {
+func testCallNoOut(t *testing.T, db *sql.DB) {
 	const procNoOut = `create procedure %[1]s (in idata nvarchar(25))
 language SQLSCRIPT as
 begin
@@ -277,7 +277,7 @@ end
 func TestCall(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, t *testing.T)
+		fct  func(t *testing.T, db *sql.DB)
 	}{
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
@@ -292,7 +292,7 @@ func TestCall(t *testing.T) {
 		func(i int) {
 			t.Run(tests[i].name, func(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
-				tests[i].fct(db, t)
+				tests[i].fct(t, db)
 			})
 		}(i)
 	}

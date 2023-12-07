@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/SAP/go-hdb/driver"
 	drivercollectors "github.com/SAP/go-hdb/prometheus/collectors"
@@ -48,7 +49,7 @@ func Example() {
 
 	connector, err := driver.NewDSNConnector(dsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// use driver.OpenDB instead of sql.OpenDB to collect driver.DB specific statistics.
 	db := driver.OpenDB(connector)
@@ -60,19 +61,19 @@ func Example() {
 	// register collector for sql.DB stats.
 	sqlDBStatsCollector := collectors.NewDBStatsCollector(db.DB, dbName)
 	if err := prometheus.Register(sqlDBStatsCollector); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// register collector for go-hdb driver stats.
 	driverCollector := drivercollectors.NewDriverStatsCollector(connector.NativeDriver(), dbName)
 	if err := prometheus.Register(driverCollector); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// register collector for extended go-hdb db stats.
 	driverDBExStatsCollector := drivercollectors.NewDBExStatsCollector(db, dbName)
 	if err := prometheus.Register(driverDBExStatsCollector); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	wg := sync.WaitGroup{}
@@ -88,7 +89,7 @@ func Example() {
 				return
 			default:
 				if err := db.Ping(); err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 			}
 		}
@@ -96,7 +97,10 @@ func Example() {
 
 	// register prometheus HTTP handler and start HTTP server.
 	http.Handle("/metrics", promhttp.Handler())
-	go http.ListenAndServe(addr, nil)
+	go func() {
+		server := &http.Server{Addr: addr, ReadHeaderTimeout: 30 * time.Second}
+		log.Panic(server.ListenAndServe())
+	}()
 
 	log.Printf("access the metrics at http://%s/metrics", formatHTTPAddr(addr))
 

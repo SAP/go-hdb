@@ -12,7 +12,7 @@ import (
 	expslices "golang.org/x/exp/slices"
 )
 
-// BinarySearch is used as a wrapper to slices/BinarySearch
+// BinarySearch is used as a wrapper to slices/BinarySearch.
 func BinarySearch[S ~[]E, E cmp.Ordered](x S, target E) (int, bool) {
 	return goslices.BinarySearch(x, target)
 }

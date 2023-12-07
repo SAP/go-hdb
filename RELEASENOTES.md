@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.4
+- updated dependencies
+- fixed linter issues
+
 #### v1.6.3
 - updated dependencies
 

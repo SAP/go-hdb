@@ -86,7 +86,7 @@ func (e ParseError) Cause() error { return e.err }
 func parameterNotSupportedError(k string) error {
 	return &ParseError{s: fmt.Sprintf("parameter %s is not supported", k)}
 }
-func invalidNumberOfParametersError(k string, act, exp int) error {
+func invalidNumberOfParametersError(k string, act, exp int) error { //nolint:unparam
 	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected %d", k, act, exp)}
 }
 func invalidNumberOfParametersRangeError(k string, act, min, max int) error {

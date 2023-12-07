@@ -233,7 +233,7 @@ var (
 	_ fieldType = (*_lobCESU8Type)(nil)
 )
 
-// stringer
+// stringer.
 func (_booleanType) String() string    { return "booleanType" }
 func (_tinyintType) String() string    { return "tinyintType" }
 func (_smallintType) String() string   { return "smallintType" }
@@ -259,7 +259,7 @@ func (_cesu8Type) String() string      { return "cesu8Type" }
 func (_lobVarType) String() string     { return "lobVarType" }
 func (_lobCESU8Type) String() string   { return "lobCESU8Type" }
 
-// convert
+// convert.
 func (ft _booleanType) convert(v any) (any, error) {
 	return convertBool(ft, v)
 }
@@ -343,7 +343,7 @@ type ReadProvider interface {
 	Reader() io.Reader
 }
 
-// Lob
+// Lob.
 func convertLob(t transform.Transformer, ft fieldType, v any) (driver.Value, error) {
 	if v == nil {
 		return v, nil
@@ -378,7 +378,7 @@ func convertLob(t transform.Transformer, ft fieldType, v any) (driver.Value, err
 	return newLobInDescr(rd), nil
 }
 
-// prm size
+// prm size.
 func (_booleanType) prmSize(any) int    { return encoding.BooleanFieldSize }
 func (_tinyintType) prmSize(any) int    { return encoding.TinyintFieldSize }
 func (_smallintType) prmSize(any) int   { return encoding.SmallintFieldSize }
@@ -425,7 +425,7 @@ func (ft _cesu8Type) prmSize(v any) int {
 	}
 }
 
-// encode
+// encode.
 func (ft _booleanType) encodePrm(e *encoding.Encoder, v any) error {
 	if v == nil {
 		e.Byte(booleanNullValue)
@@ -461,8 +461,7 @@ func (ft _bigintType) encodePrm(e *encoding.Encoder, v any) error {
 }
 
 func asInt64(v any) int64 {
-	switch v := v.(type) {
-	case bool:
+	if v, ok := v.(bool); ok {
 		if v {
 			return 1
 		}
@@ -561,7 +560,7 @@ func asTime(v any) time.Time {
 	if !ok {
 		panic("invalid time value") // should never happen
 	}
-	//store in utc
+	// store in utc
 	return t.UTC()
 }
 
@@ -682,7 +681,7 @@ func encodeLobPrm(e *encoding.Encoder, descr *LobInDescr) error {
 	return nil
 }
 
-// field types for which decodePrm is same as decodeRes
+// field types for which decodePrm is same as decodeRes.
 func (ft _booleanType) decodePrm(d *encoding.Decoder) (any, error)    { return ft.decodeRes(d) }
 func (ft _realType) decodePrm(d *encoding.Decoder) (any, error)       { return ft.decodeRes(d) }
 func (ft _doubleType) decodePrm(d *encoding.Decoder) (any, error)     { return ft.decodeRes(d) }
@@ -702,7 +701,7 @@ func (ft _alphaType) decodePrm(d *encoding.Decoder) (any, error)      { return f
 func (ft _hexType) decodePrm(d *encoding.Decoder) (any, error)        { return ft.decodeRes(d) }
 func (ft _cesu8Type) decodePrm(d *encoding.Decoder) (any, error)      { return ft.decodeRes(d) }
 
-// decode
+// decode.
 func (_booleanType) decodeRes(d *encoding.Decoder) (any, error) {
 	b := d.Byte()
 	switch b {
@@ -723,25 +722,25 @@ func (_integerType) decodePrm(d *encoding.Decoder) (any, error) { return int64(d
 func (_bigintType) decodePrm(d *encoding.Decoder) (any, error)  { return d.Int64(), nil }
 
 func (ft _tinyintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _smallintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _integerType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
 }
 func (ft _bigintType) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
 	return ft.decodePrm(d)
@@ -767,7 +766,7 @@ func (_dateType) decodeRes(d *encoding.Decoder) (any, error) {
 	if null {
 		return nil, nil
 	}
-	return time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC), nil
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC), nil
 }
 func (_timeType) decodeRes(d *encoding.Decoder) (any, error) {
 	// time read gives only seconds (cut), no milliseconds
@@ -786,14 +785,16 @@ func (_timestampType) decodeRes(d *encoding.Decoder) (any, error) {
 	return time.Date(year, month, day, hour, min, sec, nsec, time.UTC), nil
 }
 
-// null values: most sig bit unset
-// year: unset second most sig bit (subtract 2^15)
-// --> read year as unsigned
-// month is 0-based
-// day is 1 byte
+/*
+null values: most sig bit unset
+year: unset second most sig bit (subtract 2^15)
+--> read year as unsigned
+month is 0-based
+day is 1 byte.
+*/
 func decodeDate(d *encoding.Decoder) (int, time.Month, int, bool) {
 	year := d.Uint16()
-	null := ((year & 0x8000) == 0) //null value
+	null := ((year & 0x8000) == 0) // null value
 	year &= 0x3fff
 	month := d.Int8()
 	month++
@@ -803,7 +804,7 @@ func decodeDate(d *encoding.Decoder) (int, time.Month, int, bool) {
 
 func decodeTime(d *encoding.Decoder) (int, int, int, int, bool) {
 	hour := d.Byte()
-	null := (hour & 0x80) == 0 //null value
+	null := (hour & 0x80) == 0 // null value
 	hour &= 0x7f
 	min := d.Int8()
 	msec := d.Uint16()
@@ -856,25 +857,25 @@ func (_decimalType) decodeRes(d *encoding.Decoder) (any, error) {
 }
 
 func (ft _fixed8Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
-	return decodeFixed(d, encoding.Fixed8FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed8FieldSize, ft.scale)
 }
 func (ft _fixed12Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
-	return decodeFixed(d, encoding.Fixed12FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed12FieldSize, ft.scale)
 }
 func (ft _fixed16Type) decodeRes(d *encoding.Decoder) (any, error) {
-	if !d.Bool() { //null value
+	if !d.Bool() { // null value
 		return nil, nil
 	}
-	return decodeFixed(d, encoding.Fixed16FieldSize, ft.prec, ft.scale)
+	return decodeFixed(d, encoding.Fixed16FieldSize, ft.scale)
 }
 
-func decodeFixed(d *encoding.Decoder, size, prec, scale int) (any, error) {
+func decodeFixed(d *encoding.Decoder, size, scale int) (any, error) {
 	m := d.Fixed(size)
 	if m == nil { // important: return nil and not m (as m is of type *big.Int)
 		return nil, nil

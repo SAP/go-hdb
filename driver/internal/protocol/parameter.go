@@ -163,11 +163,11 @@ func (f *ParameterField) decode(dec *encoding.Decoder, ftc *FieldTypeCtx) {
 	f.parameterOptions = parameterOptions(dec.Int8())
 	f.tc = typeCode(dec.Int8())
 	f.mode = ParameterMode(dec.Int8())
-	dec.Skip(1) //filler
+	dec.Skip(1) // filler
 	f.ofs = int(dec.Uint32())
 	f.length = dec.Int16()
 	f.fraction = dec.Int16()
-	dec.Skip(4) //filler
+	dec.Skip(4) // filler
 
 	f.names.insert(uint32(f.ofs))
 
@@ -198,7 +198,7 @@ func (f *ParameterField) decodeRes(dec *encoding.Decoder) (any, error) {
 /*
 decode parameter
 - currently not used
-- type code is first byte (see encodePrm)
+- type code is first byte (see encodePrm).
 */
 func (f *ParameterField) decodePrm(dec *encoding.Decoder) (any, error) {
 	tc := typeCode(dec.Byte())
@@ -226,7 +226,9 @@ func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error 
 		f.decode(dec, m.FieldTypeCtx)
 		m.ParameterFields[i] = f
 	}
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 	return dec.Error()
 }
 
@@ -253,7 +255,6 @@ func (p *InputParameters) size() int {
 	}
 
 	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
-
 		size += numColumns
 
 		hasInLob := false
@@ -289,7 +290,7 @@ func (p *InputParameters) numArg() int {
 
 func (p *InputParameters) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	// TODO Sniffer
-	//return fmt.Errorf("not implemented")
+	// return fmt.Errorf("not implemented")
 	return nil
 }
 
@@ -300,11 +301,10 @@ func (p *InputParameters) encode(enc *encoding.Encoder) error {
 	}
 
 	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
-
 		hasInLob := false
 
 		for j := 0; j < numColumns; j++ {
-			//mass insert
+			// mass insert
 			f := p.InputFields[j]
 			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
 				return err

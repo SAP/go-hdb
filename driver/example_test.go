@@ -16,11 +16,11 @@ const (
 func Example() {
 	db, err := sql.Open(driverName, hdbDsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }

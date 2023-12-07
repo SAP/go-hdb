@@ -6,7 +6,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-// rows affected
+// rows affected.
 const (
 	raSuccessNoInfo   = -2
 	RaExecutionFailed = -3

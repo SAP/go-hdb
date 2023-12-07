@@ -50,7 +50,7 @@ const (
 	tablePrefix  = "table_"
 )
 
-// blurFlagSet is used to 'blur' information on the web ui (currently DSN not to expose user, password and ip address)
+// blurFlagSet is used to 'blur' information on the web ui (currently DSN not to expose user, password and ip address).
 var blurFlagSet = flag.NewFlagSet("blur", flag.PanicOnError)
 
 func init() {

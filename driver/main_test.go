@@ -105,12 +105,16 @@ func TestMain(m *testing.M) {
 				log.Fatal(err)
 			}
 			for _, schema := range schemas {
-				execDropSchema(db, schema)
+				if err := execDropSchema(db, schema); err != nil {
+					log.Fatal(err)
+				}
 				log.Printf("dropped schema %s", schema)
 			}
 			log.Printf("number of dropped schemas: %d", len(schemas))
 		case *dropSchema:
-			execDropSchema(db, schema)
+			if err := execDropSchema(db, schema); err != nil {
+				log.Fatal(err)
+			}
 			log.Printf("dropped schema %s", schema)
 		}
 	}

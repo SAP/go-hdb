@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// prm represents a test parameter consisting of BatchCount and BatchSize
+// prm represents a test parameter consisting of BatchCount and BatchSize.
 type prm struct {
 	BatchCount, BatchSize int
 }
@@ -63,8 +63,7 @@ func (v *prmValue) Set(s string) error {
 
 // toNumRecordList returns a list of lists of prms with equal number of records.
 func (v *prmValue) toNumRecordList() [][]prm {
-
-	// create categories by number of records
+	// create categories by number of records.
 	m := make(map[int][]prm)
 
 	for _, prm := range v.prms {

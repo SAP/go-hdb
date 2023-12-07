@@ -12,7 +12,7 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// testInvalidCESU8 extracts invalid CESU-8 data out of a dedicated test database, schema and table
+// testInvalidCESU8 extracts invalid CESU-8 data out of a dedicated test database, schema and table.
 func testInvalidCESU8(t *testing.T) {
 	const fieldName = "xref1_hd"
 	var schemaName = driver.Identifier("SXSLTPBC")
@@ -30,7 +30,7 @@ func testInvalidCESU8(t *testing.T) {
 	numRow := 0
 	err := db.QueryRow(fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
 	switch {
-	case err == sql.ErrNoRows:
+	case err == sql.ErrNoRows: //nolint:errorlint
 		t.Logf("table %s.%s is empty", schemaName, tableName)
 	case err != nil:
 		t.Fatal(err)
@@ -41,6 +41,7 @@ func testInvalidCESU8(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rows.Close()
 
 	types, err := rows.ColumnTypes()
 	if err != nil {
@@ -69,7 +70,6 @@ func testInvalidCESU8(t *testing.T) {
 			i++
 			t.Logf("%[1]s:%[2]v", err, source)
 		}
-
 	}
 	t.Logf("number of issues found: %d", i)
 
@@ -109,16 +109,20 @@ func testIncorrectDate(t *testing.T) {
 
 	var date interface{}
 	for rows.Next() {
-		rows.Scan(&date)
+		if err := rows.Scan(&date); err != nil {
+			t.Fatal(err)
+		}
 		t.Log(date)
 	}
 
 	cnt := 0
-	db.QueryRow(fmt.Sprintf("select count(*) from %s where A is NULL", tableName)).Scan(&cnt)
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where A is NULL", tableName)).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("number of NULL records %d\n", cnt)
 }
 
-// TestX has extended tests for specific systems
+// TestX has extended tests for specific systems.
 func TestX(t *testing.T) {
 	tests := []struct {
 		name    string

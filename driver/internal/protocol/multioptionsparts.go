@@ -63,9 +63,9 @@ func (o topologyInformation) String() string {
 		for j, typ := range ops {
 			switch j {
 			case toServiceType:
-				s2 = append(s2, fmt.Sprintf("%s: %s", topologyOption(j), convertToServiceType(typ)))
+				s2 = append(s2, fmt.Sprintf("%s: %s", j, convertToServiceType(typ)))
 			default:
-				s2 = append(s2, fmt.Sprintf("%s: %v", topologyOption(j), typ))
+				s2 = append(s2, fmt.Sprintf("%s: %v", j, typ))
 			}
 		}
 		sort.Slice(s2, func(i, j int) bool { return s2[i] < s2[j] })

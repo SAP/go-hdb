@@ -65,12 +65,12 @@ func (o dbOp) String() string { return dbOpText[o] }
 
 // dbResult is the structure used to provide the JSON based cb command result response.
 type dbResult struct {
-	Command string
-	DBObj   dbObj
-	DBOp    dbOp
-	ObjName string
-	NumRow  int64
-	Error   string
+	Command string `json:"command"`
+	DBObj   dbObj  `json:"dbObj"`
+	DBOp    dbOp   `json:"dbOp"`
+	ObjName string `json:"objName"`
+	NumRow  int64  `json:"numRow"`
+	Error   string `json:"error"`
 }
 
 func (r *dbResult) String() string {
@@ -129,10 +129,12 @@ func (h dbHandler) hdbVersion() string {
 		return err.Error()
 	}
 	var hdbVersion string
-	conn.Raw(func(driverConn any) error {
+	if err := conn.Raw(func(driverConn any) error {
 		hdbVersion = driverConn.(driver.Conn).HDBVersion().String()
 		return nil
-	})
+	}); err != nil {
+		return err.Error()
+	}
 	return hdbVersion
 }
 
@@ -160,7 +162,7 @@ func (h *dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		h.log("%s", result)
 		e := json.NewEncoder(w)
-		e.Encode(result) // ignore error
+		e.Encode(result) //nolint:errcheck
 	}()
 
 	var err error

@@ -41,7 +41,7 @@ func (o LobOptions) String() string {
 func (o LobOptions) IsLastData() bool { return (o & loLastdata) != 0 }
 func (o LobOptions) isNull() bool     { return (o & loNullindicator) != 0 }
 
-// lob typecode
+// lob typecode.
 type lobTypecode int8
 
 const (
@@ -184,12 +184,12 @@ func (d *WriteLobDescr) FetchNext(chunkSize int) error {
 		return err
 	}
 	d.Opt = d.LobInDescr.Opt
-	d.ofs = -1 //offset (-1 := append)
+	d.ofs = -1 // offset (-1 := append)
 	d.b = d.LobInDescr.b
 	return nil
 }
 
-// sniffer
+// sniffer.
 func (d *WriteLobDescr) decode(dec *encoding.Decoder) error {
 	d.ID = LocatorID(dec.Uint64())
 	d.Opt = LobOptions(dec.Int8())
@@ -200,7 +200,7 @@ func (d *WriteLobDescr) decode(dec *encoding.Decoder) error {
 	return nil
 }
 
-// write chunk to db
+// write chunk to db.
 func (d *WriteLobDescr) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(d.ID))
 	enc.Int8(int8(d.Opt))
@@ -227,7 +227,7 @@ func (r *WriteLobRequest) size() int {
 
 func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 
-// sniffer
+// sniffer.
 func (r *WriteLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	numArg := ph.numArg()
 	r.Descrs = make([]*WriteLobDescr, numArg)
@@ -289,7 +289,7 @@ func (r *ReadLobRequest) String() string {
 	return fmt.Sprintf("id %d offset %d size %d", r.ID, r.Ofs, r.ChunkSize)
 }
 
-// sniffer
+// sniffer.
 func (r *ReadLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	r.ID = LocatorID(dec.Uint64())
 	r.Ofs = dec.Int64()
@@ -300,7 +300,7 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 
 func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(r.ID))
-	enc.Int64(r.Ofs + 1) //1-based
+	enc.Int64(r.Ofs + 1) // 1-based
 	enc.Int32(r.ChunkSize)
 	enc.Zeroes(4)
 	return nil

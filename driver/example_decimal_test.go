@@ -22,20 +22,20 @@ func ExampleDecimal() {
 	tableName := driver.RandomIdentifier("table_")
 
 	if _, err := db.Exec(fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil { // Create table with decimal attribute.
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// Decimal values are represented in Go as big.Rat.
 	in := (*driver.Decimal)(big.NewRat(1, 1)) // Create *big.Rat and cast to Decimal.
 
 	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil { // Insert record.
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var out driver.Decimal // Declare scan variable.
 
 	if err := db.QueryRow(fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	fmt.Printf("Decimal value: %s", (*big.Rat)(&out).String()) // Cast scan variable to *big.Rat to use *big.Rat methods.

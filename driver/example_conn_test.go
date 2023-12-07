@@ -18,15 +18,17 @@ func ExampleConn_HDBVersion() {
 	// Grab connection.
 	conn, err := db.Conn(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer conn.Close()
 
-	conn.Raw(func(driverConn any) error {
+	if err := conn.Raw(func(driverConn any) error {
 		// Access driver.Conn methods.
 		log.Printf("hdb version: %s", driverConn.(driver.Conn).HDBVersion())
 		return nil
-	})
+	}); err != nil {
+		log.Panic(err)
+	}
 	// output:
 }
 
@@ -38,7 +40,7 @@ func ExampleConn_DBConnectInfo() {
 	// Grab connection.
 	conn, err := db.Conn(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer conn.Close()
 
@@ -51,7 +53,7 @@ func ExampleConn_DBConnectInfo() {
 		log.Printf("db connect info: %s", ci)
 		return nil
 	}); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }

@@ -12,10 +12,12 @@ import (
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
-// authentication method types supported by the driver:
-// - basic authentication (username, password based) (whether SCRAMSHA256 or SCRAMPBKDF2SHA256) and
-// - X509 (client certificate) authentication and
-// - JWT (token) authentication
+/*
+authentication method types supported by the driver:
+  - basic authentication (username, password based) (whether SCRAMSHA256 or SCRAMPBKDF2SHA256) and
+  - X509 (client certificate) authentication and
+  - JWT (token) authentication
+*/
 const (
 	MtSCRAMSHA256       = "SCRAMSHA256"       // password
 	MtSCRAMPBKDF2SHA256 = "SCRAMPBKDF2SHA256" // password pbkdf2
@@ -155,7 +157,7 @@ type Prms struct {
 	prms []any
 }
 
-func (p *Prms) String() string { return fmt.Sprintf("%v", []any(p.prms)) }
+func (p *Prms) String() string { return fmt.Sprintf("%v", p.prms) }
 
 // AddCESU8String adds a CESU8 string parameter.
 func (p *Prms) AddCESU8String(s string) { p.prms = append(p.prms, s) } // unicode string

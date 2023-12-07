@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.6.3"
+const DriverVersion = "1.6.4"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -28,7 +28,7 @@ const clientType = "go-hdb"
 
 var defaultApplicationName, _ = os.Executable()
 
-// driver singleton instance (do not use directly - use getDriver() instead)
+// driver singleton instance (do not use directly - use getDriver() instead).
 var stdHdbDriver *hdbDriver
 
 func init() {
@@ -44,7 +44,7 @@ func init() {
 
 // driver
 
-// check if driver implements all required interfaces
+// check if driver implements all required interfaces.
 var (
 	_ driver.Driver        = (*hdbDriver)(nil)
 	_ driver.DriverContext = (*hdbDriver)(nil)

@@ -21,7 +21,7 @@ type Dialer interface {
 // DefaultDialer is the default driver Dialer implementation.
 var DefaultDialer Dialer = &dialer{}
 
-// default dialer implementation
+// default dialer implementation.
 type dialer struct{}
 
 func (d *dialer) DialContext(ctx context.Context, address string, options DialerOptions) (net.Conn, error) {

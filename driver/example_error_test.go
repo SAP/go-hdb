@@ -33,7 +33,7 @@ func ExampleError() {
 			case errCodeInvalidTableName:
 				fmt.Print("invalid table name")
 			default:
-				log.Fatalf("code %d text %s", dbError.Code(), dbError.Text())
+				log.Panicf("code %d text %s", dbError.Code(), dbError.Text())
 			}
 		}
 	}

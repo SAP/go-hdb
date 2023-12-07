@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// test if concurrent refresh would deadlock
+// test if concurrent refresh would deadlock.
 func testConcurrentRefresh(t *testing.T) {
 	const numConcurrent = 100
 
@@ -21,7 +21,9 @@ func testConcurrentRefresh(t *testing.T) {
 		go func(start <-chan struct{}, wg *sync.WaitGroup) {
 			defer wg.Done()
 			<-start
-			attrs.refresh()
+			if err := attrs.refresh(); err != nil {
+				t.Log(err)
+			}
 		}(start, wg)
 	}
 	// start refresh concurrently

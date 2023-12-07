@@ -30,7 +30,7 @@ var (
 	dbTexts     = []string{"←INI", "←MSH", "←SGH", "←PRH", "←PRT", "←*skipped"}
 )
 
-// padding
+// padding.
 const padding = 8
 
 func padBytes(size int) int {
@@ -43,7 +43,7 @@ func padBytes(size int) int {
 // Reader is the protocol reader interface.
 type Reader interface {
 	ReadProlog(ctx context.Context) error
-	IterateParts(ctx context.Context, partFn func(ph *PartHeader)) error
+	IterateParts(ctx context.Context, partFn func(ph *PartHeader) error) error
 	Read(ctx context.Context, part partReader) error
 	ReadSkip(ctx context.Context) error
 	SessionID() int64
@@ -263,7 +263,7 @@ func (r *baseReader) readPart(ctx context.Context, part partReader) error {
 	return err
 }
 
-func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeader)) error {
+func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeader) error) error {
 	if err := r.mh.decode(r.dec); err != nil {
 		return err
 	}
@@ -287,7 +287,6 @@ func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeade
 		r.cntPart = 0
 
 		for j := 0; j < int(r.sh.noOfParts); j++ {
-
 			if err := r.ph.decode(r.dec); err != nil {
 				return err
 			}
@@ -302,10 +301,14 @@ func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeade
 
 			r.partRead = false
 			if partFn != nil {
-				partFn(r.ph)
+				if err := partFn(r.ph); err != nil {
+					return err
+				}
 			}
 			if !r.partRead {
-				r.skip(ctx)
+				if err := r.skip(ctx); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -384,7 +387,7 @@ func (w *writer) Write(ctx context.Context, sessionID int64, messageType Message
 
 		numWriters := len(writers)
 		partSize := make([]int, numWriters)
-		size := int64(segmentHeaderSize + numWriters*partHeaderSize) //int64 to hold MaxUInt32 in 32bit OS
+		size := int64(segmentHeaderSize + numWriters*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
 
 		for i, part := range writers {
 			s := part.size()
@@ -393,7 +396,7 @@ func (w *writer) Write(ctx context.Context, sessionID int64, messageType Message
 		}
 
 		if size > math.MaxUint32 {
-			return fmt.Errorf("message size %d exceeds maximum message header value %d", size, int64(math.MaxUint32)) //int64: without cast overflow error in 32bit OS
+			return fmt.Errorf("message size %d exceeds maximum message header value %d", size, int64(math.MaxUint32)) // int64: without cast overflow error in 32bit OS
 		}
 
 		bufferSize := size
@@ -432,7 +435,6 @@ func (w *writer) Write(ctx context.Context, sessionID int64, messageType Message
 		bufferSize -= segmentHeaderSize
 
 		for i, part := range writers {
-
 			size := partSize[i]
 			pad := padBytes(size)
 

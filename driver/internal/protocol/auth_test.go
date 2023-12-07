@@ -9,7 +9,7 @@ import (
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
-func authEncodeStep(part partWriter, t *testing.T) []byte {
+func authEncodeStep(t *testing.T, part partWriter) []byte {
 	buf := bytes.Buffer{}
 	enc := encoding.NewEncoder(&buf, cesu8.DefaultEncoder)
 
@@ -20,7 +20,7 @@ func authEncodeStep(part partWriter, t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-func authDecodeStep(part partReader, data []byte, t *testing.T) {
+func authDecodeStep(t *testing.T, part partReader, data []byte) {
 	dec := encoding.NewDecoder(bytes.NewBuffer(data), cesu8.DefaultDecoder)
 
 	if err := part.decode(dec, nil); err != nil {
@@ -38,7 +38,7 @@ func testJWTAuth(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		actual := authEncodeStep(initRequest, t)
+		actual := authEncodeStep(t, initRequest)
 		expected := []byte("\x03\x00\x00\x03JWT\x0Bdummy token")
 
 		if !bytes.Equal(expected, actual) {
@@ -53,7 +53,7 @@ func testJWTAuth(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			authDecodeStep(initReply, []byte("\x02\x00\x03JWT\x07USER123"), t)
+			authDecodeStep(t, initReply, []byte("\x02\x00\x03JWT\x07USER123"))
 
 			authJWT := a.Selected().(*auth.JWT)
 
@@ -71,7 +71,7 @@ func testJWTAuth(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			actual := authEncodeStep(finalRequest, t)
+			actual := authEncodeStep(t, finalRequest)
 			expected := []byte("\x03\x00\x07USER123\x03JWT\x00")
 
 			if !bytes.Equal(expected, actual) {
@@ -87,7 +87,7 @@ func testJWTAuth(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			authDecodeStep(finalReply, []byte("\x02\x00\x03JWT\x205be8f43e064e0589ce07ba9de6fce107"), t)
+			authDecodeStep(t, finalReply, []byte("\x02\x00\x03JWT\x205be8f43e064e0589ce07ba9de6fce107"))
 
 			const expectedCookie = "5be8f43e064e0589ce07ba9de6fce107"
 

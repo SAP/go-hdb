@@ -9,11 +9,11 @@ import (
 
 type partEncoder interface {
 	size() int
-	encode(*encoding.Encoder) error
+	encode(enc *encoding.Encoder) error
 }
 
 type partDecoder interface {
-	decode(*encoding.Decoder, *PartHeader) error
+	decode(dec *encoding.Decoder, ph *PartHeader) error
 }
 
 type part interface {
@@ -75,7 +75,7 @@ type partWriter interface {
 	partEncoder
 }
 
-// numArg methods (result == 1)
+// numArg methods (result == 1).
 func (*AuthInitRequest) numArg() int  { return 1 }
 func (*AuthFinalRequest) numArg() int { return 1 }
 func (ClientID) numArg() int          { return 1 }
@@ -85,7 +85,7 @@ func (ResultsetID) numArg() int       { return 1 }
 func (Fetchsize) numArg() int         { return 1 }
 func (*ReadLobRequest) numArg() int   { return 1 }
 
-// size methods (fixed size)
+// size methods (fixed size).
 const (
 	statementIDSize    = 8
 	resultsetIDSize    = 8
@@ -100,7 +100,7 @@ func (ReadLobRequest) size() int { return readLobRequestSize }
 
 // func (lobFlags) size() int       { return tinyintFieldSize }
 
-// check if part types implement partWriter interface
+// check if part types implement partWriter interface.
 var (
 	_ partWriter = (*AuthInitRequest)(nil)
 	_ partWriter = (*AuthFinalRequest)(nil)
@@ -121,7 +121,7 @@ type partReader interface {
 	partDecoder
 }
 
-// check if part types implement partReader interface
+// check if part types implement partReader interface.
 var (
 	_ partReader = (*HdbErrors)(nil)
 	_ partReader = (*AuthInitRequest)(nil)

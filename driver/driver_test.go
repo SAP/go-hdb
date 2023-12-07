@@ -5,6 +5,7 @@ package driver_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-func testConnection(db *sql.DB, t *testing.T) {
+func testConnection(t *testing.T, db *sql.DB) {
 	var dummy string
 	err := db.QueryRow("select * from dummy").Scan(&dummy)
 	switch {
@@ -26,7 +27,7 @@ func testConnection(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testPing(db *sql.DB, t *testing.T) {
+func testPing(t *testing.T, db *sql.DB) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func testPing(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testInsertByQuery(db *sql.DB, t *testing.T) {
+func testInsertByQuery(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("insertByQuery_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
@@ -56,16 +57,16 @@ func testInsertByQuery(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testHDBError(db *sql.DB, t *testing.T) {
-	//select from not existing table with different table name length
-	//to check if padding, etc works (see hint in protocol.error.Read(...))
+func testHDBError(t *testing.T, db *sql.DB) {
+	// select from not existing table with different table name length
+	// to check if padding, etc works (see hint in protocol.error.Read(...))
 	for i := 0; i < 9; i++ {
-		_, err := db.Query(fmt.Sprintf("select * from %s", strings.Repeat("x", i+1)))
+		_, err := db.Query(fmt.Sprintf("select * from %s", strings.Repeat("x", i+1))) //nolint:sqlclosecheck
 		if err == nil {
 			t.Fatal("hdb error expected")
 		}
-		dbError, ok := err.(driver.Error)
-		if !ok {
+		var dbError driver.Error
+		if !errors.As(err, &dbError) {
 			t.Fatalf("hdb error expected got %v", err)
 		}
 		if dbError.Code() != 259 {
@@ -74,7 +75,7 @@ func testHDBError(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testHDBWarning(db *sql.DB, t *testing.T) {
+func testHDBWarning(t *testing.T, db *sql.DB) {
 	// procedure gives warning:
 	// 	SQL HdbWarning 1347 - Not recommended feature: DDL statement is used in Dynamic SQL (current dynamic_sql_ddl_error_level = 1)
 	const procOut = `create procedure %[1]s ()
@@ -96,7 +97,7 @@ end
 	}
 }
 
-func testQueryAttributeAlias(db *sql.DB, t *testing.T) {
+func testQueryAttributeAlias(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("queryAttributeAlias_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
@@ -132,7 +133,7 @@ func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
 	}
 }
 
-func testRowsAffected(db *sql.DB, t *testing.T) {
+func testRowsAffected(t *testing.T, db *sql.DB) {
 	const maxRows = 10
 
 	table := driver.RandomIdentifier("rowsAffected_")
@@ -144,6 +145,7 @@ func testRowsAffected(db *sql.DB, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
 	// insert
 	for i := 0; i < maxRows; i++ {
@@ -162,7 +164,7 @@ func testRowsAffected(db *sql.DB, t *testing.T) {
 	checkAffectedRows(t, result, maxRows)
 }
 
-func testUpsert(db *sql.DB, t *testing.T) {
+func testUpsert(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("upsert_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (key int primary key, val int)", table)); err != nil {
 		t.Fatal(err)
@@ -197,10 +199,9 @@ func testUpsert(db *sql.DB, t *testing.T) {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 2)
-
 }
 
-func testQueryArgs(db *sql.DB, t *testing.T) {
+func testQueryArgs(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("table_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
@@ -218,7 +219,7 @@ func testQueryArgs(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testComments(db *sql.DB, t *testing.T) {
+func testComments(t *testing.T, db *sql.DB) {
 	tests := []struct {
 		query     string
 		supported bool
@@ -238,7 +239,7 @@ func testComments(db *sql.DB, t *testing.T) {
 			}
 		}
 		if rows != nil {
-			rows.Close()
+			rows.Close() //nolint:sqlclosecheck
 		}
 	}
 }
@@ -246,7 +247,7 @@ func testComments(db *sql.DB, t *testing.T) {
 func TestDriver(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, t *testing.T)
+		fct  func(t *testing.T, db *sql.DB)
 	}{
 		{"connection", testConnection},
 		{"ping", testPing},
@@ -263,7 +264,7 @@ func TestDriver(t *testing.T) {
 	db := driver.DefaultTestDB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, t)
+			test.fct(t, db)
 		})
 	}
 }

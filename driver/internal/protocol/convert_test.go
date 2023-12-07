@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func assertEqualInt(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r int64) {
+func assertEqualInt(t *testing.T, ftc *FieldTypeCtx, tc typeCode, v any, r int64) { //nolint:unparam
 	cv, err := ftc.fieldType(tc, 0, 0).(fieldConverter).convert(v)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +191,6 @@ func testConvertBytes(t *testing.T, ftc *FieldTypeCtx) {
 	// bytes reference
 	assertEqualBytes(t, ftc, tcString, &bytesValue, bytesValue)
 	assertEqualBytes(t, ftc, tcBinary, &bytesValue, bytesValue)
-
 }
 
 func TestConverter(t *testing.T) {

@@ -10,8 +10,7 @@ import (
 )
 
 func testX509Validate(t *testing.T) {
-
-	// to test certificates one need to copy the .pem files into this directory
+	// to test certificates one need to copy the .pem files into this directory.
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)

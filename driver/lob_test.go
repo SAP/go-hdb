@@ -23,7 +23,7 @@ type bytesLob []byte
 
 func (b *bytesLob) Scan(src any) error { return ScanLobBytes(src, (*[]byte)(b)) }
 
-func testLobInsert(db *sql.DB, t *testing.T) {
+func testLobInsert(t *testing.T, db *sql.DB) {
 
 	const (
 		numRec   = 100
@@ -52,6 +52,7 @@ func testLobInsert(db *sql.DB, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
 	// insert as string and byte
 	for i, s := range testData {
@@ -60,7 +61,6 @@ func testLobInsert(db *sql.DB, t *testing.T) {
 		}
 	}
 
-	stmt.Close()
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func (randReader) Read(b []byte) (n int, err error) {
 	return rand.Read(b)
 }
 
-func testLobPipe(db *sql.DB, t *testing.T) {
+func testLobPipe(t *testing.T, db *sql.DB) {
 	const lobSize = 10000
 
 	table := RandomIdentifier("lobPipe")
@@ -183,10 +183,9 @@ func testLobPipe(db *sql.DB, t *testing.T) {
 	if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
 		t.Fatalf("read buffer is not equal to write buffer")
 	}
-
 }
 
-func testLobDelayedScan(db *sql.DB, t *testing.T) {
+func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	const lobSize = 10000
 
 	table := RandomIdentifier("lobPipe")
@@ -215,8 +214,8 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 	if _, err := stmt.Exec(lob); err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
-	stmt.Close()
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +248,7 @@ func testLobDelayedScan(db *sql.DB, t *testing.T) {
 func TestLob(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, t *testing.T)
+		fct  func(t *testing.T, db *sql.DB)
 	}{
 		{"insert", testLobInsert},
 		{"pipe", testLobPipe},
@@ -259,7 +258,7 @@ func TestLob(t *testing.T) {
 	db := DefaultTestDB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, t)
+			test.fct(t, db)
 		})
 	}
 }

@@ -13,7 +13,6 @@ import (
 )
 
 func Benchmark(b *testing.B) {
-
 	checkErr := func(err error) {
 		if err != nil {
 			b.Fatal(err)
@@ -23,8 +22,7 @@ func Benchmark(b *testing.B) {
 	// Create handler.
 	dbHandler, err := newDBHandler(b.Logf)
 	checkErr(err)
-	testHandler, err := newTestHandler(b.Logf)
-	checkErr(err)
+	testHandler := newTestHandler(b.Logf)
 
 	// Register handlers.
 	mux := http.NewServeMux()
@@ -55,7 +53,7 @@ func Benchmark(b *testing.B) {
 
 	const maxDuration time.Duration = 1<<63 - 1
 
-	f := func(test string, batchCount, batchSize int, b *testing.B) {
+	f := func(b *testing.B, test string, batchCount, batchSize int) {
 		ds := make([]time.Duration, b.N)
 		var avg, max time.Duration
 		min := maxDuration
@@ -130,7 +128,7 @@ HANA Version: %s
 		for _, prm := range parameters.prms {
 			// Use batchCount and batchCount flags.
 			b.Run(fmt.Sprintf("%s-%dx%d", names[i], prm.BatchCount, prm.BatchSize), func(b *testing.B) {
-				f(test, prm.BatchCount, prm.BatchSize, b)
+				f(b, test, prm.BatchCount, prm.BatchSize)
 			})
 		}
 	}

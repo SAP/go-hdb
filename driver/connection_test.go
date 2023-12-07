@@ -5,10 +5,11 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 )
 
-func testCancelContext(db *sql.DB, t *testing.T) {
+func testCancelContext(t *testing.T, db *sql.DB) {
 	stmt, err := db.Prepare("select * from dummy")
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +31,7 @@ func testCancelContext(db *sql.DB, t *testing.T) {
 		- works only if stmt.Exec does evaluate ctx and call the callback function
 		  provided by context.WithValue
 	*/
-	if _, err := stmt.ExecContext(ctx); err != context.Canceled {
+	if _, err := stmt.ExecContext(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	// reset hook
@@ -45,7 +46,7 @@ func testCancelContext(db *sql.DB, t *testing.T) {
 	}
 }
 
-func testCheckCallStmt(db *sql.DB, t *testing.T) {
+func testCheckCallStmt(t *testing.T, db *sql.DB) {
 	testData := []struct {
 		stmt  string
 		match bool
@@ -69,7 +70,7 @@ func testCheckCallStmt(db *sql.DB, t *testing.T) {
 func TestConnection(t *testing.T) {
 	tests := []struct {
 		name string
-		fct  func(db *sql.DB, t *testing.T)
+		fct  func(t *testing.T, db *sql.DB)
 	}{
 		{"cancelContext", testCancelContext},
 		{"checkCallStmt", testCheckCallStmt},
@@ -78,7 +79,7 @@ func TestConnection(t *testing.T) {
 	db := DefaultTestDB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(db, t)
+			test.fct(t, db)
 		})
 	}
 }

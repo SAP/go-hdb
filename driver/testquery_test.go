@@ -105,11 +105,11 @@ func querySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	return names, nil
 }
 
-// queryInvalidConnectAttempts returns all tables of a database starting with prefix in name.
-func queryInvalidConnectAttempts(db *sql.DB, username string) (int64, error) {
+// queryInvalidConnectAttempts returns the number of invalid connection attempts.
+func queryInvalidConnectAttempts(db *sql.DB, username string) int64 {
 	invalidConnectAttempts := int64(0)
 
 	// ignore error (entry not found)
-	db.QueryRow(fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts)
-	return invalidConnectAttempts, nil
+	db.QueryRow(fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts) //nolint:errcheck
+	return invalidConnectAttempts
 }

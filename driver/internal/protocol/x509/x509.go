@@ -102,21 +102,18 @@ func (ck *CertKey) Signer() (crypto.Signer, error) {
 	}
 }
 
-func decodePEM(data []byte) ([]*pem.Block, error) {
+func decodePEM(data []byte) []*pem.Block {
 	var blocks []*pem.Block
 	block, rest := pem.Decode(data)
 	for block != nil {
 		blocks = append(blocks, block)
 		block, rest = pem.Decode(rest)
 	}
-	return blocks, nil
+	return blocks
 }
 
 func decodeClientCert(data []byte) ([]*pem.Block, error) {
-	blocks, err := decodePEM(data)
-	if err != nil {
-		return nil, err
-	}
+	blocks := decodePEM(data)
 	switch {
 	case blocks == nil:
 		return nil, errors.New("invalid client certificate")
@@ -146,10 +143,7 @@ func encryptedBlock(block *pem.Block) bool {
 }
 
 func decodeClientKey(data []byte) (*pem.Block, error) {
-	blocks, err := decodePEM(data)
-	if err != nil {
-		return nil, err
-	}
+	blocks := decodePEM(data)
 	switch {
 	case blocks == nil:
 		return nil, fmt.Errorf("invalid client key")

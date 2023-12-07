@@ -39,7 +39,7 @@ func TestColumnType(t *testing.T) {
 		return strings.Repeat("?, ", size-1) + "?"
 	}
 
-	testColumnType := func(db *sql.DB, types []columnType, values []any, t *testing.T) {
+	testColumnType := func(t *testing.T, db *sql.DB, types []columnType, values []any) {
 
 		tableName := RandomIdentifier(fmt.Sprintf("%s_", t.Name()))
 
@@ -91,7 +91,6 @@ func TestColumnType(t *testing.T) {
 			precision, scale, ok := types[i].precisionScale()
 			if cmpPrecision != precision || cmpScale != scale || cmpOk != ok {
 				t.Fatalf("sql type %s decimal %t precision %d scale %d - expected %t %d %d", types[i].typeName(), cmpOk, cmpPrecision, cmpScale, ok, precision, scale)
-
 			}
 
 			cmpNullable, cmpOk := cmpType.Nullable()
@@ -180,7 +179,7 @@ func TestColumnType(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
 
 				connector := NewTestConnector()
-				connector.SetDfv(int(dfv))
+				connector.SetDfv(dfv)
 				db := sql.OpenDB(connector)
 				defer db.Close()
 
@@ -191,10 +190,12 @@ func TestColumnType(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.Close()
-				conn.Raw(func(driverConn any) error {
+				if err := conn.Raw(func(driverConn any) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil
-				})
+				}); err != nil {
+					t.Fatal(err)
+				}
 
 				testFields := getTestFields(version, dfv)
 				types := make([]columnType, 0, len(testFields))
@@ -205,7 +206,7 @@ func TestColumnType(t *testing.T) {
 						values = append(values, field.value)
 					}
 				}
-				testColumnType(db, types, values, t)
+				testColumnType(t, db, types, values)
 			})
 		}(dfv)
 	}

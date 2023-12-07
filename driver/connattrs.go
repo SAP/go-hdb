@@ -140,7 +140,7 @@ func (c *connAttrs) setBulkSize(bulkSize int) {
 func (c *connAttrs) setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
 	c._tlsConfig = &tls.Config{
 		ServerName:         serverName,
-		InsecureSkipVerify: insecureSkipVerify,
+		InsecureSkipVerify: insecureSkipVerify, //nolint:gosec
 	}
 	var certPool *x509.CertPool
 	for _, fn := range rootCAFiles {

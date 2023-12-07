@@ -26,27 +26,27 @@ func ExampleScanLobString() {
 	table := driver.RandomIdentifier("lob_")
 
 	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob)", table)); err != nil {
-		log.Fatalf("create table failed: %s", err)
+		log.Panicf("create table failed: %s", err)
 	}
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// Lob content can be written using a string.
 	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), "scan lob string")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var arg StringLob
 	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select * from %s", table)).Scan(&arg); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	fmt.Println(arg)
 	// output: scan lob string

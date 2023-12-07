@@ -53,7 +53,9 @@ func (h *indexHandler) init(testHandler *testHandler, dbHandler *dbHandler) (*in
 	return h, indexTmpl.Execute(h.b, indexPage)
 }
 
-func (h *indexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) { w.Write(h.b.Bytes()) }
+func (h *indexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Write(h.b.Bytes()) //nolint:errcheck
+}
 
 var indexTmpl = template.Must(template.New("index").Parse(`
 {{define "root"}}

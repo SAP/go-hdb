@@ -4,7 +4,7 @@ import (
 	"database/sql/driver"
 )
 
-// deprecated driver interface methods
+// deprecated driver interface methods.
 func (*conn) Prepare(query string) (driver.Stmt, error)                     { panic("deprecated") }
 func (*conn) Begin() (driver.Tx, error)                                     { panic("deprecated") }
 func (*conn) Exec(query string, args []driver.Value) (driver.Result, error) { panic("deprecated") }

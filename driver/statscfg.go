@@ -19,7 +19,7 @@ var statsCfg struct {
 func loadStatsCfg() error {
 
 	if err := json.Unmarshal(statsCfgRaw, &statsCfg); err != nil {
-		return fmt.Errorf("invalid statscfg.json file: %s", err)
+		return fmt.Errorf("invalid statscfg.json file: %w", err)
 	}
 
 	if len(statsCfg.SQLTimeTexts) != int(numSQLTime) {

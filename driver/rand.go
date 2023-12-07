@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	// alphanumeric character set
+	// alphanumeric character set.
 	csAlphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 

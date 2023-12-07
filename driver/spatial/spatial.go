@@ -153,7 +153,7 @@ type GeometryCollectionM []GeometryM
 // GeometryCollectionZM represents an annotated three dimensional geometry collection.
 type GeometryCollectionZM []GeometryZM
 
-// marker interface
+// marker interface.
 func (g Point) geotype()   {}
 func (g PointZ) geotype()  {}
 func (g PointM) geotype()  {}

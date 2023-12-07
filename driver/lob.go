@@ -112,11 +112,6 @@ func (l *Lob) Scan(src any) error {
 	return ScanLobWriter(src, l.wr)
 }
 
-// Value implements the database/sql/Valuer interface.
-//func (l Lob) Value() (driver.Value, error) {
-//	return l, nil
-//}
-
 // NullLob represents an Lob that may be null.
 // NullLob implements the Scanner interface so
 // it can be used as a scan destination, similar to NullString.

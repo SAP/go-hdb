@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func testExistSessionVariables(sv1, sv2 map[string]string, t *testing.T) {
+func testExistSessionVariables(t *testing.T, sv1, sv2 map[string]string) {
 	for k1, v1 := range sv1 {
 		v2, ok := sv2[k1]
 		if !ok {
@@ -19,7 +19,7 @@ func testExistSessionVariables(sv1, sv2 map[string]string, t *testing.T) {
 	}
 }
 
-func testNotExistSessionVariables(keys []string, sv2 map[string]string, t *testing.T) {
+func testNotExistSessionVariables(t *testing.T, keys []string, sv2 map[string]string) {
 	for _, k1 := range keys {
 		v2, ok := sv2[k1]
 		if ok && v2 != "" {
@@ -46,18 +46,13 @@ func testSessionVariables(t *testing.T) {
 	}
 
 	// check if session variables are set after connect to db.
-	testExistSessionVariables(sv1, sv2, t)
-	testNotExistSessionVariables([]string{"k4"}, sv2, t)
+	testExistSessionVariables(t, sv1, sv2)
+	testNotExistSessionVariables(t, []string{"k4"}, sv2)
 }
 
 func printInvalidConnectAttempts(t *testing.T, username string) {
 	db := DefaultTestDB()
-
-	if invalidConnectAttempts, err := queryInvalidConnectAttempts(db, username); err != nil {
-		t.Logf("error in selecting invalid connect attempts: %s", err)
-	} else {
-		t.Logf("number of invalid connect attempts: %d", invalidConnectAttempts)
-	}
+	t.Logf("number of invalid connect attempts: %d", queryInvalidConnectAttempts(db, username))
 }
 
 func testRetryConnect(t *testing.T) {

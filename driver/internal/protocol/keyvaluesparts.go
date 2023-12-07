@@ -33,7 +33,8 @@ func (c *clientInfo) decode(dec *encoding.Decoder, ph *PartHeader) error {
 		if err != nil {
 			return err
 		}
-		(*c)[string(k.([]byte))] = string(v.([]byte)) // set key value
+		// set key value
+		(*c)[string(k.([]byte))] = string(v.([]byte))
 	}
 	return dec.Error()
 }

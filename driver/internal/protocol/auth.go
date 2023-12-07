@@ -98,7 +98,6 @@ type AuthInitReply struct {
 
 func (r *AuthInitReply) String() string { return r.authHnd.String() }
 func (r *AuthInitReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
-
 	if r.authHnd == nil {
 		return nil
 	}
@@ -128,7 +127,7 @@ func (r *AuthFinalRequest) String() string { return r.prms.String() }
 func (r *AuthFinalRequest) size() int      { return r.prms.Size() }
 func (r *AuthFinalRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
 	return nil
-	//panic("not implemented yet")
+	// panic("not implemented yet")
 }
 func (r *AuthFinalRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
 

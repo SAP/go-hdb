@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,13 +19,13 @@ func main() {
 
 	l, err := net.Listen(addr.Network(), addr.String())
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer l.Close()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 
 		go handler(conn, dbAddr)
@@ -41,10 +42,10 @@ func handler(conn net.Conn, dbAddr net.Addr) {
 	defer dbConn.Close()
 
 	err = driver.NewSniffer(conn, dbConn).Run()
-	switch err {
-	case nil:
+	switch {
+	case err == nil:
 		return
-	case io.EOF:
+	case errors.Is(err, io.EOF):
 		log.Printf("client connection closed - local address %s - remote address %s",
 			conn.LocalAddr().String(),
 			conn.RemoteAddr().String(),
@@ -100,7 +101,7 @@ Usage of %[1]s:
 	args.Var(a, "s", "<host:port>: Sniffer address to accept connections. (required)")
 	args.Var(dba, "db", "<host:port>: Database address to connect to. (required)")
 
-	args.Parse(os.Args[1:])
+	args.Parse(os.Args[1:]) //nolint:errcheck
 
 	return a, dba
 }

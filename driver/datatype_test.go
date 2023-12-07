@@ -43,6 +43,7 @@ func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
 	i := 0
 	for _, in := range dtt.testData {
@@ -75,6 +76,7 @@ func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
 	i := 0
 	for _, in := range dtt.testData {
@@ -149,6 +151,7 @@ func (dtt *dttTX) insert(t *testing.T, db *sql.DB, tableName Identifier) int { /
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stmt.Close()
 
 	i := 0
 	for _, in := range dtt.testData {
@@ -330,7 +333,6 @@ func (dtt *dttSpatial) run(t *testing.T, db *sql.DB) {
 		asWKTBuffer.Reset()
 		asEWKTBuffer.Reset()
 		asGeoJSONBuffer.Reset()
-
 	}, &x, &i, asWKBLob, asEWKBLob, asWKTLob, asEWKTLob, asGeoJSONLob)
 }
 
@@ -831,8 +833,10 @@ func checkLob(ct columnType, in, out any) (bool, error) {
 	return compareLob(in.(Lob), out.(Lob))
 }
 
-// for text and bintext do not check content as we have seen examples for bintext
-// where the content was slightly modified by hdb (e.g. elimination of spaces)
+/*
+for text and bintext do not check content as we have seen examples for bintext
+where the content was slightly modified by hdb (e.g. elimination of spaces).
+*/
 func checkText(ct columnType, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
@@ -936,10 +940,12 @@ func TestDataType(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.Close()
-				conn.Raw(func(driverConn any) error {
+				if err := conn.Raw(func(driverConn any) error {
 					version = driverConn.(Conn).HDBVersion()
 					return nil
-				})
+				}); err != nil {
+					t.Fatal(err)
+				}
 
 				for i, test := range getTests(version, dfv) {
 					func(i int, test tester, db *sql.DB) { // save i, test to run in parallel

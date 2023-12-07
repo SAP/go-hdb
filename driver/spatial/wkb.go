@@ -8,16 +8,16 @@ import (
 	"reflect"
 )
 
-// Byte orders
+// Byte orders.
 const (
 	XDR byte = 0x00 // Big endian
 	NDR byte = 0x01 // Little endian
 )
 
-// flags
+// flags.
 const sridFlag uint32 = 0x20000000
 
-// dim offsets
+// dim offsets.
 const (
 	dimZ  uint32 = 1000
 	dimM  uint32 = 2000
@@ -67,90 +67,123 @@ func newWKBBuffer(isXDR, extended bool, srid int32) *wkbBuffer {
 	return &wkbBuffer{Writer: w, b: b, order: order, orderByte: orderByte, extended: extended, srid: srid}
 }
 
-func (b *wkbBuffer) writeCoord(fs ...float64) { binary.Write(b, b.order, fs) }
+func (b *wkbBuffer) writeCoord(fs ...float64) error { return binary.Write(b, b.order, fs) }
 
-func (b *wkbBuffer) writeSize(size int) { binary.Write(b, b.order, uint32(size)) }
+func (b *wkbBuffer) writeSize(size int) error { return binary.Write(b, b.order, uint32(size)) }
 
-func (b *wkbBuffer) writeType(g Geometry) {
-	b.Write([]byte{b.orderByte})
+func (b *wkbBuffer) writeType(g Geometry) error {
+	if _, err := b.Write([]byte{b.orderByte}); err != nil {
+		return err
+	}
 	if b.extended {
-		binary.Write(b, b.order, wkbType(g)|sridFlag)
-		binary.Write(b, b.order, b.srid)
+		if err := binary.Write(b, b.order, wkbType(g)|sridFlag); err != nil {
+			return err
+		}
+		if err := binary.Write(b, b.order, b.srid); err != nil {
+			return err
+		}
 		b.extended = false
 	} else {
-		binary.Write(b, b.order, wkbType(g))
+		if err := binary.Write(b, b.order, wkbType(g)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (b *wkbBuffer) bytes() []byte { return b.b.Bytes() }
 
-func (c Coord) encodeWKB(b *wkbBuffer)   { b.writeCoord(c.X, c.Y) }
-func (c CoordZ) encodeWKB(b *wkbBuffer)  { b.writeCoord(c.X, c.Y, c.Z) }
-func (c CoordM) encodeWKB(b *wkbBuffer)  { b.writeCoord(c.X, c.Y, c.M) }
-func (c CoordZM) encodeWKB(b *wkbBuffer) { b.writeCoord(c.X, c.Y, c.Z, c.M) }
+func (c Coord) encodeWKB(b *wkbBuffer) error   { return b.writeCoord(c.X, c.Y) }
+func (c CoordZ) encodeWKB(b *wkbBuffer) error  { return b.writeCoord(c.X, c.Y, c.Z) }
+func (c CoordM) encodeWKB(b *wkbBuffer) error  { return b.writeCoord(c.X, c.Y, c.M) }
+func (c CoordZM) encodeWKB(b *wkbBuffer) error { return b.writeCoord(c.X, c.Y, c.Z, c.M) }
 
-func encodeWKBCoord(b *wkbBuffer, c any) {
+func encodeWKBCoord(b *wkbBuffer, c any) error {
+	var err error
 	cv := reflect.ValueOf(c)
 	switch {
 	case cv.Type().ConvertibleTo(coordType):
-		cv.Convert(coordType).Interface().(Coord).encodeWKB(b)
+		err = cv.Convert(coordType).Interface().(Coord).encodeWKB(b)
 	case cv.Type().ConvertibleTo(coordZType):
-		cv.Convert(coordZType).Interface().(CoordZ).encodeWKB(b)
+		err = cv.Convert(coordZType).Interface().(CoordZ).encodeWKB(b)
 	case cv.Type().ConvertibleTo(coordMType):
-		cv.Convert(coordMType).Interface().(CoordM).encodeWKB(b)
+		err = cv.Convert(coordMType).Interface().(CoordM).encodeWKB(b)
 	case cv.Type().ConvertibleTo(coordZMType):
-		cv.Convert(coordZMType).Interface().(CoordZM).encodeWKB(b)
+		err = cv.Convert(coordZMType).Interface().(CoordZM).encodeWKB(b)
 	default:
 		panic("invalid coordinate type")
 	}
+	return err
 }
 
-func encodeWKB(b *wkbBuffer, g Geometry) {
-
-	b.writeType(g)
+func encodeWKB(b *wkbBuffer, g Geometry) error {
+	if err := b.writeType(g); err != nil {
+		return err
+	}
 
 	switch geoType(g) {
 	case geoPoint:
-		encodeWKBCoord(b, g)
+		if err := encodeWKBCoord(b, g); err != nil {
+			return err
+		}
 	case geoLineString, geoCircularString:
 		gv := reflect.ValueOf(g)
 		size := gv.Len()
-		b.writeSize(size)
+		if err := b.writeSize(size); err != nil {
+			return err
+		}
 		for i := 0; i < size; i++ {
-			encodeWKBCoord(b, gv.Index(i).Interface())
+			if err := encodeWKBCoord(b, gv.Index(i).Interface()); err != nil {
+				return err
+			}
 		}
 	case geoPolygon:
 		gv := reflect.ValueOf(g)
 		size := gv.Len()
-		b.writeSize(size)
+		if err := b.writeSize(size); err != nil {
+			return err
+		}
 		for i := 0; i < size; i++ {
 			ringv := gv.Index(i)
 			size := ringv.Len()
-			b.writeSize(size)
+			if err := b.writeSize(size); err != nil {
+				return err
+			}
 			for j := 0; j < size; j++ {
-				encodeWKBCoord(b, ringv.Index(j).Interface())
+				if err := encodeWKBCoord(b, ringv.Index(j).Interface()); err != nil {
+					return err
+				}
 			}
 		}
 	case geoMultiPoint, geoMultiLineString, geoMultiPolygon, geoGeometryCollection:
 		gv := reflect.ValueOf(g)
 		size := gv.Len()
-		b.writeSize(size)
+		if err := b.writeSize(size); err != nil {
+			return err
+		}
 		for i := 0; i < size; i++ {
-			encodeWKB(b, gv.Index(i).Interface().(Geometry))
+			if err := encodeWKB(b, gv.Index(i).Interface().(Geometry)); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // EncodeWKB encodes a geometry to the "well known binary" format.
 func EncodeWKB(g Geometry, isXDR bool) ([]byte, error) {
 	b := newWKBBuffer(isXDR, false, -1)
-	encodeWKB(b, g)
+	if err := encodeWKB(b, g); err != nil {
+		return nil, err
+	}
 	return b.bytes(), nil
 }
 
 // EncodeEWKB encodes a geometry to the "extended well known binary" format.
 func EncodeEWKB(g Geometry, isXDR bool, srid int32) ([]byte, error) {
 	b := newWKBBuffer(isXDR, true, srid)
-	encodeWKB(b, g)
+	if err := encodeWKB(b, g); err != nil {
+		return nil, err
+	}
 	return b.bytes(), nil
 }

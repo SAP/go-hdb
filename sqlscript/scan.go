@@ -68,7 +68,7 @@ func (s *scanner) appendLine(data []byte) {
 	if l == 0 {
 		return
 	}
-	if data[l-1] == '\r' { // cut off trailing \r
+	if data[l-1] == cr { // cut off trailing \r
 		l--
 	}
 	s.token = append(s.token, s.data[:l]...)
@@ -83,7 +83,9 @@ func (s *scanner) scanWhitespace() error {
 		if !unicode.IsSpace(r) {
 			return nil
 		}
-		s.readRune()
+		if _, err := s.readRune(); err != nil {
+			return err
+		}
 	}
 }
 
@@ -95,11 +97,11 @@ func (s *scanner) scanComment() (bool, error) {
 		return false, io.EOF
 	}
 
-	if s.data[0] != '-' || s.data[1] != '-' {
+	if s.data[0] != minus || s.data[1] != minus {
 		return false, nil
 	}
 
-	if i := bytes.IndexByte(s.data, '\n'); i >= 0 {
+	if i := bytes.IndexByte(s.data, nl); i >= 0 {
 		// terminated line
 		if s.comments {
 			s.appendLine(s.data[:i])
@@ -194,7 +196,7 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 	s.init(data, atEOF)
 
 	ok, err := s._scan()
-	if err == io.EOF {
+	if err == io.EOF { //nolint:errorlint
 		return 0, nil, nil // need more data
 	}
 	if err != nil {

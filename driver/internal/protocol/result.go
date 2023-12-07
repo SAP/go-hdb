@@ -111,7 +111,7 @@ func (f *ResultField) decode(dec *encoding.Decoder, ftc *FieldTypeCtx) {
 	f.tc = typeCode(dec.Int8())
 	f.fraction = dec.Int16()
 	f.length = dec.Int16()
-	dec.Skip(2) //filler
+	dec.Skip(2) // filler
 	f.tableNameOfs = dec.Uint32()
 	f.schemaNameOfs = dec.Uint32()
 	f.columnNameOfs = dec.Uint32()
@@ -147,7 +147,9 @@ func (r *ResultMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
 		f.decode(dec, r.FieldTypeCtx)
 		r.ResultFields[i] = f
 	}
-	names.decode(dec)
+	if err := names.decode(dec); err != nil {
+		return err
+	}
 	return dec.Error()
 }
 

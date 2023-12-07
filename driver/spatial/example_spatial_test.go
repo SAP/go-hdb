@@ -7,12 +7,14 @@ import (
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
-// ExampleGeometry demonstrates the conversion of a geospatial object to
-// - 'well known binary' format
-// - 'extended well known binary' format
-// - 'well known text' format
-// - 'extended known text' format
-// - 'geoJSON' format
+/*
+ExampleGeometry demonstrates the conversion of a geospatial object to
+  - 'well known binary' format
+  - 'extended well known binary' format
+  - 'well known text' format
+  - 'extended known text' format
+  - 'geoJSON' format
+*/
 func ExampleGeometry() {
 	// create geospatial object
 	g := spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}}

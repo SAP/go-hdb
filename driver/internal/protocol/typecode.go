@@ -74,7 +74,7 @@ const (
 	tcFixed12           typeCode = 0x52
 	tcCiphertext        typeCode = 0x5A
 
-	// special null values
+	// special null values.
 	tcSecondtimeNull typeCode = 0xB0
 
 	// TcTableRows is the TypeCode for table rows.
@@ -118,7 +118,7 @@ func (tc typeCode) nullValue() typeCode {
 	return tc | 0x80 // type code null value: set high bit (like documented in hdb protocol spec)
 }
 
-// see hdbclient
+// see hdbclient.
 func (tc typeCode) encTc() typeCode {
 	switch tc {
 	default:

@@ -2,6 +2,7 @@ package encoding
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -55,7 +56,7 @@ func (e *Encoder) Zeroes(cnt int) {
 
 // Bytes encodes bytes.
 func (e *Encoder) Bytes(p []byte) {
-	e.wr.Write(p)
+	e.wr.Write(p) //nolint:errcheck
 }
 
 // Byte encodes a byte.
@@ -81,57 +82,57 @@ func (e *Encoder) Int8(i int8) {
 // Int16 encodes an int16.
 func (e *Encoder) Int16(i int16) {
 	binary.LittleEndian.PutUint16(e.b[:2], uint16(i))
-	e.wr.Write(e.b[:2])
+	e.wr.Write(e.b[:2]) //nolint:errcheck
 }
 
 // Uint16 encodes an uint16.
 func (e *Encoder) Uint16(i uint16) {
 	binary.LittleEndian.PutUint16(e.b[:2], i)
-	e.wr.Write(e.b[:2])
+	e.wr.Write(e.b[:2]) //nolint:errcheck
 }
 
 // Uint16ByteOrder encodes an uint16 in given byte order.
 func (e *Encoder) Uint16ByteOrder(i uint16, byteOrder binary.ByteOrder) {
 	byteOrder.PutUint16(e.b[:2], i)
-	e.wr.Write(e.b[:2])
+	e.wr.Write(e.b[:2]) //nolint:errcheck
 }
 
 // Int32 encodes an int32.
 func (e *Encoder) Int32(i int32) {
 	binary.LittleEndian.PutUint32(e.b[:4], uint32(i))
-	e.wr.Write(e.b[:4])
+	e.wr.Write(e.b[:4]) //nolint:errcheck
 }
 
 // Uint32 encodes an uint32.
 func (e *Encoder) Uint32(i uint32) {
 	binary.LittleEndian.PutUint32(e.b[:4], i)
-	e.wr.Write(e.b[:4])
+	e.wr.Write(e.b[:4]) //nolint:errcheck
 }
 
 // Int64 encodes an int64.
 func (e *Encoder) Int64(i int64) {
 	binary.LittleEndian.PutUint64(e.b[:8], uint64(i))
-	e.wr.Write(e.b[:8])
+	e.wr.Write(e.b[:8]) //nolint:errcheck
 }
 
 // Uint64 encodes an uint64.
 func (e *Encoder) Uint64(i uint64) {
 	binary.LittleEndian.PutUint64(e.b[:8], i)
-	e.wr.Write(e.b[:8])
+	e.wr.Write(e.b[:8]) //nolint:errcheck
 }
 
 // Float32 encodes a float32.
 func (e *Encoder) Float32(f float32) {
 	bits := math.Float32bits(f)
 	binary.LittleEndian.PutUint32(e.b[:4], bits)
-	e.wr.Write(e.b[:4])
+	e.wr.Write(e.b[:4]) //nolint:errcheck
 }
 
 // Float64 encodes a float64.
 func (e *Encoder) Float64(f float64) {
 	bits := math.Float64bits(f)
 	binary.LittleEndian.PutUint64(e.b[:8], bits)
-	e.wr.Write(e.b[:8])
+	e.wr.Write(e.b[:8]) //nolint:errcheck
 }
 
 // Decimal encodes a decimal value.
@@ -161,7 +162,7 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 		b[15] |= 0x80
 	}
 
-	e.wr.Write(b)
+	e.wr.Write(b) //nolint:errcheck
 }
 
 // Fixed encodes a fixed decimal value.
@@ -206,7 +207,7 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 		b[i] = fill
 	}
 
-	e.wr.Write(b)
+	e.wr.Write(b) //nolint:errcheck
 }
 
 // String encodes a string.
@@ -224,7 +225,7 @@ func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 			n, _ := e.wr.Write(e.b[:nDst])
 			cnt += n
 		}
-		if err != nil && err != transform.ErrShortDst {
+		if err != nil && !errors.Is(err, transform.ErrShortDst) {
 			return cnt, err
 		}
 		i += nSrc

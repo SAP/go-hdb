@@ -21,13 +21,13 @@ const (
 
 // testResult is the structure used to provide the JSON based test result response.
 type testResult struct {
-	Test       string
-	Seconds    float64
-	BatchCount int
-	BatchSize  int
-	BulkSize   int
-	Duration   time.Duration
-	Error      string
+	Test       string        `json:"test"`
+	Seconds    float64       `json:"seconds"`
+	BatchCount int           `json:"batchCount"`
+	BatchSize  int           `json:"batchSize"`
+	BulkSize   int           `json:"bulkSize"`
+	Duration   time.Duration `json:"duration"`
+	Error      string        `json:"error"`
 }
 
 func (r *testResult) String() string {
@@ -55,13 +55,13 @@ type testHandler struct {
 }
 
 // newTestHandler returns a new TestHandler instance.
-func newTestHandler(log func(format string, v ...any)) (*testHandler, error) {
+func newTestHandler(log func(format string, v ...any)) *testHandler {
 	h := &testHandler{log: log}
 	h.testFuncs = map[string]testFunc{
 		testSeq: h.testSeq,
 		testPar: h.testPar,
 	}
-	return h, nil
+	return h
 }
 
 func (h *testHandler) tests() []string {
@@ -93,7 +93,7 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		h.log("%s", result)
 		e := json.NewEncoder(w)
-		e.Encode(result) // ignore error
+		e.Encode(result) //nolint:errcheck
 	}()
 
 	db, bulkSize, err := h.setup(batchSize)
@@ -171,7 +171,7 @@ func (t *task) close() {
 	t.conn.Close()
 }
 
-func (h *testHandler) createTasks(db *sql.DB, batchCount, batchSize int, bulk, drop bool) ([]*task, error) {
+func (h *testHandler) createTasks(db *sql.DB, batchCount, batchSize int) ([]*task, error) {
 	var err error
 	tasks := make([]*task, batchCount)
 	for i := 0; i < batchCount; i++ {
@@ -193,7 +193,7 @@ func (h *testHandler) createTasks(db *sql.DB, batchCount, batchSize int, bulk, d
 func (h *testHandler) testPar(db *sql.DB, batchCount, batchSize int, drop bool, wait time.Duration) (time.Duration, error) {
 	var wg sync.WaitGroup
 
-	tasks, err := h.createTasks(db, batchCount, batchSize, true, drop)
+	tasks, err := h.createTasks(db, batchCount, batchSize)
 	if err != nil {
 		return 0, err
 	}

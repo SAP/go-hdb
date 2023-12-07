@@ -24,13 +24,13 @@ func ExampleNewDSNConnector() {
 
 	connector, err := driver.NewDSNConnector(dsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }
@@ -85,10 +85,15 @@ func ExampleNewBasicAuthConnector() {
 		return
 	}
 	database, ok := os.LookupEnv(envDatabase)
+	if !ok {
+		return
+	}
 
 	connector := driver.NewBasicAuthConnector(host, username, password)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
+		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+			log.Fatal(err)
+		}
 	}
 	if database != "" {
 		connector = connector.WithDatabase(database)
@@ -98,7 +103,7 @@ func ExampleNewBasicAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }
@@ -127,16 +132,18 @@ func ExampleNewX509AuthConnectorByFiles() {
 
 	connector, err := driver.NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
+		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+			log.Panic(err)
+		}
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }
@@ -161,7 +168,9 @@ func ExampleNewJWTAuthConnector() {
 
 	connector := driver.NewJWTAuthConnector(host, invalidToken)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
+		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+			log.Panic(err)
+		}
 	}
 	// in case JWT authentication fails provide a (new) valid token.
 	connector.SetRefreshToken(func() (string, bool) { return token, true })
@@ -170,7 +179,7 @@ func ExampleNewJWTAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }
@@ -203,13 +212,15 @@ func ExampleConnector_WithDatabase() {
 
 	connector := driver.NewBasicAuthConnector(host, username, password).WithDatabase(database)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		connector.SetTLS(serverName, insecureSkipVerify, rootCAFile)
+		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+			log.Panic(err)
+		}
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// output:
 }

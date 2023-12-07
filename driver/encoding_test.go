@@ -13,7 +13,7 @@ import (
 	"golang.org/x/text/transform"
 )
 
-func setupEncodingTestTable(testData []struct{ s, r string }, t *testing.T) driver.Identifier {
+func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driver.Identifier {
 	db := driver.DefaultTestDB()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
@@ -35,7 +35,7 @@ func setupEncodingTestTable(testData []struct{ s, r string }, t *testing.T) driv
 	return tableName
 }
 
-func testDecodeError(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
+func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	db := driver.DefaultTestDB()
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
@@ -53,10 +53,9 @@ func testDecodeError(tableName driver.Identifier, testData []struct{ s, r string
 	default:
 		t.Log(err) // just print the (expected) error
 	}
-
 }
 
-func testDecodeErrorHandler(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
+func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	connector := driver.NewTestConnector()
 
 	// register decoder with replace error handler
@@ -94,10 +93,9 @@ func testDecodeErrorHandler(tableName driver.Identifier, testData []struct{ s, r
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
-func testDecodeRaw(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T) {
+func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	connector := driver.NewTestConnector()
 
 	// register nop decoder to receive 'raw' undecoded data
@@ -132,7 +130,6 @@ func testDecodeRaw(tableName driver.Identifier, testData []struct{ s, r string }
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestEncoding(t *testing.T) {
@@ -166,11 +163,11 @@ func TestEncoding(t *testing.T) {
 		{"303535376bd8a80936edb19134", "303535376bd8a80936efbfbd34"},
 	}
 
-	tableName := setupEncodingTestTable(testData, t)
+	tableName := setupEncodingTestTable(t, testData)
 
 	tests := []struct {
 		name string
-		fct  func(tableName driver.Identifier, testData []struct{ s, r string }, t *testing.T)
+		fct  func(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string })
 	}{
 		{"testDecodeError", testDecodeError},
 		{"testDecodeErrorHandler", testDecodeErrorHandler},
@@ -179,7 +176,7 @@ func TestEncoding(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(tableName, testData, t)
+			test.fct(t, tableName, testData)
 		})
 	}
 }

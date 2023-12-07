@@ -12,7 +12,7 @@ const (
 	CESUMax = 6
 )
 
-// Copied from unicode utf8
+// Copied from unicode utf8.
 const (
 	tx = 0b10000000
 	t3 = 0b11100000

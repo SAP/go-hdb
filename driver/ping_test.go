@@ -21,7 +21,7 @@ func benchmarkPingSeq(b *testing.B) {
 	}
 }
 
-func benchmarkPingPar(pb *testing.PB, b *testing.B) {
+func benchmarkPingPar(b *testing.B, pb *testing.PB) {
 	for pb.Next() {
 		benchmarkPing(b)
 	}
@@ -32,6 +32,6 @@ func BenchmarkPing(b *testing.B) {
 		benchmarkPingSeq(b)
 	})
 	b.Run("Ping parallel", func(b *testing.B) {
-		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(pb, b) })
+		b.RunParallel(func(pb *testing.PB) { benchmarkPingPar(b, pb) })
 	})
 }
