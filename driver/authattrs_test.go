@@ -21,9 +21,7 @@ func testConcurrentRefresh(t *testing.T) {
 		go func(start <-chan struct{}, wg *sync.WaitGroup) {
 			defer wg.Done()
 			<-start
-			if err := attrs.refresh(); err != nil {
-				t.Log(err)
-			}
+			attrs.refresh() //nolint:errcheck
 		}(start, wg)
 	}
 	// start refresh concurrently

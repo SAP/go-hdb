@@ -4,6 +4,7 @@ package driver_test
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -30,7 +31,7 @@ func testInvalidCESU8(t *testing.T) {
 	numRow := 0
 	err := db.QueryRow(fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
 	switch {
-	case err == sql.ErrNoRows: //nolint:errorlint
+	case errors.Is(err, sql.ErrNoRows):
 		t.Logf("table %s.%s is empty", schemaName, tableName)
 	case err != nil:
 		t.Fatal(err)

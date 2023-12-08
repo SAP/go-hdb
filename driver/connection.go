@@ -894,7 +894,7 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 		k := 0
 		for i := 0; i < c._bulkSize; i++ {
 			err := fct(scanArgs)
-			if err == ErrEndOfRows { //nolint:errorlint
+			if errors.Is(err, ErrEndOfRows) {
 				done = true
 				break
 			}

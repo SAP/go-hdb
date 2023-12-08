@@ -100,8 +100,8 @@ linters:
     - makezero
   #enable-all: false
   #enable:
-  #  - errchkjson
-    
+  #  - ...
+   
 
 
 

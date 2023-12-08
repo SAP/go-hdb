@@ -3,6 +3,7 @@ package sqlscript
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"unicode"
 	"unicode/utf8"
@@ -196,7 +197,7 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 	s.init(data, atEOF)
 
 	ok, err := s._scan()
-	if err == io.EOF { //nolint:errorlint
+	if errors.Is(err, io.EOF) {
 		return 0, nil, nil // need more data
 	}
 	if err != nil {
