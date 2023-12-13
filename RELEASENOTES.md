@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.6
+- source code cleanups
+
 #### v1.6.5
 - fixed linter issues
 

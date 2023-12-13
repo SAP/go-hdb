@@ -25,3 +25,6 @@ func SortFunc[S ~[]E, E any](x S, cmp func(a, b E) int) { expslices.SortFunc(x, 
 
 // Compact is used as a wrapper to slices/Compact.
 func Compact[S ~[]E, E comparable](s S) S { return goslices.Compact(s) }
+
+// Grow is used as a wrapper to slices/Grow.
+func Grow[S ~[]E, E any](s S, n int) S { return goslices.Grow(s, n) }

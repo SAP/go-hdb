@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
+	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
@@ -879,7 +880,7 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 	c := s.conn
 
 	totalRowsAffected := totalRowsAffected(0)
-	args := make([]driver.NamedValue, s.pr.numField())
+	args := make([]driver.NamedValue, 0, s.pr.numField())
 	scanArgs := make([]any, s.pr.numField())
 
 	fct, ok := nvargs[0].Value.(func(args []any) error)
@@ -891,7 +892,6 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 	batch := 0
 	for !done {
 		args = args[:0]
-		k := 0
 		for i := 0; i < c._bulkSize; i++ {
 			err := fct(scanArgs)
 			if errors.Is(err, ErrEndOfRows) {
@@ -902,21 +902,17 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 				return driver.RowsAffected(totalRowsAffected), err
 			}
 
+			args = slices.Grow(args, len(scanArgs))
 			for j, scanArg := range scanArgs {
-				size := k + 1
-				if size > cap(args) {
-					args = append(args, make([]driver.NamedValue, size-len(args))...)
-				}
-				args = args[:size]
-				args[k].Ordinal = j + 1
+				nv := driver.NamedValue{Ordinal: j + 1}
 				if t, ok := scanArg.(sql.NamedArg); ok {
-					args[k].Name = t.Name
-					args[k].Value = t.Value
+					nv.Name = t.Name
+					nv.Value = t.Value
 				} else {
-					args[k].Name = ""
-					args[k].Value = scanArg
+					nv.Name = ""
+					nv.Value = scanArg
 				}
-				k++
+				args = append(args, nv)
 			}
 		}
 
@@ -1156,21 +1152,6 @@ func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedVal
 	return callArgs, nil
 }
 
-func (c *conn) _checkError(ctx context.Context, err error) error {
-	if err == nil {
-		return nil
-	}
-
-	var hdbErrors *p.HdbErrors
-	if errors.As(err, &hdbErrors) && hdbErrors.HasOnlyWarnings() {
-		hdbErrors.ErrorsFunc(func(err error) {
-			c.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
-		})
-		return nil
-	}
-	return err
-}
-
 func (c *conn) _databaseName() string {
 	return c.serverOptions[p.CoDatabaseName].(string)
 }
@@ -1181,13 +1162,13 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 		return nil, err
 	}
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		if ph.PartKind == p.PkDBConnectInfo {
 			err = c.pr.Read(ctx, &ci)
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -1225,13 +1206,13 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		if ph.PartKind == p.PkAuthentication {
 			err = c.pr.Read(ctx, initReply)
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return 0, nil, err
 	}
 
@@ -1263,7 +1244,7 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkAuthentication:
@@ -1272,7 +1253,7 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 			err = c.pr.Read(ctx, &co)
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return 0, nil, err
 	}
 	return c.pr.SessionID(), co, nil
@@ -1290,7 +1271,7 @@ func (c *conn) _queryDirect(ctx context.Context, query string, commit bool) (dri
 	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	resSet := &p.Resultset{}
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkResultMetadata:
@@ -1306,7 +1287,7 @@ func (c *conn) _queryDirect(ctx context.Context, query string, commit bool) (dri
 			qr.attributes = ph.PartAttributes
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	if qr.rsID == 0 { // non select query
@@ -1324,14 +1305,14 @@ func (c *conn) _execDirect(ctx context.Context, query string, commit bool) (driv
 
 	rows := &p.RowsAffected{}
 	var numRow int64
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		if ph.PartKind == p.PkRowsAffected {
 			err = c.pr.Read(ctx, rows)
 			numRow = rows.Total()
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	if c.pr.FunctionCode() == p.FcDDL {
@@ -1351,7 +1332,7 @@ func (c *conn) _prepare(ctx context.Context, query string) (*prepareResult, erro
 	resMeta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	prmMeta := &p.ParameterMetadata{FieldTypeCtx: c.fieldTypeCtx}
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkStatementID:
@@ -1364,7 +1345,7 @@ func (c *conn) _prepare(ctx context.Context, query string) (*prepareResult, erro
 			pr.parameterFields = prmMeta.ParameterFields
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	pr.fc = c.pr.FunctionCode()
@@ -1430,7 +1411,7 @@ func (c *conn) _execBatch(ctx context.Context, pr *prepareResult, nvargs []drive
 	lobReply := &p.WriteLobReply{}
 	var rowsAffected int64
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkRowsAffected:
@@ -1441,7 +1422,7 @@ func (c *conn) _execBatch(ctx context.Context, pr *prepareResult, nvargs []drive
 			ids = lobReply.IDs
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	fc := c.pr.FunctionCode()
@@ -1551,7 +1532,7 @@ func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) 
 	var numRow int64
 	tableRowIdx := 0
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkRowsAffected:
@@ -1589,7 +1570,7 @@ func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) 
 			ids = lobReply.IDs
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, nil, 0, err
 	}
 	return cr, ids, numRow, nil
@@ -1614,7 +1595,7 @@ func (c *conn) _query(ctx context.Context, pr *prepareResult, nvargs []driver.Na
 	qr := &queryResult{conn: c, fields: pr.resultFields}
 	resSet := &p.Resultset{}
 
-	if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		switch ph.PartKind {
 		case p.PkResultsetID:
@@ -1627,7 +1608,7 @@ func (c *conn) _query(ctx context.Context, pr *prepareResult, nvargs []driver.Na
 			qr.attributes = ph.PartAttributes
 		}
 		return err
-	})); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 	if qr.rsID == 0 { // non select query
@@ -1645,7 +1626,7 @@ func (c *conn) _fetchNext(ctx context.Context, qr *queryResult) error {
 
 	resSet := &p.Resultset{ResultFields: qr.fields, FieldValues: qr.fieldValues} // reuse field values
 
-	return c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	return c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 		var err error
 		if ph.PartKind == p.PkResultset {
 			err = c.pr.Read(ctx, resSet)
@@ -1654,21 +1635,21 @@ func (c *conn) _fetchNext(ctx context.Context, qr *queryResult) error {
 			qr.attributes = ph.PartAttributes
 		}
 		return err
-	}))
+	})
 }
 
 func (c *conn) _dropStatementID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
-	return c._checkError(ctx, c.pr.ReadSkip(ctx))
+	return c.pr.ReadSkip(ctx)
 }
 
 func (c *conn) _closeResultsetID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
-	return c._checkError(ctx, c.pr.ReadSkip(ctx))
+	return c.pr.ReadSkip(ctx)
 }
 
 func (c *conn) _commit(ctx context.Context) error {
@@ -1677,7 +1658,7 @@ func (c *conn) _commit(ctx context.Context) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCommit, false); err != nil {
 		return err
 	}
-	if err := c._checkError(ctx, c.pr.ReadSkip(ctx)); err != nil {
+	if err := c.pr.ReadSkip(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -1689,7 +1670,7 @@ func (c *conn) _rollback(ctx context.Context) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtRollback, false); err != nil {
 		return err
 	}
-	if err := c._checkError(ctx, c.pr.ReadSkip(ctx)); err != nil {
+	if err := c.pr.ReadSkip(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -1788,13 +1769,13 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 			return err
 		}
 
-		if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+		if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 			var err error
 			if ph.PartKind == p.PkReadLobReply {
 				err = c.pr.Read(ctx, lobReply)
 			}
 			return err
-		})); err != nil {
+		}); err != nil {
 			return err
 		}
 
@@ -1870,7 +1851,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 		lobReply := &p.WriteLobReply{}
 		outPrms := &p.OutputParameters{}
 
-		if err := c._checkError(ctx, c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+		if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
 			var err error
 			switch ph.PartKind {
 			case p.PkOutputParameters:
@@ -1883,7 +1864,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 				ids = lobReply.IDs
 			}
 			return err
-		})); err != nil {
+		}); err != nil {
 			return err
 		}
 

@@ -125,13 +125,6 @@ func (e *HdbErrors) Error() string {
 	return string(b)
 }
 
-// ErrorsFunc executes fn on all hdb errors.
-func (e *HdbErrors) ErrorsFunc(fn func(err error)) {
-	for _, err := range e.errs {
-		fn(err)
-	}
-}
-
 // NumError implements the driver.Error interface.
 func (e *HdbErrors) NumError() int { return len(e.errs) }
 
@@ -158,16 +151,6 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 	if idx >= 0 && idx < len(e.errs) {
 		e.errs[idx].stmtNo = no
 	}
-}
-
-// HasOnlyWarnings returns true if the error collection contains warnings, false otherwise.
-func (e *HdbErrors) HasOnlyWarnings() bool {
-	for _, err := range e.errs {
-		if err.errorLevel != errorLevelWarning {
-			return false
-		}
-	}
-	return true
 }
 
 func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/slices"
 	"golang.org/x/text/transform"
 )
 
@@ -138,7 +139,7 @@ func (r *clientReader) ReadProlog(ctx context.Context) error {
 	return nil
 }
 
-func (r *baseReader) checkError() error {
+func (r *baseReader) checkError(ctx context.Context) error {
 	defer func() { // init readFlags
 		r.lastErrors = nil
 		r.lastRowsAffected = nil
@@ -167,6 +168,14 @@ func (r *baseReader) checkError() error {
 			}
 		}
 	}
+
+	if slices.AllFunc(r.lastErrors.errs, func(err *HdbError) bool { return err.IsWarning() }) {
+		slices.RangeFunc(r.lastErrors.errs, func(err *HdbError) {
+			r.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
+		})
+		return nil
+	}
+
 	return r.lastErrors
 }
 
@@ -312,7 +321,7 @@ func (r *baseReader) IterateParts(ctx context.Context, partFn func(ph *PartHeade
 			}
 		}
 	}
-	return r.checkError()
+	return r.checkError(ctx)
 }
 
 // writer represents a protocol writer.
@@ -465,103 +474,3 @@ func (w *writer) Write(ctx context.Context, sessionID int64, messageType Message
 	}
 	return nil
 }
-
-/*
-func (w *writer) lastErrorHandler(err error) error { // remove after merging back into protocol
-	if err != nil {
-		return errors.Join(err, driver.ErrBadConn)
-	}
-	return nil
-}
-
-func (w *writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, writers ...partWriter) error {
-	write := func() error {
-		// check on session variables to be send as ClientInfo
-		if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
-			writers = append([]partWriter{clientInfo(w.sv)}, writers...)
-			w.svSent = true
-		}
-
-		numWriters := len(writers)
-		partSize := make([]int, numWriters)
-		size := int64(segmentHeaderSize + numWriters*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
-
-		for i, part := range writers {
-			s := part.size()
-			size += int64(s + padBytes(s))
-			partSize[i] = s // buffer size (expensive calculation)
-		}
-
-		if size > math.MaxUint32 {
-			return fmt.Errorf("message size %d exceeds maximum message header value %d", size, int64(math.MaxUint32)) // int64: without cast overflow error in 32bit OS
-		}
-
-		bufferSize := size
-
-		w.mh.sessionID = sessionID
-		w.mh.varPartLength = uint32(size)
-		w.mh.varPartSize = uint32(bufferSize)
-		w.mh.noOfSegm = 1
-
-		if err := w.mh.encode(w.enc); err != nil {
-			return err
-		}
-		if w.protTrace {
-			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxMsgHdr], w.mh.String()))
-		}
-
-		if size > math.MaxInt32 {
-			return fmt.Errorf("message size %d exceeds maximum part header value %d", size, math.MaxInt32)
-		}
-
-		w.sh.messageType = messageType
-		w.sh.commit = commit
-		w.sh.segmentKind = skRequest
-		w.sh.segmentLength = int32(size)
-		w.sh.segmentOfs = 0
-		w.sh.noOfParts = int16(numWriters)
-		w.sh.segmentNo = 1
-
-		if err := w.sh.encode(w.enc); err != nil {
-			return err
-		}
-		if w.protTrace {
-			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxSegHdr], w.sh.String()))
-		}
-
-		bufferSize -= segmentHeaderSize
-
-		for i, part := range writers {
-			size := partSize[i]
-			pad := padBytes(size)
-
-			w.ph.PartKind = part.kind()
-			if err := w.ph.setNumArg(part.numArg()); err != nil {
-				return err
-			}
-			w.ph.bufferLength = int32(size)
-			w.ph.bufferSize = int32(bufferSize)
-
-			if err := w.ph.encode(w.enc); err != nil {
-				return err
-			}
-			if w.protTrace {
-				w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxParHdr], w.ph.String()))
-			}
-
-			if err := part.encode(w.enc); err != nil {
-				return err
-			}
-			if w.protTrace {
-				w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(clientTexts[idxPar], part.String()))
-			}
-
-			w.enc.Zeroes(pad)
-
-			bufferSize -= int64(partHeaderSize + size + pad)
-		}
-		return w.wr.Flush()
-	}
-	return w.lastErrorHandler(write())
-}
-*/

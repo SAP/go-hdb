@@ -97,18 +97,6 @@ linters:
     - noctx
     - execinquery
     - rowserrcheck
-    - makezero
   #enable-all: false
   #enable:
   #  - ...
-   
-
-
-
-
-
-
-
-
-
-
