@@ -1047,19 +1047,6 @@ func (c *conn) _mapQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedVa
 	return nil
 }
 
-type names []string // lazy init via get
-
-func (n *names) get(fields []*p.ParameterField) []string {
-	if *n != nil {
-		return *n
-	}
-	*n = make([]string, 0, len(fields))
-	for _, field := range fields {
-		*n = append(*n, field.Name())
-	}
-	return *n
-}
-
 // _mapQueryCallArgs
 // - fields could be input or output fields
 // - number of args needs to be equal to number of fields
@@ -1081,7 +1068,6 @@ func _newCallArgs() *_callArgs {
 
 func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (*_callArgs, error) {
 	callArgs := _newCallArgs()
-	var names names
 
 	if len(nvargs) < len(fields) { // number of fields needs to match number of args or be greater (add table output args)
 		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
@@ -1095,8 +1081,10 @@ func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedVal
 		nvarg := &prmnvargs[i]
 
 		if nvarg.Name != "" && nvarg.Name != field.Name() {
-			likeName := levenshtein.MinDistance(false, names.get(fields), nvarg.Name)
-			return nil, fmt.Errorf("invalid argument name %s - did you mean %s?", nvarg.Name, likeName)
+			return nil, fmt.Errorf("invalid argument name %s - did you mean %s?",
+				nvarg.Name,
+				levenshtein.MinString(fields, func(field *p.ParameterField) string { return field.Name() }, nvarg.Name, false),
+			)
 		}
 
 		out, isOut := nvarg.Value.(sql.Out)

@@ -228,6 +228,6 @@ func Scan(data []byte, atEOF bool) (advance int, token []byte, err error) {
 // In contrast of using the Scan function directly, the command separator can be specified.
 // If comments is true, leading comments are added to each statement and discarded otherwise.
 func ScanFunc(separator rune, comments bool) bufio.SplitFunc {
-	s := scanner{separator: separator, comments: true}
+	s := scanner{separator: separator, comments: comments}
 	return s.scan
 }

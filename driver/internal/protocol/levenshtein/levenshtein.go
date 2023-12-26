@@ -11,19 +11,20 @@ import (
 )
 
 // Distance returns the Lewenshtein distance.
-func Distance(caseSensitive bool, a, b string) int {
+func Distance(a, b string, caseSensitive bool) int {
 	if caseSensitive {
 		return distance(a, b)
 	}
 	return distance(strings.ToLower(a), strings.ToLower(b))
 }
 
-// MinDistance returns the string out of string list l with the minimal Lewenshtein distance.
-func MinDistance(caseSensitive bool, l []string, s string) (rv string) {
+// MinString returns the string attribute determined by fn out of x with the minimal Lewenshtein distance to s.
+func MinString[S ~[]E, E any](x S, fn func(a E) string, s string, caseSensitive bool) (rv string) {
 	min := math.MaxInt
-	for _, si := range l {
-		if d := Distance(caseSensitive, si, s); d < min {
-			rv = si
+	for _, e := range x {
+		xs := fn(e)
+		if d := Distance(xs, s, caseSensitive); d < min {
+			rv = xs
 			min = d
 		}
 	}

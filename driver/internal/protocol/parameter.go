@@ -61,10 +61,6 @@ func (k ParameterMode) String() string {
 	return fmt.Sprintf("%v", t)
 }
 
-func newParameterFields(size int) []*ParameterField {
-	return make([]*ParameterField, size)
-}
-
 // ParameterField contains database field attributes for parameters.
 type ParameterField struct {
 	names            *fieldNames
@@ -219,7 +215,7 @@ func (m *ParameterMetadata) String() string {
 }
 
 func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	m.ParameterFields = newParameterFields(ph.numArg())
+	m.ParameterFields = make([]*ParameterField, ph.numArg())
 	names := &fieldNames{}
 	for i := 0; i < len(m.ParameterFields); i++ {
 		f := &ParameterField{names: names}
