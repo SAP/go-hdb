@@ -153,10 +153,9 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 	}
 }
 
-func (e *HdbErrors) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	e.errs = resizeSlice(e.errs, ph.numArg())
+func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	e.errs = resizeSlice(e.errs, numArg)
 
-	numArg := ph.numArg()
 	for i := 0; i < numArg; i++ {
 		err := e.errs[i]
 		if err == nil {

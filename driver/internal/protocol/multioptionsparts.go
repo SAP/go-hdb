@@ -74,8 +74,7 @@ func (o topologyInformation) String() string {
 	return fmt.Sprintf("%v", s1)
 }
 
-func (o *topologyInformation) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	numArg := ph.numArg()
+func (o *topologyInformation) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	*o = resizeSlice(*o, numArg)
 	for i := 0; i < numArg; i++ {
 		ops := map[topologyOption]any{}

@@ -25,6 +25,8 @@ const (
 // ConnectOption represents a connect option.
 type ConnectOption int8
 
+func (ConnectOption) kind() PartKind { return PkConnectOptions }
+
 // ConnectOption constants.
 const (
 	coConnectionID                        ConnectOption = 1

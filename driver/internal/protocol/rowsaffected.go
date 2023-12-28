@@ -22,10 +22,10 @@ func (r RowsAffected) String() string {
 	return fmt.Sprintf("%v", r.rows)
 }
 
-func (r *RowsAffected) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	r.rows = resizeSlice(r.rows, ph.numArg())
+func (r *RowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.rows = resizeSlice(r.rows, numArg)
 
-	for i := 0; i < ph.numArg(); i++ {
+	for i := 0; i < numArg; i++ {
 		r.rows[i] = dec.Int32()
 	}
 	return dec.Error()

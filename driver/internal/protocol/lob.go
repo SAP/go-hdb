@@ -228,8 +228,7 @@ func (r *WriteLobRequest) size() int {
 func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 
 // sniffer.
-func (r *WriteLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	numArg := ph.numArg()
+func (r *WriteLobRequest) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.Descrs = make([]*WriteLobDescr, numArg)
 	for i := 0; i < numArg; i++ {
 		r.Descrs[i] = &WriteLobDescr{}
@@ -258,10 +257,10 @@ type WriteLobReply struct {
 
 func (r *WriteLobReply) String() string { return fmt.Sprintf("ids %v", r.IDs) }
 
-func (r *WriteLobReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	r.IDs = resizeSlice(r.IDs, ph.numArg())
+func (r *WriteLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.IDs = resizeSlice(r.IDs, numArg)
 
-	for i := 0; i < ph.numArg(); i++ {
+	for i := 0; i < numArg; i++ {
 		r.IDs[i] = LocatorID(dec.Uint64())
 	}
 	return dec.Error()
@@ -290,7 +289,7 @@ func (r *ReadLobRequest) String() string {
 }
 
 // sniffer.
-func (r *ReadLobRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 	r.ID = LocatorID(dec.Uint64())
 	r.Ofs = dec.Int64()
 	r.ChunkSize = dec.Int32()
@@ -325,8 +324,8 @@ func (r *ReadLobReply) resize(size int) {
 	}
 }
 
-func (r *ReadLobReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	if ph.numArg() != 1 {
+func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	if numArg != 1 {
 		panic("numArg == 1 expected")
 	}
 	r.ID = LocatorID(dec.Uint64())

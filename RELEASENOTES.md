@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.8
+- updated dependencies
+- source code cleanups
+
 #### v1.6.6 - v1.6.7
 - source code cleanups
 

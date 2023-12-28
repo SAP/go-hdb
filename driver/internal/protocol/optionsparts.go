@@ -10,6 +10,8 @@ import (
 // ClientContextOption represents a client context option.
 type ClientContextOption int8
 
+func (ClientContextOption) kind() PartKind { return PkClientContext }
+
 // ClientContextOption constants.
 const (
 	CcoClientVersion            ClientContextOption = 1
@@ -20,6 +22,8 @@ const (
 // DBConnectInfoType represents a database connect info type.
 type DBConnectInfoType int8
 
+func (DBConnectInfoType) kind() PartKind { return PkDBConnectInfo }
+
 // DBConnectInfoType constants.
 const (
 	CiDatabaseName DBConnectInfoType = 1 // string
@@ -29,6 +33,8 @@ const (
 )
 
 type statementContextType int8
+
+func (statementContextType) kind() PartKind { return PkStatementContext }
 
 const (
 	scStatementSequenceInfo         statementContextType = 1
@@ -44,6 +50,8 @@ const (
 // transaction flags.
 type transactionFlagType int8
 
+func (transactionFlagType) kind() PartKind { return PkTransactionFlags }
+
 const (
 	tfRolledback                      transactionFlagType = 0
 	tfCommited                        transactionFlagType = 1
@@ -56,8 +64,15 @@ const (
 	tfReadOnlyMode                    transactionFlagType = 8
 )
 
+type optionType interface {
+	~int8
+	kind() PartKind
+}
+
 // Options represents a generic option part.
-type Options[K ~int8] map[K]any
+type Options[K optionType] map[K]any
+
+func (ops Options[K]) kind() PartKind { var v K; return v.kind() }
 
 func (ops Options[K]) String() string {
 	s := []string{}
@@ -79,9 +94,9 @@ func (ops Options[K]) size() int {
 
 func (ops Options[K]) numArg() int { return len(ops) }
 
-func (ops *Options[K]) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (ops *Options[K]) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	*ops = Options[K]{} // no reuse of maps - create new one
-	for i := 0; i < ph.numArg(); i++ {
+	for i := 0; i < numArg; i++ {
 		k := K(dec.Int8())
 		tc := typeCode(dec.Byte())
 		ot := optTypeViaTypeCode(tc)

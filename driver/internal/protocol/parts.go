@@ -7,18 +7,31 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-type partEncoder interface {
-	size() int
-	encode(enc *encoding.Encoder) error
-}
-
-type partDecoder interface {
-	decode(dec *encoding.Decoder, ph *PartHeader) error
-}
-
-type part interface {
+// Part represents a protocol part.
+type Part interface {
 	String() string // should support Stringer interface
 	kind() PartKind
+}
+
+type defPart interface {
+	Part
+	decode(dec *encoding.Decoder) error
+}
+type numArgPart interface {
+	Part
+	decodeNumArg(dec *encoding.Decoder, numArg int) error
+}
+type bufLenPart interface {
+	Part
+	decodeBufLen(dec *encoding.Decoder, bufLen int) error
+}
+
+// WritablePart represents a protocol part the driver is able to write.
+type WritablePart interface {
+	Part
+	numArg() int
+	size() int
+	encode(enc *encoding.Encoder) error
 }
 
 func (*HdbErrors) kind() PartKind           { return PkError }
@@ -43,37 +56,6 @@ func (*ReadLobRequest) kind() PartKind      { return PkReadLobRequest }
 func (*ReadLobReply) kind() PartKind        { return PkReadLobReply }
 func (*WriteLobRequest) kind() PartKind     { return PkWriteLobRequest }
 func (*WriteLobReply) kind() PartKind       { return PkWriteLobReply }
-
-var (
-	typeOfClientContext    = reflect.TypeOf((*Options[ClientContextOption])(nil)).Elem()
-	typeOfConnectOptions   = reflect.TypeOf((*Options[ConnectOption])(nil)).Elem()
-	typeOfTransactionflags = reflect.TypeOf((*Options[transactionFlagType])(nil)).Elem()
-	typeOfStatementContext = reflect.TypeOf((*Options[statementContextType])(nil)).Elem()
-	typeOfDBConnectInfo    = reflect.TypeOf((*Options[DBConnectInfoType])(nil)).Elem()
-)
-
-func (ops Options[K]) kind() PartKind {
-	switch reflect.TypeOf(ops) {
-	case typeOfClientContext:
-		return PkClientContext
-	case typeOfConnectOptions:
-		return PkConnectOptions
-	case typeOfTransactionflags:
-		return PkTransactionFlags
-	case typeOfStatementContext:
-		return PkStatementContext
-	case typeOfDBConnectInfo:
-		return PkDBConnectInfo
-	default:
-		panic("invalid options type") // should never happen
-	}
-}
-
-type partWriter interface {
-	part
-	numArg() int
-	partEncoder
-}
 
 // numArg methods (result == 1).
 func (*AuthInitRequest) numArg() int  { return 1 }
@@ -100,52 +82,47 @@ func (ReadLobRequest) size() int { return readLobRequestSize }
 
 // func (lobFlags) size() int       { return tinyintFieldSize }
 
-// check if part types implement partWriter interface.
+// check if part types implement WritablePart interface.
 var (
-	_ partWriter = (*AuthInitRequest)(nil)
-	_ partWriter = (*AuthFinalRequest)(nil)
-	_ partWriter = (*ClientID)(nil)
-	_ partWriter = (*clientInfo)(nil)
-	_ partWriter = (*Command)(nil)
-	_ partWriter = (*StatementID)(nil)
-	_ partWriter = (*InputParameters)(nil)
-	_ partWriter = (*ResultsetID)(nil)
-	_ partWriter = (*Fetchsize)(nil)
-	_ partWriter = (*ReadLobRequest)(nil)
-	_ partWriter = (*WriteLobRequest)(nil)
-	_ partWriter = (*Options[ClientContextOption])(nil) // sufficient to check one option.
+	_ WritablePart = (*AuthInitRequest)(nil)
+	_ WritablePart = (*AuthFinalRequest)(nil)
+	_ WritablePart = (*ClientID)(nil)
+	_ WritablePart = (*clientInfo)(nil)
+	_ WritablePart = (*Command)(nil)
+	_ WritablePart = (*StatementID)(nil)
+	_ WritablePart = (*InputParameters)(nil)
+	_ WritablePart = (*ResultsetID)(nil)
+	_ WritablePart = (*Fetchsize)(nil)
+	_ WritablePart = (*ReadLobRequest)(nil)
+	_ WritablePart = (*WriteLobRequest)(nil)
+	_ WritablePart = (*Options[ClientContextOption])(nil) // sufficient to check one option.
 )
 
-type partReader interface {
-	part
-	partDecoder
-}
-
-// check if part types implement partReader interface.
+// check if part types implement the right part interface.
 var (
-	_ partReader = (*HdbErrors)(nil)
-	_ partReader = (*AuthInitRequest)(nil)
-	_ partReader = (*AuthInitReply)(nil)
-	_ partReader = (*AuthFinalRequest)(nil)
-	_ partReader = (*AuthFinalReply)(nil)
-	_ partReader = (*ClientID)(nil)
-	_ partReader = (*clientInfo)(nil)
-	_ partReader = (*topologyInformation)(nil)
-	_ partReader = (*Command)(nil)
-	_ partReader = (*RowsAffected)(nil)
-	_ partReader = (*StatementID)(nil)
-	_ partReader = (*ParameterMetadata)(nil)
-	_ partReader = (*InputParameters)(nil)
-	_ partReader = (*OutputParameters)(nil)
-	_ partReader = (*ResultMetadata)(nil)
-	_ partReader = (*ResultsetID)(nil)
-	_ partReader = (*Resultset)(nil)
-	_ partReader = (*Fetchsize)(nil)
-	_ partReader = (*ReadLobRequest)(nil)
-	_ partReader = (*WriteLobRequest)(nil)
-	_ partReader = (*ReadLobReply)(nil)
-	_ partReader = (*WriteLobReply)(nil)
-	_ partReader = (*Options[ClientContextOption])(nil) // sufficient to check one option.
+	_ numArgPart = (*HdbErrors)(nil)
+	_ defPart    = (*AuthInitRequest)(nil)
+	_ defPart    = (*AuthInitReply)(nil)
+	_ defPart    = (*AuthFinalRequest)(nil)
+	_ defPart    = (*AuthFinalReply)(nil)
+	_ bufLenPart = (*ClientID)(nil)
+	_ numArgPart = (*clientInfo)(nil)
+	_ numArgPart = (*topologyInformation)(nil)
+	_ bufLenPart = (*Command)(nil)
+	_ numArgPart = (*RowsAffected)(nil)
+	_ defPart    = (*StatementID)(nil)
+	_ numArgPart = (*ParameterMetadata)(nil)
+	_ numArgPart = (*InputParameters)(nil)
+	_ numArgPart = (*OutputParameters)(nil)
+	_ numArgPart = (*ResultMetadata)(nil)
+	_ defPart    = (*ResultsetID)(nil)
+	_ numArgPart = (*Resultset)(nil)
+	_ defPart    = (*Fetchsize)(nil)
+	_ defPart    = (*ReadLobRequest)(nil)
+	_ numArgPart = (*WriteLobRequest)(nil)
+	_ numArgPart = (*ReadLobReply)(nil)
+	_ numArgPart = (*WriteLobReply)(nil)
+	_ numArgPart = (*Options[ClientContextOption])(nil) // sufficient to check one option.
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
@@ -162,11 +139,11 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 	PkReadLobReply:        reflect.TypeOf((*ReadLobReply)(nil)).Elem(),
 	PkWriteLobReply:       reflect.TypeOf((*WriteLobReply)(nil)).Elem(),
 	PkWriteLobRequest:     reflect.TypeOf((*WriteLobRequest)(nil)).Elem(),
-	PkClientContext:       typeOfClientContext,
-	PkConnectOptions:      typeOfConnectOptions,
-	PkTransactionFlags:    typeOfTransactionflags,
-	PkStatementContext:    typeOfStatementContext,
-	PkDBConnectInfo:       typeOfDBConnectInfo,
+	PkClientContext:       reflect.TypeOf((*Options[ClientContextOption])(nil)).Elem(),
+	PkConnectOptions:      reflect.TypeOf((*Options[ConnectOption])(nil)).Elem(),
+	PkTransactionFlags:    reflect.TypeOf((*Options[transactionFlagType])(nil)).Elem(),
+	PkStatementContext:    reflect.TypeOf((*Options[statementContextType])(nil)).Elem(),
+	PkDBConnectInfo:       reflect.TypeOf((*Options[DBConnectInfoType])(nil)).Elem(),
 	/*
 	   parts that cannot be used generically as additional parameters are needed
 
@@ -179,20 +156,20 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 }
 
 // newGenPartReader returns a generic part reader.
-func newGenPartReader(pk PartKind) partReader {
-	if pk == PkAuthentication {
+func newGenPartReader(kind PartKind) Part {
+	if kind == PkAuthentication {
 		return nil // cannot instantiate generically
 	}
-	pt, ok := genPartTypeMap[pk]
+	pt, ok := genPartTypeMap[kind]
 	if !ok {
 		// whether part cannot be instantiated generically or
 		// part is not (yet) known to the driver
 		return nil
 	}
 	// create instance
-	partReader, ok := reflect.New(pt).Interface().(partReader)
+	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
-		panic(fmt.Sprintf("part kind %s does not implement part reader interface", pk)) // should never happen
+		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
 	}
-	return partReader
+	return part
 }

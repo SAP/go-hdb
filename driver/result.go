@@ -63,7 +63,7 @@ type queryResult struct {
 	conn         *conn
 	rsID         uint64
 	pos          int
-	attributes   p.PartAttributes
+	attrs        p.PartAttributes
 }
 
 // Columns implements the driver.Rows interface.
@@ -80,7 +80,7 @@ func (qr *queryResult) Columns() []string {
 
 // Close implements the driver.Rows interface.
 func (qr *queryResult) Close() error {
-	if qr.attributes.ResultsetClosed() {
+	if qr.attrs.ResultsetClosed() {
 		return nil
 	}
 	// if lastError is set, attrs are nil
@@ -105,7 +105,7 @@ func (qr *queryResult) copyRow(idx int, dest []driver.Value) {
 // Next implements the driver.Rows interface.
 func (qr *queryResult) Next(dest []driver.Value) error {
 	if qr.pos >= qr.numRow() {
-		if qr.attributes.LastPacket() {
+		if qr.attrs.LastPacket() {
 			return io.EOF
 		}
 		if err := qr.conn._fetchNext(context.Background(), qr); err != nil {

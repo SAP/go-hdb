@@ -233,20 +233,20 @@ func (k PartAttributes) ResultsetClosed() bool { return (k & paResultsetClosed) 
 // LastPacket returns true if the last packet is sent, false otherwise.
 func (k PartAttributes) LastPacket() bool { return (k & paLastPacket) == paLastPacket }
 
-// PartHeader represents the part header.
-type PartHeader struct {
-	PartKind         PartKind
-	PartAttributes   PartAttributes
+// partHeader represents the part header.
+type partHeader struct {
+	partKind         PartKind
+	partAttributes   PartAttributes
 	argumentCount    int16
 	bigArgumentCount int32
 	bufferLength     int32
 	bufferSize       int32
 }
 
-func (h *PartHeader) String() string {
+func (h *partHeader) String() string {
 	return fmt.Sprintf("kind %s partAttributes %s argumentCount %d bigArgumentCount %d bufferLength %d bufferSize %d",
-		h.PartKind,
-		h.PartAttributes,
+		h.partKind,
+		h.partAttributes,
 		h.argumentCount,
 		h.bigArgumentCount,
 		h.bufferLength,
@@ -254,7 +254,7 @@ func (h *PartHeader) String() string {
 	)
 }
 
-func (h *PartHeader) setNumArg(numArg int) error {
+func (h *partHeader) setNumArg(numArg int) error {
 	switch {
 	default:
 		return fmt.Errorf("maximum number of arguments %d exceeded", numArg)
@@ -268,16 +268,18 @@ func (h *PartHeader) setNumArg(numArg int) error {
 	return nil
 }
 
-func (h *PartHeader) numArg() int {
+func (h *partHeader) numArg() int {
 	if h.argumentCount == bigNumArgInd {
 		return int(h.bigArgumentCount)
 	}
 	return int(h.argumentCount)
 }
 
-func (h *PartHeader) encode(enc *encoding.Encoder) error {
-	enc.Int8(int8(h.PartKind))
-	enc.Int8(int8(h.PartAttributes))
+func (h *partHeader) bufLen() int { return int(h.bufferLength) }
+
+func (h *partHeader) encode(enc *encoding.Encoder) error {
+	enc.Int8(int8(h.partKind))
+	enc.Int8(int8(h.partAttributes))
 	enc.Int16(h.argumentCount)
 	enc.Int32(h.bigArgumentCount)
 	enc.Int32(h.bufferLength)
@@ -286,9 +288,9 @@ func (h *PartHeader) encode(enc *encoding.Encoder) error {
 	return nil
 }
 
-func (h *PartHeader) decode(dec *encoding.Decoder) error {
-	h.PartKind = PartKind(dec.Int8())
-	h.PartAttributes = PartAttributes(dec.Int8())
+func (h *partHeader) decode(dec *encoding.Decoder) error {
+	h.partKind = PartKind(dec.Int8())
+	h.partAttributes = PartAttributes(dec.Int8())
 	h.argumentCount = dec.Int16()
 	h.bigArgumentCount = dec.Int32()
 	h.bufferLength = dec.Int32()

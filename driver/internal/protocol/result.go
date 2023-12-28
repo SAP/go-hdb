@@ -35,7 +35,7 @@ func (k columnOptions) String() string {
 type ResultsetID uint64
 
 func (id ResultsetID) String() string { return fmt.Sprintf("%d", id) }
-func (id *ResultsetID) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (id *ResultsetID) decode(dec *encoding.Decoder) error {
 	*id = ResultsetID(dec.Uint64())
 	return dec.Error()
 }
@@ -139,8 +139,8 @@ func (r *ResultMetadata) String() string {
 	return fmt.Sprintf("result fields %v", r.ResultFields)
 }
 
-func (r *ResultMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	r.ResultFields = newResultFields(ph.numArg())
+func (r *ResultMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.ResultFields = newResultFields(numArg)
 	names := &fieldNames{}
 	for i := 0; i < len(r.ResultFields); i++ {
 		f := &ResultField{names: names}
@@ -164,8 +164,7 @@ func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
 }
 
-func (r *Resultset) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	numArg := ph.numArg()
+func (r *Resultset) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	cols := len(r.ResultFields)
 	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 

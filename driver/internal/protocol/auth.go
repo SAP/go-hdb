@@ -86,7 +86,7 @@ type AuthInitRequest struct {
 
 func (r *AuthInitRequest) String() string { return r.prms.String() }
 func (r *AuthInitRequest) size() int      { return r.prms.Size() }
-func (r *AuthInitRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (r *AuthInitRequest) decode(dec *encoding.Decoder) error {
 	return r.prms.Decode(dec)
 }
 func (r *AuthInitRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
@@ -97,7 +97,7 @@ type AuthInitReply struct {
 }
 
 func (r *AuthInitReply) String() string { return r.authHnd.String() }
-func (r *AuthInitReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (r *AuthInitReply) decode(dec *encoding.Decoder) error {
 	if r.authHnd == nil {
 		return nil
 	}
@@ -125,7 +125,7 @@ type AuthFinalRequest struct {
 
 func (r *AuthFinalRequest) String() string { return r.prms.String() }
 func (r *AuthFinalRequest) size() int      { return r.prms.Size() }
-func (r *AuthFinalRequest) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (r *AuthFinalRequest) decode(dec *encoding.Decoder) error {
 	return nil
 	// panic("not implemented yet")
 }
@@ -137,7 +137,7 @@ type AuthFinalReply struct {
 }
 
 func (r *AuthFinalReply) String() string { return r.method.String() }
-func (r *AuthFinalReply) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (r *AuthFinalReply) decode(dec *encoding.Decoder) error {
 	if r.method == nil {
 		return nil
 	}

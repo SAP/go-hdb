@@ -214,8 +214,8 @@ func (m *ParameterMetadata) String() string {
 	return fmt.Sprintf("parameter %v", m.ParameterFields)
 }
 
-func (m *ParameterMetadata) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	m.ParameterFields = make([]*ParameterField, ph.numArg())
+func (m *ParameterMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	m.ParameterFields = make([]*ParameterField, numArg)
 	names := &fieldNames{}
 	for i := 0; i < len(m.ParameterFields); i++ {
 		f := &ParameterField{names: names}
@@ -284,7 +284,7 @@ func (p *InputParameters) numArg() int {
 	return len(p.nvargs) / numColumns
 }
 
-func (p *InputParameters) decode(dec *encoding.Decoder, ph *PartHeader) error {
+func (p *InputParameters) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	// TODO Sniffer
 	// return fmt.Errorf("not implemented")
 	return nil
@@ -332,8 +332,7 @@ func (p *OutputParameters) String() string {
 	return fmt.Sprintf("fields %v values %v", p.OutputFields, p.FieldValues)
 }
 
-func (p *OutputParameters) decode(dec *encoding.Decoder, ph *PartHeader) error {
-	numArg := ph.numArg()
+func (p *OutputParameters) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	cols := len(p.OutputFields)
 	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
 

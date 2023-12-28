@@ -190,8 +190,8 @@ type conn struct {
 	hdbVersion    *Version
 	fieldTypeCtx  *p.FieldTypeCtx
 
-	pr p.Reader
-	pw p.Writer
+	pr *p.Reader
+	pw *p.Writer
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -1150,10 +1150,10 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 		return nil, err
 	}
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		if ph.PartKind == p.PkDBConnectInfo {
-			err = c.pr.Read(ctx, &ci)
+		if kind == p.PkDBConnectInfo {
+			err = read(&ci)
 		}
 		return err
 	}); err != nil {
@@ -1194,10 +1194,10 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		if ph.PartKind == p.PkAuthentication {
-			err = c.pr.Read(ctx, initReply)
+		if kind == p.PkAuthentication {
+			err = read(initReply)
 		}
 		return err
 	}); err != nil {
@@ -1232,13 +1232,13 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkAuthentication:
-			err = c.pr.Read(ctx, finalReply)
+			err = read(finalReply)
 		case p.PkConnectOptions:
-			err = c.pr.Read(ctx, &co)
+			err = read(&co)
 		}
 		return err
 	}); err != nil {
@@ -1259,20 +1259,20 @@ func (c *conn) _queryDirect(ctx context.Context, query string, commit bool) (dri
 	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkResultMetadata:
-			err = c.pr.Read(ctx, meta)
+			err = read(meta)
 			qr.fields = meta.ResultFields
 		case p.PkResultsetID:
-			err = c.pr.Read(ctx, (*p.ResultsetID)(&qr.rsID))
+			err = read((*p.ResultsetID)(&qr.rsID))
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			err = c.pr.Read(ctx, resSet)
+			err = read(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
-			qr.attributes = ph.PartAttributes
+			qr.attrs = attrs
 		}
 		return err
 	}); err != nil {
@@ -1293,10 +1293,10 @@ func (c *conn) _execDirect(ctx context.Context, query string, commit bool) (driv
 
 	rows := &p.RowsAffected{}
 	var numRow int64
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		if ph.PartKind == p.PkRowsAffected {
-			err = c.pr.Read(ctx, rows)
+		if kind == p.PkRowsAffected {
+			err = read(rows)
 			numRow = rows.Total()
 		}
 		return err
@@ -1320,16 +1320,16 @@ func (c *conn) _prepare(ctx context.Context, query string) (*prepareResult, erro
 	resMeta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
 	prmMeta := &p.ParameterMetadata{FieldTypeCtx: c.fieldTypeCtx}
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkStatementID:
-			err = c.pr.Read(ctx, (*p.StatementID)(&pr.stmtID))
+			err = read((*p.StatementID)(&pr.stmtID))
 		case p.PkResultMetadata:
-			err = c.pr.Read(ctx, resMeta)
+			err = read(resMeta)
 			pr.resultFields = resMeta.ResultFields
 		case p.PkParameterMetadata:
-			err = c.pr.Read(ctx, prmMeta)
+			err = read(prmMeta)
 			pr.parameterFields = prmMeta.ParameterFields
 		}
 		return err
@@ -1399,14 +1399,14 @@ func (c *conn) _execBatch(ctx context.Context, pr *prepareResult, nvargs []drive
 	lobReply := &p.WriteLobReply{}
 	var rowsAffected int64
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkRowsAffected:
-			err = c.pr.Read(ctx, rows)
+			err = read(rows)
 			rowsAffected = rows.Total()
 		case p.PkWriteLobReply:
-			err = c.pr.Read(ctx, lobReply)
+			err = read(lobReply)
 			ids = lobReply.IDs
 		}
 		return err
@@ -1520,15 +1520,15 @@ func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) 
 	var numRow int64
 	tableRowIdx := 0
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkRowsAffected:
-			err = c.pr.Read(ctx, rows)
+			err = read(rows)
 			numRow = rows.Total()
 		case p.PkOutputParameters:
 			outPrms.OutputFields = cr.outputFields
-			err = c.pr.Read(ctx, outPrms)
+			err = read(outPrms)
 			cr.fieldValues = outPrms.FieldValues
 			cr.decodeErrors = outPrms.DecodeErrors
 		case p.PkResultMetadata:
@@ -1543,18 +1543,18 @@ func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) 
 			cr.outputFields = append(cr.outputFields, p.NewTableRowsParameterField(tableRowIdx))
 			cr.fieldValues = append(cr.fieldValues, qr)
 			tableRowIdx++
-			err = c.pr.Read(ctx, meta)
+			err = read(meta)
 			qr.fields = meta.ResultFields
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			err = c.pr.Read(ctx, resSet)
+			err = read(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
-			qr.attributes = ph.PartAttributes
+			qr.attrs = attrs
 		case p.PkResultsetID:
-			err = c.pr.Read(ctx, (*p.ResultsetID)(&qr.rsID))
+			err = read((*p.ResultsetID)(&qr.rsID))
 		case p.PkWriteLobReply:
-			err = c.pr.Read(ctx, lobReply)
+			err = read(lobReply)
 			ids = lobReply.IDs
 		}
 		return err
@@ -1583,17 +1583,17 @@ func (c *conn) _query(ctx context.Context, pr *prepareResult, nvargs []driver.Na
 	qr := &queryResult{conn: c, fields: pr.resultFields}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		switch ph.PartKind {
+		switch kind {
 		case p.PkResultsetID:
-			err = c.pr.Read(ctx, (*p.ResultsetID)(&qr.rsID))
+			err = read((*p.ResultsetID)(&qr.rsID))
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			err = c.pr.Read(ctx, resSet)
+			err = read(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
-			qr.attributes = ph.PartAttributes
+			qr.attrs = attrs
 		}
 		return err
 	}); err != nil {
@@ -1614,13 +1614,13 @@ func (c *conn) _fetchNext(ctx context.Context, qr *queryResult) error {
 
 	resSet := &p.Resultset{ResultFields: qr.fields, FieldValues: qr.fieldValues} // reuse field values
 
-	return c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+	return c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
-		if ph.PartKind == p.PkResultset {
-			err = c.pr.Read(ctx, resSet)
+		if kind == p.PkResultset {
+			err = read(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
-			qr.attributes = ph.PartAttributes
+			qr.attrs = attrs
 		}
 		return err
 	})
@@ -1630,14 +1630,14 @@ func (c *conn) _dropStatementID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
-	return c.pr.ReadSkip(ctx)
+	return c.pr.SkipParts(ctx)
 }
 
 func (c *conn) _closeResultsetID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
-	return c.pr.ReadSkip(ctx)
+	return c.pr.SkipParts(ctx)
 }
 
 func (c *conn) _commit(ctx context.Context) error {
@@ -1646,7 +1646,7 @@ func (c *conn) _commit(ctx context.Context) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCommit, false); err != nil {
 		return err
 	}
-	if err := c.pr.ReadSkip(ctx); err != nil {
+	if err := c.pr.SkipParts(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -1658,7 +1658,7 @@ func (c *conn) _rollback(ctx context.Context) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtRollback, false); err != nil {
 		return err
 	}
-	if err := c.pr.ReadSkip(ctx); err != nil {
+	if err := c.pr.SkipParts(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -1757,10 +1757,10 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 			return err
 		}
 
-		if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+		if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 			var err error
-			if ph.PartKind == p.PkReadLobReply {
-				err = c.pr.Read(ctx, lobReply)
+			if kind == p.PkReadLobReply {
+				err = read(lobReply)
 			}
 			return err
 		}); err != nil {
@@ -1839,16 +1839,16 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 		lobReply := &p.WriteLobReply{}
 		outPrms := &p.OutputParameters{}
 
-		if err := c.pr.IterateParts(ctx, func(ph *p.PartHeader) error {
+		if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 			var err error
-			switch ph.PartKind {
+			switch kind {
 			case p.PkOutputParameters:
 				outPrms.OutputFields = cr.outputFields
-				err = c.pr.Read(ctx, outPrms)
+				err = read(outPrms)
 				cr.fieldValues = outPrms.FieldValues
 				cr.decodeErrors = outPrms.DecodeErrors
 			case p.PkWriteLobReply:
-				err = c.pr.Read(ctx, lobReply)
+				err = read(lobReply)
 				ids = lobReply.IDs
 			}
 			return err
