@@ -7,6 +7,7 @@ openTransactions {{.OpenConnections}}
 openStatements   {{.OpenConnections}}
 readBytes        {{.ReadBytes}}
 writtenBytes     {{.WrittenBytes}}
+timeUnit         {{.TimeUnit}}
 {{printf "%-12s" ""}}{{printf "%10s" "Count"}} {{printf "%12s" "Sum"}}{{template "bounds" .ReadTime.Buckets}}
 {{printf "%-12s" "readTime"}}{{template "time" .ReadTime}}
 {{printf "%-12s" "writeTime"}}{{template "time" .WriteTime}}

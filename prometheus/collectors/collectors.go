@@ -26,6 +26,8 @@ type collector struct {
 }
 
 func newCollector(fn func() *driver.Stats, subsystem string, labels prometheus.Labels) prometheus.Collector {
+	// determine time unit
+	stats := fn()
 	// fqName: namespace, subsystem, name
 	fqName := func(name string) string { return strings.Join([]string{namespace, subsystem, name}, "_") }
 	return &collector{
@@ -62,25 +64,25 @@ func newCollector(fn func() *driver.Stats, subsystem string, labels prometheus.L
 		),
 		readTime: prometheus.NewDesc(
 			fqName("read_time"),
-			fmt.Sprintf("The time spent measured in milliseconds for reading from the database connection of %s.", subsystem),
+			fmt.Sprintf("The time spent measured in %s for reading from the database connection of %s.", stats.TimeUnit, subsystem),
 			nil,
 			labels,
 		),
 		writeTime: prometheus.NewDesc(
 			fqName("write_time"),
-			fmt.Sprintf("The time spent measured in milliseconds for writing to the database connection of %s.", subsystem),
+			fmt.Sprintf("The time spent measured in %s for writing to the database connection of %s.", stats.TimeUnit, subsystem),
 			nil,
 			labels,
 		),
 		authTime: prometheus.NewDesc(
 			fqName("auth_time"),
-			fmt.Sprintf("The time spent measured in milliseconds for client authentication of %s.", subsystem),
+			fmt.Sprintf("The time spent measured in %s for client authentication of %s.", stats.TimeUnit, subsystem),
 			nil,
 			labels,
 		),
 		sqlTimes: prometheus.NewDesc(
 			fqName("sql_time"),
-			fmt.Sprintf("The spent time measured in milliseconds for the different sql statements of %s.", subsystem),
+			fmt.Sprintf("The spent time measured in %s for the different sql statements of %s.", stats.TimeUnit, subsystem),
 			[]string{"sql"},
 			labels,
 		),

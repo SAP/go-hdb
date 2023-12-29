@@ -65,7 +65,7 @@ func (h *histogram) stats() *StatsHistogram {
 	return rv
 }
 
-func (h *histogram) add(v float64) { // time in nanoseconds
+func (h *histogram) add(v float64) {
 	h.count++
 	if v < 0 {
 		h.underflowCount++
@@ -100,7 +100,9 @@ type sqlTimeMsg struct {
 }
 
 type metrics struct {
-	parent *metrics
+	parent   *metrics
+	timeUnit string
+	divider  float64
 
 	counters []uint64
 	gauges   []int64
@@ -117,9 +119,15 @@ const (
 	numCh = 100000
 )
 
-func newMetrics(parent *metrics, timeUpperBounds []float64) *metrics {
+func newMetrics(parent *metrics, timeUnit string, timeUpperBounds []float64) *metrics {
+	d, ok := timeUnitMap[timeUnit]
+	if !ok {
+		panic("invalid unit " + timeUnit)
+	}
 	rv := &metrics{
 		parent:   parent,
+		timeUnit: timeUnit,
+		divider:  float64(d),
 		counters: make([]uint64, numCounter),
 		gauges:   make([]int64, numGauge),
 		times:    make([]*histogram, numTime),
@@ -135,11 +143,7 @@ func newMetrics(parent *metrics, timeUpperBounds []float64) *metrics {
 		rv.sqlTimes[i] = newHistogram(timeUpperBounds)
 	}
 	rv.wg.Add(1)
-	if parent == nil {
-		go rv.collect(rv.wg, rv.chMsg, rv.handleMsg)
-	} else {
-		go rv.collect(rv.wg, rv.chMsg, rv.handleParentMsg)
-	}
+	go rv.collect(rv.wg, rv.chMsg)
 	return rv
 }
 
@@ -154,6 +158,7 @@ func (m *metrics) buildStats() *Stats {
 		OpenStatements:   int(m.gauges[gaugeStmt]),
 		ReadBytes:        m.counters[counterBytesRead],
 		WrittenBytes:     m.counters[counterBytesWritten],
+		TimeUnit:         m.timeUnit,
 		ReadTime:         m.times[timeRead].stats(),
 		WriteTime:        m.times[timeWrite].stats(),
 		AuthTime:         m.times[timeAuth].stats(),
@@ -161,51 +166,39 @@ func (m *metrics) buildStats() *Stats {
 	}
 }
 
-func milliseconds(d time.Duration) float64 { return float64(d.Nanoseconds()) / 1e6 }
-
-func (m *metrics) handleMsg(msg any) {
+// handleMsg returns true in case msg content would change stats, false otherwise.
+func (m *metrics) handleMsg(msg any) bool {
 	switch msg := msg.(type) {
 	case counterMsg:
 		m.counters[msg.idx] += msg.v
 	case gaugeMsg:
 		m.gauges[msg.idx] += msg.v
 	case timeMsg:
-		m.times[msg.idx].add(milliseconds(msg.d))
+		m.times[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
 	case sqlTimeMsg:
-		m.sqlTimes[msg.idx].add(milliseconds(msg.d))
+		m.sqlTimes[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
 	case chan *Stats:
 		msg <- m.buildStats()
+		return false
 	default:
 		panic(fmt.Sprintf("invalid metric message type %T", msg))
 	}
+	return true
 }
 
-func (m *metrics) handleParentMsg(msg any) {
-	switch msg := msg.(type) {
-	case counterMsg:
-		m.parent.chMsg <- msg
-		m.counters[msg.idx] += msg.v
-	case gaugeMsg:
-		m.parent.chMsg <- msg
-		m.gauges[msg.idx] += msg.v
-	case timeMsg:
-		m.parent.chMsg <- msg
-		m.times[msg.idx].add(milliseconds(msg.d))
-	case sqlTimeMsg:
-		m.parent.chMsg <- msg
-		m.sqlTimes[msg.idx].add(milliseconds(msg.d))
-	case chan *Stats:
-		msg <- m.buildStats()
-	default:
-		panic(fmt.Sprintf("invalid metric message type %T", msg))
+func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan any) {
+	defer wg.Done()
+	if m.parent == nil {
+		for msg := range chMsg {
+			m.handleMsg(msg)
+		}
+		return
 	}
-}
-
-func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan any, msgHandler func(msg any)) {
 	for msg := range chMsg {
-		msgHandler(msg)
+		if m.handleMsg(msg) {
+			m.parent.chMsg <- msg
+		}
 	}
-	wg.Done()
 }
 
 func (m *metrics) stats() *Stats {

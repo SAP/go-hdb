@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.6.8"
+const DriverVersion = "1.6.9"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -37,7 +37,7 @@ func init() {
 		panic(err) // invalid configuration file
 	}
 	// create driver
-	stdHdbDriver = &hdbDriver{metrics: newMetrics(nil, statsCfg.TimeUpperBounds)}
+	stdHdbDriver = &hdbDriver{metrics: newMetrics(nil, statsCfg.TimeUnit, statsCfg.TimeUpperBounds)}
 	// register driver
 	sql.Register(DriverName, stdHdbDriver)
 }
@@ -96,7 +96,7 @@ type DB struct {
 
 // OpenDB opens and returns a database. It also calls the OpenDB method of the sql package and stores an embedded *sql.DB object.
 func OpenDB(c *Connector) *DB {
-	metrics := newMetrics(stdHdbDriver.metrics, statsCfg.TimeUpperBounds)
+	metrics := newMetrics(stdHdbDriver.metrics, statsCfg.TimeUnit, statsCfg.TimeUpperBounds)
 	nc := c.clone()
 	nc.metrics = metrics
 	return &DB{

@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.6.0
 
+#### v1.6.9
+- CESU8 decoding performance improvement
+- added time unit to stats
+
 #### v1.6.8
 - updated dependencies
 - source code cleanups

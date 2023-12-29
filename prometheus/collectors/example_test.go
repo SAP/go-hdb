@@ -43,7 +43,12 @@ func Example() {
 	addr := os.Getenv(envHTTP)
 
 	// exit if dsn or http address is missing.
-	if dsn == "" || addr == "" {
+	if dsn == "" {
+		log.Printf("to start the go-hdb prometheus metrics example please set environment variable %s", envDSN)
+		return
+	}
+	if addr == "" {
+		log.Printf("to start the go-hdb prometheus metrics example please set environment variable %s", envHTTP)
 		return
 	}
 
