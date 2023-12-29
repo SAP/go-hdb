@@ -3,8 +3,12 @@ package auth
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
 	"time"
 
@@ -110,12 +114,46 @@ func (a *X509) FinalRepDecode(d *Decoder) error {
 	return err
 }
 
+func getDataToSign(pubkey crypto.PublicKey, message *bytes.Buffer) ([]byte, crypto.Hash, error) {
+	_, isRsaKey := pubkey.(*rsa.PublicKey)
+	if isRsaKey {
+		hashed := sha256.Sum256(message.Bytes())
+		return hashed[:], crypto.SHA256, nil
+	}
+
+	ecPubKey, isEcKey := pubkey.(*ecdsa.PublicKey)
+	if isEcKey {
+		if ecPubKey.Params().BitSize <= 256 {
+			hashed := sha256.Sum256(message.Bytes())
+			return hashed[:], crypto.SHA256, nil
+		} else if ecPubKey.Params().BitSize <= 384 {
+			hashed := sha512.Sum384(message.Bytes())
+			return hashed[:], crypto.SHA384, nil
+		} else {
+			hashed := sha512.Sum512(message.Bytes())
+			return hashed[:], crypto.SHA512, nil
+		}
+	}
+
+	_, isEd25519Key := pubkey.(ed25519.PublicKey)
+	if isEd25519Key {
+		// hashing is done by the signer
+		return message.Bytes(), 0, nil
+	}
+
+	return nil, 0, fmt.Errorf("unsupported key type for signing")
+}
+
 func sign(certKey *x509.CertKey, message *bytes.Buffer) ([]byte, error) {
 	signer, err := certKey.Signer()
 	if err != nil {
 		return nil, err
 	}
 
-	hashed := sha256.Sum256(message.Bytes())
-	return signer.Sign(rand.Reader, hashed[:], crypto.SHA256)
+	data, hash, err := getDataToSign(signer.Public(), message)
+	if err != nil {
+		return nil, err
+	}
+
+	return signer.Sign(rand.Reader, data, hash)
 }

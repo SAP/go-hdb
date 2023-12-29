@@ -113,3 +113,12 @@ func queryInvalidConnectAttempts(db *sql.DB, username string) int64 {
 	db.QueryRow(fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts) //nolint:errcheck
 	return invalidConnectAttempts
 }
+
+// queryCurrentUser returns the current user of this connection.
+func queryCurrentUser(db *sql.DB) (string, error) {
+	currentUser := ""
+	if err := db.QueryRow("select current_user from dummy").Scan(&currentUser); err != nil {
+		return "", err
+	}
+	return currentUser, nil
+}
