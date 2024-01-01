@@ -1,3 +1,5 @@
+//go:build !unit
+
 package driver_test
 
 import (

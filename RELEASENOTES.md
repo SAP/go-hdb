@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.6.0
 
+### v1.6.11
+- fixed github actions
+
 ### v1.6.10
 - source code cleanups
 - performance improvements
