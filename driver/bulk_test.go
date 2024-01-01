@@ -245,7 +245,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 		bigChunkSizeRecNo = 77 // record exceeding lob chunk size
 	)
 
-	chunkSize := DefaultTestConnector().LobChunkSize()
+	chunkSize := MT.Connector().LobChunkSize()
 
 	testData := [numRecsPerCall]string{}
 
@@ -397,7 +397,7 @@ func TestBulk(t *testing.T) {
 	}
 
 	const bulkSize = 1000 // limit bulk size for test performance reasons
-	ctr := NewTestConnector()
+	ctr := MT.NewConnector()
 	ctr.setBulkSize(bulkSize) // limit bulk size for test performance reasons
 	db := sql.OpenDB(ctr)
 	t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed

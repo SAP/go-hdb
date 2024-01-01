@@ -100,7 +100,7 @@ func newDSNConnector(dsn *DSN) (*Connector, error) {
 
 // NewDSNConnector creates a connector from a data source name.
 func NewDSNConnector(dsnStr string) (*Connector, error) {
-	dsn, err := parseDSN(dsnStr)
+	dsn, err := ParseDSN(dsnStr)
 	if err != nil {
 		return nil, err
 	}

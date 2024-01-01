@@ -22,7 +22,7 @@ type authAttrs struct {
 	_refreshPassword     func() (password string, ok bool)
 	_refreshClientCert   func() (clientCert, clientKey []byte, ok bool)
 	_refreshToken        func() (token string, ok bool)
-	cbmu                 sync.RWMutex // prevents refresh callbacks from being called in parallel
+	cbmu                 sync.Mutex // prevents refresh callbacks from being called in parallel
 }
 
 func isJWTToken(token string) bool { return strings.HasPrefix(token, "ey") }

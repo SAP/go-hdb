@@ -4,7 +4,6 @@ package driver
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +18,8 @@ import (
 	"unicode/utf8"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/rand"
+	"github.com/SAP/go-hdb/driver/internal/types"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
@@ -31,12 +32,12 @@ func dttCreateTable(db *sql.DB, column string) (Identifier, error) {
 }
 
 type dttNeg struct { // negative test
-	_columnType columnType
-	checkFn     func(ct columnType, in, out any) (bool, error)
+	_columnType types.Column
+	checkFn     func(ct types.Column, in, out any) (bool, error)
 	testData    []any
 }
 
-func (dtt *dttNeg) columnType() columnType { return dtt._columnType }
+func (dtt *dttNeg) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
 	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?, ?)", tableName))
@@ -48,15 +49,15 @@ func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
 	i := 0
 	for _, in := range dtt.testData {
 		if _, err := stmt.Exec(in, i); err == nil { // error expected
-			t.Fatalf("type: %s - %d - error expected", dtt._columnType.typeName(), i)
+			t.Fatalf("type: %s - %d - error expected", dtt._columnType.TypeName(), i)
 		} else {
-			t.Logf("type: %s - %d - %s - %T", dtt._columnType.typeName(), i, err, err)
+			t.Logf("type: %s - %d - %s - %T", dtt._columnType.TypeName(), i, err, err)
 		}
 	}
 }
 
-func (dtt *dttNeg) run(t *testing.T, db *sql.DB) {
-	tableName, err := dttCreateTable(db, dtt._columnType.column())
+func (dtt *dttNeg) run(t *testing.T, db *sql.DB, dfv int) {
+	tableName, err := dttCreateTable(db, dtt._columnType.DataType())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,12 +65,12 @@ func (dtt *dttNeg) run(t *testing.T, db *sql.DB) {
 }
 
 type dttDef struct {
-	_columnType columnType
-	checkFn     func(ct columnType, in, out any) (bool, error)
+	_columnType types.Column
+	checkFn     func(ct types.Column, dfv int, in, out any) (bool, error)
 	testData    []any
 }
 
-func (dtt *dttDef) columnType() columnType { return dtt._columnType }
+func (dtt *dttDef) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
 	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?, ?)", tableName))
@@ -81,14 +82,14 @@ func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
 	i := 0
 	for _, in := range dtt.testData {
 		if _, err := stmt.Exec(in, i); err != nil {
-			t.Fatalf("type: %s - %d - %v - %s", dtt._columnType.typeName(), i, in, err)
+			t.Fatalf("type: %s - %d - %v - %s", dtt._columnType.TypeName(), i, in, err)
 		}
 		i++
 	}
 	return i
 }
 
-func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, numRecs int) {
+func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int, numRecs int) {
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +110,7 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, numRecs
 		}
 		outVal := reflect.ValueOf(outRef).Elem().Interface()
 
-		ok, err := dtt.checkFn(dtt._columnType, in, outVal)
+		ok, err := dtt.checkFn(dtt._columnType, dtv, in, outVal)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -126,13 +127,13 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, numRecs
 	}
 }
 
-func (dtt *dttDef) run(t *testing.T, db *sql.DB) {
-	tableName, err := dttCreateTable(db, dtt._columnType.column())
+func (dtt *dttDef) run(t *testing.T, db *sql.DB, dfv int) {
+	tableName, err := dttCreateTable(db, dtt._columnType.DataType())
 	if err != nil {
 		t.Fatal(err)
 	}
 	numRecs := dtt.insert(t, db, tableName)
-	dtt.check(t, db, tableName, numRecs)
+	dtt.check(t, db, tableName, dfv, numRecs)
 }
 
 type dttTX struct {
@@ -166,21 +167,21 @@ func (dtt *dttTX) insert(t *testing.T, db *sql.DB, tableName Identifier) int { /
 	return i
 }
 
-func (dtt *dttTX) run(t *testing.T, db *sql.DB) { // override run, so that dttTX insert is called
-	tableName, err := dttCreateTable(db, dtt._columnType.column())
+func (dtt *dttTX) run(t *testing.T, db *sql.DB, dfv int) { // override run, so that dttTX insert is called
+	tableName, err := dttCreateTable(db, dtt._columnType.DataType())
 	if err != nil {
 		t.Fatal(err)
 	}
 	numRec := dtt.insert(t, db, tableName)
-	dtt.check(t, db, tableName, numRec)
+	dtt.check(t, db, tableName, dfv, numRec)
 }
 
 type dttSpatial struct {
-	_columnType columnType
+	_columnType types.Column
 	testData    []spatial.Geometry
 }
 
-func (dtt *dttSpatial) columnType() columnType { return dtt._columnType }
+func (dtt *dttSpatial) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn func(func(value any))) int {
 	// use trancactions:
@@ -232,13 +233,13 @@ func (dtt *dttSpatial) withRows(t *testing.T, db *sql.DB, tableName Identifier, 
 	}
 }
 
-func (dtt *dttSpatial) run(t *testing.T, db *sql.DB) {
-	tableName, err := dttCreateTable(db, dtt._columnType.column())
+func (dtt *dttSpatial) run(t *testing.T, db *sql.DB, dfv int) {
+	tableName, err := dttCreateTable(db, dtt._columnType.DataType())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	srid := dtt._columnType.(spatialColumnType).srid()
+	srid := dtt._columnType.(types.Spatial).SRID()
 
 	numRec := dtt.withTx(t, db, tableName, func(exec func(value any)) {
 		for _, g := range dtt.testData {
@@ -528,7 +529,7 @@ var asciiData = func() []byte {
 
 var randAlphanumData = func() []byte {
 	b := make([]byte, 1e6) // random Lob size 1MB
-	if _, err := randAlphanumReader.Read(b); err != nil {
+	if _, err := rand.AlphanumReader.Read(b); err != nil {
 		panic(err) // should never happen
 	}
 	return b
@@ -601,7 +602,7 @@ var stGeometryTestData = []spatial.Geometry{
 	spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}},
 }
 
-func checkInt(ct columnType, in, out any) (bool, error) {
+func checkInt(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullInt64); ok {
 		in := in.(sql.NullInt64)
 		return in.Valid == out.Valid && (!in.Valid || in.Int64 == out.Int64), nil
@@ -609,7 +610,7 @@ func checkInt(ct columnType, in, out any) (bool, error) {
 	return in == out, nil
 }
 
-func checkFloat(ct columnType, in, out any) (bool, error) {
+func checkFloat(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullFloat64); ok {
 		in := in.(sql.NullFloat64)
 		return in.Valid == out.Valid && (!in.Valid || in.Float64 == out.Float64), nil
@@ -617,7 +618,7 @@ func checkFloat(ct columnType, in, out any) (bool, error) {
 	return in == out, nil
 }
 
-func checkDecimal(ct columnType, in, out any) (bool, error) {
+func checkDecimal(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(NullDecimal); ok {
 		in := in.(NullDecimal)
 		return in.Valid == out.Valid && (!in.Valid || ((*big.Rat)(in.Decimal)).Cmp((*big.Rat)(out.Decimal)) == 0), nil
@@ -625,7 +626,7 @@ func checkDecimal(ct columnType, in, out any) (bool, error) {
 	return ((*big.Rat)(in.(*Decimal))).Cmp((*big.Rat)(out.(*Decimal))) == 0, nil
 }
 
-func checkBoolean(ct columnType, in, out any) (bool, error) {
+func checkBoolean(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullBool); ok {
 		in := in.(sql.NullBool)
 		return in.Valid == out.Valid && (!in.Valid || in.Bool == out.Bool), nil
@@ -658,7 +659,7 @@ func equalLongdate(t1, t2 time.Time) bool {
 	return equalDate(t1, t2) && equalTime(t1, t2) && (t1.Nanosecond()/100) == (t2.Nanosecond()/100)
 }
 
-func checkDate(ct columnType, in, out any) (bool, error) {
+func checkDate(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalDate(in.Time.UTC(), out.Time)), nil
@@ -666,7 +667,7 @@ func checkDate(ct columnType, in, out any) (bool, error) {
 	return equalDate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTime(ct columnType, in, out any) (bool, error) {
+func checkTime(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalTime(in.Time.UTC(), out.Time)), nil
@@ -674,7 +675,7 @@ func checkTime(ct columnType, in, out any) (bool, error) {
 	return equalTime(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkDateTime(ct columnType, in, out any) (bool, error) {
+func checkDateTime(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullTime); ok {
 		in := in.(sql.NullTime)
 		return in.Valid == out.Valid && (!in.Valid || equalDateTime(in.Time.UTC(), out.Time)), nil
@@ -698,8 +699,8 @@ func _checkLongdate(in, out any) (bool, error) {
 	return equalLongdate(in.(time.Time).UTC(), out.(time.Time)), nil
 }
 
-func checkTimestamp(ct columnType, in, out any) (bool, error) {
-	if ct.dfv() == 1 {
+func checkTimestamp(ct types.Column, dfv int, in, out any) (bool, error) {
+	if dfv == 1 {
 		return _checkTimestamp(in, out)
 	}
 	return _checkLongdate(in, out)
@@ -717,7 +718,7 @@ func compareStringFixSize(in, out string) bool {
 	return true
 }
 
-func checkFixString(ct columnType, in, out any) (bool, error) {
+func checkFixString(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || compareStringFixSize(in.String, out.String)), nil
@@ -725,7 +726,7 @@ func checkFixString(ct columnType, in, out any) (bool, error) {
 	return compareStringFixSize(in.(string), out.(string)), nil
 }
 
-func checkString(ct columnType, in, out any) (bool, error) {
+func checkString(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(sql.NullString); ok {
 		in := in.(sql.NullString)
 		return in.Valid == out.Valid && (!in.Valid || in.String == out.String), nil
@@ -745,7 +746,7 @@ func compareBytesFixSize(in, out []byte) bool {
 	return true
 }
 
-func checkFixBytes(ct columnType, in, out any) (bool, error) {
+func checkFixBytes(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
 		return in.Valid == out.Valid && (!in.Valid || compareBytesFixSize(in.Bytes, out.Bytes)), nil
@@ -753,7 +754,7 @@ func checkFixBytes(ct columnType, in, out any) (bool, error) {
 	return compareBytesFixSize(in.([]byte), out.([]byte)), nil
 }
 
-func checkBytes(ct columnType, in, out any) (bool, error) {
+func checkBytes(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(NullBytes); ok {
 		in := in.(NullBytes)
 		return in.Valid == out.Valid && (!in.Valid || bytes.Equal(in.Bytes, out.Bytes)), nil
@@ -796,9 +797,9 @@ func _checkAlphanum(in, out any) (bool, error) {
 	return formatAlphanum(in.(string)) == out.(string), nil
 }
 
-func checkAlphanum(ct columnType, in, out any) (bool, error) {
-	if ct.dfv() == 1 {
-		length, ok := ct.length()
+func checkAlphanum(ct types.Column, dfv int, in, out any) (bool, error) {
+	if dfv == 1 {
+		length, ok := ct.Length()
 		if !ok {
 			return false, fmt.Errorf("cannot detect fieldlength of %v", ct)
 		}
@@ -819,7 +820,7 @@ func compareLob(in, out Lob) (bool, error) {
 	return bytes.Equal(content, out.wr.(*bytes.Buffer).Bytes()), nil
 }
 
-func checkLob(ct columnType, in, out any) (bool, error) {
+func checkLob(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
 		if in.Valid != out.Valid {
@@ -837,7 +838,7 @@ func checkLob(ct columnType, in, out any) (bool, error) {
 for text and bintext do not check content as we have seen examples for bintext
 where the content was slightly modified by hdb (e.g. elimination of spaces).
 */
-func checkText(ct columnType, in, out any) (bool, error) {
+func checkText(ct types.Column, dfv int, in, out any) (bool, error) {
 	if out, ok := out.(NullLob); ok {
 		in := in.(NullLob)
 		return in.Valid == out.Valid, nil
@@ -859,68 +860,73 @@ func equalJSON(b1, b2 []byte) (bool, error) {
 
 func TestDataType(t *testing.T) {
 	type tester interface {
-		columnType() columnType
-		run(t *testing.T, db *sql.DB)
+		columnType() types.Column
+		run(t *testing.T, db *sql.DB, dfv int)
 	}
 
-	getTests := func(version *Version, dfv int) []tester {
-		return []tester{
-			&dttDef{&basicColumn{version, dfv, basicType[dtTinyint], true}, checkInt, tinyintTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtSmallint], true}, checkInt, smallintTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtInteger], true}, checkInt, integerTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtBigint], true}, checkInt, bigintTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtReal], true}, checkFloat, realTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtDouble], true}, checkFloat, doubleTestData},
+	tests := []tester{
+		&dttDef{types.NullTinyint, checkInt, tinyintTestData},
+		&dttDef{types.NullSmallint, checkInt, smallintTestData},
+		&dttDef{types.NullInteger, checkInt, integerTestData},
+		&dttDef{types.NullBigint, checkInt, bigintTestData},
+		&dttDef{types.NullReal, checkFloat, realTestData},
+		&dttDef{types.NullDouble, checkFloat, doubleTestData},
 
-			&dttDef{&basicColumn{version, dfv, basicType[dtDate], true}, checkDate, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtTime], true}, checkTime, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtSeconddate], true}, checkDateTime, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtDaydate], true}, checkDate, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtSecondtime], true}, checkTime, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtTimestamp], true}, checkTimestamp, timeTestData},
-			&dttDef{&basicColumn{version, dfv, basicType[dtLongdate], true}, checkTimestamp, timeTestData},
+		&dttDef{types.NullDate, checkDate, timeTestData},
+		&dttDef{types.NullTime, checkTime, timeTestData},
+		&dttDef{types.NullSeconddate, checkDateTime, timeTestData},
+		&dttDef{types.NullDaydate, checkDate, timeTestData},
+		&dttDef{types.NullSecondtime, checkTime, timeTestData},
+		&dttDef{types.NullTimestamp, checkTimestamp, timeTestData},
+		&dttDef{types.NullLongdate, checkTimestamp, timeTestData},
 
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtClob], true}, checkLob, lobASCIITestData()}}, // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtNClob], true}, checkLob, lobTestData()}},     // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBlob], true}, checkLob, lobTestData()}},      // tests executed in parallel -> do not reuse lobs
+		&dttDef{types.NullBoolean, checkBoolean, booleanTestData},
 
-			&dttDef{&basicColumn{version, dfv, basicType[dtBoolean], true}, checkBoolean, booleanTestData},
+		/*
+		 using unicode (CESU-8) data for char HDB
+		 - successful insert into table
+		 - but query table returns
+		   SQL HdbError 7 - feature not supported: invalid character encoding: ...
+		 --> use ASCII test data only
+		 surprisingly: varchar works with unicode characters
+		*/
+		&dttDef{types.NewNullChar(40), checkFixString, asciiStringTestData},
+		&dttDef{types.NewNullVarchar(40), checkString, stringTestData},
+		&dttDef{types.NewNullNChar(20), checkFixString, stringTestData},
+		&dttDef{types.NewNullNVarchar(20), checkString, stringTestData},
+		&dttDef{types.NewNullAlphanum(20), checkAlphanum, alphanumTestData},
+		&dttDef{types.NewNullBinary(20), checkFixBytes, binaryTestData},
+		&dttDef{types.NewNullVarbinary(20), checkBytes, binaryTestData},
 
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtText], true}, checkText, lobTestData()}},         // tests executed in parallel -> do not reuse lobs
-			&dttTX{dttDef{&basicColumn{version, dfv, basicType[dtBintext], true}, checkText, lobASCIITestData()}}, // tests executed in parallel -> do not reuse lobs
-			/*
-			 using unicode (CESU-8) data for char HDB
-			 - successful insert into table
-			 - but query table returns
-			   SQL HdbError 7 - feature not supported: invalid character encoding: ...
-			 --> use ASCII test data only
-			 surprisingly: varchar works with unicode characters
-			*/
-			&dttDef{&varColumn{version, dfv, varType[dtChar], true, 40}, checkFixString, asciiStringTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtVarchar], true, 40}, checkString, stringTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtNChar], true, 20}, checkFixString, stringTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtNVarchar], true, 20}, checkString, stringTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtAlphanum], true, 20}, checkAlphanum, alphanumTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtBinary], true, 20}, checkFixBytes, binaryTestData},
-			&dttDef{&varColumn{version, dfv, varType[dtVarbinary], true, 20}, checkBytes, binaryTestData},
+		// negative test
+		&dttNeg{types.NewNullNChar(20), nil, invalidUnicodeTestData},
+		&dttNeg{types.NewNullNVarchar(20), nil, invalidUnicodeTestData},
 
-			// negative test
-			&dttNeg{&varColumn{version, dfv, varType[dtNChar], true, 20}, nil, invalidUnicodeTestData},
-			&dttNeg{&varColumn{version, dfv, varType[dtNVarchar], true, 20}, nil, invalidUnicodeTestData},
+		&dttDef{types.NewNullDecimal(0, 0), checkDecimal, decimalTestData}, // floating point decimal number
 
-			&dttDef{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 0, 0}, checkDecimal, decimalTestData}, // floating point decimal number
+		&dttDef{types.NewNullDecimal(18, 2), checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
+		&dttDef{types.NewNullDecimal(28, 2), checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
+		&dttDef{types.NewNullDecimal(38, 2), checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
 
-			&dttDef{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 18, 2}, checkDecimal, decimalTestData},        // precision, scale decimal number -fixed8
-			&dttDef{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 28, 2}, checkDecimal, decimalFixed12TestData}, // precision, scale decimal number -fixed12
-			&dttDef{&decimalColumn{version, dfv, decimalType[dtDecimal], true, 38, 2}, checkDecimal, decimalFixed16TestData}, // precision, scale decimal number -fixed16
+		&dttSpatial{types.NewNullSTPoint(0), stPointTestData},
+		&dttSpatial{types.NewNullSTPoint(3857), stPointTestData},
 
-			&dttSpatial{&spatialColumn{version, dfv, spatialType[dtSTPoint], true, 0}, stPointTestData},
-			&dttSpatial{&spatialColumn{version, dfv, spatialType[dtSTPoint], true, 3857}, stPointTestData},
-
-			&dttSpatial{&spatialColumn{version, dfv, spatialType[dtSTGeometry], true, 0}, stGeometryTestData},
-			&dttSpatial{&spatialColumn{version, dfv, spatialType[dtSTGeometry], true, 3857}, stGeometryTestData},
-		}
+		&dttSpatial{types.NewNullSTGeometry(0), stGeometryTestData},
+		&dttSpatial{types.NewNullSTGeometry(3857), stGeometryTestData},
 	}
+
+	getTests := func() []tester {
+		// tests executed in parallel -> do not reuse lobs
+		return append(tests,
+			&dttTX{dttDef{types.NullClob, checkLob, lobASCIITestData()}},
+			&dttTX{dttDef{types.NullNClob, checkLob, lobTestData()}},
+			&dttTX{dttDef{types.NullBlob, checkLob, lobTestData()}},
+			&dttTX{dttDef{types.NullText, checkText, lobTestData()}},
+			&dttTX{dttDef{types.NullBintext, checkText, lobASCIITestData()}},
+		)
+	}
+
+	version := int(MT.Version().Major())
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		func(dfv int) { // new dfv to run in parallel
@@ -928,34 +934,20 @@ func TestDataType(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel() // run in parallel to speed up
 
-				connector := NewTestConnector()
+				connector := MT.NewConnector()
 				connector.SetDfv(dfv)
 				db := sql.OpenDB(connector)
 				t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed
 
-				var version *Version
-				// Grab connection to detect hdb version.
-				conn, err := db.Conn(context.Background())
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer conn.Close()
-				if err := conn.Raw(func(driverConn any) error {
-					version = driverConn.(Conn).HDBVersion()
-					return nil
-				}); err != nil {
-					t.Fatal(err)
-				}
-
-				for i, test := range getTests(version, dfv) {
-					func(i int, test tester, db *sql.DB) { // save i, test to run in parallel
-						if test.columnType().isSupported() {
-							t.Run(fmt.Sprintf("%s %d", test.columnType().column(), i), func(t *testing.T) {
+				for i, test := range getTests() {
+					func(i int, test tester, db *sql.DB, dfv int) { // new vars, test to run in parallel
+						if test.columnType().IsSupported(version, dfv) {
+							t.Run(fmt.Sprintf("%s %d", test.columnType().DataType(), i), func(t *testing.T) {
 								t.Parallel() // run in parallel to speed up
-								test.run(t, db)
+								test.run(t, db, dfv)
 							})
 						}
-					}(i, test, db)
+					}(i, test, db, dfv)
 				}
 			})
 		}(dfv)

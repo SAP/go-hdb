@@ -99,8 +99,8 @@ func parseError(k, v string) error {
 	return &ParseError{s: fmt.Sprintf("failed to parse %s: %s", k, v)}
 }
 
-// parseDSN parses a DSN string into a DSN structure.
-func parseDSN(s string) (*DSN, error) {
+// ParseDSN parses a DSN string into a DSN structure.
+func ParseDSN(s string) (*DSN, error) {
 	if s == "" {
 		return nil, &ParseError{s: "invalid parameter - DSN is empty"}
 	}

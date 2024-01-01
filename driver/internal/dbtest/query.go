@@ -1,4 +1,4 @@
-package driver
+package dbtest
 
 import (
 	"database/sql"
@@ -39,8 +39,8 @@ func sessionContext(db *sql.DB) ([]mSessionContext, error) {
 	return mscs, nil
 }
 
-// querySessionVariables returns a map of current session variables.
-func querySessionVariables(db *sql.DB) (map[string]string, error) {
+// QuerySessionVariables returns a map of current session variables.
+func QuerySessionVariables(db *sql.DB) (map[string]string, error) {
 	mscs, err := sessionContext(db)
 	if err != nil {
 		return nil, err
@@ -52,14 +52,14 @@ func querySessionVariables(db *sql.DB) (map[string]string, error) {
 	return sv, nil
 }
 
-// execCreateSchema creates a schema on the database.
-func execCreateSchema(db *sql.DB, schema string) error {
+// createSchema creates a schema on the database.
+func createSchema(db *sql.DB, schema string) error {
 	_, err := db.Exec(fmt.Sprintf("create schema %s", strconv.Quote(schema)))
 	return err
 }
 
-// execDropSchema drops a schema from the database.
-func execDropSchema(db *sql.DB, schema string) error {
+// dropSchema drops a schema from the database.
+func dropSchema(db *sql.DB, schema string) error {
 	_, err := db.Exec(fmt.Sprintf("drop schema %s cascade", strconv.Quote(schema)))
 	return err
 }
@@ -105,8 +105,8 @@ func querySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	return names, nil
 }
 
-// queryInvalidConnectAttempts returns the number of invalid connection attempts.
-func queryInvalidConnectAttempts(db *sql.DB, username string) int64 {
+// QueryInvalidConnectAttempts returns the number of invalid connection attempts.
+func QueryInvalidConnectAttempts(db *sql.DB, username string) int64 {
 	invalidConnectAttempts := int64(0)
 
 	// ignore error (entry not found)

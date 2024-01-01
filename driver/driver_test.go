@@ -261,7 +261,7 @@ func TestDriver(t *testing.T) {
 		{"queryComments", testComments},
 	}
 
-	db := driver.DefaultTestDB()
+	db := driver.MT.DB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(t, db)

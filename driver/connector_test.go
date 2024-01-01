@@ -5,6 +5,8 @@ package driver
 import (
 	"database/sql"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver/internal/dbtest"
 )
 
 func testExistSessionVariables(t *testing.T, sv1, sv2 map[string]string) {
@@ -29,7 +31,7 @@ func testNotExistSessionVariables(t *testing.T, keys []string, sv2 map[string]st
 }
 
 func testSessionVariables(t *testing.T) {
-	connector := NewTestConnector()
+	connector := MT.NewConnector()
 
 	// set session variables
 	sv1 := SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
@@ -40,7 +42,7 @@ func testSessionVariables(t *testing.T) {
 	defer db.Close()
 
 	// retrieve session variables
-	sv2, err := querySessionVariables(db)
+	sv2, err := dbtest.QuerySessionVariables(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,14 +53,14 @@ func testSessionVariables(t *testing.T) {
 }
 
 func printInvalidConnectAttempts(t *testing.T, username string) {
-	db := DefaultTestDB()
-	t.Logf("number of invalid connect attempts: %d", queryInvalidConnectAttempts(db, username))
+	db := MT.DB()
+	t.Logf("number of invalid connect attempts: %d", dbtest.QueryInvalidConnectAttempts(db, username))
 }
 
 func testRetryConnect(t *testing.T) {
 	const invalidPassword = "invalid_password"
 
-	connector := NewTestConnector()
+	connector := MT.NewConnector()
 
 	password := connector.Password() // safe password
 	refreshPassword := func() (string, bool) {

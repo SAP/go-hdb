@@ -392,6 +392,10 @@ func (c *conn) versionString() (version string) {
 
 // ResetSession implements the driver.SessionResetter interface.
 func (c *conn) ResetSession(ctx context.Context) error {
+	if c.isBad() {
+		return driver.ErrBadConn
+	}
+
 	c.lastError = nil
 
 	if c.connAttrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.connAttrs._pingInterval {
@@ -411,9 +415,6 @@ func (c *conn) IsValid() bool { return !c.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
 			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", dummyQuery), slog.Int64("ms", time.Since(start).Milliseconds()))
@@ -439,9 +440,6 @@ func (c *conn) Ping(ctx context.Context) error {
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
 			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
@@ -484,9 +482,6 @@ func (c *conn) Close() error {
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if c.inTx {
 		return nil, ErrNestedTransaction
 	}
@@ -531,9 +526,6 @@ var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statement beginnin
 
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (driver.Rows, error) {
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if callStmt.MatchString(query) {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", query)
 	}
@@ -566,9 +558,6 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 // ExecContext implements the driver.ExecerContext interface.
 func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.NamedValue) (driver.Result, error) {
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
@@ -617,10 +606,6 @@ func (c *conn) DatabaseName() string { return c._databaseName() }
 
 // DBConnectInfo implements the Conn interface.
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
-
 	done := make(chan struct{})
 	var ci *DBConnectInfo
 	var err error
@@ -732,9 +717,6 @@ func (s *stmt) Close() error {
 
 func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Rows, error) {
 	c := s.conn
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if c.sqlTrace {
 		defer func(start time.Time) {
 			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
@@ -764,10 +746,6 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	c := s.conn
-
-	if c.isBad() {
-		return nil, driver.ErrBadConn
-	}
 	if connHook != nil {
 		connHook(c, choStmtExec)
 	}

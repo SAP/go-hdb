@@ -13,12 +13,12 @@ import (
 // function driver.OpenDB and a driver.DB object.
 func ExampleDB() {
 	// print default sql database statistics.
-	db1 := sql.OpenDB(driver.DefaultTestConnector())
+	db1 := sql.OpenDB(driver.MT.Connector())
 	log.Printf("waitDuration: %d", db1.Stats().WaitDuration) // print field waitDuration of default database statistics.
 	db1.Close()
 
 	// print extended go-hdb driver db statistics.
-	db2 := driver.OpenDB(driver.DefaultTestConnector())
+	db2 := driver.OpenDB(driver.MT.Connector())
 	log.Printf("waitDuration: %d", db2.Stats().WaitDuration)   // print field waitDuration of default database statistics.
 	log.Printf("bytesWritten: %d", db2.ExStats().WrittenBytes) // print field bytesWritten of extended driver database statistics.
 	db2.Close()

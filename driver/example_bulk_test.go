@@ -20,7 +20,7 @@ func Example_bulkInsert() {
 	// Number of rows to be inserted into table.
 	numRow := 1000
 
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")

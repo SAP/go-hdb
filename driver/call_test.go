@@ -286,7 +286,7 @@ func TestCall(t *testing.T) {
 		{"noOut", testCallNoOut},
 	}
 
-	db := driver.DefaultTestDB()
+	db := driver.MT.DB()
 
 	for i := range tests {
 		func(i int) {

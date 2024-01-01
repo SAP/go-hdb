@@ -20,7 +20,7 @@ func (b *BytesLob) Scan(arg any) error { return driver.ScanLobBytes(arg, (*[]byt
 // ExampleScanLobBytes demontrates how to read Lob data using a []byte based data type.
 func ExampleScanLobBytes() {
 	// Open Test database.
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	table := driver.RandomIdentifier("lob_")

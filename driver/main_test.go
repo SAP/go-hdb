@@ -3,149 +3,105 @@
 package driver
 
 import (
-	"bytes"
+	"context"
 	"database/sql"
-	_ "embed" // embed stats template
 	"flag"
-	"html/template"
+	"fmt"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/dbtest"
 )
 
-const (
-	envDSN = "GOHDBDSN"
-)
+const envDSN = "GOHDBDSN"
 
-const testGoHDBSchemaPrefix = "goHdbTest_"
+var MT = MainTest{}
 
-//go:embed stats.tmpl
-var statsTemplate string
-
-var (
-	testDSNStr string
-	testDSN    *DSN
-)
-
-func init() {
-	var ok bool
-	if testDSNStr, ok = os.LookupEnv(envDSN); !ok {
-		log.Fatalf("environment variable %s not set", envDSN)
-	}
-	var err error
-	if testDSN, err = parseDSN(testDSNStr); err != nil {
-		log.Fatal(err)
-	}
+type MainTest struct {
+	ctr     *Connector
+	db      *sql.DB
+	version *Version
 }
 
-// schema defines the database schema where test tables are going to be created.
-var schema = flag.String("schema", testGoHDBSchemaPrefix+randAlphanumString(16), "database schema")
+// NewConnector returns a Connector with the relevant test attributes set.
+func (mt *MainTest) NewConnector() *Connector { return mt.ctr.clone() }
 
-// dropSchema:
-// if set to true (default), the test schema will be dropped after successful test execution.
-// if set to false, the test schema will remain on database after test execution.
-var dropSchema = flag.Bool("dropschema", true, "drop test schema if test ran successfully")
+// Connector returns the default Test Connector with the relevant test attributes set.
+func (mt *MainTest) Connector() *Connector { return mt.ctr }
 
-// dropSchemas will drop all schemas with GoHDBTestSchemaPrefix prefix to clean-up all not yet deleted
-// test schemas created by go-hdb unit tests.
-var dropSchemas = flag.Bool("dropschemas", false, "drop all existing test schemas if test ran successfully")
+// DB return the default test database with the relevant test attributes set.
+func (mt *MainTest) DB() *sql.DB { return mt.db }
 
-// NewTestConnector returns a Connector with the relevant test attributes set.
-func NewTestConnector() *Connector {
-	c, err := newDSNConnector(testDSN)
+// Version returns the database version of the test database.
+func (mt *MainTest) Version() *Version { return mt.version }
+
+func (mt *MainTest) detectVersion(db *sql.DB) (*Version, error) {
+	var version *Version
+	// Grab connection to detect hdb version.
+	conn, err := db.Conn(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	c._defaultSchema = *schema        // important: set test schema!
-	c._pingInterval = 1 * time.Minute // turn on connection validity check while resetting
-	return c
+	defer conn.Close()
+	if err := conn.Raw(func(driverConn any) error {
+		version = driverConn.(Conn).HDBVersion()
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return version, nil
 }
 
-var defaultTestConnector *Connector
-var defaultTestDB *sql.DB
+func (mt *MainTest) run(m *testing.M) (int, error) {
+	dsnStr, ok := os.LookupEnv(envDSN)
+	if !ok {
+		return 0, fmt.Errorf("environment variable %s not set", envDSN)
+	}
 
-// DefaultTestConnector returns the default Test Connector with the relevant test attributes set.
-func DefaultTestConnector() *Connector { return defaultTestConnector }
+	// init default DB and default connector
+	var err error
+	if mt.ctr, err = NewDSNConnector(dsnStr); err != nil {
+		return 0, err
+	}
+	mt.db = sql.OpenDB(mt.ctr)
+	defer mt.db.Close()
 
-// DefaultTestDB return the default database with the relevant test attributes set.
-func DefaultTestDB() *sql.DB { return defaultTestDB }
+	mt.version, err = mt.detectVersion(mt.db)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := dbtest.Setup(mt.db); err != nil {
+		return 0, err
+	}
+
+	mt.ctr.SetDefaultSchema(*dbtest.Schema) // important: set test schema! but after create schema
+	mt.ctr.SetPingInterval(1 * time.Second) // turn on connection validity check while resetting
+
+	exitCode := m.Run()
+
+	if err := dbtest.Teardown(mt.db, exitCode == 0); err != nil {
+		return 0, err
+	}
+
+	mt.db.Close() // close before printing stats
+	if err := dbtest.LogDriverStats(stdHdbDriver.Stats()); err != nil {
+		return 0, err
+	}
+
+	return exitCode, nil
+}
 
 func TestMain(m *testing.M) {
-	// setup creates the database schema.
-	setup := func(db *sql.DB) {
-		if err := execCreateSchema(db, *schema); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("created schema %s", *schema)
-	}
-
-	// teardown deletes the database schema(s).
-	teardown := func(db *sql.DB, drop bool) {
-		schema := *schema
-
-		numTables, err := queryNumTablesInSchema(db, schema)
-		if err != nil {
-			log.Fatal(err)
-		}
-		numProcs, err := queryNumProcsInSchema(db, schema)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("schema %s - #tables created: %d #procedures created: %d", schema, numTables, numProcs)
-
-		if !drop {
-			return
-		}
-
-		switch {
-		case *dropSchemas:
-			schemas, err := querySchemasPrefix(db, testGoHDBSchemaPrefix)
-			if err != nil {
-				log.Fatal(err)
-			}
-			for _, schema := range schemas {
-				if err := execDropSchema(db, schema); err != nil {
-					log.Fatal(err)
-				}
-				log.Printf("dropped schema %s", schema)
-			}
-			log.Printf("number of dropped schemas: %d", len(schemas))
-		case *dropSchema:
-			if err := execDropSchema(db, schema); err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("dropped schema %s", schema)
-		}
-	}
-
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !flag.Parsed() {
 		flag.Parse()
 	}
-
-	// init default DB and default connector
-	defaultTestConnector = NewTestConnector()
-	defaultTestDB = sql.OpenDB(defaultTestConnector)
-
-	// do not use NewTestConnector as it does set the default schema and the schema creation in setup would be answered by a HDB error.
-	connector, err := newDSNConnector(testDSN)
+	exitCode, err := MT.run(m)
 	if err != nil {
 		log.Fatal(err)
 	}
-	db := sql.OpenDB(connector)
-	// TestDB.SetMaxIdleConns(0)
-	setup(db)
-	exitCode := m.Run()
-	teardown(db, exitCode == 0)
-	db.Close()
-	defaultTestDB.Close()
-
-	t := template.Must(template.New("stats").Parse(statsTemplate))
-	b := new(bytes.Buffer)
-	if err := t.Execute(b, connector.NativeDriver().Stats()); err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("\n%s", b.String())
 	os.Exit(exitCode)
 }

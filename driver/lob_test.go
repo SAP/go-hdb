@@ -12,6 +12,8 @@ import (
 	"io"
 	"sync"
 	"testing"
+
+	drand "github.com/SAP/go-hdb/driver/internal/rand"
 )
 
 type stringLob string
@@ -32,7 +34,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 	testData := make([]string, numRec)
 
 	for i := 0; i < numRec; i++ {
-		testData[i] = randAlphanumString(blobSize)
+		testData[i] = drand.AlphanumString(blobSize)
 	}
 
 	table := RandomIdentifier("lob_")
@@ -255,7 +257,7 @@ func TestLob(t *testing.T) {
 		{"delayedScan", testLobDelayedScan},
 	}
 
-	db := DefaultTestDB()
+	db := MT.DB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(t, db)

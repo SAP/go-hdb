@@ -26,7 +26,7 @@ func (b *WriterLob) Scan(arg any) error { return driver.ScanLobWriter(arg, b) }
 // ExampleScanLobWriter demontrates how to read Lob data using a io.Writer based data type.
 func ExampleScanLobWriter() {
 	// Open Test database.
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	table := driver.RandomIdentifier("lob_")

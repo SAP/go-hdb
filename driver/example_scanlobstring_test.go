@@ -20,7 +20,7 @@ func (s *StringLob) Scan(arg any) error { return driver.ScanLobString(arg, (*str
 // ExampleScanLobString demontrates how to read Lob data using a string based data type.
 func ExampleScanLobString() {
 	// Open Test database.
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	table := driver.RandomIdentifier("lob_")

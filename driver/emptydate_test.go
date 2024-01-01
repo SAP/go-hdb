@@ -15,7 +15,7 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 	var nt sql.NullTime
 	var emptyDate = time.Date(0, time.December, 31, 0, 0, 0, 0, time.UTC)
 
-	connector := NewTestConnector()
+	connector := MT.NewConnector()
 	connector.SetDfv(dfv)
 	connector.SetEmptyDateAsNull(emptyDateAsNull)
 	db := sql.OpenDB(connector)
@@ -58,7 +58,7 @@ func TestEmptyDate(t *testing.T) {
 
 	tableName := RandomIdentifier("table_")
 
-	db := sql.OpenDB(DefaultTestConnector())
+	db := sql.OpenDB(MT.Connector())
 	defer db.Close()
 
 	// Create table.

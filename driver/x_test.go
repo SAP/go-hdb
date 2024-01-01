@@ -21,7 +21,7 @@ func testInvalidCESU8(t *testing.T) {
 
 	decoder := cesu8.NewDecoder(nil)
 
-	connector := driver.NewTestConnector()
+	connector := driver.MT.NewConnector()
 	// register nop decoder to receive 'raw' undecoded data
 	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })
 
@@ -80,7 +80,7 @@ func testInvalidCESU8(t *testing.T) {
 }
 
 func testIncorrectDate(t *testing.T) {
-	connector := driver.NewTestConnector()
+	connector := driver.MT.NewConnector()
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

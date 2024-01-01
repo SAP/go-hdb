@@ -16,7 +16,7 @@ const (
 )
 
 func ExampleError() {
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	invalidTableName := driver.RandomIdentifier("table_")

@@ -14,7 +14,7 @@ import (
 )
 
 func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driver.Identifier {
-	db := driver.DefaultTestDB()
+	db := driver.MT.DB()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, s nvarchar(20))", tableName)); err != nil {
@@ -36,7 +36,7 @@ func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driv
 }
 
 func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
-	db := driver.DefaultTestDB()
+	db := driver.MT.DB()
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
@@ -56,7 +56,7 @@ func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struc
 }
 
 func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
-	connector := driver.NewTestConnector()
+	connector := driver.MT.Connector()
 
 	// register decoder with replace error handler
 	decoder := cesu8.NewDecoder(cesu8.ReplaceErrorHandler)
@@ -96,7 +96,7 @@ func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData 
 }
 
 func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
-	connector := driver.NewTestConnector()
+	connector := driver.MT.Connector()
 
 	// register nop decoder to receive 'raw' undecoded data
 	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })

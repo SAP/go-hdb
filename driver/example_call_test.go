@@ -1,11 +1,13 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"database/sql"
 	"fmt"
 	"log"
+
+	"github.com/SAP/go-hdb/driver"
 )
 
 /*
@@ -19,10 +21,10 @@ begin
 end
 `
 
-	db := sql.OpenDB(DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
-	procedure := RandomIdentifier("procOut_")
+	procedure := driver.RandomIdentifier("procOut_")
 
 	if _, err := db.Exec(fmt.Sprintf(procOut, procedure)); err != nil { // Create stored procedure.
 		log.Panic(err)
@@ -57,12 +59,12 @@ begin
   drop table #test;
 end
 `
-	connector := NewTestConnector()
+	connector := driver.MT.NewConnector()
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	tableType := RandomIdentifier("TableType_")
-	procedure := RandomIdentifier("ProcTable_")
+	tableType := driver.RandomIdentifier("TableType_")
+	procedure := driver.RandomIdentifier("ProcTable_")
 
 	if _, err := db.Exec(fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
 		log.Panic(err)

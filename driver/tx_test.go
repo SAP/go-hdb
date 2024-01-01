@@ -118,7 +118,7 @@ func TestTransaction(t *testing.T) {
 		{"transactionRollback", testTransactionRollback},
 	}
 
-	db := driver.DefaultTestDB()
+	db := driver.MT.DB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			test.fct(t, db)

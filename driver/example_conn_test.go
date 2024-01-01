@@ -12,7 +12,7 @@ import (
 
 // ExampleConn-HDBVersion shows how to retrieve hdb server info with the help of sql.Conn.Raw().
 func ExampleConn_HDBVersion() {
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	// Grab connection.
@@ -34,7 +34,7 @@ func ExampleConn_HDBVersion() {
 
 // ExampleConn-DBConnectInfo shows how to retrieve hdb DBConnectInfo with the help of sql.Conn.Raw().
 func ExampleConn_DBConnectInfo() {
-	db := sql.OpenDB(driver.DefaultTestConnector())
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	// Grab connection.
