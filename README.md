@@ -84,6 +84,7 @@ go test --tags unit
 * Support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default and standard user / password as fallback.
 * Support of client certificate (X509) and JWT (JSON Web Token) authentication.
 * [Prometheus](https://prometheus.io) collectors for driver and extended database statistics.
+* Support of [scanning database rows into go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
 
 ## Dependencies
 

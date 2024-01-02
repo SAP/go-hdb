@@ -1,6 +1,12 @@
 Release Notes
 =============
 
+## v1.7.0
+
+### New features
+
+- Added driver support of scanning database rows into go structs.
+
 ## v1.6.0
 
 ### v1.6.11
@@ -40,7 +46,7 @@ Release Notes
 
 ### New features
 
-- Added experimental sqlscript package
+- Added experimental sqlscript package.
 
 ## v1.5.0
 
