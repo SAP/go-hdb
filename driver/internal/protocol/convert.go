@@ -231,6 +231,22 @@ func convertDecimal(ft fieldType, v any) (any, error) {
 	if v, ok := v.(*big.Rat); ok {
 		return v, nil
 	}
+
+	rv := reflect.ValueOf(v)
+
+	if rv.Kind() == reflect.Ptr {
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertDecimal(ft, rv.Elem().Interface())
+	}
+
+	if rv.Type().ConvertibleTo(ratReflectType) {
+		tv := rv.Convert(ratReflectType)
+		return tv.Interface().(big.Rat), nil
+	}
+
 	return nil, newConvertError(ft, v, nil)
 }
 

@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.1
+- updated dependencies
+- go1.22 preparation
+
 ### New features
 
 - Added driver support of scanning database rows into go structs.

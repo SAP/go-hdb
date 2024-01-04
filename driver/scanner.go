@@ -7,6 +7,36 @@ import (
 	"strings"
 )
 
+const sqlTagKey = "sql"
+
+// type sqlTagOptions string
+
+func sqlTagName(tag string) string { name, _, _ := strings.Cut(tag, ","); return name }
+
+/*
+// parseSQLTag return name, type and options.
+func parseSQLTag(tag string) (string, string, sqlTagOptions) {
+	name, rest, _ := strings.Cut(tag, ",")
+	typ, opts, _ := strings.Cut(rest, ",")
+	return name, typ, sqlTagOptions(opts)
+}
+
+func (o sqlTagOptions) Contains(optionName string) bool {
+	if len(o) == 0 {
+		return false
+	}
+	s := string(o)
+	for s != "" {
+		var name string
+		name, s, _ = strings.Cut(s, ",")
+		if name == optionName {
+			return true
+		}
+	}
+	return false
+}
+*/
+
 // Tagger is an interface used to tag structure fields dynamically.
 type Tagger interface {
 	Tag(fieldName string) (value string, ok bool)
@@ -34,14 +64,14 @@ func NewStructScanner[S any]() (*StructScanner[S], error) {
 	for _, field := range reflect.VisibleFields(rt) {
 		if hasTagger {
 			if tag, ok := tagger.Tag(field.Name); ok {
-				if sql, ok := reflect.StructTag(tag).Lookup("sql"); ok {
-					nameFieldMap[strings.Split(sql, ",")[0]] = field
+				if value, ok := reflect.StructTag(tag).Lookup(sqlTagKey); ok {
+					nameFieldMap[sqlTagName(value)] = field
 					continue
 				}
 			}
 		}
-		if sql, ok := field.Tag.Lookup("sql"); ok {
-			nameFieldMap[strings.Split(sql, ",")[0]] = field
+		if value, ok := field.Tag.Lookup(sqlTagKey); ok {
+			nameFieldMap[sqlTagName(value)] = field
 			continue
 		}
 		nameFieldMap[field.Name] = field

@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
@@ -49,9 +49,12 @@ const (
 // LocatorID represents a locotor id.
 type LocatorID uint64 // byte[locatorIdSize]
 
-var timeReflectType = reflect.TypeOf((*time.Time)(nil)).Elem()
-var bytesReflectType = reflect.TypeOf((*[]byte)(nil)).Elem()
-var stringReflectType = reflect.TypeOf((*string)(nil)).Elem()
+var (
+	timeReflectType   = hdbreflect.TypeFor[time.Time]()
+	bytesReflectType  = hdbreflect.TypeFor[[]byte]()
+	stringReflectType = hdbreflect.TypeFor[string]()
+	ratReflectType    = hdbreflect.TypeFor[big.Rat]()
+)
 
 const lobInputParametersSize = 9
 
@@ -344,38 +347,47 @@ type ReadProvider interface {
 }
 
 // Lob.
-func convertLob(t transform.Transformer, ft fieldType, v any) (driver.Value, error) {
+
+func convertToLobInDescr(t transform.Transformer, rd io.Reader) *LobInDescr {
+	if t != nil { // cesu8Encoder
+		rd = transform.NewReader(rd, t)
+	}
+	return newLobInDescr(rd)
+}
+
+func convertLob(t transform.Transformer, ft fieldType, v any) (any, error) {
 	if v == nil {
 		return v, nil
 	}
 
-	var rd io.Reader
-
 	switch v := v.(type) {
 	case io.Reader:
-		rd = v
+		return convertToLobInDescr(t, v), nil
 	case ReadProvider:
-		rd = v.Reader()
+		return convertToLobInDescr(t, v.Reader()), nil
 	default:
-		v, err := convertBytes(ft, v)
-		if err != nil {
-			return nil, err
-		}
-		switch v := v.(type) {
-		case string:
-			rd = strings.NewReader(v)
-		case []byte:
-			rd = bytes.NewReader(v)
-		default:
-			panic(fmt.Sprintf("invalid lob type %T", v)) // should never happen
+		// check if string or []byte
+		if v, err := convertBytes(ft, v); err == nil {
+			switch v := v.(type) {
+			case string:
+				return convertToLobInDescr(t, strings.NewReader(v)), nil
+			case []byte:
+				return convertToLobInDescr(t, bytes.NewReader(v)), nil
+			}
 		}
 	}
 
-	if t != nil { // cesu8Encoder
-		rd = transform.NewReader(rd, t)
+	rv := reflect.ValueOf(v)
+
+	if rv.Kind() == reflect.Ptr {
+		// indirect pointers
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertLob(t, ft, rv.Elem().Interface())
 	}
 
-	return newLobInDescr(rd), nil
+	return nil, fmt.Errorf("invalid lob type %[1]T value %[1]v", v)
 }
 
 // prm size.

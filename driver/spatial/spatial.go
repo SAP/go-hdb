@@ -5,6 +5,8 @@ import (
 	"math"
 	"reflect"
 	"strings"
+
+	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // NaN returns a 'not-a-number' value.
@@ -51,10 +53,10 @@ type CoordM struct{ X, Y, M float64 }
 type CoordZM struct{ X, Y, M, Z float64 }
 
 var (
-	coordType   = reflect.TypeOf((*Coord)(nil)).Elem()
-	coordZType  = reflect.TypeOf((*CoordZ)(nil)).Elem()
-	coordMType  = reflect.TypeOf((*CoordM)(nil)).Elem()
-	coordZMType = reflect.TypeOf((*CoordZM)(nil)).Elem()
+	coordType   = hdbreflect.TypeFor[Coord]()
+	coordZType  = hdbreflect.TypeFor[CoordZ]()
+	coordMType  = hdbreflect.TypeFor[CoordM]()
+	coordZMType = hdbreflect.TypeFor[CoordZM]()
 )
 
 // Point represents a two dimensional point.

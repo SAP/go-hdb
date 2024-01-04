@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // Part represents a protocol part.
@@ -126,32 +127,32 @@ var (
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
-	PkError:               reflect.TypeOf((*HdbErrors)(nil)).Elem(),
-	PkClientID:            reflect.TypeOf((*ClientID)(nil)).Elem(),
-	PkClientInfo:          reflect.TypeOf((*clientInfo)(nil)).Elem(),
-	PkTopologyInformation: reflect.TypeOf((*topologyInformation)(nil)).Elem(),
-	PkCommand:             reflect.TypeOf((*Command)(nil)).Elem(),
-	PkRowsAffected:        reflect.TypeOf((*RowsAffected)(nil)).Elem(),
-	PkStatementID:         reflect.TypeOf((*StatementID)(nil)).Elem(),
-	PkResultsetID:         reflect.TypeOf((*ResultsetID)(nil)).Elem(),
-	PkFetchSize:           reflect.TypeOf((*Fetchsize)(nil)).Elem(),
-	PkReadLobRequest:      reflect.TypeOf((*ReadLobRequest)(nil)).Elem(),
-	PkReadLobReply:        reflect.TypeOf((*ReadLobReply)(nil)).Elem(),
-	PkWriteLobReply:       reflect.TypeOf((*WriteLobReply)(nil)).Elem(),
-	PkWriteLobRequest:     reflect.TypeOf((*WriteLobRequest)(nil)).Elem(),
-	PkClientContext:       reflect.TypeOf((*Options[ClientContextOption])(nil)).Elem(),
-	PkConnectOptions:      reflect.TypeOf((*Options[ConnectOption])(nil)).Elem(),
-	PkTransactionFlags:    reflect.TypeOf((*Options[transactionFlagType])(nil)).Elem(),
-	PkStatementContext:    reflect.TypeOf((*Options[statementContextType])(nil)).Elem(),
-	PkDBConnectInfo:       reflect.TypeOf((*Options[DBConnectInfoType])(nil)).Elem(),
+	PkError:               hdbreflect.TypeFor[HdbErrors](),
+	PkClientID:            hdbreflect.TypeFor[ClientID](),
+	PkClientInfo:          hdbreflect.TypeFor[clientInfo](),
+	PkTopologyInformation: hdbreflect.TypeFor[topologyInformation](),
+	PkCommand:             hdbreflect.TypeFor[Command](),
+	PkRowsAffected:        hdbreflect.TypeFor[RowsAffected](),
+	PkStatementID:         hdbreflect.TypeFor[StatementID](),
+	PkResultsetID:         hdbreflect.TypeFor[ResultsetID](),
+	PkFetchSize:           hdbreflect.TypeFor[Fetchsize](),
+	PkReadLobRequest:      hdbreflect.TypeFor[ReadLobRequest](),
+	PkReadLobReply:        hdbreflect.TypeFor[ReadLobReply](),
+	PkWriteLobReply:       hdbreflect.TypeFor[WriteLobReply](),
+	PkWriteLobRequest:     hdbreflect.TypeFor[WriteLobRequest](),
+	PkClientContext:       hdbreflect.TypeFor[Options[ClientContextOption]](),
+	PkConnectOptions:      hdbreflect.TypeFor[Options[ConnectOption]](),
+	PkTransactionFlags:    hdbreflect.TypeFor[Options[transactionFlagType]](),
+	PkStatementContext:    hdbreflect.TypeFor[Options[statementContextType]](),
+	PkDBConnectInfo:       hdbreflect.TypeFor[Options[DBConnectInfoType]](),
 	/*
 	   parts that cannot be used generically as additional parameters are needed
 
-	   PkParameterMetadata:   reflect.TypeOf((*ParameterMetadata)(nil)).Elem(),
-	   PkParameters:          reflect.TypeOf((*InputParameters)(nil)).Elem(),
-	   PkOutputParameters:    reflect.TypeOf((*OutputParameters)(nil)).Elem(),
-	   PkResultMetadata:      reflect.TypeOf((*ResultMetadata)(nil)).Elem(),
-	   PkResultset:           reflect.TypeOf((*Resultset)(nil)).Elem(),
+	   PkParameterMetadata
+	   PkParameters
+	   PkOutputParameters
+	   PkResultMetadata
+	   PkResultset
 	*/
 }
 

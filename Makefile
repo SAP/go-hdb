@@ -13,6 +13,9 @@ all:
 	go test ./...
 	@echo execute tests on older supported go versions
 	go1.20.12 test ./...
+	@echo execute tests on future supported go versions
+	go1.22rc1 test ./...
+
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
 	pipx run reuse lint
@@ -38,3 +41,5 @@ tools:
 go:
 	go install golang.org/dl/go1.20.12@latest
 	go1.20.12 download
+	go install golang.org/dl/go1.22rc1@latest
+	go1.22rc1 download

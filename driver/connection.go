@@ -25,6 +25,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
+	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -79,8 +80,9 @@ const (
 
 var (
 	// register as var to execute even before init() funcs are called.
-	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeOf((*Decimal)(nil)).Elem(), reflect.TypeOf((*NullDecimal)(nil)).Elem())
-	_ = p.RegisterScanType(p.DtLob, reflect.TypeOf((*Lob)(nil)).Elem(), reflect.TypeOf((*NullLob)(nil)).Elem())
+	_ = p.RegisterScanType(p.DtBytes, hdbreflect.TypeFor[[]byte](), hdbreflect.TypeFor[NullBytes]())
+	_ = p.RegisterScanType(p.DtDecimal, hdbreflect.TypeFor[Decimal](), hdbreflect.TypeFor[NullDecimal]())
+	_ = p.RegisterScanType(p.DtLob, hdbreflect.TypeFor[Lob](), hdbreflect.TypeFor[NullLob]())
 )
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
@@ -915,10 +917,29 @@ func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
 
 const defaultSessionID = -1
 
-func (c *conn) _convert(field *p.ParameterField, arg any) (any, error) {
-	// let fields with own Value converter convert themselves first (e.g. NullInt64, ...)
-	var err error
-	if valuer, ok := arg.(driver.Valuer); ok {
+func isNil(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr {
+		return false
+	}
+	if rv.IsNil() {
+		return true
+	}
+	return isNil(rv.Elem().Interface())
+}
+
+func (c *conn) _convert(field *p.ParameterField, arg driver.Value) (any, error) {
+	// let fields with own value converter convert themselves first (e.g. NullInt64, ...)
+	// .check nested Value converters as well (e.g. sql.Null[T] has driver.Decimal as value)
+	for !isNil(arg) {
+		valuer, ok := arg.(driver.Valuer)
+		if !ok {
+			break
+		}
+		var err error
 		if arg, err = valuer.Value(); err != nil {
 			return nil, err
 		}

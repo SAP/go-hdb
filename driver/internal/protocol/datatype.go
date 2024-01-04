@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"reflect"
 	"time"
+
+	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // DataType is the type definition for data types supported by this package.
@@ -38,20 +40,20 @@ var scanTypes = []struct {
 	scanType     reflect.Type
 	scanNullType reflect.Type
 }{
-	DtUnknown:  {reflect.TypeOf((*any)(nil)).Elem(), reflect.TypeOf((*any)(nil)).Elem()},
-	DtBoolean:  {reflect.TypeOf((*bool)(nil)).Elem(), reflect.TypeOf((*sql.NullBool)(nil)).Elem()},
-	DtTinyint:  {reflect.TypeOf((*uint8)(nil)).Elem(), reflect.TypeOf((*sql.NullByte)(nil)).Elem()},
-	DtSmallint: {reflect.TypeOf((*int16)(nil)).Elem(), reflect.TypeOf((*sql.NullInt16)(nil)).Elem()},
-	DtInteger:  {reflect.TypeOf((*int32)(nil)).Elem(), reflect.TypeOf((*sql.NullInt32)(nil)).Elem()},
-	DtBigint:   {reflect.TypeOf((*int64)(nil)).Elem(), reflect.TypeOf((*sql.NullInt64)(nil)).Elem()},
-	DtReal:     {reflect.TypeOf((*float32)(nil)).Elem(), reflect.TypeOf((*sql.NullFloat64)(nil)).Elem()},
-	DtDouble:   {reflect.TypeOf((*float64)(nil)).Elem(), reflect.TypeOf((*sql.NullFloat64)(nil)).Elem()},
-	DtTime:     {reflect.TypeOf((*time.Time)(nil)).Elem(), reflect.TypeOf((*sql.NullTime)(nil)).Elem()},
-	DtString:   {reflect.TypeOf((*string)(nil)).Elem(), reflect.TypeOf((*sql.NullString)(nil)).Elem()},
-	DtBytes:    {reflect.TypeOf((*[]byte)(nil)).Elem(), reflect.TypeOf((*[]byte)(nil)).Elem()},
+	DtUnknown:  {hdbreflect.TypeFor[any](), hdbreflect.TypeFor[any]()},
+	DtBoolean:  {hdbreflect.TypeFor[bool](), hdbreflect.TypeFor[sql.NullBool]()},
+	DtTinyint:  {hdbreflect.TypeFor[uint8](), hdbreflect.TypeFor[sql.NullByte]()},
+	DtSmallint: {hdbreflect.TypeFor[int16](), hdbreflect.TypeFor[sql.NullInt16]()},
+	DtInteger:  {hdbreflect.TypeFor[int32](), hdbreflect.TypeFor[sql.NullInt32]()},
+	DtBigint:   {hdbreflect.TypeFor[int64](), hdbreflect.TypeFor[sql.NullInt64]()},
+	DtReal:     {hdbreflect.TypeFor[float32](), hdbreflect.TypeFor[sql.NullFloat64]()},
+	DtDouble:   {hdbreflect.TypeFor[float64](), hdbreflect.TypeFor[sql.NullFloat64]()},
+	DtTime:     {hdbreflect.TypeFor[time.Time](), hdbreflect.TypeFor[sql.NullTime]()},
+	DtString:   {hdbreflect.TypeFor[string](), hdbreflect.TypeFor[sql.NullString]()},
+	DtBytes:    {nil, nil}, // to be registered by driver
 	DtDecimal:  {nil, nil}, // to be registered by driver
 	DtLob:      {nil, nil}, // to be registered by driver
-	DtRows:     {reflect.TypeOf((*sql.Rows)(nil)).Elem(), reflect.TypeOf((*sql.Rows)(nil)).Elem()},
+	DtRows:     {hdbreflect.TypeFor[sql.Rows](), hdbreflect.TypeFor[sql.Rows]()},
 }
 
 // ScanType return the scan type (reflect.Type) of the corresponding data type.
