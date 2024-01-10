@@ -80,9 +80,7 @@ func testInvalidCESU8(t *testing.T) {
 }
 
 func testIncorrectDate(t *testing.T) {
-	connector := driver.MT.NewConnector()
-	db := sql.OpenDB(connector)
-	defer db.Close()
+	db := driver.MT.DB()
 
 	tableName := driver.RandomIdentifier("table_")
 	// fmt.Println(tableName)

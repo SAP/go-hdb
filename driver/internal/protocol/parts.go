@@ -42,7 +42,7 @@ func (*AuthFinalRequest) kind() PartKind    { return PkAuthentication }
 func (*AuthFinalReply) kind() PartKind      { return PkAuthentication }
 func (ClientID) kind() PartKind             { return PkClientID }
 func (clientInfo) kind() PartKind           { return PkClientInfo }
-func (*topologyInformation) kind() PartKind { return PkTopologyInformation }
+func (*TopologyInformation) kind() PartKind { return PkTopologyInformation }
 func (Command) kind() PartKind              { return PkCommand }
 func (*RowsAffected) kind() PartKind        { return PkRowsAffected }
 func (StatementID) kind() PartKind          { return PkStatementID }
@@ -57,6 +57,11 @@ func (*ReadLobRequest) kind() PartKind      { return PkReadLobRequest }
 func (*ReadLobReply) kind() PartKind        { return PkReadLobReply }
 func (*WriteLobRequest) kind() PartKind     { return PkWriteLobRequest }
 func (*WriteLobReply) kind() PartKind       { return PkWriteLobReply }
+func (*ClientContext) kind() PartKind       { return PkClientContext }
+func (*ConnectOptions) kind() PartKind      { return PkConnectOptions }
+func (*DBConnectInfo) kind() PartKind       { return PkDBConnectInfo }
+func (*statementContext) kind() PartKind    { return PkStatementContext }
+func (*transactionFlags) kind() PartKind    { return PkTransactionFlags }
 
 // numArg methods (result == 1).
 func (*AuthInitRequest) numArg() int  { return 1 }
@@ -96,7 +101,9 @@ var (
 	_ WritablePart = (*Fetchsize)(nil)
 	_ WritablePart = (*ReadLobRequest)(nil)
 	_ WritablePart = (*WriteLobRequest)(nil)
-	_ WritablePart = (*Options[ClientContextOption])(nil) // sufficient to check one option.
+	_ WritablePart = (*ClientContext)(nil)
+	_ WritablePart = (*ConnectOptions)(nil)
+	_ WritablePart = (*DBConnectInfo)(nil)
 )
 
 // check if part types implement the right part interface.
@@ -108,7 +115,7 @@ var (
 	_ defPart    = (*AuthFinalReply)(nil)
 	_ bufLenPart = (*ClientID)(nil)
 	_ numArgPart = (*clientInfo)(nil)
-	_ numArgPart = (*topologyInformation)(nil)
+	_ numArgPart = (*TopologyInformation)(nil)
 	_ bufLenPart = (*Command)(nil)
 	_ numArgPart = (*RowsAffected)(nil)
 	_ defPart    = (*StatementID)(nil)
@@ -123,14 +130,18 @@ var (
 	_ numArgPart = (*WriteLobRequest)(nil)
 	_ numArgPart = (*ReadLobReply)(nil)
 	_ numArgPart = (*WriteLobReply)(nil)
-	_ numArgPart = (*Options[ClientContextOption])(nil) // sufficient to check one option.
+	_ numArgPart = (*ClientContext)(nil)
+	_ numArgPart = (*ConnectOptions)(nil)
+	_ numArgPart = (*DBConnectInfo)(nil)
+	_ numArgPart = (*statementContext)(nil)
+	_ numArgPart = (*transactionFlags)(nil)
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
 	PkError:               hdbreflect.TypeFor[HdbErrors](),
 	PkClientID:            hdbreflect.TypeFor[ClientID](),
 	PkClientInfo:          hdbreflect.TypeFor[clientInfo](),
-	PkTopologyInformation: hdbreflect.TypeFor[topologyInformation](),
+	PkTopologyInformation: hdbreflect.TypeFor[TopologyInformation](),
 	PkCommand:             hdbreflect.TypeFor[Command](),
 	PkRowsAffected:        hdbreflect.TypeFor[RowsAffected](),
 	PkStatementID:         hdbreflect.TypeFor[StatementID](),
@@ -140,11 +151,11 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 	PkReadLobReply:        hdbreflect.TypeFor[ReadLobReply](),
 	PkWriteLobReply:       hdbreflect.TypeFor[WriteLobReply](),
 	PkWriteLobRequest:     hdbreflect.TypeFor[WriteLobRequest](),
-	PkClientContext:       hdbreflect.TypeFor[Options[ClientContextOption]](),
-	PkConnectOptions:      hdbreflect.TypeFor[Options[ConnectOption]](),
-	PkTransactionFlags:    hdbreflect.TypeFor[Options[transactionFlagType]](),
-	PkStatementContext:    hdbreflect.TypeFor[Options[statementContextType]](),
-	PkDBConnectInfo:       hdbreflect.TypeFor[Options[DBConnectInfoType]](),
+	PkClientContext:       hdbreflect.TypeFor[ClientContext](),
+	PkConnectOptions:      hdbreflect.TypeFor[ConnectOptions](),
+	PkTransactionFlags:    hdbreflect.TypeFor[transactionFlags](),
+	PkStatementContext:    hdbreflect.TypeFor[statementContext](),
+	PkDBConnectInfo:       hdbreflect.TypeFor[DBConnectInfo](),
 	/*
 	   parts that cannot be used generically as additional parameters are needed
 
@@ -165,12 +176,18 @@ func newGenPartReader(kind PartKind) Part {
 	if !ok {
 		// whether part cannot be instantiated generically or
 		// part is not (yet) known to the driver
+		if !(kind == PkResultset || kind == PkParameterMetadata || kind == PkResultMetadata) {
+			panic(fmt.Errorf("got them %v", kind))
+		}
 		return nil
 	}
 	// create instance
 	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
 		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
+	}
+	if _, ok := part.(*TopologyInformation); ok {
+		panic("got them")
 	}
 	return part
 }

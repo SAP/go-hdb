@@ -275,6 +275,8 @@ end
 }
 
 func TestCall(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fct  func(t *testing.T, db *sql.DB)
@@ -288,12 +290,12 @@ func TestCall(t *testing.T) {
 
 	db := driver.MT.DB()
 
-	for i := range tests {
-		func(i int) {
-			t.Run(tests[i].name, func(t *testing.T) {
-				t.Parallel() // run in parallel to speed up
-				tests[i].fct(t, db)
-			})
-		}(i)
+	for _, test := range tests {
+		test := test // new test to run in parallel
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t, db)
+		})
 	}
 }

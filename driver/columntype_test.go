@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,26 +16,32 @@ import (
 )
 
 func TestColumnType(t *testing.T) {
+	t.Parallel()
 
-	fields := func(types []types.Column) string {
+	columnDefs := func(types []types.Column) string {
 		if len(types) == 0 {
 			return ""
 		}
-
-		b := strings.Builder{}
-		b.WriteString(fmt.Sprintf("x0 %s", types[0].DataType()))
+		buf := []byte{'('}
+		buf = append(buf, fmt.Sprintf("x0 %s", types[0].DataType())...)
 		for i := 1; i < len(types); i++ {
-			b.WriteString(", ")
-			b.WriteString(fmt.Sprintf("x%s %s", strconv.Itoa(i), types[i].DataType()))
+			buf = append(buf, ',')
+			buf = append(buf, fmt.Sprintf("x%s %s", strconv.Itoa(i), types[i].DataType())...)
 		}
-		return b.String()
+		buf = append(buf, ')')
+		return string(buf)
 	}
 
-	vars := func(size int) string {
+	placeholders := func(size int) string {
 		if size == 0 {
 			return ""
 		}
-		return strings.Repeat("?, ", size-1) + "?"
+		buf := []byte{'(', '?'}
+		for i := 1; i < size; i++ {
+			buf = append(buf, ",?"...)
+		}
+		buf = append(buf, ')')
+		return string(buf)
 	}
 
 	testColumnType := func(t *testing.T, db *sql.DB, version, dfv int, types []types.Column, values []any) {
@@ -45,7 +50,7 @@ func TestColumnType(t *testing.T) {
 
 		// some data types are only valid for column tables
 		// e.g. text
-		if _, err := db.Exec(fmt.Sprintf("create column table %s (%s)", tableName, fields(types))); err != nil {
+		if _, err := db.Exec(fmt.Sprintf("create column table %s %s", tableName, columnDefs(types))); err != nil {
 			t.Fatal(err)
 		}
 
@@ -56,7 +61,7 @@ func TestColumnType(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if _, err := tx.Exec(fmt.Sprintf("insert into %s values (%s)", tableName, vars(len(types))), values...); err != nil {
+		if _, err := tx.Exec(fmt.Sprintf("insert into %s values %s", tableName, placeholders(len(types))), values...); err != nil {
 			t.Fatal(err)
 		}
 
@@ -171,26 +176,26 @@ func TestColumnType(t *testing.T) {
 	version := int(MT.Version().Major())
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		func(dfv int) { // new dfv to run in parallel
-			name := fmt.Sprintf("dfv %d", dfv)
-			t.Run(name, func(t *testing.T) {
-				t.Parallel() // run in parallel to speed up
+		dfv := dfv // new dfv to run in parallel
 
-				connector := MT.NewConnector()
-				connector.SetDfv(dfv)
-				db := sql.OpenDB(connector)
-				defer db.Close()
+		name := fmt.Sprintf("dfv %d", dfv)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				types := make([]types.Column, 0, len(testFields))
-				values := make([]any, 0, len(testFields))
-				for _, field := range testFields {
-					if field.typ.IsSupported(version, dfv) {
-						types = append(types, field.typ)
-						values = append(values, field.value)
-					}
+			connector := MT.NewConnector()
+			connector.SetDfv(dfv)
+			db := sql.OpenDB(connector)
+			defer db.Close()
+
+			types := make([]types.Column, 0, len(testFields))
+			values := make([]any, 0, len(testFields))
+			for _, field := range testFields {
+				if field.typ.IsSupported(version, dfv) {
+					types = append(types, field.typ)
+					values = append(values, field.value)
 				}
-				testColumnType(t, db, version, dfv, types, values)
-			})
-		}(dfv)
+			}
+			testColumnType(t, db, version, dfv, types, values)
+		})
 	}
 }

@@ -6,7 +6,7 @@ go 1.20
 
 require (
 	github.com/prometheus/client_golang v1.18.0
-	golang.org/x/crypto v0.17.0
+	golang.org/x/crypto v0.18.0
 	golang.org/x/exp v0.0.0-20240103183307-be819d1f06fc
 	golang.org/x/text v0.14.0
 )

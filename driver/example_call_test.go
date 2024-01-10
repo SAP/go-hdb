@@ -59,8 +59,7 @@ begin
   drop table #test;
 end
 `
-	connector := driver.MT.NewConnector()
-	db := sql.OpenDB(connector)
+	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
 	tableType := driver.RandomIdentifier("TableType_")

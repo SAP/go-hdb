@@ -15,17 +15,15 @@ import (
 func TestNullDataType(t *testing.T) {
 
 	type nullRow struct {
-		No int `sql:"NO"` // record number
-
-		Int     sql.Null[int]     `sql:"INT"` // use one default value
-		Bytes   sql.Null[[]byte]  `sql:"BYTES"`
-		Decimal sql.Null[Decimal] `sql:"DECIMAL"`
-		Lob     sql.Null[Lob]     `sql:"LOB"`
-
-		IntRef     *sql.Null[*int]     `sql:"INTREF"` // use one default value
-		BytesRef   *sql.Null[*[]byte]  `sql:"BYTESREF"`
-		DecimalRef *sql.Null[*Decimal] `sql:"DECIMALREF"`
-		LobRef     *sql.Null[*Lob]     `sql:"LOBREF"`
+		No         int                 `sql:"no"` // record number
+		Int        sql.Null[int]       `sql:"int"`
+		Bytes      sql.Null[[]byte]    `sql:"bytes"`
+		Decimal    sql.Null[Decimal]   `sql:"decimal"`
+		Lob        sql.Null[Lob]       `sql:"lob"`
+		IntRef     *sql.Null[*int]     `sql:"intref"`
+		BytesRef   *sql.Null[*[]byte]  `sql:"byteref"`
+		DecimalRef *sql.Null[*Decimal] `sql:"decimalref"`
+		LobRef     *sql.Null[*Lob]     `sql:"lobref"`
 	}
 
 	lobTestValue := func() *bytes.Reader {
@@ -171,15 +169,22 @@ func TestNullDataType(t *testing.T) {
 		},
 	}
 
-	columns := "no integer, int integer, bytes varchar(30), decimal decimal, lob blob, intref int, bytesref varchar(30), decimalRef decimal, lobref blob"
+	scanner, err := NewStructScanner[nullRow]()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tableName := RandomIdentifier("null_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (%s)", tableName, columns)); err != nil {
+	columnDefs, err := scanner.columnDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
 		t.Fatal(err)
 	}
 
 	// insert test rows
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values (?,?,?,?,?,?,?,?,?)", tableName))
+	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,11 +195,6 @@ func TestNullDataType(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	scanner, err := NewStructScanner[nullRow]()
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	row := new(nullRow)

@@ -859,6 +859,8 @@ func equalJSON(b1, b2 []byte) (bool, error) {
 }
 
 func TestDataType(t *testing.T) {
+	t.Parallel()
+
 	type tester interface {
 		columnType() types.Column
 		run(t *testing.T, db *sql.DB, dfv int)
@@ -929,27 +931,28 @@ func TestDataType(t *testing.T) {
 	version := int(MT.Version().Major())
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		func(dfv int) { // new dfv to run in parallel
-			name := fmt.Sprintf("dfv %d", dfv)
-			t.Run(name, func(t *testing.T) {
-				t.Parallel() // run in parallel to speed up
+		dfv := dfv // new dfv to run in parallel
 
-				connector := MT.NewConnector()
-				connector.SetDfv(dfv)
-				db := sql.OpenDB(connector)
-				t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed
+		name := fmt.Sprintf("dfv %d", dfv)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-				for i, test := range getTests() {
-					func(i int, test tester, db *sql.DB, dfv int) { // new vars, test to run in parallel
-						if test.columnType().IsSupported(version, dfv) {
-							t.Run(fmt.Sprintf("%s %d", test.columnType().DataType(), i), func(t *testing.T) {
-								t.Parallel() // run in parallel to speed up
-								test.run(t, db, dfv)
-							})
-						}
-					}(i, test, db, dfv)
+			connector := MT.NewConnector()
+			connector.SetDfv(dfv)
+			db := sql.OpenDB(connector)
+			t.Cleanup(func() { db.Close() })
+
+			for i, test := range getTests() {
+				i := i       // new i to run in parallel
+				test := test // new test to run in parallel
+
+				if test.columnType().IsSupported(version, dfv) {
+					t.Run(fmt.Sprintf("%s %d", test.columnType().DataType(), i), func(t *testing.T) {
+						t.Parallel()
+						test.run(t, db, dfv)
+					})
 				}
-			})
-		}(dfv)
+			}
+		})
 	}
 }

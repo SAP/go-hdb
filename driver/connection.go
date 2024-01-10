@@ -188,7 +188,7 @@ type conn struct {
 	lastError error // last error
 	sessionID int64
 
-	serverOptions p.Options[p.ConnectOption]
+	serverOptions *p.ConnectOptions
 	hdbVersion    *Version
 	fieldTypeCtx  *p.FieldTypeCtx
 
@@ -371,7 +371,7 @@ func (c *conn) initSession(ctx context.Context, attrs *connAttrs, authHnd *p.Aut
 	}
 
 	c.hdbVersion = parseVersion(c.versionString())
-	c.fieldTypeCtx = p.NewFieldTypeCtx(int(c.serverOptions[p.CoDataFormatVersion2].(int32)), attrs._emptyDateAsNull)
+	c.fieldTypeCtx = p.NewFieldTypeCtx(c.serverOptions.DataFormatVersion2OrZero(), attrs._emptyDateAsNull)
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
@@ -381,16 +381,7 @@ func (c *conn) initSession(ctx context.Context, attrs *connAttrs, authHnd *p.Aut
 	return nil
 }
 
-func (c *conn) versionString() (version string) {
-	v, ok := c.serverOptions[p.CoFullVersionString]
-	if !ok {
-		return
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return
-}
+func (c *conn) versionString() (version string) { return c.serverOptions.FullVersionOrZero() }
 
 // ResetSession implements the driver.SessionResetter interface.
 func (c *conn) ResetSession(ctx context.Context) error {
@@ -604,7 +595,7 @@ func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 func (c *conn) HDBVersion() *Version { return c.hdbVersion }
 
 // DatabaseName implements the Conn interface.
-func (c *conn) DatabaseName() string { return c._databaseName() }
+func (c *conn) DatabaseName() string { return c.serverOptions.DatabaseNameOrZero() }
 
 // DBConnectInfo implements the Conn interface.
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
@@ -718,14 +709,14 @@ func (s *stmt) Close() error {
 }
 
 func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Rows, error) {
+	if s.pr.isProcedureCall() {
+		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
+	}
 	c := s.conn
 	if c.sqlTrace {
 		defer func(start time.Time) {
 			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
 		}(time.Now())
-	}
-	if s.pr.isProcedureCall() {
-		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
 
 	done := make(chan struct{})
@@ -1139,12 +1130,9 @@ func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedVal
 	return callArgs, nil
 }
 
-func (c *conn) _databaseName() string {
-	return c.serverOptions[p.CoDatabaseName].(string)
-}
-
 func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
-	ci := p.Options[p.DBConnectInfoType]{p.CiDatabaseName: databaseName}
+	ci := &p.DBConnectInfo{}
+	ci.SetDatabaseName(databaseName)
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
 		return nil, err
 	}
@@ -1152,34 +1140,29 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
 		if kind == p.PkDBConnectInfo {
-			err = read(&ci)
+			err = read(ci)
 		}
 		return err
 	}); err != nil {
 		return nil, err
 	}
 
-	host, _ := ci[p.CiHost].(string) // check existence and convert to string
-	port, _ := ci[p.CiPort].(int32)  // check existence and convert to integer
-	isConnected, _ := ci[p.CiIsConnected].(bool)
-
 	return &DBConnectInfo{
 		DatabaseName: databaseName,
-		Host:         host,
-		Port:         int(port),
-		IsConnected:  isConnected,
+		Host:         ci.HostOrZero(),
+		Port:         ci.PortOrZero(),
+		IsConnected:  ci.IsConnectedOrZero(),
 	}, nil
 }
 
-func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *connAttrs) (int64, p.Options[p.ConnectOption], error) {
+func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *connAttrs) (int64, *p.ConnectOptions, error) {
 	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
-	clientContext := p.Options[p.ClientContextOption]{
-		p.CcoClientVersion:            DriverVersion,
-		p.CcoClientType:               clientType,
-		p.CcoClientApplicationProgram: attrs._applicationName,
-	}
+	clientContext := &p.ClientContext{}
+	clientContext.SetVersion(DriverVersion)
+	clientContext.SetType(clientType)
+	clientContext.SetApplicationProgram(attrs._applicationName)
 
 	initRequest, err := authHnd.InitRequest()
 	if err != nil {
@@ -1208,20 +1191,19 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 		return 0, nil, err
 	}
 
-	co := func() p.Options[p.ConnectOption] {
-		co := p.Options[p.ConnectOption]{
-			p.CoDistributionProtocolVersion: false,
-			p.CoSelectForUpdateSupported:    false,
-			p.CoSplitBatchCommands:          true,
-			p.CoDataFormatVersion2:          int32(attrs._dfv),
-			p.CoCompleteArrayExecution:      true,
-			p.CoClientDistributionMode:      int32(p.CdmOff),
-		}
-		if attrs._locale != "" {
-			co[p.CoClientLocale] = attrs._locale
-		}
-		return co
-	}()
+	co := &p.ConnectOptions{}
+	co.SetDataFormatVersion2(attrs._dfv)
+	co.SetClientDistributionMode(p.CdmOff)
+	// co.SetClientDistributionMode(p.CdmConnectionStatement)
+	// co.SetSelectForUpdateSupported(true) // doesn't seem to make a difference
+	/*
+		p.CoSplitBatchCommands:          true,
+		p.CoCompleteArrayExecution:      true,
+	*/
+
+	if attrs._locale != "" {
+		co.SetClientLocale(attrs._locale)
+	}
 
 	if err := c.pw.Write(ctx, c.sessionID, p.MtConnect, false, finalRequest, p.ClientID(clientID), co); err != nil {
 		return 0, nil, err
@@ -1231,18 +1213,25 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	if err != nil {
 		return 0, nil, err
 	}
+
+	ti := new(p.TopologyInformation)
+
 	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
 		var err error
 		switch kind {
 		case p.PkAuthentication:
 			err = read(finalReply)
 		case p.PkConnectOptions:
-			err = read(&co)
+			err = read(co)
+		case p.PkTopologyInformation:
+			err = read(ti)
 		}
 		return err
 	}); err != nil {
 		return 0, nil, err
 	}
+	// log.Printf("co: %s", co)
+	// log.Printf("ti: %s", ti)
 	return c.pr.SessionID(), co, nil
 }
 

@@ -12,9 +12,10 @@ all:
 	@echo execute tests on latest go version	
 	go test ./...
 	@echo execute tests on older supported go versions
-	go1.20.12 test ./...
+	go1.20.13 test ./...
 	@echo execute tests on future supported go versions
 	go1.22rc1 test ./...
+	gotip test ./...
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
@@ -27,6 +28,9 @@ generate:
 
 #install additional tools
 tools:
+#install stringer
+	@echo "install latest stringer version"
+	go install golang.org/x/tools/cmd/stringer@latest
 #install linter
 	@echo "install latest go linter version"
 	go install golang.org/x/lint/golint@latest
@@ -39,7 +43,10 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.20.12@latest
-	go1.20.12 download
+	go install golang.org/dl/go1.20.13@latest
+	go1.20.13 download
 	go install golang.org/dl/go1.22rc1@latest
 	go1.22rc1 download
+	go install golang.org/dl/gotip@latest
+	gotip download
+

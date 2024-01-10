@@ -31,6 +31,8 @@ func testConcurrentRefresh(t *testing.T) {
 }
 
 func TestAuthAttrs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fct  func(t *testing.T)
@@ -39,11 +41,11 @@ func TestAuthAttrs(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		func(name string, fct func(t *testing.T)) {
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				fct(t)
-			})
-		}(test.name, test.fct)
+		test := test // new test to run in parallel
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t)
+		})
 	}
 }

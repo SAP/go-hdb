@@ -385,6 +385,8 @@ func testBulkGeo(t *testing.T, ctr *Connector, db *sql.DB) {
 }
 
 func TestBulk(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fct  func(t *testing.T, ctr *Connector, db *sql.DB)
@@ -396,18 +398,17 @@ func TestBulk(t *testing.T) {
 		{"testBulkGeo", testBulkGeo},
 	}
 
-	const bulkSize = 1000 // limit bulk size for test performance reasons
 	ctr := MT.NewConnector()
-	ctr.setBulkSize(bulkSize) // limit bulk size for test performance reasons
+	ctr.setBulkSize(1000) // limit bulk size for test performance reasons
 	db := sql.OpenDB(ctr)
-	t.Cleanup(func() { db.Close() }) // close only when all parallel subtests are completed
+	t.Cleanup(func() { db.Close() })
 
-	for i := range tests {
-		func(i int) {
-			t.Run(tests[i].name, func(t *testing.T) {
-				t.Parallel()             // run in parallel to speed up
-				tests[i].fct(t, ctr, db) // run bulk tests on conn
-			})
-		}(i)
+	for _, test := range tests {
+		test := test // new test to run in parallel
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t, ctr, db)
+		})
 	}
 }

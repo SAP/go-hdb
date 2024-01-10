@@ -78,6 +78,8 @@ func testRetryConnect(t *testing.T) {
 }
 
 func TestConnector(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fct  func(t *testing.T)
@@ -86,12 +88,11 @@ func TestConnector(t *testing.T) {
 		{"testRetryConnect", testRetryConnect},
 	}
 
-	for i := range tests {
-		func(i int) {
-			t.Run(tests[i].name, func(t *testing.T) {
-				t.Parallel()
-				tests[i].fct(t)
-			})
-		}(i)
+	for _, test := range tests {
+		test := test // new test to run in parallel
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t)
+		})
 	}
 }

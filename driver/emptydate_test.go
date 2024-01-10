@@ -55,11 +55,11 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 }
 
 func TestEmptyDate(t *testing.T) {
+	t.Parallel()
 
 	tableName := RandomIdentifier("table_")
 
-	db := sql.OpenDB(MT.Connector())
-	defer db.Close()
+	db := MT.DB()
 
 	// Create table.
 	if _, err := db.Exec(fmt.Sprintf("create table %s (d date)", tableName)); err != nil {
@@ -71,15 +71,15 @@ func TestEmptyDate(t *testing.T) {
 	}
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		func(dfv int) { // new dfv to run in parallel
-			t.Run(fmt.Sprintf("dfv %d emptyDateAsNull %t", dfv, false), func(t *testing.T) {
-				t.Parallel() // run in parallel to speed up
-				testEmptyDate(t, tableName, dfv, false)
-			})
-			t.Run(fmt.Sprintf("dfv %d emptyDateAsNull %t", dfv, true), func(t *testing.T) {
-				t.Parallel() // run in parallel to speed up
-				testEmptyDate(t, tableName, dfv, true)
-			})
-		}(dfv)
+		dfv := dfv // new dfv to run in parallel
+
+		t.Run(fmt.Sprintf("dfv %d emptyDateAsNull %t", dfv, false), func(t *testing.T) {
+			t.Parallel()
+			testEmptyDate(t, tableName, dfv, false)
+		})
+		t.Run(fmt.Sprintf("dfv %d emptyDateAsNull %t", dfv, true), func(t *testing.T) {
+			t.Parallel()
+			testEmptyDate(t, tableName, dfv, true)
+		})
 	}
 }

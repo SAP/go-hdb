@@ -18,7 +18,7 @@ var redirectCache sync.Map
 
 /*
 A Connector represents a hdb driver in a fixed configuration.
-A Connector can be passed to sql.OpenDB (starting from go 1.10) allowing users to bypass a string based data source name.
+A Connector can be passed to sql.OpenDB allowing users to bypass a string based data source name.
 */
 type Connector struct {
 	_host         string

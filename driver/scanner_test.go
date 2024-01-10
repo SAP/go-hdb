@@ -1,17 +1,15 @@
 //go:build !unit
 
-package driver_test
+package driver
 
 import (
 	"fmt"
 	"testing"
-
-	"github.com/SAP/go-hdb/driver"
 )
 
 type testScanRow struct {
-	A string `sql:"S"`
-	B int    `sql:"I"`
+	A string `sql:"s,varchar(30)"`
+	B int    `sql:"i,integer"`
 	C bool
 	Y string
 }
@@ -19,28 +17,34 @@ type testScanRow struct {
 func (ts *testScanRow) Tag(fieldName string) (string, bool) {
 	switch fieldName {
 	case "Y":
-		return `sql:"X"`, true
+		return `sql:"x,varchar(30)"`, true
 	default:
 		return "", false
 	}
 }
 
 func TestScanStruct(t *testing.T) {
-	db := driver.MT.DB()
+	t.Parallel()
+
+	db := MT.DB()
 
 	testRow := testScanRow{A: "testRow", B: 42, C: true, Y: "I am a X"}
 
-	tableName := driver.RandomIdentifier("scanStruct_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (s varchar(30), i integer, c boolean, x varchar(20))", tableName)); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values (?,?,?,?)", tableName), testRow.A, testRow.B, testRow.C, testRow.Y); err != nil {
-		t.Fatal(err)
-	}
-
-	scanner, err := driver.NewStructScanner[testScanRow]()
+	scanner, err := NewStructScanner[testScanRow]()
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	tableName := RandomIdentifier("scanStruct_")
+	columnDefs, err := scanner.columnDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()), testRow.A, testRow.B, testRow.C, testRow.Y); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,13 +94,13 @@ func TestScanStruct(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		func(fn func() error) {
-			t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-				if err := fn(); err != nil {
-					t.Fatal(err)
-				}
-			})
-		}(test.fn)
+		test := test // new test to run in parallel
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if err := test.fn(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
