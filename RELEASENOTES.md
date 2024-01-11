@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.3
+- updated dependencies
+- test performance improvements
+
 #### v1.7.1 - v1.7.2
 - updated dependencies
 - go1.22 preparation

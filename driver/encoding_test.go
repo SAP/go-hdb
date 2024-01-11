@@ -133,6 +133,8 @@ func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{
 }
 
 func TestEncoding(t *testing.T) {
+	t.Parallel()
+
 	testData := []struct{ s, r string }{
 		// invalid sequence "eda2a8" (only high surrogate pair) gets replaced by replacement char "fffd" -> UTF-8 "efbfbd"
 		{"2b301c39eda2a81132306033", "2b301c39efbfbd1132306033"},
@@ -175,7 +177,10 @@ func TestEncoding(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test // new dfv to run in parallel
+
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			test.fct(t, tableName, testData)
 		})
 	}

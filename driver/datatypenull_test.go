@@ -13,6 +13,7 @@ import (
 
 // TestNull tests go1.22 using generic Null type with go-hdb types
 func TestNullDataType(t *testing.T) {
+	t.Parallel()
 
 	type nullRow struct {
 		No         int                 `sql:"no"` // record number

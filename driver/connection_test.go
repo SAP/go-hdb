@@ -68,6 +68,8 @@ func testCheckCallStmt(t *testing.T, db *sql.DB) {
 }
 
 func TestConnection(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fct  func(t *testing.T, db *sql.DB)
@@ -78,7 +80,10 @@ func TestConnection(t *testing.T) {
 
 	db := MT.DB()
 	for _, test := range tests {
+		test := test // new dfv to run in parallel
+
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			test.fct(t, db)
 		})
 	}

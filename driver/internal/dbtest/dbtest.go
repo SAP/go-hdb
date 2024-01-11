@@ -30,10 +30,23 @@ var DropSchemas = flag.Bool("dropschemas", false, "drop all existing test schema
 var statsTemplate string
 
 // Setup creates the database schema.
-func Setup(db *sql.DB) error { return createSchema(db, *Schema) }
+func Setup(driverName, dsn string) error {
+	db, err := sql.Open(driverName, dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return createSchema(db, *Schema)
+}
 
 // Teardown deletes the database schema(s).
-func Teardown(db *sql.DB, drop bool) error {
+func Teardown(driverName, dsn string, drop bool) error {
+	db, err := sql.Open(driverName, dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	numTables, err := queryNumTablesInSchema(db, *Schema)
 	if err != nil {
 		return err
@@ -61,6 +74,7 @@ func Teardown(db *sql.DB, drop bool) error {
 			log.Printf("dropped schema %s", schema)
 		}
 		log.Printf("number of dropped schemas: %d", len(schemas))
+
 	case *DropSchema:
 		if err := dropSchema(db, *Schema); err != nil {
 			return err

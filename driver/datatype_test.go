@@ -940,6 +940,7 @@ func TestDataType(t *testing.T) {
 			connector := MT.NewConnector()
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
+			db.SetMaxIdleConns(10) // let's keep some more connections in the pool
 			t.Cleanup(func() { db.Close() })
 
 			for i, test := range getTests() {

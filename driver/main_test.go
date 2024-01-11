@@ -38,13 +38,12 @@ func (mt *MainTest) DB() *sql.DB { return mt.db }
 func (mt *MainTest) Version() *Version { return mt.version }
 
 func (mt *MainTest) detectVersion(db *sql.DB) (*Version, error) {
-	var version *Version
-	// Grab connection to detect hdb version.
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
+	var version *Version
 	if err := conn.Raw(func(driverConn any) error {
 		version = driverConn.(Conn).HDBVersion()
 		return nil
@@ -60,35 +59,38 @@ func (mt *MainTest) run(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("environment variable %s not set", envDSN)
 	}
 
-	// init default DB and default connector
 	var err error
 	if mt.ctr, err = NewDSNConnector(dsnStr); err != nil {
 		return 0, err
 	}
+
+	if err := dbtest.Setup(DriverName, dsnStr); err != nil {
+		return 0, err
+	}
+
+	// init default DB and default connector
+	mt.ctr.SetDefaultSchema(*dbtest.Schema) // important: set test schema! but after create schema
+	mt.ctr.SetPingInterval(1 * time.Second) // turn on connection validity check while resetting
 	mt.db = sql.OpenDB(mt.ctr)
 	defer mt.db.Close()
+	mt.db.SetMaxIdleConns(25) // let's keep some more connections in the pool
 
 	mt.version, err = mt.detectVersion(mt.db)
 	if err != nil {
 		return 0, err
 	}
 
-	if err := dbtest.Setup(mt.db); err != nil {
-		return 0, err
-	}
-
-	mt.ctr.SetDefaultSchema(*dbtest.Schema) // important: set test schema! but after create schema
-	mt.ctr.SetPingInterval(1 * time.Second) // turn on connection validity check while resetting
-
 	exitCode := m.Run()
 
-	if err := dbtest.Teardown(mt.db, exitCode == 0); err != nil {
-		return 0, err
+	// close before printing stats
+	mt.db.Close()
+
+	if err := dbtest.Teardown(DriverName, dsnStr, exitCode == 0); err != nil {
+		return exitCode, err
 	}
 
-	mt.db.Close() // close before printing stats
 	if err := dbtest.LogDriverStats(stdHdbDriver.Stats()); err != nil {
-		return 0, err
+		return exitCode, err
 	}
 
 	return exitCode, nil
