@@ -1,9 +1,13 @@
 package protocol
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
+	"github.com/SAP/go-hdb/driver/internal/exp/slices"
+	"github.com/SAP/go-hdb/driver/internal/minmax"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -76,11 +80,10 @@ var _ LobDecoderSetter = (*LobOutDescr)(nil)
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
-	rd    io.Reader
-	Opt   LobOptions
-	_size int
-	pos   int
-	b     []byte
+	rd  io.Reader
+	Opt LobOptions
+	pos int
+	buf bytes.Buffer
 }
 
 func newLobInDescr(rd io.Reader) *LobInDescr {
@@ -89,31 +92,20 @@ func newLobInDescr(rd io.Reader) *LobInDescr {
 
 func (d *LobInDescr) String() string {
 	// restrict output size
-	b := d.b
-	if len(b) >= 25 {
-		b = d.b[:25]
-	}
-	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.Opt, d._size, d.pos, b)
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.Opt, d.buf.Len(), d.pos, d.buf.Bytes()[:minmax.MinInt(d.buf.Len(), 25)])
 }
 
 // FetchNext fetches the next lob chunk.
 func (d *LobInDescr) FetchNext(chunkSize int) error {
-	if cap(d.b) < chunkSize {
-		d.b = make([]byte, chunkSize)
-	}
-	d.b = d.b[:chunkSize]
-
-	var err error
 	/*
 		We need to guarantee, that a max amount of data is read to prevent
 		piece wise LOB writing when avoidable
-		--> ReadFull
+		--> copy up to chunkSize
 	*/
-	d._size, err = io.ReadFull(d.rd, d.b)
-	d.b = d.b[:d._size]
-
+	d.buf.Reset()
+	_, err := io.CopyN(&d.buf, d.rd, int64(chunkSize))
 	d.Opt = loDataincluded
-	if err != io.EOF && err != io.ErrUnexpectedEOF {
+	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return err
 	}
 	d.Opt |= loLastdata
@@ -122,11 +114,9 @@ func (d *LobInDescr) FetchNext(chunkSize int) error {
 
 func (d *LobInDescr) setPos(pos int) { d.pos = pos }
 
-func (d *LobInDescr) size() int { return d._size }
+func (d *LobInDescr) size() int { return d.buf.Len() }
 
-func (d *LobInDescr) writeFirst(enc *encoding.Encoder) {
-	enc.Bytes(d.b)
-}
+func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()) }
 
 // LobOutDescr represents a lob output descriptor.
 type LobOutDescr struct {
@@ -185,7 +175,7 @@ func (d *WriteLobDescr) FetchNext(chunkSize int) error {
 	}
 	d.Opt = d.LobInDescr.Opt
 	d.ofs = -1 // offset (-1 := append)
-	d.b = d.LobInDescr.b
+	d.b = d.LobInDescr.buf.Bytes()
 	return nil
 }
 
@@ -316,14 +306,6 @@ func (r *ReadLobReply) String() string {
 	return fmt.Sprintf("id %d options %s bytes %v", r.ID, r.Opt, r.B)
 }
 
-func (r *ReadLobReply) resize(size int) {
-	if r.B == nil || size > cap(r.B) {
-		r.B = make([]byte, size)
-	} else {
-		r.B = r.B[:size]
-	}
-}
-
 func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if numArg != 1 {
 		panic("numArg == 1 expected")
@@ -332,7 +314,7 @@ func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.Opt = LobOptions(dec.Int8())
 	size := int(dec.Int32())
 	dec.Skip(3)
-	r.resize(size)
+	r.B = slices.Grow(r.B, size)[:size]
 	dec.Bytes(r.B)
 	return nil
 }

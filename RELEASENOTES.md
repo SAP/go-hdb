@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.4
+- performance improvements
+
 #### v1.7.3
 - updated dependencies
 - test performance improvements
