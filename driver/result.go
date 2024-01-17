@@ -87,7 +87,7 @@ func (qr *queryResult) Close() error {
 	if qr.lastErr != nil {
 		return qr.lastErr
 	}
-	return qr.conn._closeResultsetID(context.Background(), qr.rsID)
+	return qr.conn.closeResultsetID(context.Background(), qr.rsID)
 }
 
 func (qr *queryResult) numRow() int {
@@ -108,7 +108,7 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 		if qr.attrs.LastPacket() {
 			return io.EOF
 		}
-		if err := qr.conn._fetchNext(context.Background(), qr); err != nil {
+		if err := qr.conn.fetchNext(context.Background(), qr); err != nil {
 			qr.lastErr = err // fieldValues and attrs are nil
 			return err
 		}

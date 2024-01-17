@@ -11,19 +11,17 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
-	"github.com/SAP/go-hdb/driver/internal/protocol/levenshtein"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -87,7 +85,7 @@ var (
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
-	metrics   *metrics
+	collector *metricsCollector
 	conn      net.Conn
 	timeout   time.Duration
 	logger    *slog.Logger
@@ -112,8 +110,8 @@ func (c *dbConn) Read(b []byte) (int, error) {
 	}
 	c.lastRead = time.Now()
 	n, err := c.conn.Read(b)
-	c.metrics.chMsg <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
-	c.metrics.chMsg <- counterMsg{idx: counterBytesRead, v: uint64(n)}
+	c.collector.msgCh <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
+	c.collector.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)}
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
@@ -130,8 +128,8 @@ func (c *dbConn) Write(b []byte) (int, error) {
 	}
 	c.lastWrite = time.Now()
 	n, err := c.conn.Write(b)
-	c.metrics.chMsg <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
-	c.metrics.chMsg <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
+	c.collector.msgCh <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
+	c.collector.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
@@ -174,10 +172,43 @@ type Conn interface {
 
 const traceMsg = "SQL"
 
+var stdConnTracker = &connTracker{}
+
+type connTracker struct {
+	mu      sync.Mutex
+	_callDB *sql.DB
+	numConn int64
+}
+
+func (t *connTracker) add() { t.mu.Lock(); t.numConn++; t.mu.Unlock() }
+
+func (t *connTracker) remove() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.numConn--
+	if t.numConn > 0 {
+		return
+	}
+	t.numConn = 0
+	if t._callDB != nil {
+		t._callDB.Close()
+		t._callDB = nil
+	}
+}
+
+func (t *connTracker) callDB() *sql.DB {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t._callDB == nil {
+		t._callDB = sql.OpenDB(new(callConnector))
+	}
+	return t._callDB
+}
+
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
-	*connAttrs
-	metrics *metrics
+	attrs     *connAttrs
+	collector *metricsCollector
 
 	sqlTrace bool
 	logger   *slog.Logger
@@ -303,15 +334,17 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	logger := attrs._logger.With(slog.Uint64("conn", connNo.Add(1)))
 
-	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
+	collector := newMetricsCollector(metrics)
+
+	dbConn := &dbConn{collector: collector, conn: netConn, timeout: attrs._timeout, logger: logger}
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
 	protTrace := protTrace.Load()
 
 	c := &conn{
-		metrics:   metrics,
-		connAttrs: attrs,
+		attrs:     attrs,
+		collector: collector,
 		dbConn:    dbConn,
 		sqlTrace:  sqlTrace.Load(),
 		logger:    logger,
@@ -322,15 +355,19 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	if err := c.pw.WriteProlog(ctx); err != nil {
 		dbConn.close()
+		collector.close()
 		return nil, err
 	}
 
 	if err := c.pr.ReadProlog(ctx); err != nil {
 		dbConn.close()
+		collector.close()
 		return nil, err
 	}
 
-	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
+	stdConnTracker.add()
+
+	c.collector.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 	return c, nil
 }
 
@@ -340,7 +377,7 @@ func fetchRedirectHost(ctx context.Context, host, databaseName string, metrics *
 		return "", err
 	}
 	defer c.Close()
-	dbi, err := c._dbConnectInfo(ctx, databaseName)
+	dbi, err := c.dbConnectInfo(ctx, databaseName)
 	if err != nil {
 		return "", err
 	}
@@ -363,7 +400,7 @@ func newSession(ctx context.Context, host string, metrics *metrics, attrs *connA
 }
 
 func (c *conn) initSession(ctx context.Context, attrs *connAttrs, authHnd *p.AuthHnd) (err error) {
-	if c.sessionID, c.serverOptions, err = c._authenticate(ctx, authHnd, attrs); err != nil {
+	if c.sessionID, c.serverOptions, err = c.authenticate(ctx, authHnd, attrs); err != nil {
 		return err
 	}
 	if c.sessionID <= 0 {
@@ -391,11 +428,11 @@ func (c *conn) ResetSession(ctx context.Context) error {
 
 	c.lastError = nil
 
-	if c.connAttrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.connAttrs._pingInterval {
+	if c.attrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.attrs._pingInterval {
 		return nil
 	}
 
-	if _, err := c._queryDirect(ctx, dummyQuery, !c.inTx); err != nil {
+	if _, err := c.queryDirect(ctx, dummyQuery, !c.inTx); err != nil {
 		return driver.ErrBadConn
 	}
 	return nil
@@ -417,7 +454,7 @@ func (c *conn) Ping(ctx context.Context) error {
 	done := make(chan struct{})
 	var err error
 	go func() {
-		_, err = c._queryDirect(ctx, dummyQuery, !c.inTx)
+		_, err = c.queryDirect(ctx, dummyQuery, !c.inTx)
 		close(done)
 	}()
 
@@ -445,7 +482,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	go func() {
 		var pr *prepareResult
 
-		if pr, err = c._prepare(ctx, query); err == nil {
+		if pr, err = c.prepare(ctx, query); err == nil {
 			stmt = newStmt(c, query, pr)
 		}
 
@@ -457,7 +494,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
+		c.collector.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
 		c.lastError = err
 		return stmt, err
 	}
@@ -465,12 +502,15 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
-	c.metrics.chMsg <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
+	c.collector.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	// do not disconnect if isBad or invalid sessionID
 	if !c.isBad() && c.sessionID != defaultSessionID {
-		c._disconnect(context.Background()) //nolint:errcheck
+		c.disconnect(context.Background()) //nolint:errcheck
 	}
-	return c.dbConn.close()
+	err := c.dbConn.close()
+	c.collector.close()
+	stdConnTracker.remove()
+	return err
 }
 
 // BeginTx implements the driver.ConnBeginTx interface.
@@ -490,12 +530,12 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	go func() {
 		// set isolation level
 		query := strings.Join([]string{setIsolationLevel, level}, " ")
-		if _, err = c._execDirect(ctx, query, !c.inTx); err != nil {
+		if _, err = c.execDirect(ctx, query, !c.inTx); err != nil {
 			goto done
 		}
 		// set access mode
 		query = strings.Join([]string{setAccessMode, readOnly[opts.ReadOnly]}, " ")
-		if _, err = c._execDirect(ctx, query, !c.inTx); err != nil {
+		if _, err = c.execDirect(ctx, query, !c.inTx); err != nil {
 			goto done
 		}
 		c.inTx = true
@@ -509,7 +549,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
+		c.collector.msgCh <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
 		c.lastError = err
 		return tx, err
 	}
@@ -535,7 +575,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	var rows driver.Rows
 	var err error
 	go func() {
-		rows, err = c._queryDirect(ctx, query, !c.inTx)
+		rows, err = c.queryDirect(ctx, query, !c.inTx)
 		close(done)
 	}()
 
@@ -565,7 +605,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	var err error
 	go func() {
 		// handle procesure call without parameters here as well
-		result, err = c._execDirect(ctx, query, !c.inTx)
+		result, err = c.execDirect(ctx, query, !c.inTx)
 		close(done)
 	}()
 
@@ -603,7 +643,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 	var ci *DBConnectInfo
 	var err error
 	go func() {
-		ci, err = c._dbConnectInfo(ctx, databaseName)
+		ci, err = c.dbConnectInfo(ctx, databaseName)
 		close(done)
 	}()
 
@@ -618,11 +658,11 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 }
 
 func (c *conn) addTimeValue(start time.Time, k int) {
-	c.metrics.chMsg <- timeMsg{idx: k, d: time.Since(start)}
+	c.collector.msgCh <- timeMsg{idx: k, d: time.Since(start)}
 }
 
 func (c *conn) addSQLTimeValue(start time.Time, k int) {
-	c.metrics.chMsg <- sqlTimeMsg{idx: k, d: time.Since(start)}
+	c.collector.msgCh <- sqlTimeMsg{idx: k, d: time.Since(start)}
 }
 
 // transaction.
@@ -645,7 +685,7 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) (err error) {
 	c := t.conn
 
-	c.metrics.chMsg <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
+	c.collector.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
 	if c.isBad() {
 		return driver.ErrBadConn
@@ -658,479 +698,16 @@ func (t *tx) close(rollback bool) (err error) {
 	c.inTx = false
 
 	if rollback {
-		err = c._rollback(context.Background())
+		err = c.rollback(context.Background())
 	} else {
-		err = c._commit(context.Background())
+		err = c.commit(context.Background())
 	}
 	return
 }
 
-// check if statements implements all required interfaces.
-var (
-	_ driver.Stmt              = (*stmt)(nil)
-	_ driver.StmtExecContext   = (*stmt)(nil)
-	_ driver.StmtQueryContext  = (*stmt)(nil)
-	_ driver.NamedValueChecker = (*stmt)(nil)
-)
-
-type stmt struct {
-	conn  *conn
-	query string
-	pr    *prepareResult
-	// rows: stored procedures with table output parameters
-	rows *sql.Rows
-}
-
-func newStmt(conn *conn, query string, pr *prepareResult) *stmt {
-	return &stmt{conn: conn, query: query, pr: pr}
-}
-
-/*
-NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
-- #args == #param (only in params):    query, exec, exec bulk (non control query)
-- #args == #param (in and out params): exec call
-- #args == 0:                          exec bulk (control query)
-- #args == #input param:               query call.
-*/
-func (s *stmt) NumInput() int { return -1 }
-
-func (s *stmt) Close() error {
-	c := s.conn
-
-	s.conn.metrics.chMsg <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
-
-	if c.isBad() {
-		return driver.ErrBadConn
-	}
-	if s.rows != nil {
-		s.rows.Close()
-	}
-	return c._dropStatementID(context.Background(), s.pr.stmtID)
-}
-
-func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Rows, error) {
-	if s.pr.isProcedureCall() {
-		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
-	}
-	c := s.conn
-	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
-	}
-
-	done := make(chan struct{})
-	var rows driver.Rows
-	var err error
-	go func() {
-		rows, err = s.conn._query(ctx, s.pr, nvargs, !s.conn.inTx)
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
-	case <-done:
-		c.lastError = err
-		return rows, err
-	}
-}
-
-func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	c := s.conn
-	if connHook != nil {
-		connHook(c, choStmtExec)
-	}
-	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
-	}
-
-	done := make(chan struct{})
-	var result driver.Result
-	var err error
-	go func() {
-		if s.pr.isProcedureCall() {
-			result, s.rows, err = s.conn._execCall(ctx, s.pr, nvargs)
-		} else {
-			result, err = s.exec(ctx, nvargs)
-		}
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
-	case <-done:
-		c.lastError = err
-		return result, err
-	}
-}
-
-type totalRowsAffected int64
-
-func (t *totalRowsAffected) add(r driver.Result) {
-	if r == nil {
-		return
-	}
-	rows, err := r.RowsAffected()
-	if err != nil {
-		return
-	}
-	*t += totalRowsAffected(rows)
-}
-
-func (s *stmt) exec(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	c := s.conn
-
-	numNVArg, numField := len(nvargs), s.pr.numField()
-
-	if numNVArg == 0 {
-		if numField != 0 {
-			return nil, fmt.Errorf("invalid number of arguments %d - expected %d", numNVArg, numField)
-		}
-		return c._execBatch(ctx, s.pr, nvargs, !c.inTx, 0)
-	}
-	if numNVArg == 1 {
-		if _, ok := nvargs[0].Value.(func(args []any) error); ok {
-			return s.execFct(ctx, nvargs)
-		}
-	}
-	if numNVArg == numField {
-		return c._exec(ctx, s.pr, nvargs, !c.inTx, 0)
-	}
-	if numNVArg%numField != 0 {
-		return nil, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", numNVArg, numField)
-	}
-	return s.execMany(ctx, nvargs)
-}
-
-/*
-Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
-execMany data might only be written partially to the database in case of hdb stmt errors.
-*/
-func (s *stmt) execMany(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	c := s.conn
-
-	totalRowsAffected := totalRowsAffected(0)
-	numField := s.pr.numField()
-	numNVArg := len(nvargs)
-	numRec := numNVArg / numField
-	numBatch := numRec / c._bulkSize
-	if numRec%c._bulkSize != 0 {
-		numBatch++
-	}
-
-	for i := 0; i < numBatch; i++ {
-		from := i * numField * c._bulkSize
-		to := (i + 1) * numField * c._bulkSize
-		if to > numNVArg {
-			to = numNVArg
-		}
-		r, err := c._exec(ctx, s.pr, nvargs[from:to], !c.inTx, i*c._bulkSize)
-		totalRowsAffected.add(r)
-		if err != nil {
-			return driver.RowsAffected(totalRowsAffected), err
-		}
-	}
-	return driver.RowsAffected(totalRowsAffected), nil
-}
-
-// ErrEndOfRows is the error to be returned using a function based bulk exec to indicate
-// the end of rows.
-var ErrEndOfRows = errors.New("end of rows")
-
-/*
-Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
-execMany data might only be written partially to the database in case of hdb stmt errors.
-*/
-func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	c := s.conn
-
-	totalRowsAffected := totalRowsAffected(0)
-	args := make([]driver.NamedValue, 0, s.pr.numField())
-	scanArgs := make([]any, s.pr.numField())
-
-	fct, ok := nvargs[0].Value.(func(args []any) error)
-	if !ok {
-		panic("should never happen")
-	}
-
-	done := false
-	batch := 0
-	for !done {
-		args = args[:0]
-		for i := 0; i < c._bulkSize; i++ {
-			err := fct(scanArgs)
-			if errors.Is(err, ErrEndOfRows) {
-				done = true
-				break
-			}
-			if err != nil {
-				return driver.RowsAffected(totalRowsAffected), err
-			}
-
-			args = slices.Grow(args, len(scanArgs))
-			for j, scanArg := range scanArgs {
-				nv := driver.NamedValue{Ordinal: j + 1}
-				if t, ok := scanArg.(sql.NamedArg); ok {
-					nv.Name = t.Name
-					nv.Value = t.Value
-				} else {
-					nv.Name = ""
-					nv.Value = scanArg
-				}
-				args = append(args, nv)
-			}
-		}
-
-		if len(args) != 0 {
-			r, err := c._exec(ctx, s.pr, args, !c.inTx, batch*c._bulkSize)
-			totalRowsAffected.add(r)
-			if err != nil {
-				return driver.RowsAffected(totalRowsAffected), err
-			}
-		}
-		batch++
-	}
-	return driver.RowsAffected(totalRowsAffected), nil
-}
-
-// CheckNamedValue implements NamedValueChecker interface.
-func (s *stmt) CheckNamedValue(nv *driver.NamedValue) error {
-	// check add arguments only
-	// conversion is happening as part of the exec, query call
-	return nil
-}
-
 const defaultSessionID = -1
 
-func isNil(v any) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr {
-		return false
-	}
-	if rv.IsNil() {
-		return true
-	}
-	return isNil(rv.Elem().Interface())
-}
-
-func (c *conn) _convert(field *p.ParameterField, arg driver.Value) (any, error) {
-	// let fields with own value converter convert themselves first (e.g. NullInt64, ...)
-	// .check nested Value converters as well (e.g. sql.Null[T] has driver.Decimal as value)
-	for !isNil(arg) {
-		valuer, ok := arg.(driver.Valuer)
-		if !ok {
-			break
-		}
-		var err error
-		if arg, err = valuer.Value(); err != nil {
-			return nil, err
-		}
-	}
-	// convert field
-	return field.Convert(c._cesu8Encoder(), arg)
-}
-
-// TODO: test.
-func _reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
-	for i := pos; i < len(nvargs); i++ {
-		if nvargs[i].Name != "" && nvargs[i].Name == name {
-			tmp := nvargs[i]
-			for j := i; j > pos; j-- {
-				nvargs[j] = nvargs[j-1]
-			}
-			nvargs[pos] = tmp
-		}
-	}
-}
-
-/*
-_mapExecArgs
-  - all fields need to be input fields
-  - out parameters are not supported
-  - named parameters are not supported
-*/
-func (c *conn) _mapExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) ([]int, error) {
-	numField := len(fields)
-	if (len(nvargs) % numField) != 0 {
-		return nil, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", len(nvargs), numField)
-	}
-	numRow := len(nvargs) / numField
-	addLobDataRecs := []int{}
-
-	for i := 0; i < numRow; i++ {
-		hasAddLobData := false
-		for j, field := range fields {
-			nvarg := &nvargs[(i*numField)+j]
-
-			if field.Out() {
-				return nil, fmt.Errorf("invalid parameter %s - output not allowed", field)
-			}
-			if _, ok := nvarg.Value.(sql.Out); ok {
-				return nil, fmt.Errorf("invalid argument %v - output not allowed", nvarg)
-			}
-			if nvarg.Name != "" {
-				return nil, fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
-			}
-			var err error
-			if nvarg.Value, err = c._convert(field, nvarg.Value); err != nil {
-				return nil, fmt.Errorf("field %s conversion error - %w", field, err)
-			}
-			// fetch first lob chunk
-			if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-				if err := lobInDescr.FetchNext(c._lobChunkSize); err != nil {
-					return nil, err
-				}
-				if !lobInDescr.Opt.IsLastData() {
-					hasAddLobData = true
-				}
-			}
-		}
-		if hasAddLobData || i == numRow-1 {
-			addLobDataRecs = append(addLobDataRecs, i)
-		}
-	}
-	return addLobDataRecs, nil
-}
-
-/*
-_mapQueryArgs
-  - all fields need to be input fields
-  - out parameters are not supported
-  - named parameters are not supported
-*/
-func (c *conn) _mapQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) error {
-	if len(nvargs) != len(fields) {
-		return fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
-	}
-
-	for i, field := range fields {
-		nvarg := &nvargs[i]
-		if field.Out() {
-			return fmt.Errorf("invalid parameter %s - output not allowed", field)
-		}
-		if _, ok := nvarg.Value.(sql.Out); ok {
-			return fmt.Errorf("invalid argument %v - output not allowed", nvarg)
-		}
-		if nvarg.Name != "" {
-			return fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
-		}
-		var err error
-		if nvarg.Value, err = c._convert(field, nvarg.Value); err != nil {
-			return fmt.Errorf("field %s conversion error - %w", field, err)
-		}
-		// fetch first lob chunk
-		if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-			if err := lobInDescr.FetchNext(c._lobChunkSize); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// _mapQueryCallArgs
-// - fields could be input or output fields
-// - number of args needs to be equal to number of fields
-// - named parameters are supported
-
-type _callArgs struct {
-	inFields, outFields []*p.ParameterField
-	inArgs, outArgs     []driver.NamedValue
-}
-
-func _newCallArgs() *_callArgs {
-	return &_callArgs{
-		inFields:  []*p.ParameterField{},
-		outFields: []*p.ParameterField{},
-		inArgs:    []driver.NamedValue{},
-		outArgs:   []driver.NamedValue{},
-	}
-}
-
-func (c *conn) _mapCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue) (*_callArgs, error) {
-	callArgs := _newCallArgs()
-
-	if len(nvargs) < len(fields) { // number of fields needs to match number of args or be greater (add table output args)
-		return nil, fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
-	}
-
-	prmnvargs := nvargs[:len(fields)]
-
-	for i, field := range fields {
-		_reorderNVArgs(i, field.Name(), prmnvargs)
-
-		nvarg := &prmnvargs[i]
-
-		if nvarg.Name != "" && nvarg.Name != field.Name() {
-			return nil, fmt.Errorf("invalid argument name %s - did you mean %s?",
-				nvarg.Name,
-				levenshtein.MinString(fields, func(field *p.ParameterField) string { return field.Name() }, nvarg.Name, false),
-			)
-		}
-
-		out, isOut := nvarg.Value.(sql.Out)
-
-		var err error
-		if field.In() {
-			if isOut {
-				if !out.In {
-					return nil, fmt.Errorf("argument field %s mismatch - use in argument with out field", field)
-				}
-				if out.Dest, err = c._convert(field, out.Dest); err != nil {
-					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
-				}
-			} else {
-				if nvarg.Value, err = c._convert(field, nvarg.Value); err != nil {
-					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
-				}
-			}
-			// fetch first lob chunk
-			if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-				if err := lobInDescr.FetchNext(c._lobChunkSize); err != nil {
-					return nil, err
-				}
-			}
-			callArgs.inArgs = append(callArgs.inArgs, *nvarg)
-			callArgs.inFields = append(callArgs.inFields, field)
-		}
-
-		if field.Out() {
-			if !isOut {
-				return nil, fmt.Errorf("argument field %s mismatch - use out argument with non-out field", field)
-			}
-			if _, ok := out.Dest.(*sql.Rows); ok {
-				return nil, fmt.Errorf("invalid output parameter type %T", out.Dest)
-			}
-			callArgs.outArgs = append(callArgs.outArgs, *nvarg)
-			callArgs.outFields = append(callArgs.outFields, field)
-		}
-	}
-
-	// table output args
-	for i := len(fields); i < len(nvargs); i++ {
-		nvarg := &nvargs[i]
-		out, ok := nvarg.Value.(sql.Out)
-		if !ok {
-			return nil, fmt.Errorf("invalid parameter type %T at %d - output parameter expected", nvarg.Value, i)
-		}
-		if _, ok := out.Dest.(*sql.Rows); !ok {
-			return nil, fmt.Errorf("invalid output parameter %T at %d - sql.Rows expected", out.Dest, i)
-		}
-		callArgs.outArgs = append(callArgs.outArgs, *nvarg)
-	}
-	return callArgs, nil
-}
-
-func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
+func (c *conn) dbConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
 	ci := &p.DBConnectInfo{}
 	ci.SetDatabaseName(databaseName)
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
@@ -1155,7 +732,7 @@ func (c *conn) _dbConnectInfo(ctx context.Context, databaseName string) (*DBConn
 	}, nil
 }
 
-func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *connAttrs) (int64, *p.ConnectOptions, error) {
+func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *connAttrs) (int64, *p.ConnectOptions, error) {
 	defer c.addTimeValue(time.Now(), timeAuth)
 
 	// client context
@@ -1235,7 +812,7 @@ func (c *conn) _authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *con
 	return c.pr.SessionID(), co, nil
 }
 
-func (c *conn) _queryDirect(ctx context.Context, query string, commit bool) (driver.Rows, error) {
+func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driver.Rows, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
@@ -1272,7 +849,7 @@ func (c *conn) _queryDirect(ctx context.Context, query string, commit bool) (dri
 	return qr, nil
 }
 
-func (c *conn) _execDirect(ctx context.Context, query string, commit bool) (driver.Result, error) {
+func (c *conn) execDirect(ctx context.Context, query string, commit bool) (driver.Result, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
 	if err := c.pw.Write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
@@ -1297,7 +874,7 @@ func (c *conn) _execDirect(ctx context.Context, query string, commit bool) (driv
 	return driver.RowsAffected(numRow), nil
 }
 
-func (c *conn) _prepare(ctx context.Context, query string) (*prepareResult, error) {
+func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimePrepare)
 
 	if err := c.pw.Write(ctx, c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
@@ -1328,52 +905,48 @@ func (c *conn) _prepare(ctx context.Context, query string) (*prepareResult, erro
 	return pr, nil
 }
 
-/*
-_exec executes a sql statement.
+func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Rows, error) {
+	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
-Bulk insert containing LOBs:
-  - Precondition:
-    .Sending more than one row with partial LOB data.
-  - Observations:
-    .In hdb version 1 and 2 'piecewise' LOB writing does work.
-    .Same does not work in case of geo fields which are LOBs en,- decoded as well.
-    .In hana version 4 'piecewise' LOB writing seems not to work anymore at all.
-  - Server implementation (not documented):
-    .'piecewise' LOB writing is only supported for the last row of a 'bulk insert'.
-  - Current implementation:
-    One server call in case of
-    .'non bulk' execs or
-    .'bulk' execs without LOBs
-    else potential several server calls (split into packages).
-  - Package invariant:
-    .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
-*/
-func (c *conn) _exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, ofs int) (driver.Result, error) {
-	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
+	// allow e.g inserts as query -> handle commit like in exec
 
-	addLobDataRecs, err := c._mapExecArgs(pr.parameterFields, nvargs)
+	if err := convertQueryArgs(pr.parameterFields, nvargs, c.attrs._cesu8Encoder(), c.attrs._lobChunkSize); err != nil {
+		return nil, err
+	}
+	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
 	if err != nil {
-		return driver.ResultNoRows, err
+		return nil, err
+	}
+	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
+		return nil, err
 	}
 
-	// piecewise LOB handling
-	numColumn := len(pr.parameterFields)
-	totalRowsAffected := totalRowsAffected(0)
-	from := 0
-	for i := 0; i < len(addLobDataRecs); i++ {
-		to := (addLobDataRecs[i] + 1) * numColumn
+	qr := &queryResult{conn: c, fields: pr.resultFields}
+	resSet := &p.Resultset{}
 
-		r, err := c._execBatch(ctx, pr, nvargs[from:to], commit, ofs)
-		totalRowsAffected.add(r)
-		if err != nil {
-			return driver.RowsAffected(totalRowsAffected), err
+	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
+		var err error
+		switch kind {
+		case p.PkResultsetID:
+			err = read((*p.ResultsetID)(&qr.rsID))
+		case p.PkResultset:
+			resSet.ResultFields = qr.fields
+			err = read(resSet)
+			qr.fieldValues = resSet.FieldValues
+			qr.decodeErrors = resSet.DecodeErrors
+			qr.attrs = attrs
 		}
-		from = to
+		return err
+	}); err != nil {
+		return nil, err
 	}
-	return driver.RowsAffected(totalRowsAffected), nil
+	if qr.rsID == 0 { // non select query
+		return noResult, nil
+	}
+	return qr, nil
 }
 
-func (c *conn) _execBatch(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, ofs int) (driver.Result, error) {
+func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, ofs int) (driver.Result, error) {
 	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
 	if err != nil {
 		return nil, err
@@ -1425,77 +998,7 @@ func (c *conn) _execBatch(ctx context.Context, pr *prepareResult, nvargs []drive
 	return driver.RowsAffected(rowsAffected), nil
 }
 
-func (c *conn) _execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
-	defer c.addSQLTimeValue(time.Now(), sqlTimeCall)
-
-	callArgs, err := c._mapCallArgs(pr.parameterFields, nvargs)
-	if err != nil {
-		return nil, nil, err
-	}
-	inputParameters, err := p.NewInputParameters(callArgs.inFields, callArgs.inArgs)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, false, p.StatementID(pr.stmtID), inputParameters); err != nil {
-		return nil, nil, err
-	}
-
-	/*
-		call without lob input parameters:
-		--> callResult output parameter values are set after read call
-		call with lob output parameters:
-		--> callResult output parameter values are set after last lob input write
-	*/
-
-	cr, ids, numRow, err := c._readCall(ctx, callArgs.outFields)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if len(ids) != 0 {
-		/*
-			writeLobParameters:
-			- chunkReaders
-			- cr (callResult output parameters are set after all lob input parameters are written)
-		*/
-		if err := c.encodeLobs(cr, ids, callArgs.inFields, callArgs.inArgs); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	// no output fields -> done
-	if len(cr.outputFields) == 0 {
-		return driver.RowsAffected(numRow), nil, nil
-	}
-
-	scanArgs := []any{}
-	for i := range cr.outputFields {
-		scanArgs = append(scanArgs, callArgs.outArgs[i].Value.(sql.Out).Dest)
-	}
-
-	// no table output parameters -> QueryRow
-	if len(callArgs.outFields) == len(callArgs.outArgs) {
-		if err := callConverter.QueryRow("", cr).Scan(scanArgs...); err != nil {
-			return nil, nil, err
-		}
-		return driver.RowsAffected(numRow), nil, nil
-	}
-
-	// table output parameters -> Query (needs to kept open)
-	rows, err := callConverter.Query("", cr)
-	if err != nil {
-		return nil, rows, err
-	}
-	if !rows.Next() {
-		return nil, rows, rows.Err()
-	}
-	if err := rows.Scan(scanArgs...); err != nil {
-		return nil, rows, err
-	}
-	return driver.RowsAffected(numRow), rows, nil
-}
-
-func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) (*callResult, []p.LocatorID, int64, error) {
+func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (*callResult, []p.LocatorID, int64, error) {
 	cr := &callResult{conn: c, outputFields: outputFields}
 
 	var qr *queryResult
@@ -1552,51 +1055,10 @@ func (c *conn) _readCall(ctx context.Context, outputFields []*p.ParameterField) 
 	return cr, ids, numRow, nil
 }
 
-func (c *conn) _query(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Rows, error) {
-	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
-
-	// allow e.g inserts as query -> handle commit like in exec
-
-	if err := c._mapQueryArgs(pr.parameterFields, nvargs); err != nil {
-		return nil, err
-	}
-	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
-		return nil, err
-	}
-
-	qr := &queryResult{conn: c, fields: pr.resultFields}
-	resSet := &p.Resultset{}
-
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part) error) error {
-		var err error
-		switch kind {
-		case p.PkResultsetID:
-			err = read((*p.ResultsetID)(&qr.rsID))
-		case p.PkResultset:
-			resSet.ResultFields = qr.fields
-			err = read(resSet)
-			qr.fieldValues = resSet.FieldValues
-			qr.decodeErrors = resSet.DecodeErrors
-			qr.attrs = attrs
-		}
-		return err
-	}); err != nil {
-		return nil, err
-	}
-	if qr.rsID == 0 { // non select query
-		return noResult, nil
-	}
-	return qr, nil
-}
-
-func (c *conn) _fetchNext(ctx context.Context, qr *queryResult) error {
+func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetch)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c._fetchSize)); err != nil {
+	if err := c.pw.Write(ctx, c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.attrs._fetchSize)); err != nil {
 		return err
 	}
 
@@ -1614,21 +1076,21 @@ func (c *conn) _fetchNext(ctx context.Context, qr *queryResult) error {
 	})
 }
 
-func (c *conn) _dropStatementID(ctx context.Context, id uint64) error {
+func (c *conn) dropStatementID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
 	return c.pr.SkipParts(ctx)
 }
 
-func (c *conn) _closeResultsetID(ctx context.Context, id uint64) error {
+func (c *conn) closeResultsetID(ctx context.Context, id uint64) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
 	return c.pr.SkipParts(ctx)
 }
 
-func (c *conn) _commit(ctx context.Context) error {
+func (c *conn) commit(ctx context.Context) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeCommit)
 
 	if err := c.pw.Write(ctx, c.sessionID, p.MtCommit, false); err != nil {
@@ -1640,7 +1102,7 @@ func (c *conn) _commit(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) _rollback(ctx context.Context) error {
+func (c *conn) rollback(ctx context.Context) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeRollback)
 
 	if err := c.pw.Write(ctx, c.sessionID, p.MtRollback, false); err != nil {
@@ -1652,7 +1114,7 @@ func (c *conn) _rollback(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) _disconnect(ctx context.Context) error {
+func (c *conn) disconnect(ctx context.Context) error {
 	if err := c.pw.Write(ctx, c.sessionID, p.MtDisconnect, false); err != nil {
 		return err
 	}
@@ -1681,7 +1143,7 @@ func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
 	var err error
 
 	if descr.IsCharBased {
-		wrcl := transform.NewWriter(wr, c._cesu8Decoder()) // CESU8 transformer
+		wrcl := transform.NewWriter(wr, c.attrs._cesu8Decoder()) // CESU8 transformer
 		err = c._decodeLob(descr, wrcl, func(b []byte) (size int, numChar int) {
 			for len(b) > 0 {
 				if !cesu8.FullRune(b) {
@@ -1713,7 +1175,7 @@ func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
 }
 
 func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int, int)) error {
-	lobChunkSize := int64(c._lobChunkSize)
+	lobChunkSize := int64(c.attrs._lobChunkSize)
 
 	chunkSize := func(numChar, ofs int64) int32 {
 		chunkSize := numChar - ofs
@@ -1813,7 +1275,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 
 		// TODO check total size limit
 		for _, descr := range descrs {
-			if err := descr.FetchNext(c._lobChunkSize); err != nil {
+			if err := descr.FetchNext(c.attrs._lobChunkSize); err != nil {
 				return err
 			}
 		}

@@ -3,7 +3,6 @@ package driver
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/exp/slices"
@@ -100,7 +99,10 @@ type sqlTimeMsg struct {
 }
 
 type metrics struct {
-	parent   *metrics
+	mu sync.RWMutex
+
+	parentMetrics *metrics
+
 	timeUnit string
 	divider  float64
 
@@ -108,33 +110,21 @@ type metrics struct {
 	gauges   []int64
 	times    []*histogram
 	sqlTimes []*histogram
-
-	wg    *sync.WaitGroup
-	chMsg chan any
-
-	closed atomic.Bool
 }
 
-const (
-	numCh = 100000
-)
-
-func newMetrics(parent *metrics, timeUnit string, timeUpperBounds []float64) *metrics {
+func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float64) *metrics {
 	d, ok := timeUnitMap[timeUnit]
 	if !ok {
 		panic("invalid unit " + timeUnit)
 	}
 	rv := &metrics{
-		parent:   parent,
-		timeUnit: timeUnit,
-		divider:  float64(d),
-		counters: make([]uint64, numCounter),
-		gauges:   make([]int64, numGauge),
-		times:    make([]*histogram, numTime),
-		sqlTimes: make([]*histogram, numSQLTime),
-
-		wg:    new(sync.WaitGroup),
-		chMsg: make(chan any, numCh),
+		parentMetrics: parentMetrics,
+		timeUnit:      timeUnit,
+		divider:       float64(d),
+		counters:      make([]uint64, numCounter),
+		gauges:        make([]int64, numGauge),
+		times:         make([]*histogram, numTime),
+		sqlTimes:      make([]*histogram, numSQLTime),
 	}
 	for i := 0; i < int(numTime); i++ {
 		rv.times[i] = newHistogram(timeUpperBounds)
@@ -142,12 +132,13 @@ func newMetrics(parent *metrics, timeUnit string, timeUpperBounds []float64) *me
 	for i := 0; i < int(numSQLTime); i++ {
 		rv.sqlTimes[i] = newHistogram(timeUpperBounds)
 	}
-	rv.wg.Add(1)
-	go rv.collect(rv.wg, rv.chMsg)
 	return rv
 }
 
-func (m *metrics) buildStats() *Stats {
+func (m *metrics) stats() *Stats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	sqlTimes := make(map[string]*StatsHistogram, len(m.sqlTimes))
 	for i, sqlTime := range m.sqlTimes {
 		sqlTimes[statsCfg.SQLTimeTexts[i]] = sqlTime.stats()
@@ -166,8 +157,8 @@ func (m *metrics) buildStats() *Stats {
 	}
 }
 
-// handleMsg returns true in case msg content would change stats, false otherwise.
-func (m *metrics) handleMsg(msg any) bool {
+func (m *metrics) handleMsg(msg any) {
+	m.mu.Lock()
 	switch msg := msg.(type) {
 	case counterMsg:
 		m.counters[msg.idx] += msg.v
@@ -177,41 +168,43 @@ func (m *metrics) handleMsg(msg any) bool {
 		m.times[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
 	case sqlTimeMsg:
 		m.sqlTimes[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
-	case chan *Stats:
-		msg <- m.buildStats()
-		return false
 	default:
 		panic(fmt.Sprintf("invalid metric message type %T", msg))
 	}
-	return true
+	m.mu.Unlock()
+
+	if m.parentMetrics != nil {
+		m.parentMetrics.handleMsg(msg)
+	}
 }
 
-func (m *metrics) collect(wg *sync.WaitGroup, chMsg <-chan any) {
+const (
+	numMetricCollectorCh = 25
+)
+
+type metricsCollector struct {
+	wg    *sync.WaitGroup
+	msgCh chan any
+}
+
+func newMetricsCollector(metrics *metrics) *metricsCollector {
+	mc := &metricsCollector{
+		wg:    new(sync.WaitGroup),
+		msgCh: make(chan any, numMetricCollectorCh),
+	}
+	mc.wg.Add(1)
+	go mc.collect(mc.wg, mc.msgCh, metrics)
+	return mc
+}
+
+func (mc *metricsCollector) collect(wg *sync.WaitGroup, chMsg <-chan any, metrics *metrics) {
 	defer wg.Done()
-	if m.parent == nil {
-		for msg := range chMsg {
-			m.handleMsg(msg)
-		}
-		return
-	}
 	for msg := range chMsg {
-		if m.handleMsg(msg) {
-			m.parent.chMsg <- msg
-		}
+		metrics.handleMsg(msg)
 	}
 }
 
-func (m *metrics) stats() *Stats {
-	if m.closed.Load() { // if closed return stats directly as we do not have write conflicts anymore
-		return m.stats()
-	}
-	chStats := make(chan *Stats)
-	m.chMsg <- chStats
-	return <-chStats
-}
-
-func (m *metrics) close() {
-	m.closed.Store(true)
-	close(m.chMsg)
-	m.wg.Wait()
+func (mc *metricsCollector) close() {
+	close(mc.msgCh)
+	mc.wg.Wait()
 }

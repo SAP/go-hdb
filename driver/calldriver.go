@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
 )
@@ -18,8 +17,6 @@ var (
 	_ driver.NamedValueChecker = (*callConn)(nil)
 	_ driver.QueryerContext    = (*callConn)(nil)
 )
-
-var callConverter = sql.OpenDB(new(callConnector))
 
 type callDriver struct{}
 

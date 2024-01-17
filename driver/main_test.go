@@ -105,5 +105,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	/* goleak (https://github.com/uber-go/goleak) test
+	if err := goleak.Find(); err != nil {
+		log.Print(err)
+	}
+	*/
+
 	os.Exit(exitCode)
 }

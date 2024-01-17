@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.7.4"
+const DriverVersion = "1.7.5"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -28,7 +28,7 @@ const clientType = "go-hdb"
 
 var defaultApplicationName, _ = os.Executable()
 
-// driver singleton instance (do not use directly - use getDriver() instead).
+// driver singleton instance.
 var stdHdbDriver *hdbDriver
 
 func init() {
@@ -89,7 +89,7 @@ func (d *hdbDriver) Stats() *Stats { return d.metrics.stats() }
 type DB struct {
 	// The embedded sql.DB instance. Please use only the methods of the wrapper (driver.DB).
 	// The field is exported to support use cases where a sql.DB object is requested, but please
-	// use with care as some of the sql.DB methods (e.g. Close) are redefined in driver.DB.
+	// use with care as some of the sql.DB methods (e.g. Close) might be redefined in driver.DB.
 	*sql.DB
 	metrics *metrics
 }
@@ -103,13 +103,6 @@ func OpenDB(c *Connector) *DB {
 		DB:      sql.OpenDB(nc),
 		metrics: metrics,
 	}
-}
-
-// Close closes the DB. It also calls the Close method of the embedded sql.DB.
-func (db *DB) Close() error {
-	err := db.DB.Close()
-	db.metrics.close()
-	return err
 }
 
 // ExStats returns the extended database statistics.

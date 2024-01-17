@@ -3,6 +3,12 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.5
+- updated dependencies
+- fixed issue starting go routines during driver initialization
+  - https://github.com/SAP/go-hdb/issues/130
+  - https://github.com/SAP/go-hdb/issues/131
+
 #### v1.7.4
 - performance improvements
 
