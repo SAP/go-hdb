@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.6
+- updated dependencies
+- bulkbench refresh
+
 #### v1.7.5
 - updated dependencies
 - fixed issue starting go routines during driver initialization

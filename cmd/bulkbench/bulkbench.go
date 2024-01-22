@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
-	"net/http/pprof"
+	_ "net/http/pprof" //nolint: gosec
 	"os"
 	"os/signal"
 	"runtime"
@@ -16,15 +17,12 @@ import (
 	"time"
 )
 
+//go:embed templates/*
+var templateFS embed.FS
+
 func main() {
 	if !flag.Parsed() {
 		flag.Parse()
-	}
-
-	checkErr := func(err error) {
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	// Print runtime info.
@@ -36,32 +34,38 @@ func main() {
 	})
 	log.Printf("Command line flags: %s", strings.Join(s, " "))
 
+	dba, err := newDBA(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer dba.close()
+
 	// Create handlers.
-	dbHandler, err := newDBHandler(log.Printf)
-	checkErr(err)
-	testHandler := newTestHandler(log.Printf)
-	indexHandler, err := newIndexHandler(testHandler, dbHandler)
-	checkErr(err)
+	dbHandler, err := newDBHandler(dba)
+	if err != nil {
+		dba.close()
+		log.Fatal(err) //nolint: gocritic
+	}
+	testHandler, err := newTestHandler(dba)
+	if err != nil {
+		log.Fatal(err)
+	}
+	indexHandler, err := newIndexHandler(dba)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt)
 
-	mux := http.NewServeMux()
+	http.Handle("/test/", testHandler)
+	http.Handle("/db/", dbHandler)
+	http.Handle("/", indexHandler)
+	http.HandleFunc("/favicon.ico", func(http.ResponseWriter, *http.Request) {}) // Avoid "/" handler call for browser favicon request.
 
-	mux.Handle("/test/", testHandler)
-	mux.Handle("/db/", dbHandler)
-	mux.Handle("/", indexHandler)
-	mux.HandleFunc("/favicon.ico", func(http.ResponseWriter, *http.Request) {}) // Avoid "/" handler call for browser favicon request.
-
-	// pprof
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-	svr := http.Server{Addr: net.JoinHostPort(host, port), Handler: mux, ReadHeaderTimeout: 30 * time.Second}
-	log.Println("listening...")
+	addr := net.JoinHostPort(host, port)
+	svr := http.Server{Addr: addr, ReadHeaderTimeout: 30 * time.Second}
+	log.Printf("listening on %s ...", addr)
 
 	go func() {
 		if err := svr.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {

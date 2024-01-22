@@ -1,0 +1,12 @@
+{{define "testresult"}}
+<tr>
+    <td>{{.Sequential}}</td>
+    <td>{{.BatchCount}}</td>
+    <td>{{.BatchSize}}</td>
+    <td>{{.BulkSize}}</td>
+    <td>{{.Duration}}</td>
+    <td>{{.Err}}</td>
+</tr>
+{{end}}
+
+{{template "testresult" .}}

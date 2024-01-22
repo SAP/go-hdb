@@ -1,0 +1,10 @@
+{{define "dbresult"}}
+<tr>
+    <td>{{.Command}}</td>
+    <td>{{.Name}}</td>
+    <td>{{.NumRow}}</td>
+    <td>{{.Err}}</td>
+</tr>
+{{end}}
+
+{{template "dbresult" .}}

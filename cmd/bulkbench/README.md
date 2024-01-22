@@ -13,11 +13,8 @@ create column table <TableName> (id integer, field double)
 ## Test variants
 
 The basic idea is to insert data in chunks (batchCount) of a fixed amount of records (batchSize) whether sequentially or 'in parallel'.
-The actual 'grade of parallelization' is heavily depending on the test environment (CPU cores, TCP/IP stack). bulkbench 'enables'
-potential parallelism 'idiomatically' via Goroutines. Each Goroutine is using an own dedicated database connection for the tests
-being independent of the Go sql.DB connection pool handling and configuration.
-As the test performance results are heavily 'I/O bound' the implementation mainly tries to reduce client server round-trips. Therefore
-the go-hdb driver bulk insert capabilities are used (please refer to the [go-hdb driver documentation and examples](https://github.com/SAP/go-hdb)
+The actual 'grade of parallelization' is heavily depending on the test environment (CPU cores, TCP/IP stack). bulkbench 'enables' potential parallelism 'idiomatically' via Goroutines. Each Goroutine is using a database connection for the tests being dependent of the Go sql.DB connection pool handling and configuration.
+As the test performance results are heavily 'I/O bound' the implementation mainly tries to reduce client server round-trips. Therefore the go-hdb driver bulk insert capabilities are used (please refer to the [go-hdb driver documentation and examples](https://github.com/SAP/go-hdb)
 for details).
 
 ## In a real world example...
@@ -37,34 +34,21 @@ for details).
 
 Executing bulkbench starts a HTTP server on 'localhost:8080'.
 
-After starting a browser pointing to the server address the following HTML page should be visible in the browser window:
+After starting a browser pointing to the server address the following HTML page, powered by [htmx](https://htmx.org/) and [Pico.css](https://picocss.com/),
+should be visible in the browser window:
 
 ![cannot display bulkbench.png](./bulkbench.png)
- 
+
 * the first section displays some runtime information like GOMAXPROCS and the driver and database version
 * the second section lists all test relevant parameters which can be set as environment variables or commandline parameters
 * the third sections allows to execute tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
-* the last section provides some database operations for the selected test database schema and table
+* the last section provides some database commands for the selected test database schema and table
 
-Clicking on one of the predefined test will execute it and display the result consisting of test parameters and the duration in seconds.
-The result is a JSON payload, which provides an easy way to be interpreted by a program.
-
-## URL format 
-
-Running bulkbench as HTTP server a test can be executed via a HTTP GET using the following URL format:
-
-```
-http://<host>:<port>/test/<TestType>?batchcount=<number>&batchsize=<number>
-```
-with 
-```
-<TestType> =:= Seq | Par
-```
+Clicking on one of the predefined test will execute it and display the result consisting of test parameters and the duration.
 
 ## Benchmark
 
-Parallel to the single execution using the browser or any other HTTP client (like wget, curl, ...), the tests can be executed automatically
-as Go benchmark. The benchmark can be executed whether by 
+Parallel to the single execution using the browser or any other HTTP client (like wget, curl, ...), the tests can be executed automatically as Go benchmark. The benchmark can be executed whether by 
 ```
 go test -bench .
 ```
@@ -76,8 +60,6 @@ and executing it via
 ```
 ./bulkbench.test -test.bench .
 ```
-
-The benchmark is 'self-contained', meaning it includes its own http server (for details please see [httptest](https://golang.org/pkg/net/http/httptest/).
 
 In addition to the standard Go benchmarks four additional metrics are reported:
 * avgsec/op: the average time (*) 
@@ -127,28 +109,24 @@ go test -c
 ### Benchmark example output
 
 ```
-./bulkbench.test -test.bench . -test.benchtime 10x -wait 5 
+./bulkbench.test -test.bench . -test.benchtime 10x -wait 5
 
-GOMAXPROCS: 8
-NumCPU: 8
-Driver Version: 0.110.0
-HANA Version: 2.00.045.00.1575639312
-goos: darwin
-goarch: arm64
+2024/01/21 19:52:15 Runtime Info - GOMAXPROCS: 32 NumCPU: 32 DriverVersion 1.7.5 HDBVersion: 2.00.072.00.1690304772
+goos: linux
+goarch: amd64
 pkg: github.com/SAP/go-hdb/cmd/bulkbench
-Benchmark/seq-1x100000-8         	      10	5633601117 ns/op	         0.2156 avgsec/op	         0.2486 maxsec/op	         0.2155 medsec/op	         0.1947 minsec/op
-Benchmark/seq-10x10000-8         	      10	5699490917 ns/op	         0.2786 avgsec/op	         0.3108 maxsec/op	         0.2803 medsec/op	         0.2559 minsec/op
-Benchmark/seq-100x1000-8         	      10	6165608862 ns/op	         0.7506 avgsec/op	         0.8077 maxsec/op	         0.7440 medsec/op	         0.6990 minsec/op
-Benchmark/seq-1x1000000-8        	      10	6938632171 ns/op	         1.514 avgsec/op	         1.629 maxsec/op	         1.515 medsec/op	         1.407 minsec/op
-Benchmark/seq-10x100000-8        	      10	7054997538 ns/op	         1.636 avgsec/op	         1.725 maxsec/op	         1.622 medsec/op	         1.536 minsec/op
-Benchmark/seq-100x10000-8        	      10	7810094800 ns/op	         2.397 avgsec/op	         2.557 maxsec/op	         2.411 medsec/op	         2.262 minsec/op
-Benchmark/seq-1000x1000-8        	      10	12483512412 ns/op	         7.064 avgsec/op	         7.356 maxsec/op	         7.038 medsec/op	         6.812 minsec/op
-Benchmark/par-1x100000-8         	      10	5599063146 ns/op	         0.2224 avgsec/op	         0.2483 maxsec/op	         0.2207 medsec/op	         0.2002 minsec/op
-Benchmark/par-10x10000-8         	      10	5897479183 ns/op	         0.1346 avgsec/op	         0.1571 maxsec/op	         0.1305 medsec/op	         0.1186 minsec/op
-Benchmark/par-100x1000-8         	      10	9334510842 ns/op	         0.2375 avgsec/op	         0.2488 maxsec/op	         0.2389 medsec/op	         0.2175 minsec/op
-Benchmark/par-1x1000000-8        	      10	6892064029 ns/op	         1.451 avgsec/op	         1.581 maxsec/op	         1.434 medsec/op	         1.361 minsec/op
-Benchmark/par-10x100000-8        	      10	6699703246 ns/op	         0.9531 avgsec/op	         1.022 maxsec/op	         0.9434 medsec/op	         0.9004 minsec/op
-Benchmark/par-100x10000-8        	      10	10699403688 ns/op	         0.9221 avgsec/op	         0.9838 maxsec/op	         0.9181 medsec/op	         0.8722 minsec/op
-Benchmark/par-1000x1000-8        	      10	50726314071 ns/op	         2.204 avgsec/op	         2.301 maxsec/op	         2.216 medsec/op	         2.096 minsec/op
+cpu: AMD Ryzen 9 7950X 16-Core Processor            
+Benchmark/sequential-1x100000-32         	      10	5285818357 ns/op	         0.09177 avgsec/op	         0.09784 maxsec/op	         0.09167 medsec/op	         0.08464 minsec/op
+Benchmark/sequential-10x10000-32         	      10	5277063412 ns/op	         0.08814 avgsec/op	         0.09130 maxsec/op	         0.08851 medsec/op	         0.08482 minsec/op
+Benchmark/sequential-100x1000-32         	      10	5411144659 ns/op	         0.2250 avgsec/op	         0.2429 maxsec/op	         0.2240 medsec/op	         0.2078 minsec/op
+Benchmark/sequential-1x1000000-32        	      10	6060119948 ns/op	         0.8404 avgsec/op	         0.9543 maxsec/op	         0.8295 medsec/op	         0.7983 minsec/op
+Benchmark/sequential-10x100000-32        	      10	5829117992 ns/op	         0.6361 avgsec/op	         0.6495 maxsec/op	         0.6376 medsec/op	         0.6168 minsec/op
+Benchmark/sequential-100x10000-32        	      10	6008048710 ns/op	         0.8170 avgsec/op	         0.8402 maxsec/op	         0.8165 medsec/op	         0.7955 minsec/op
+Benchmark/concurrent-1x100000-32         	      10	5273034242 ns/op	         0.08714 avgsec/op	         0.09937 maxsec/op	         0.08703 medsec/op	         0.07726 minsec/op
+Benchmark/concurrent-10x10000-32         	      10	5262679752 ns/op	         0.06510 avgsec/op	         0.07544 maxsec/op	         0.06520 medsec/op	         0.05459 minsec/op
+Benchmark/concurrent-100x1000-32         	      10	5347686066 ns/op	         0.09944 avgsec/op	         0.1087 maxsec/op	         0.09856 medsec/op	         0.09213 minsec/op
+Benchmark/concurrent-1x1000000-32        	      10	6039928922 ns/op	         0.8263 avgsec/op	         0.8493 maxsec/op	         0.8222 medsec/op	         0.7998 minsec/op
+Benchmark/concurrent-10x100000-32        	      10	5702794921 ns/op	         0.5025 avgsec/op	         0.5368 maxsec/op	         0.5168 medsec/op	         0.4340 minsec/op
+Benchmark/concurrent-100x10000-32        	      10	5663472687 ns/op	         0.4123 avgsec/op	         0.4419 maxsec/op	         0.4131 medsec/op	         0.3869 minsec/op
 PASS
 ```

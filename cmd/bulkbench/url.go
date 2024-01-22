@@ -8,8 +8,10 @@ import (
 )
 
 const (
+	urlQuerySequential = "sequential"
 	urlQueryBatchCount = "batchcount"
 	urlQueryBatchSize  = "batchsize"
+	urlQueryCommand    = "command"
 )
 
 type urlQuery struct {
@@ -26,6 +28,26 @@ func (q *urlQuery) get(name string) (string, error) {
 		return "", fmt.Errorf("url query value %s missing", name)
 	}
 	return v, nil
+}
+
+func (q *urlQuery) getString(name string, defValue string) string {
+	s, err := q.get(name)
+	if err != nil {
+		return defValue
+	}
+	return s
+}
+
+func (q *urlQuery) getBool(name string, defValue bool) bool {
+	s, err := q.get(name)
+	if err != nil {
+		return defValue
+	}
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return defValue
+	}
+	return b
 }
 
 func (q *urlQuery) getInt(name string, defValue int) int {

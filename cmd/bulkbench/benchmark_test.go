@@ -3,78 +3,44 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"runtime"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/SAP/go-hdb/driver"
 )
 
 func Benchmark(b *testing.B) {
-	checkErr := func(err error) {
-		if err != nil {
-			b.Fatal(err)
-		}
+
+	dba, err := newDBA(dsn)
+	if err != nil {
+		b.Fatal(err)
 	}
-
-	// Create handler.
-	dbHandler, err := newDBHandler(b.Logf)
-	checkErr(err)
-	testHandler := newTestHandler(b.Logf)
-
-	// Register handlers.
-	mux := http.NewServeMux()
-	mux.Handle("/test/", testHandler)
-	mux.Handle("/db/", dbHandler)
-
-	// Start http test server.
-	ts := httptest.NewServer(mux)
-	client := ts.Client()
-
-	execTest := func(test string, batchCount, batchSize int) (*testResult, error) {
-		r, err := client.Get(fmt.Sprintf("%s%s?batchcount=%d&batchsize=%d", ts.URL, test, batchCount, batchSize))
-		if err != nil {
-			return nil, err
-		}
-		defer r.Body.Close()
-		return newTestResult(r)
-	}
-
-	execDropSchema := func() (*testResult, error) {
-		r, err := client.Get(fmt.Sprintf("%s/db/dropSchema", ts.URL))
-		if err != nil {
-			return nil, err
-		}
-		defer r.Body.Close()
-		return newTestResult(r)
-	}
+	lt := newLoadTest(dba)
 
 	const maxDuration time.Duration = 1<<63 - 1
 
-	f := func(b *testing.B, test string, batchCount, batchSize int) {
+	f := func(b *testing.B, sequential bool, batchCount, batchSize int) {
 		ds := make([]time.Duration, b.N)
 		var avg, max time.Duration
 		min := maxDuration
 
 		for i := 0; i < b.N; i++ {
-			r, err := execTest(test, batchCount, batchSize)
-			if err != nil {
-				b.Fatal(err)
-			}
-			if r.Error != "" {
-				b.Fatal(r.Error)
+			tr := lt.test(sequential, batchCount, batchSize, drop)
+			if tr.Err != nil {
+				b.Fatal(tr.Err)
 			}
 
-			avg += r.Duration
-			if r.Duration < min {
-				min = r.Duration
+			avg += tr.Duration
+			if tr.Duration < min {
+				min = tr.Duration
 			}
-			if r.Duration > max {
-				max = r.Duration
+			if tr.Duration > max {
+				max = tr.Duration
 			}
-			ds[i] = r.Duration
+			ds[i] = tr.Duration
 		}
 
 		// Median.
@@ -98,38 +64,27 @@ func Benchmark(b *testing.B) {
 
 	// Additional info.
 	log.SetOutput(os.Stdout)
-
-	format := `
-GOMAXPROCS: %d
-NumCPU: %d
-Driver Version: %s
-HANA Version: %s
-`
-	log.Printf(format, runtime.GOMAXPROCS(0), runtime.NumCPU(), dbHandler.driverVersion(), dbHandler.hdbVersion())
+	log.Printf("Runtime Info - GOMAXPROCS: %d NumCPU: %d DriverVersion %s HDBVersion: %s",
+		runtime.GOMAXPROCS(0),
+		runtime.NumCPU(),
+		driver.DriverVersion,
+		dba.hdbVersion(),
+	)
 
 	b.Cleanup(func() {
-		// close test server
-		defer ts.Close()
-
-		r, err := execDropSchema()
-		if err != nil {
-			b.Fatal(err)
-		}
-		if r.Error != "" {
-			b.Fatal(r.Error)
-		}
+		dba.close()
 	})
 
-	// Start benchmarks.
-	names := []string{"seq", "par"}
-	tests := []string{testSeq, testPar}
-
-	for i, test := range tests {
-		for _, prm := range parameters.prms {
-			// Use batchCount and batchCount flags.
-			b.Run(fmt.Sprintf("%s-%dx%d", names[i], prm.BatchCount, prm.BatchSize), func(b *testing.B) {
-				f(b, test, prm.BatchCount, prm.BatchSize)
-			})
-		}
+	for _, prm := range parameters {
+		// Use batchCount and batchCount flags.
+		b.Run(fmt.Sprintf("sequential-%dx%d", prm.BatchCount, prm.BatchSize), func(b *testing.B) {
+			f(b, true, prm.BatchCount, prm.BatchSize)
+		})
+	}
+	for _, prm := range parameters {
+		// Use batchCount and batchCount flags.
+		b.Run(fmt.Sprintf("concurrent-%dx%d", prm.BatchCount, prm.BatchSize), func(b *testing.B) {
+			f(b, false, prm.BatchCount, prm.BatchSize)
+		})
 	}
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -13,16 +12,14 @@ type prm struct {
 	BatchCount, BatchSize int
 }
 
-// prmValue represents a flag Value fpr parameters.
-type prmValue struct {
-	prms []prm
-}
+// prmsValue represents a flag value for parameters.
+type prmsValue []prm
 
 // String implements the flag.Value interface.
-func (v *prmValue) String() string {
+func (v prmsValue) String() string {
 	b := new(bytes.Buffer)
-	last := len(v.prms) - 1
-	for i, prm := range v.prms {
+	last := len(v) - 1
+	for i, prm := range v {
 		b.WriteString(strconv.Itoa(prm.BatchCount))
 		b.WriteString("x")
 		b.WriteString(strconv.Itoa(prm.BatchSize))
@@ -34,11 +31,11 @@ func (v *prmValue) String() string {
 }
 
 // Set implements the flag.Value interface.
-func (v *prmValue) Set(s string) error {
-	if v.prms == nil {
-		v.prms = []prm{}
+func (v *prmsValue) Set(s string) error {
+	if v == nil {
+		*v = []prm{}
 	} else {
-		v.prms = v.prms[:0]
+		*v = (*v)[:0]
 	}
 
 	for _, ts := range strings.Split(s, " ") {
@@ -56,30 +53,7 @@ func (v *prmValue) Set(s string) error {
 		if err != nil {
 			return err
 		}
-		v.prms = append(v.prms, prm)
+		*v = append(*v, prm)
 	}
 	return nil
-}
-
-// toNumRecordList returns a list of lists of prms with equal number of records.
-func (v *prmValue) toNumRecordList() [][]prm {
-	// create categories by number of records.
-	m := make(map[int][]prm)
-
-	for _, prm := range v.prms {
-		numRecord := prm.BatchCount * prm.BatchSize
-		m[numRecord] = append(m[numRecord], prm)
-	}
-	s := []int{}
-	for numRecord := range m {
-		s = append(s, numRecord)
-	}
-	// sort by number of records
-	sort.Ints(s)
-
-	r := make([][]prm, len(s))
-	for i, numRecord := range s {
-		r[i] = m[numRecord]
-	}
-	return r
 }

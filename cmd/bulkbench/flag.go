@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 
 	"github.com/SAP/go-hdb/driver"
 )
@@ -38,37 +37,29 @@ const (
 var (
 	dsn, host, port string
 	bufferSize      int
-	parameters      = &prmValue{prms: []prm{{1, 100000}, {10, 10000}, {100, 1000}, {1, 1000000}, {10, 100000}, {100, 10000}, {1000, 1000}}}
-	drop            bool
-	wait            int
-)
-
-var initOnce sync.Once
-
-const (
-	schemaPrefix = "goHdbTest_"
-	tablePrefix  = "table_"
+	// when using too many concurrent connections (approx 1000), hdb 'resets connection -> limit number of concurrent connections to 100.
+	parameters = prmsValue{{1, 100000}, {10, 10000}, {100, 1000}, {1, 1000000}, {10, 100000}, {100, 10000}}
+	drop       bool
+	wait       int
 )
 
 // blurFlagSet is used to 'blur' information on the web ui (currently DSN not to expose user, password and ip address).
 var blurFlagSet = flag.NewFlagSet("blur", flag.PanicOnError)
 
 func init() {
-	initOnce.Do(func() {
-		defaultBufferSize := driver.NewConnector().BufferSize()
+	defaultBufferSize := driver.NewConnector().BufferSize()
 
-		flag.StringVar(&dsn, fnDSN, getStringEnv(envDSN, "hdb://MyUser:MyPassword@localhost:39013"), fmt.Sprintf("DNS (environment variable: %s)", envDSN))
-		flag.StringVar(&host, fnHost, getStringEnv(envHost, "localhost"), fmt.Sprintf("HTTP host (environment variable: %s)", envHost))
-		flag.StringVar(&port, fnPort, getStringEnv(envPort, "8080"), fmt.Sprintf("HTTP port (environment variable: %s)", envPort))
-		flag.IntVar(&bufferSize, fnBufferSize, getIntEnv(envBufferSize, defaultBufferSize), fmt.Sprintf("Buffer size in bytes (environment variable: %s)", envBufferSize))
-		flag.Var(parameters, fnParameters, fmt.Sprintf("Parameters (environment variable: %s)", envParameters))
-		flag.BoolVar(&drop, fnDrop, getBoolEnv(envDrop, true), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
-		flag.IntVar(&wait, fnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
+	flag.StringVar(&dsn, fnDSN, getStringEnv(envDSN, "hdb://MyUser:MyPassword@localhost:39013"), fmt.Sprintf("DNS (environment variable: %s)", envDSN))
+	flag.StringVar(&host, fnHost, getStringEnv(envHost, "localhost"), fmt.Sprintf("HTTP host (environment variable: %s)", envHost))
+	flag.StringVar(&port, fnPort, getStringEnv(envPort, "8080"), fmt.Sprintf("HTTP port (environment variable: %s)", envPort))
+	flag.IntVar(&bufferSize, fnBufferSize, getIntEnv(envBufferSize, defaultBufferSize), fmt.Sprintf("Buffer size in bytes (environment variable: %s)", envBufferSize))
+	flag.Var(&parameters, fnParameters, fmt.Sprintf("Parameters (environment variable: %s)", envParameters))
+	flag.BoolVar(&drop, fnDrop, getBoolEnv(envDrop, true), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
+	flag.IntVar(&wait, fnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
 
-		if _, ok := os.LookupEnv(envBlur); ok {
-			blurFlagSet.String(fnDSN, "hdb://MyUser:MyPassword@localhost:39013", fmt.Sprintf("DNS (environment variable: %s)", envDSN))
-		}
-	})
+	if _, ok := os.LookupEnv(envBlur); ok {
+		blurFlagSet.String(fnDSN, "hdb://MyUser:MyPassword@localhost:39013", fmt.Sprintf("DNS (environment variable: %s)", envDSN))
+	}
 }
 
 func lookupFlag(name string) (*flag.Flag, bool) {

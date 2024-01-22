@@ -1,0 +1,131 @@
+{{define "root"}}
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+		<script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+		<title>bulkbench</title>
+	</head>
+	<body>
+		<main class="container">
+			<nav>
+				<ul></ul>
+				<ul>
+					<li><a href="https://github.com/SAP/go-hdb/tree/main/cmd/bulkbench">github</a></li>
+				</ul>
+			</nav>
+			<details>
+				<summary>Runtime information</summary>
+				<table role="grid">
+					<tbody>
+						<tr><td>GOMAXPROCS</td><td>{{gomaxprocs}}</td></tr>
+						<tr><td>NumCPU</td><td>{{numcpu}}</ld></tr>
+						<tr><td>Driver Version</td><td>{{driverversion}}</ld></tr>
+						<tr><td>HANA Version</td><td>{{hdbversion}}</ld></tr>
+						<tr><td>goos/goarch</td><td>{{goos}}/{{goarch}}</ld></tr>
+					</tbody>
+				</table>
+			</details>
+			<details>
+				<summary>Test parameter</summary>
+				<table role="grid">
+					<thead>
+						<tr>
+							<th>Flag</td>
+							<th>Value</td>
+							<th>Usage</td>
+						</tr>
+					</thead>
+					<tbody>
+						{{- range .Flags}}
+						<tr>
+							<td>{{.Name}}</td>
+							<td>{{.Value}}</td>
+							<td>{{.Usage}}</td>
+						</tr>
+						{{- end}}
+					</tbody>
+				</table>
+			</details>
+			<details open>
+				<summary>Tests</summary>
+				<table>
+					<thead>
+						<tr>
+							<th>BatchCount x BatchSize</th>
+							<th>Sequential</th>
+							<th>Concurrent</th>
+						</tr>
+					</thead>	
+					</tbody>
+						{{- range .TestDefs}}
+						<tr>
+							<td>{{.Descr}}</td>
+							<td><a hx-get={{.SequentialLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
+							<td><a hx-get={{.ConcurrentLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
+						</tr>
+						{{- end}}
+					</tbody>
+				</table>
+				<table role="grid">
+					<thead>
+						<tr>
+							<th>Sequential</td>
+							<th>BatchCount</td>
+							<th>BatchSize</td>
+							<th>BulkSize</td>
+							<th>Duration</td>
+							<th>Error</td>
+						</tr>
+					</thead>
+					<tbody id="testresult"></tbody>
+				</table>
+			</details>
+			<details>
+				<summary>Database commands</summary>
+				<table>
+					<tbody>
+						<tr>
+							<td>Table: {{.TableName}}</td>
+							{{- range .TableCommands}}
+							<td><a hx-get={{.Link}} hx-target="#dbresult" hx-indicator="#indicator">{{.Command}}</a></td>
+							{{- end}}
+						</tr>
+						<tr>
+							<td>Schema: {{.SchemaName}}</td>
+							{{- range .SchemaCommands}}
+							<td><a hx-get={{.Link}} hx-target="#dbresult" hx-indicator="#indicator">{{.Command}}</a></td>
+							{{- end}}
+						</tr>
+					</tbody>
+				</table>
+				<table role="grid">
+					<thead>
+						<tr>
+							<th>Command</td>
+							<th>Name</td>
+							<th>Rows</td>
+							<th>Error</td>
+						</tr>
+					</thead>
+					<tbody id="dbresult"></tbody>
+				</table>
+			</details>
+			<div id="indicator" class="htmx-indicator">
+				<progress></progress>
+			</div>
+			<blockquote>
+				"Rule 2. Measure. Don't tune for speed until you've measured, 
+				and even then don't unless one part of the code overwhelms the rest."
+				<footer>
+					<cite><a href=https://users.ece.utexas.edu/~adnan/pike.html>- Rob Pike's 5 Rules of Programming</a></cite>
+				</footer>
+		  </blockquote>
+		</main>
+	</body>
+</html>
+{{end}}
+
+{{template "root" .}}
