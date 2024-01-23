@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"html/template"
+	"log"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
@@ -11,7 +14,35 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-type loadtestResult struct {
+// testHandler implements the http.Handler interface for the tests.
+type testHandler struct {
+	tmpl *template.Template
+	ts   *tests
+}
+
+// newTestHandler returns a new TestHandler instance.
+func newTestHandler(dba *dba) (*testHandler, error) {
+	tmpl, err := template.ParseFS(templateFS, tmplTestResultFile)
+	if err != nil {
+		return nil, err
+	}
+	return &testHandler{tmpl: tmpl, ts: newTests(dba)}, nil
+}
+
+func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	q := newURLQuery(r)
+
+	sequential := q.getBool(urlQuerySequential, defSequential)
+	batchCount := q.getInt(urlQueryBatchCount, defBatchCount)
+	batchSize := q.getInt(urlQueryBatchSize, defBatchSize)
+
+	result := h.ts.execute(sequential, batchCount, batchSize, drop)
+
+	log.Printf("%s", result)
+	h.tmpl.Execute(w, result) //nolint: errcheck
+}
+
+type testResult struct {
 	Sequential bool
 	BatchCount int
 	BatchSize  int
@@ -20,7 +51,7 @@ type loadtestResult struct {
 	Err        error
 }
 
-func (r *loadtestResult) String() string {
+func (r *testResult) String() string {
 	if r.Err != nil {
 		return r.Err.Error()
 	}
@@ -35,7 +66,7 @@ func (r *loadtestResult) String() string {
 	)
 }
 
-func (r *loadtestResult) setError(err error) *loadtestResult {
+func (r *testResult) setError(err error) *testResult {
 	r.Err = err
 	return r
 }
@@ -46,44 +77,44 @@ const (
 	defBatchSize  = 10000
 )
 
-type loadTest struct {
+type tests struct {
 	dba          *dba
 	prepareQuery string
 }
 
-func newLoadTest(dba *dba) *loadTest {
-	return &loadTest{
+func newTests(dba *dba) *tests {
+	return &tests{
 		dba:          dba,
-		prepareQuery: fmt.Sprintf("insert into %s.%s values (?, ?)", driver.Identifier(dba.schemaName), driver.Identifier(dba.tableName)),
+		prepareQuery: fmt.Sprintf("insert into %s.%s values (?, ?)", dba.schemaName, dba.tableName),
 	}
 }
 
-func (lt *loadTest) test(sequential bool, batchCount, batchSize int, drop bool) *loadtestResult {
+func (ts *tests) execute(sequential bool, batchCount, batchSize int, drop bool) *testResult {
 	// Try to get a comparable environment for each run
 	// by clearing garbage from previous runs.
 	runtime.GC()
 
 	waitDuration := time.Duration(wait) * time.Second
-	result := &loadtestResult{Sequential: sequential, BatchCount: batchCount, BatchSize: batchSize}
+	result := &testResult{Sequential: sequential, BatchCount: batchCount, BatchSize: batchSize}
 
-	db, bulkSize, err := lt.setup(batchSize)
+	db, bulkSize, err := ts.setup(batchSize)
 	if err != nil {
 		return result.setError(err)
 	}
-	defer lt.teardown(db)
+	defer ts.teardown(db)
 
 	if drop {
-		lt.dba.dropTable()
+		ts.dba.dropTable()
 	}
-	if err := lt.dba.ensureSchemaTable(); err != nil {
+	if err := ts.dba.ensureSchemaTable(); err != nil {
 		return result.setError(err)
 	}
 
 	var d time.Duration
 	if sequential {
-		d, err = lt.sequential(db, batchCount, batchSize, waitDuration)
+		d, err = ts.executeSequential(db, batchCount, batchSize, waitDuration)
 	} else {
-		d, err = lt.concurrent(db, batchCount, batchSize, waitDuration)
+		d, err = ts.executeConcurrent(db, batchCount, batchSize, waitDuration)
 	}
 
 	result.BulkSize = bulkSize
@@ -94,7 +125,7 @@ func (lt *loadTest) test(sequential bool, batchCount, batchSize int, drop bool) 
 	return result
 }
 
-func (lt *loadTest) sequential(db *sql.DB, batchCount, batchSize int, wait time.Duration) (time.Duration, error) {
+func (ts *tests) executeSequential(db *sql.DB, batchCount, batchSize int, wait time.Duration) (time.Duration, error) {
 	numRow := batchCount * batchSize
 
 	if wait > 0 {
@@ -106,7 +137,7 @@ func (lt *loadTest) sequential(db *sql.DB, batchCount, batchSize int, wait time.
 		return 0, err
 	}
 
-	stmt, err := conn.PrepareContext(context.Background(), lt.prepareQuery)
+	stmt, err := conn.PrepareContext(context.Background(), ts.prepareQuery)
 	if err != nil {
 		return 0, err
 	}
@@ -161,10 +192,10 @@ func createTasks(db *sql.DB, prepareQuery string, batchCount, batchSize int) ([]
 	return tasks, err
 }
 
-func (lt *loadTest) concurrent(db *sql.DB, batchCount, batchSize int, wait time.Duration) (time.Duration, error) {
+func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait time.Duration) (time.Duration, error) {
 	var wg sync.WaitGroup
 
-	tasks, err := createTasks(db, lt.prepareQuery, batchCount, batchSize)
+	tasks, err := createTasks(db, ts.prepareQuery, batchCount, batchSize)
 	if err != nil {
 		return 0, err
 	}
@@ -207,7 +238,7 @@ func (lt *loadTest) concurrent(db *sql.DB, batchCount, batchSize int, wait time.
 	return d, err
 }
 
-func (lt *loadTest) setup(batchSize int) (*sql.DB, int, error) {
+func (ts *tests) setup(batchSize int) (*sql.DB, int, error) {
 	// Set bulk size to batchSize.
 	ctr, err := driver.NewDSNConnector(dsn)
 	if err != nil {
@@ -221,7 +252,7 @@ func (lt *loadTest) setup(batchSize int) (*sql.DB, int, error) {
 	return sql.OpenDB(ctr), ctr.BulkSize(), nil
 }
 
-func (lt *loadTest) teardown(db *sql.DB) {
+func (ts *tests) teardown(db *sql.DB) {
 	db.Close()
 }
 

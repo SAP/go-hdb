@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.7
+- source code cleanups
+
 #### v1.7.6
 - updated dependencies
 - bulkbench refresh

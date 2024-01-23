@@ -5,7 +5,6 @@ import (
 	"embed"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -13,12 +12,18 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"time"
 )
 
 //go:embed templates/*
 var templateFS embed.FS
+
+const (
+	tmplIndexName      = "index.html"
+	tmplIndexFile      = "templates/index.html"
+	tmplDBResultFile   = "templates/dbresult.html"
+	tmplTestResultFile = "templates/testresult.html"
+)
 
 func main() {
 	if !flag.Parsed() {
@@ -27,12 +32,6 @@ func main() {
 
 	// Print runtime info.
 	log.Printf("Runtime Info - GOMAXPROCS: %d NumCPU: %d GOOS/GOARCH: %s/%s", runtime.GOMAXPROCS(0), runtime.NumCPU(), runtime.GOOS, runtime.GOARCH)
-
-	s := make([]string, 0)
-	visit(func(f *flag.Flag) {
-		s = append(s, fmt.Sprintf("%s:%s", f.Name, f.Value))
-	})
-	log.Printf("Command line flags: %s", strings.Join(s, " "))
 
 	dba, err := newDBA(dsn)
 	if err != nil {

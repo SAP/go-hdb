@@ -18,7 +18,7 @@ func Benchmark(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	lt := newLoadTest(dba)
+	ts := newTests(dba)
 
 	const maxDuration time.Duration = 1<<63 - 1
 
@@ -28,7 +28,7 @@ func Benchmark(b *testing.B) {
 		min := maxDuration
 
 		for i := 0; i < b.N; i++ {
-			tr := lt.test(sequential, batchCount, batchSize, drop)
+			tr := ts.execute(sequential, batchCount, batchSize, drop)
 			if tr.Err != nil {
 				b.Fatal(tr.Err)
 			}

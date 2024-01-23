@@ -31,7 +31,6 @@ const (
 	envParameters = "PARAMETERS"
 	envDrop       = "DROP"
 	envWait       = "WAIT"
-	envBlur       = "BLUR"
 )
 
 var (
@@ -43,9 +42,6 @@ var (
 	wait       int
 )
 
-// blurFlagSet is used to 'blur' information on the web ui (currently DSN not to expose user, password and ip address).
-var blurFlagSet = flag.NewFlagSet("blur", flag.PanicOnError)
-
 func init() {
 	defaultBufferSize := driver.NewConnector().BufferSize()
 
@@ -56,43 +52,19 @@ func init() {
 	flag.Var(&parameters, fnParameters, fmt.Sprintf("Parameters (environment variable: %s)", envParameters))
 	flag.BoolVar(&drop, fnDrop, getBoolEnv(envDrop, true), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
 	flag.IntVar(&wait, fnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
-
-	if _, ok := os.LookupEnv(envBlur); ok {
-		blurFlagSet.String(fnDSN, "hdb://MyUser:MyPassword@localhost:39013", fmt.Sprintf("DNS (environment variable: %s)", envDSN))
-	}
-}
-
-func lookupFlag(name string) (*flag.Flag, bool) {
-	if fl := blurFlagSet.Lookup(name); fl != nil {
-		return fl, true
-	}
-	if fl := flag.Lookup(name); fl != nil {
-		return fl, true
-	}
-	return nil, false
 }
 
 // flags returns a slice containing all command-line flags defined in this package.
 func flags() []*flag.Flag {
 	flags := make([]*flag.Flag, 0)
 	for _, name := range flagNames {
-		if fl, ok := lookupFlag(name); ok {
+		if fl := flag.Lookup(name); fl != nil {
 			flags = append(flags, fl)
 		}
 	}
 	return flags
 }
 
-// visit visits the command-line flags defined in this package.
-func visit(f func(f *flag.Flag)) {
-	for _, fl := range flags() {
-		f(fl)
-	}
-}
-
-// getStringEnv retrieves the string value of the environment variable named by the key.
-// If the variable is present in the environment the value is returned.
-// Otherwise the default value  defValue is retuned.
 func getStringEnv(key, defValue string) string {
 	value, ok := os.LookupEnv(key)
 	if !ok {
@@ -101,9 +73,6 @@ func getStringEnv(key, defValue string) string {
 	return value
 }
 
-// getIntEnv retrieves the int value of the environment variable named by the key.
-// If the variable is present in the environment the value is returned.
-// Otherwise the default value defValue is retuned.
 func getIntEnv(key string, defValue int) int {
 	value, ok := os.LookupEnv(key)
 	if !ok {
@@ -116,9 +85,6 @@ func getIntEnv(key string, defValue int) int {
 	return i
 }
 
-// getBoolEnv retrieves the bool value of the environment variable named by the key.
-// If the variable is present in the environment the value is returned.
-// Otherwise the default value defValue is retuned.
 func getBoolEnv(key string, defValue bool) bool {
 	value, ok := os.LookupEnv(key)
 	if !ok {

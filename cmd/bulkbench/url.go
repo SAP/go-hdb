@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,25 +21,25 @@ func newURLQuery(r *http.Request) *urlQuery {
 	return &urlQuery{values: r.URL.Query()}
 }
 
-func (q *urlQuery) get(name string) (string, error) {
+func (q *urlQuery) get(name string) (string, bool) {
 	v := q.values.Get(name)
 	if v == "" {
-		return "", fmt.Errorf("url query value %s missing", name)
+		return v, false
 	}
-	return v, nil
+	return v, true
 }
 
 func (q *urlQuery) getString(name string, defValue string) string {
-	s, err := q.get(name)
-	if err != nil {
+	s, ok := q.get(name)
+	if !ok {
 		return defValue
 	}
 	return s
 }
 
 func (q *urlQuery) getBool(name string, defValue bool) bool {
-	s, err := q.get(name)
-	if err != nil {
+	s, ok := q.get(name)
+	if !ok {
 		return defValue
 	}
 	b, err := strconv.ParseBool(s)
@@ -51,8 +50,8 @@ func (q *urlQuery) getBool(name string, defValue bool) bool {
 }
 
 func (q *urlQuery) getInt(name string, defValue int) int {
-	s, err := q.get(name)
-	if err != nil {
+	s, ok := q.get(name)
+	if !ok {
 		return defValue
 	}
 	i, err := strconv.Atoi(s)

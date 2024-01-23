@@ -55,7 +55,7 @@ func newIndexHandler(dba *dba) (*indexHandler, error) {
 		"goarch":        func() string { return runtime.GOARCH },
 	}
 
-	tmpl, err := template.New("index.gohtml").Funcs(funcMap).ParseFS(templateFS, "templates/index.gohtml")
+	tmpl, err := template.New(tmplIndexName).Funcs(funcMap).ParseFS(templateFS, tmplIndexFile)
 	if err != nil {
 		return nil, err
 	}
@@ -80,8 +80,8 @@ func newIndexHandler(dba *dba) (*indexHandler, error) {
 	data := &indexData{
 		Flags:          flags(),
 		TestDefs:       indexTestDefs,
-		SchemaName:     dba.schemaName,
-		TableName:      dba.tableName,
+		SchemaName:     string(dba.schemaName),
+		TableName:      string(dba.tableName),
 		SchemaCommands: schemaCommands,
 		TableCommands:  tableCommands,
 	}
