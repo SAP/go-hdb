@@ -89,7 +89,9 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	done := make(chan struct{})
 	var rows driver.Rows
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		rows, err = c.query(ctx, s.pr, nvargs, !s.conn.inTx)
 		close(done)
 	}()
@@ -118,7 +120,9 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	done := make(chan struct{})
 	var result driver.Result
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		if s.pr.isProcedureCall() {
 			result, s.rows, err = s.execCall(ctx, s.pr, nvargs)
 		} else {

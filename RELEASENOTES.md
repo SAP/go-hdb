@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.8
+- fixed issue closing connection before concurrent db calls are finalized
+
 #### v1.7.7
 - source code cleanups
 

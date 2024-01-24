@@ -215,8 +215,9 @@ type conn struct {
 
 	dbConn *dbConn
 
-	inTx      bool  // in transaction
-	lastError error // last error
+	wg        sync.WaitGroup // wait for concurrent db calls when closing connections
+	inTx      bool           // in transaction
+	lastError error          // last error
 	sessionID int64
 
 	serverOptions *p.ConnectOptions
@@ -453,7 +454,9 @@ func (c *conn) Ping(ctx context.Context) error {
 
 	done := make(chan struct{})
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		_, err = c.queryDirect(ctx, dummyQuery, !c.inTx)
 		close(done)
 	}()
@@ -479,7 +482,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	done := make(chan struct{})
 	var stmt driver.Stmt
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		var pr *prepareResult
 
 		if pr, err = c.prepare(ctx, query); err == nil {
@@ -502,6 +507,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
+	c.wg.Wait()                                          // wait until concurrent db calls are finalized
 	c.collector.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	// do not disconnect if isBad or invalid sessionID
 	if !c.isBad() && c.sessionID != defaultSessionID {
@@ -527,7 +533,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	done := make(chan struct{})
 	var tx driver.Tx
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		// set isolation level
 		query := strings.Join([]string{setIsolationLevel, level}, " ")
 		if _, err = c.execDirect(ctx, query, !c.inTx); err != nil {
@@ -574,7 +582,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	done := make(chan struct{})
 	var rows driver.Rows
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		rows, err = c.queryDirect(ctx, query, !c.inTx)
 		close(done)
 	}()
@@ -603,7 +613,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	done := make(chan struct{})
 	var result driver.Result
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		// handle procesure call without parameters here as well
 		result, err = c.execDirect(ctx, query, !c.inTx)
 		close(done)
@@ -642,7 +654,9 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 	done := make(chan struct{})
 	var ci *DBConnectInfo
 	var err error
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		ci, err = c.dbConnectInfo(ctx, databaseName)
 		close(done)
 	}()
