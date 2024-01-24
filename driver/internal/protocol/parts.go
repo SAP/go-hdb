@@ -176,18 +176,12 @@ func newGenPartReader(kind PartKind) Part {
 	if !ok {
 		// whether part cannot be instantiated generically or
 		// part is not (yet) known to the driver
-		if !(kind == PkResultset || kind == PkParameterMetadata || kind == PkResultMetadata) {
-			panic(fmt.Errorf("got them %v", kind))
-		}
 		return nil
 	}
 	// create instance
 	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
 		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
-	}
-	if _, ok := part.(*TopologyInformation); ok {
-		panic("got them")
 	}
 	return part
 }

@@ -14,7 +14,7 @@ all:
 	@echo execute tests on older supported go versions
 	go1.20.13 test ./...
 	@echo execute tests on future supported go versions
-	go1.22rc1 test ./...
+	go1.22rc2 test ./...
 	gotip test ./...
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
@@ -45,8 +45,8 @@ tools:
 go:
 	go install golang.org/dl/go1.20.13@latest
 	go1.20.13 download
-	go install golang.org/dl/go1.22rc1@latest
-	go1.22rc1 download
+	go install golang.org/dl/go1.22rc2@latest
+	go1.22rc2 download
 	go install golang.org/dl/gotip@latest
 	gotip download
 
