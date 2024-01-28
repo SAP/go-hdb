@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"flag"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -16,13 +17,12 @@ import (
 )
 
 //go:embed templates/*
-var templateFS embed.FS
+var rootFS embed.FS
 
 const (
-	tmplIndexName      = "index.html"
-	tmplIndexFile      = "templates/index.html"
-	tmplDBResultFile   = "templates/dbresult.html"
-	tmplTestResultFile = "templates/testresult.html"
+	tmplIndex      = "index.html"
+	tmplDBResult   = "dbresult.html"
+	tmplTestResult = "testresult.html"
 )
 
 func main() {
@@ -33,49 +33,60 @@ func main() {
 	// Print runtime info.
 	log.Printf("Runtime Info - GOMAXPROCS: %d NumCPU: %d GOOS/GOARCH: %s/%s", runtime.GOMAXPROCS(0), runtime.NumCPU(), runtime.GOOS, runtime.GOARCH)
 
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	dba, err := newDBA(dsn)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer dba.close()
 
-	// Create handlers.
-	dbHandler, err := newDBHandler(dba)
+	templateFS, err := fs.Sub(rootFS, "templates")
 	if err != nil {
-		dba.close()
-		log.Fatal(err) //nolint: gocritic
+		return err
 	}
-	testHandler, err := newTestHandler(dba)
+	testHandler, err := newTestHandler(dba, templateFS)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	indexHandler, err := newIndexHandler(dba)
+	dbHandler, err := newDBHandler(dba, templateFS)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	sigint := make(chan os.Signal, 1)
-	signal.Notify(sigint, os.Interrupt)
+	indexHandler, err := newIndexHandler(dba, templateFS)
+	if err != nil {
+		return err
+	}
 
 	http.Handle("/test/", testHandler)
 	http.Handle("/db/", dbHandler)
 	http.Handle("/", indexHandler)
 	http.HandleFunc("/favicon.ico", func(http.ResponseWriter, *http.Request) {}) // Avoid "/" handler call for browser favicon request.
-
 	addr := net.JoinHostPort(host, port)
-	svr := http.Server{Addr: addr, ReadHeaderTimeout: 30 * time.Second}
-	log.Printf("listening on %s ...", addr)
+	srv := http.Server{Addr: addr, ReadHeaderTimeout: 30 * time.Second}
 
+	done := make(chan struct{})
 	go func() {
-		if err := svr.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, os.Interrupt)
+		<-sigint
+
+		// shutdown server.
+		log.Println("shutting down...")
+		if err := srv.Shutdown(context.Background()); err != nil {
+			log.Print(err)
 		}
+		close(done)
 	}()
 
-	<-sigint
-	// shutdown server
-	log.Println("shutting down...")
-	if err := svr.Shutdown(context.Background()); err != nil {
-		log.Fatalf("HTTP server Shutdown: %v", err)
+	log.Printf("listening on %s ...", addr)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		log.Print(err)
 	}
+	<-done
+	return nil
 }

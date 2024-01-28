@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"runtime"
@@ -21,8 +22,8 @@ type testHandler struct {
 }
 
 // newTestHandler returns a new TestHandler instance.
-func newTestHandler(dba *dba) (*testHandler, error) {
-	tmpl, err := template.ParseFS(templateFS, tmplTestResultFile)
+func newTestHandler(dba *dba, templateFS fs.FS) (*testHandler, error) {
+	tmpl, err := template.ParseFS(templateFS, tmplTestResult)
 	if err != nil {
 		return nil, err
 	}

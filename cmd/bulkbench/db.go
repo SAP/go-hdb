@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -29,8 +30,8 @@ type dbHandler struct {
 }
 
 // newDBHandler returns a new DBHandler instance.
-func newDBHandler(dba *dba) (*dbHandler, error) {
-	tmpl, err := template.ParseFS(templateFS, tmplDBResultFile)
+func newDBHandler(dba *dba, templateFS fs.FS) (*dbHandler, error) {
+	tmpl, err := template.ParseFS(templateFS, tmplDBResult)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +91,7 @@ func newDBA(dsn string) (*dba, error) {
 }
 
 func (dba *dba) close() error {
-	err1 := dropTable(dba.db, dba.schemaName, dba.tableName)
+	err1 := dropSchema(dba.db, dba.schemaName, true)
 	err2 := dba.db.Close()
 	return errors.Join(err1, err2)
 }

@@ -1,4 +1,4 @@
-{{define "root"}}
+{{define "index"}}
 <!DOCTYPE html>
 <html lang="en">
 	<head>
@@ -7,6 +7,11 @@
 		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
 		<script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
 		<title>bulkbench</title>
+		<script>
+			htmx.on("htmx:sendError", function(evt) {
+				alert("send error");
+			});
+		</script>
 	</head>
 	<body>
 		<main class="container">
@@ -127,4 +132,4 @@
 </html>
 {{end}}
 
-{{template "root" .}}
+{{template "index" .}}

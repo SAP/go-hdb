@@ -4,6 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
+	"io/fs"
+	"log"
 	"net/http"
 	"runtime"
 
@@ -45,7 +48,7 @@ func newIndexTestDef(batchCount, batchSize int) *indexTestDef {
 }
 
 // newIndexHandler returns a new IndexHandler instance.
-func newIndexHandler(dba *dba) (*indexHandler, error) {
+func newIndexHandler(dba *dba, templateFS fs.FS) (*indexHandler, error) {
 	funcMap := template.FuncMap{
 		"gomaxprocs":    func() int { return runtime.GOMAXPROCS(0) },
 		"numcpu":        runtime.NumCPU,
@@ -55,7 +58,7 @@ func newIndexHandler(dba *dba) (*indexHandler, error) {
 		"goarch":        func() string { return runtime.GOARCH },
 	}
 
-	tmpl, err := template.New(tmplIndexName).Funcs(funcMap).ParseFS(templateFS, tmplIndexFile)
+	tmpl, err := template.New(tmplIndex).Funcs(funcMap).ParseFS(templateFS, tmplIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +88,18 @@ func newIndexHandler(dba *dba) (*indexHandler, error) {
 		SchemaCommands: schemaCommands,
 		TableCommands:  tableCommands,
 	}
+
+	// test if data and template definition does match
+	if err := tmpl.Execute(io.Discard, data); err != nil {
+		return nil, err
+	}
+
 	return &indexHandler{tmpl: tmpl, data: data}, nil
 }
 
 func (h *indexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.tmpl.Execute(w, h.data) //nolint: errcheck
+	err := h.tmpl.Execute(w, h.data)
+	if err != nil {
+		log.Printf("template execute error: %s", err)
+	}
 }

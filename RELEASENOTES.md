@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.10
+- bulkbench fixes
+
 #### v1.7.9
 - go1.22 preparation
 
