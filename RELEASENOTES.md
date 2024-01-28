@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.11
+- updated github action versions
+
 #### v1.7.10
 - bulkbench fixes
 
