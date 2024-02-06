@@ -4,9 +4,8 @@ package driver
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
-
-	"github.com/SAP/go-hdb/driver/internal/dbtest"
 )
 
 func testExistSessionVariables(t *testing.T, sv1, sv2 map[string]string) {
@@ -31,6 +30,51 @@ func testNotExistSessionVariables(t *testing.T, keys []string, sv2 map[string]st
 }
 
 func testSessionVariables(t *testing.T) {
+	// mSessionContext represents the hdb M_SESSION_CONTEXT system view.
+	type mSessionContext struct {
+		host         string
+		port         int
+		connectionID int
+		key          string
+		value        string
+		section      string
+		// ddlEnabled   sql.NullInt64 // not always popuated (see HANA docu for m_session_context for reference).
+	}
+
+	sessionContext := func(db *sql.DB) ([]mSessionContext, error) {
+		rows, err := db.Query("select host, port, connection_id, key, value, section from m_session_context where connection_id=current_connection")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		mscs := []mSessionContext{}
+		var msc mSessionContext
+
+		for rows.Next() {
+			if err := rows.Scan(&msc.host, &msc.port, &msc.connectionID, &msc.key, &msc.value, &msc.section); err != nil {
+				return nil, err
+			}
+			mscs = append(mscs, msc)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return mscs, nil
+	}
+
+	querySessionVariables := func(db *sql.DB) (map[string]string, error) {
+		mscs, err := sessionContext(db)
+		if err != nil {
+			return nil, err
+		}
+		sv := make(map[string]string, len(mscs))
+		for _, v := range mscs {
+			sv[v.key] = v.value
+		}
+		return sv, nil
+	}
+
 	connector := MT.NewConnector()
 
 	// set session variables
@@ -42,7 +86,7 @@ func testSessionVariables(t *testing.T) {
 	defer db.Close()
 
 	// retrieve session variables
-	sv2, err := dbtest.QuerySessionVariables(db)
+	sv2, err := querySessionVariables(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +98,10 @@ func testSessionVariables(t *testing.T) {
 
 func printInvalidConnectAttempts(t *testing.T, username string) {
 	db := MT.DB()
-	t.Logf("number of invalid connect attempts: %d", dbtest.QueryInvalidConnectAttempts(db, username))
+	invalidConnectAttempts := int64(0)
+	// ignore error (entry not found)
+	db.QueryRow(fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts) //nolint:errcheck
+	t.Logf("number of invalid connect attempts: %d", invalidConnectAttempts)
 }
 
 func testRetryConnect(t *testing.T) {

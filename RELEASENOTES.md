@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.7.0
 
+#### v1.7.12
+- updated dependencies
+
 #### v1.7.11
 - updated github action versions
 

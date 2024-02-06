@@ -99,7 +99,8 @@ func (e *HdbError) IsFatal() bool { return e.errorLevel == errorLevelFatalError 
 
 // HdbErrors represent the collection of errors return by the server.
 type HdbErrors struct {
-	errs []*HdbError
+	onlyWarnings bool
+	errs         []*HdbError
 	*HdbError
 }
 
@@ -126,12 +127,10 @@ func (e *HdbErrors) Error() string {
 }
 
 // NumError implements the driver.Error interface.
+// NumErrors returns the number of all errors, including warnings.
 func (e *HdbErrors) NumError() int { return len(e.errs) }
 
 func (e *HdbErrors) Unwrap() []error {
-	if len(e.errs) == 1 {
-		return []error{e.errs[0]}
-	}
 	errs := make([]error, 0, len(e.errs))
 	for _, err := range e.errs {
 		errs = append(errs, err)
@@ -154,17 +153,12 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 }
 
 func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	e.errs = resizeSlice(e.errs, numArg)
+	e.onlyWarnings = true
+	e.errs = nil
 
 	for i := 0; i < numArg; i++ {
-		err := e.errs[i]
-		if err == nil {
-			err = new(HdbError)
-			e.errs[i] = err
-		}
-		if i == 0 {
-			e.HdbError = err // set default to first error
-		}
+		err := new(HdbError)
+		e.errs = append(e.errs, err)
 
 		// err.stmtNo = -1
 		err.stmtNo = 0
@@ -189,6 +183,10 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 		err.errorText = make([]byte, int(err.errorTextLength))
 		dec.Bytes(err.errorText)
 
+		if e.onlyWarnings && !err.IsWarning() {
+			e.onlyWarnings = false
+		}
+
 		if numArg == 1 {
 			// Error (protocol error?):
 			// if only one error (numArg == 1): s.ph.bufferLength is one byte greater than data to be read
@@ -209,5 +207,9 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 			dec.Skip(pad)
 		}
 	}
+	if len(e.errs) > 0 {
+		e.HdbError = e.errs[0] // set default to first error
+	}
+
 	return dec.Error()
 }

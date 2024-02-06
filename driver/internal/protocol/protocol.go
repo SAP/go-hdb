@@ -11,7 +11,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/slices"
 	"golang.org/x/text/transform"
 )
 
@@ -157,10 +156,10 @@ func (r *Reader) checkError(ctx context.Context) error {
 		}
 	}
 
-	if slices.AllFunc(r.lastErrors.errs, func(err *HdbError) bool { return err.IsWarning() }) {
-		slices.RangeFunc(r.lastErrors.errs, func(err *HdbError) {
+	if r.lastErrors.onlyWarnings { // only warnings
+		for _, err := range r.lastErrors.errs {
 			r.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
-		})
+		}
 		return nil
 	}
 
