@@ -3,7 +3,7 @@ Release Notes
 
 ## v1.7.0
 
-#### v1.7.12
+#### v1.7.12 - v1.7.13
 - updated dependencies
 
 #### v1.7.11

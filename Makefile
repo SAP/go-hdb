@@ -12,7 +12,7 @@ all:
 	@echo execute tests on latest go version	
 	go test ./...
 	@echo execute tests on older supported go versions
-	go1.20.13 test ./...
+	go1.20.14 test ./...
 	@echo execute tests on future supported go versions
 	go1.22rc2 test ./...
 	gotip test ./...
@@ -43,8 +43,8 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.20.13@latest
-	go1.20.13 download
+	go install golang.org/dl/go1.20.14@latest
+	go1.20.14 download
 	go install golang.org/dl/go1.22rc2@latest
 	go1.22rc2 download
 	go install golang.org/dl/gotip@latest
