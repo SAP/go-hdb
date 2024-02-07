@@ -30,7 +30,7 @@ jobs:
       matrix:
         goos: [linux]
         goarch: [amd64, arm, arm64, s390x]
-        go: ['1.22', '1.21']
+        go: ['1.22.0', '1.21.7']
       fail-fast: false  
     
     name: Go ${{ matrix.go }} ${{ matrix.goos }} ${{ matrix.goarch }} build
@@ -39,6 +39,7 @@ jobs:
       GOOS: ${{ matrix.goos }}
       GOARCH: ${{ matrix.goarch }}
       GOARM: 6
+      GOTOOLCHAIN: go${{ matrix.go }}
 
     steps:
     
@@ -70,10 +71,13 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        go: ['1.22', '1.21']
+        go: ['1.22.0', '1.21.7']
       fail-fast: false  
     
     name: Go ${{ matrix.go }} macOS
+
+    env:
+      GOTOOLCHAIN: go${{ matrix.go }}
     
     steps:
     
@@ -100,10 +104,13 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        go: ['1.22', '1.21']
+        go: ['1.22.0', '1.21.7']
       fail-fast: false  
     
     name: Go ${{ matrix.go }} Windows
+
+    env:
+      GOTOOLCHAIN: go${{ matrix.go }}
     
     steps:
     
