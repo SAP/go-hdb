@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.8.0
 
+### Minor revisions
+
+#### v1.8.1
+- added toolchain
+
 ### Changes
 
 - Added support of Go 1.22.
@@ -13,6 +18,8 @@ Release Notes
 - None.
 
 ## v1.7.0
+
+### Minor revisions
 
 #### v1.7.12 - v1.7.13
 - updated dependencies
@@ -58,6 +65,8 @@ Release Notes
 - Added driver support of scanning database rows into go structs.
 
 ## v1.6.0
+
+### Minor revisions
 
 ### v1.6.11
 - fixed github actions

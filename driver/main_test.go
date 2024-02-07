@@ -15,8 +15,6 @@ import (
 	"testing"
 	"text/template"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/rand"
 )
 
 //go:embed stats.tmpl
@@ -224,7 +222,7 @@ func (mt *MainTest) querySchemasPrefix(db *sql.DB, prefix string) ([]string, err
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
-	schema := flag.String("schema", testGoHDBSchemaPrefix+rand.AlphanumString(16), "database schema")
+	schema := flag.String("schema", string(RandomIdentifier(testGoHDBSchemaPrefix)), "database schema")
 	dk := dkSchema
 	flag.Func("drop", fmt.Sprintf("%s %s %s (default %d)", dkNone, dkSchema, dkSchemas, dkSchema), func(s string) error {
 		i, err := strconv.Atoi(s)

@@ -18,7 +18,7 @@ import (
 	"unicode/utf8"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/rand"
+	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
 	"github.com/SAP/go-hdb/driver/internal/types"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
@@ -529,7 +529,7 @@ var asciiData = func() []byte {
 
 var randAlphanumData = func() []byte {
 	b := make([]byte, 1e6) // random Lob size 1MB
-	if _, err := rand.AlphanumReader.Read(b); err != nil {
+	if _, err := alphanum.Read(b); err != nil {
 		panic(err) // should never happen
 	}
 	return b

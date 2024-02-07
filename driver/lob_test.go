@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	drand "github.com/SAP/go-hdb/driver/internal/rand"
+	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
 )
 
 type stringLob string
@@ -34,7 +34,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 	testData := make([]string, numRec)
 
 	for i := 0; i < numRec; i++ {
-		testData[i] = drand.AlphanumString(blobSize)
+		testData[i] = alphanum.ReadString(blobSize)
 	}
 
 	table := RandomIdentifier("lob_")

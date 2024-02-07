@@ -268,7 +268,7 @@ var typeSQLDatatypes = map[reflect.Type]string{
 	nullLobType:     "blob",
 }
 
-// inderfSQLType tries to infer the hdb sql datatype.
+// inferSQLDatatype tries to infer the hdb sql datatype.
 func inferSQLDatatype(typ reflect.Type) (string, error) {
 	kind := typ.Kind()
 
