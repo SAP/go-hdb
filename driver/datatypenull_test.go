@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-// TestNull tests go1.22 using generic Null type with go-hdb types
-func TestNullDataType(t *testing.T) {
+// TestNull tests go1.22 using generic Null type with go-hdb types.
+func TestNullDataType(t *testing.T) { //nolint:gocyclo
 	t.Parallel()
 
 	type nullRow struct {

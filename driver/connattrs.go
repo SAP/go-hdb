@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log/slog"
+	"maps"
 	"math"
 	"os"
 	"path"
@@ -11,8 +13,6 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/driver/internal/exp/maps"
-	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"

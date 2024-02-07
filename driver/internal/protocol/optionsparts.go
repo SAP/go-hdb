@@ -2,8 +2,8 @@ package protocol
 
 import (
 	"fmt"
+	"slices"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 

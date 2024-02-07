@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"regexp"
 	"strconv"
@@ -19,7 +20,6 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/dial"
-	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/x509"

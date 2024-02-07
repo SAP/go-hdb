@@ -2,10 +2,9 @@ package driver
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 )
 
 const (

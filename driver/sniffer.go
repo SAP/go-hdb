@@ -5,10 +5,10 @@ import (
 	"errors"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"sync"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )

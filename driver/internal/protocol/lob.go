@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
-	"github.com/SAP/go-hdb/driver/internal/minmax"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -92,7 +91,7 @@ func newLobInDescr(rd io.Reader) *LobInDescr {
 
 func (d *LobInDescr) String() string {
 	// restrict output size
-	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.Opt, d.buf.Len(), d.pos, d.buf.Bytes()[:minmax.MinInt(d.buf.Len(), 25)])
+	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.Opt, d.buf.Len(), d.pos, d.buf.Bytes()[:min(d.buf.Len(), 25)])
 }
 
 // FetchNext fetches the next lob chunk.

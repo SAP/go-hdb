@@ -2,12 +2,12 @@
 package auth
 
 import (
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/cmp"
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )

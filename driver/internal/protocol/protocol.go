@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )

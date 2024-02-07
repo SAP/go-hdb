@@ -6,10 +6,10 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
-	"github.com/SAP/go-hdb/driver/internal/exp/slog"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 

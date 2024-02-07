@@ -1,6 +1,17 @@
 Release Notes
 =============
 
+## v1.8.0
+
+### Changes
+
+- Added support of Go 1.22.
+- Dropped support of Go language versions < Go 1.21.
+
+### Incompatible changes
+
+- None.
+
 ## v1.7.0
 
 #### v1.7.12 - v1.7.13

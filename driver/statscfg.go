@@ -4,9 +4,8 @@ import (
 	_ "embed" // embed stats configuration
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/exp/slices"
 )
 
 //go:embed statscfg.json

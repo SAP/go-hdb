@@ -6,8 +6,6 @@ import (
 	"math"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/SAP/go-hdb/driver/internal/minmax"
 )
 
 // Distance returns the Lewenshtein distance.
@@ -43,11 +41,11 @@ func distance(a, b string) int {
 		fj1 := f[0] // fj1 is the value of f[j - 1] in last iteration
 		f[0]++
 		for _, cb := range b {
-			mn := minmax.MinInt(f[j]+1, f[j-1]+1) // delete & insert
+			mn := min(f[j]+1, f[j-1]+1) // delete & insert
 			if cb != ca {
-				mn = minmax.MinInt(mn, fj1+1) // change
+				mn = min(mn, fj1+1) // change
 			} else {
-				mn = minmax.MinInt(mn, fj1) // matched
+				mn = min(mn, fj1) // matched
 			}
 
 			fj1, f[j] = f[j], mn // save f[j] to fj1(j is about to increase), update f[j] to mn
