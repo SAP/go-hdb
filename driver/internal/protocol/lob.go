@@ -23,21 +23,24 @@ const (
 	loLastdata      LobOptions = 0x04
 )
 
-var lobOptionsText = map[LobOptions]string{
-	loNullindicator: "null indicator",
-	loDataincluded:  "data included",
-	loLastdata:      "last data",
-}
+const (
+	loNullindicatorText = "null indicator"
+	loDataincludedText  = "data included"
+	loLastdataText      = "last data"
+)
 
 func (o LobOptions) String() string {
-	t := make([]string, 0, len(lobOptionsText))
-
-	for option, text := range lobOptionsText {
-		if (o & option) != 0 {
-			t = append(t, text)
-		}
+	var s []string
+	if o&loNullindicator != 0 {
+		s = append(s, loNullindicatorText)
 	}
-	return fmt.Sprintf("%v", t)
+	if o&loDataincluded != 0 {
+		s = append(s, loDataincludedText)
+	}
+	if o&loLastdata != 0 {
+		s = append(s, loLastdataText)
+	}
+	return fmt.Sprintf("%v", s)
 }
 
 // IsLastData return true if the last data package was read, false otherwise.

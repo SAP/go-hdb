@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.3
+- updated dependencies
+
 #### v1.8.2
 - fixed github actions & CodeQL toolchain issues
 

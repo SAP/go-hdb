@@ -28,33 +28,6 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// Transaction isolation levels supported by hdb.
-const (
-	LevelReadCommitted  = "READ COMMITTED"
-	LevelRepeatableRead = "REPEATABLE READ"
-	LevelSerializable   = "SERIALIZABLE"
-)
-
-// Access modes supported by hdb.
-const (
-	modeReadOnly  = "READ ONLY"
-	modeReadWrite = "READ WRITE"
-)
-
-// map sql isolation level to hdb isolation level.
-var isolationLevel = map[driver.IsolationLevel]string{
-	driver.IsolationLevel(sql.LevelDefault):        LevelReadCommitted,
-	driver.IsolationLevel(sql.LevelReadCommitted):  LevelReadCommitted,
-	driver.IsolationLevel(sql.LevelRepeatableRead): LevelRepeatableRead,
-	driver.IsolationLevel(sql.LevelSerializable):   LevelSerializable,
-}
-
-// map sql read only flag to hdb access mode.
-var readOnly = map[bool]string{
-	true:  modeReadOnly,
-	false: modeReadWrite,
-}
-
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
 var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 
@@ -70,10 +43,13 @@ var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries.
 const (
-	dummyQuery        = "select 1 from dummy"
-	setIsolationLevel = "set transaction isolation level"
-	setAccessMode     = "set transaction"
-	setDefaultSchema  = "set schema"
+	dummyQuery                      = "select 1 from dummy"
+	setIsolationLevelReadCommitted  = "set transaction isolation level read committed"
+	setIsolationLevelRepeatableRead = "set transaction isolation level repeatable read"
+	setIsolationLevelSerializable   = "set transaction isolation level serializable"
+	setAccessModeReadOnly           = "set transaction read only"
+	setAccessModeReadWrite          = "set transaction read write"
+	setDefaultSchema                = "set schema"
 )
 
 var (
@@ -525,8 +501,15 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, ErrNestedTransaction
 	}
 
-	level, ok := isolationLevel[opts.Isolation]
-	if !ok {
+	var isolationLevelQuery string
+	switch sql.IsolationLevel(opts.Isolation) {
+	case sql.LevelDefault, sql.LevelReadCommitted:
+		isolationLevelQuery = setIsolationLevelReadCommitted
+	case sql.LevelRepeatableRead:
+		isolationLevelQuery = setIsolationLevelRepeatableRead
+	case sql.LevelSerializable:
+		isolationLevelQuery = setIsolationLevelSerializable
+	default:
 		return nil, ErrUnsupportedIsolationLevel
 	}
 
@@ -537,13 +520,16 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	go func() {
 		defer c.wg.Done()
 		// set isolation level
-		query := strings.Join([]string{setIsolationLevel, level}, " ")
-		if _, err = c.execDirect(ctx, query, !c.inTx); err != nil {
+		if _, err = c.execDirect(ctx, isolationLevelQuery, !c.inTx); err != nil {
 			goto done
 		}
 		// set access mode
-		query = strings.Join([]string{setAccessMode, readOnly[opts.ReadOnly]}, " ")
-		if _, err = c.execDirect(ctx, query, !c.inTx); err != nil {
+		if opts.ReadOnly {
+			_, err = c.execDirect(ctx, setAccessModeReadOnly, !c.inTx)
+		} else {
+			_, err = c.execDirect(ctx, setAccessModeReadWrite, !c.inTx)
+		}
+		if err != nil {
 			goto done
 		}
 		c.inTx = true

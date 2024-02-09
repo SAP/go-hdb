@@ -17,21 +17,24 @@ const (
 	poDefault   parameterOptions = 0x04
 )
 
-var parameterOptionsText = map[parameterOptions]string{
-	poMandatory: "mandatory",
-	poOptional:  "optional",
-	poDefault:   "default",
-}
+const (
+	poMandatoryText = "mandatory"
+	poOptionalText  = "optional"
+	poDefaultText   = "default"
+)
 
 func (k parameterOptions) String() string {
-	t := make([]string, 0, len(parameterOptionsText))
-
-	for option, text := range parameterOptionsText {
-		if (k & option) != 0 {
-			t = append(t, text)
-		}
+	var s []string
+	if k&poMandatory != 0 {
+		s = append(s, poMandatoryText)
 	}
-	return fmt.Sprintf("%v", t)
+	if k&poOptional != 0 {
+		s = append(s, poOptionalText)
+	}
+	if k&poDefault != 0 {
+		s = append(s, poDefaultText)
+	}
+	return fmt.Sprintf("%v", s)
 }
 
 // ParameterMode represents the parameter mode set.

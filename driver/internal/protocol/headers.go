@@ -69,23 +69,20 @@ const (
 	coExecuteLocally         commandOptions = 0x10
 )
 
-var commandOptionsText = map[commandOptions]string{
-	coSelfetchOff:            "selfetchOff",
-	coScrollableCursorOn:     "scrollabeCursorOn",
-	coNoResultsetCloseNeeded: "noResltsetCloseNeeded",
-	coHoldCursorOverCommtit:  "holdCursorOverCommit",
-	coExecuteLocally:         "executLocally",
-}
+var (
+	coList     = []commandOptions{coNil, coSelfetchOff, coScrollableCursorOn, coNoResultsetCloseNeeded, coHoldCursorOverCommtit, coExecuteLocally}
+	coListText = []string{"", "selfetchOff", "scrollableCursorOn", "noResltsetCloseNeeded", "holdCursorOverCommit", "executLocally"}
+)
 
 func (k commandOptions) String() string {
-	t := make([]string, 0, len(commandOptionsText))
+	var s []string
 
-	for option, text := range commandOptionsText {
+	for i, option := range coList {
 		if (k & option) != 0 {
-			t = append(t, text)
+			s = append(s, coListText[i])
 		}
 	}
-	return fmt.Sprintf("%v", t)
+	return fmt.Sprintf("%v", s)
 }
 
 // segment header.
@@ -208,23 +205,20 @@ const (
 	paResultsetClosed PartAttributes = 0x10
 )
 
-var partAttributesText = map[PartAttributes]string{
-	paLastPacket:      "lastPacket",
-	paNextPacket:      "nextPacket",
-	paFirstPacket:     "firstPacket",
-	paRowNotFound:     "rowNotFound",
-	paResultsetClosed: "resultsetClosed",
-}
+var (
+	paList     = []PartAttributes{paLastPacket, paNextPacket, paFirstPacket, paRowNotFound, paResultsetClosed}
+	paListText = []string{"lastPacket", "nextPacket", "firstPacket", "rowNotFound", "resultsetClosed"}
+)
 
 func (k PartAttributes) String() string {
-	t := make([]string, 0, len(partAttributesText))
+	var s []string
 
-	for attr, text := range partAttributesText {
+	for i, attr := range paList {
 		if (k & attr) != 0 {
-			t = append(t, text)
+			s = append(s, paListText[i])
 		}
 	}
-	return fmt.Sprintf("%v", t)
+	return fmt.Sprintf("%v", s)
 }
 
 // ResultsetClosed returns true if the result set is closed, false otherwise.

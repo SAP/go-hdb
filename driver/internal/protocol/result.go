@@ -15,20 +15,20 @@ const (
 	coOptional  columnOptions = 0x02
 )
 
-var columnOptionsText = map[columnOptions]string{
-	coMandatory: "mandatory",
-	coOptional:  "optional",
-}
+const (
+	coMandatoryText = "mandatory"
+	coOptionalText  = "optional"
+)
 
 func (k columnOptions) String() string {
-	t := make([]string, 0, len(columnOptionsText))
-
-	for option, text := range columnOptionsText {
-		if (k & option) != 0 {
-			t = append(t, text)
-		}
+	var s []string
+	if k&coMandatory != 0 {
+		s = append(s, coMandatoryText)
 	}
-	return fmt.Sprintf("%v", t)
+	if k&coOptional != 0 {
+		s = append(s, coOptionalText)
+	}
+	return fmt.Sprintf("%v", s)
 }
 
 // ResultsetID represents a resultset id.
