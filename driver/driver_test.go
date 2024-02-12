@@ -61,7 +61,7 @@ func testHDBError(t *testing.T, db *sql.DB) {
 	// select from not existing table with different table name length
 	// to check if padding, etc works (see hint in protocol.error.Read(...))
 	for i := 0; i < 9; i++ {
-		_, err := db.Query(fmt.Sprintf("select * from %s", strings.Repeat("x", i+1))) //nolint:sqlclosecheck
+		_, err := db.Query("select * from " + strings.Repeat("x", i+1)) //nolint:sqlclosecheck,gosec
 		if err == nil {
 			t.Fatal("hdb error expected")
 		}

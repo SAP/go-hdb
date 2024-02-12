@@ -146,7 +146,7 @@ func decodeClientKey(data []byte) (*pem.Block, error) {
 	blocks := decodePEM(data)
 	switch {
 	case blocks == nil:
-		return nil, fmt.Errorf("invalid client key")
+		return nil, errors.New("invalid client key")
 	case len(blocks) != 1:
 		return nil, fmt.Errorf("invalid number of blocks in key file %d - expected 1", len(blocks))
 	}

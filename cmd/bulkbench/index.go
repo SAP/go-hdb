@@ -68,16 +68,18 @@ func newIndexHandler(dba *dba, templateFS fs.FS) (*indexHandler, error) {
 		indexTestDefs = append(indexTestDefs, newIndexTestDef(prm.BatchCount, prm.BatchSize))
 	}
 
+	const dbCommand = "db?command="
+
 	tableCommands := []*indexCommandDef{
-		{Command: "create", Link: fmt.Sprintf("db?command=%s", cmdCreateTable)},
-		{Command: "drop", Link: fmt.Sprintf("db?command=%s", cmdDropTable)},
-		{Command: "deleteRows", Link: fmt.Sprintf("db?command=%s", cmdDeleteRows)},
-		{Command: "countRows", Link: fmt.Sprintf("db?command=%s", cmdCountRows)},
+		{Command: "create", Link: dbCommand + cmdCreateTable},
+		{Command: "drop", Link: dbCommand + cmdDropTable},
+		{Command: "deleteRows", Link: dbCommand + cmdDeleteRows},
+		{Command: "countRows", Link: dbCommand + cmdCountRows},
 	}
 
 	schemaCommands := []*indexCommandDef{
-		{Command: "create", Link: fmt.Sprintf("db?command=%s", cmdCreateSchema)},
-		{Command: "drop", Link: fmt.Sprintf("db?command=%s", cmdDropSchema)},
+		{Command: "create", Link: dbCommand + cmdCreateSchema},
+		{Command: "drop", Link: dbCommand + cmdDropSchema},
 	}
 
 	data := &indexData{

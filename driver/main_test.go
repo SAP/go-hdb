@@ -172,7 +172,7 @@ func (mt *MainTest) detectVersion(db *sql.DB) (*Version, error) {
 }
 
 func (mt *MainTest) createSchema(db *sql.DB, schema string) error {
-	_, err := db.Exec(fmt.Sprintf("create schema %s", strconv.Quote(schema)))
+	_, err := db.Exec("create schema " + strconv.Quote(schema))
 	return err
 }
 

@@ -128,7 +128,7 @@ func (c structColumns) queryPlaceholders() string {
 }
 
 // StructScanner is a database scanner to scan rows into a struct of type S.
-// This enables using structs as scan targets for the exported fields of the struct..
+// This enables using structs as scan targets for the exported fields of the struct.
 // For usage please refer to the example.
 type StructScanner[S any] struct {
 	columns       structColumns

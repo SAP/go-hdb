@@ -23,7 +23,7 @@ func TestColumnType(t *testing.T) {
 			return ""
 		}
 		buf := []byte{'('}
-		buf = append(buf, fmt.Sprintf("x0 %s", types[0].DataType())...)
+		buf = append(buf, "x0 "+types[0].DataType()...)
 		for i := 1; i < len(types); i++ {
 			buf = append(buf, ',')
 			buf = append(buf, fmt.Sprintf("x%s %s", strconv.Itoa(i), types[i].DataType())...)
@@ -46,7 +46,7 @@ func TestColumnType(t *testing.T) {
 
 	testColumnType := func(t *testing.T, db *sql.DB, version, dfv int, types []types.Column, values []any) {
 
-		tableName := RandomIdentifier(fmt.Sprintf("%s_", t.Name()))
+		tableName := RandomIdentifier("%s_" + t.Name())
 
 		// some data types are only valid for column tables
 		// e.g. text

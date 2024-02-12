@@ -20,7 +20,7 @@ func NewAuthHnd(logonname string) *AuthHnd {
 	return &AuthHnd{logonname: logonname, methods: auth.Methods{}}
 }
 
-func (a *AuthHnd) String() string { return fmt.Sprintf("logonname %s", a.logonname) }
+func (a *AuthHnd) String() string { return "logonname " + a.logonname }
 
 // AddSessionCookie adds session cookie authentication method.
 func (a *AuthHnd) AddSessionCookie(cookie []byte, logonname, clientID string) {

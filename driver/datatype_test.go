@@ -24,7 +24,7 @@ import (
 )
 
 func dttCreateTable(db *sql.DB, column string) (Identifier, error) {
-	tableName := RandomIdentifier(fmt.Sprintf("%s_", column))
+	tableName := RandomIdentifier(column + "_")
 	if _, err := db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", tableName, column)); err != nil {
 		return tableName, err
 	}

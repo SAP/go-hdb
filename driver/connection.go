@@ -146,8 +146,6 @@ type Conn interface {
 	DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error)
 }
 
-const traceMsg = "SQL"
-
 var stdConnTracker = &connTracker{}
 
 type connTracker struct {
@@ -265,13 +263,20 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 }
 
 var (
-	protTrace atomicBoolFlag
-	sqlTrace  atomicBoolFlag
+	protTrace atomic.Bool
+	sqlTrace  atomic.Bool
 )
 
 func init() {
-	flag.Var(&protTrace, "hdb.protTrace", "enabling hdb protocol trace")
-	flag.Var(&sqlTrace, "hdb.sqlTrace", "enabling hdb sql trace")
+	setTrace := func(b *atomic.Bool, s string) error {
+		v, err := strconv.ParseBool(s)
+		if err == nil {
+			b.Store(v)
+		}
+		return err
+	}
+	flag.BoolFunc("hdb.protTrace", "enabling hdb protocol trace", func(s string) error { return setTrace(&protTrace, s) })
+	flag.BoolFunc("hdb.sqlTrace", "enabling hdb sql trace", func(s string) error { return setTrace(&sqlTrace, s) })
 }
 
 // SQLTrace returns true if sql tracing output is active, false otherwise.
@@ -279,21 +284,6 @@ func SQLTrace() bool { return sqlTrace.Load() }
 
 // SetSQLTrace sets sql tracing output active or inactive.
 func SetSQLTrace(on bool) { sqlTrace.Store(on) }
-
-type namedValues []driver.NamedValue
-
-// LogValue implements the slog.LogValuer interface.
-func (nvs namedValues) LogValue() slog.Value {
-	attrs := make([]slog.Attr, len(nvs))
-	for i, nv := range nvs {
-		if nv.Name != "" {
-			attrs[i] = slog.String(nv.Name, fmt.Sprintf("%v", nv.Value))
-		} else {
-			attrs[i] = slog.String(strconv.Itoa(nv.Ordinal), fmt.Sprintf("%v", nv.Value))
-		}
-	}
-	return slog.GroupValue(attrs...)
-}
 
 // unique connection number.
 var connNo atomic.Uint64
@@ -423,9 +413,7 @@ func (c *conn) IsValid() bool { return !c.isBad() }
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", dummyQuery), slog.Int64("ms", time.Since(start).Milliseconds()))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), dummyQuery, nil)
 	}
 
 	done := make(chan struct{})
@@ -450,9 +438,7 @@ func (c *conn) Ping(ctx context.Context) error {
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), query, nil)
 	}
 
 	done := make(chan struct{})
@@ -560,9 +546,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -591,9 +575,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -655,6 +637,29 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 		c.lastError = err
 		return ci, err
 	}
+}
+
+func (c *conn) logSQLTrace(ctx context.Context, start time.Time, query string, nvargs []driver.NamedValue) {
+	if nvargs == nil {
+		c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
+		return
+	}
+	const numArg = 5 // limit the number of arguments to 5
+	var attrs []slog.Attr
+	for i, nv := range nvargs {
+		if i >= numArg {
+			break
+		}
+		if nv.Name != "" {
+			attrs = append(attrs, slog.String(nv.Name, fmt.Sprintf("%v", nv.Value)))
+		} else {
+			attrs = append(attrs, slog.String(strconv.Itoa(nv.Ordinal), fmt.Sprintf("%v", nv.Value)))
+		}
+	}
+	if len(nvargs) > numArg {
+		attrs = append(attrs, slog.Int("numArgSkip", len(nvargs)-numArg))
+	}
+	c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", slog.GroupValue(attrs...)))
 }
 
 func (c *conn) addTimeValue(start time.Time, k int) {

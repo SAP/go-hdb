@@ -6,7 +6,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"time"
 
@@ -81,9 +80,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	}
 	c := s.conn
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), s.query, nvargs)
 	}
 
 	done := make(chan struct{})
@@ -112,9 +109,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		connHook(c, choStmtExec)
 	}
 	if c.sqlTrace {
-		defer func(start time.Time) {
-			c.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String("query", s.query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", namedValues(nvargs)))
-		}(time.Now())
+		defer c.logSQLTrace(ctx, time.Now(), s.query, nvargs)
 	}
 
 	done := make(chan struct{})

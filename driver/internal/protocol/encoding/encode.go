@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -211,9 +212,7 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 }
 
 // String encodes a string.
-func (e *Encoder) String(s string) {
-	e.Bytes([]byte(s))
-}
+func (e *Encoder) String(s string) { e.Bytes(unsafe.String2ByteSlice(s)) }
 
 // CESU8Bytes encodes UTF-8 bytes into CESU-8 and returns the CESU-8 bytes written.
 func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
@@ -234,7 +233,7 @@ func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 }
 
 // CESU8String encodes an UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8String(s string) (int, error) { return e.CESU8Bytes([]byte(s)) }
+func (e *Encoder) CESU8String(s string) (int, error) { return e.CESU8Bytes(unsafe.String2ByteSlice(s)) }
 
 // varFieldInd encodes a variable field indicator.
 func (e *Encoder) varFieldInd(size int) error {

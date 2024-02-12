@@ -3,6 +3,8 @@ package alphanum
 
 import (
 	"crypto/rand"
+
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 const csAlphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" // alphanumeric character set.
@@ -25,5 +27,5 @@ func ReadString(n int) string {
 	if _, err := Read(b); err != nil {
 		panic(err) // rand should never fail
 	}
-	return string(b)
+	return unsafe.ByteSlice2String(b)
 }

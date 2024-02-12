@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
 )
 
@@ -317,7 +318,7 @@ func (d *Decoder) LIBytes() (n int, b []byte) {
 // LIString decodes a string with length indicator.
 func (d *Decoder) LIString() (n int, s string) {
 	n, b := d.LIBytes()
-	return n, string(b)
+	return n, unsafe.ByteSlice2String(b)
 }
 
 // CESU8LIBytes decodes CESU-8 into UTF-8 bytes with length indicator.
@@ -333,5 +334,5 @@ func (d *Decoder) CESU8LIBytes() (int, []byte, error) {
 // CESU8LIString decodes a CESU-8 into a UTF-8 string with length indicator.
 func (d *Decoder) CESU8LIString() (int, string, error) {
 	n, b, err := d.CESU8LIBytes()
-	return n, string(b), err
+	return n, unsafe.ByteSlice2String(b), err
 }
