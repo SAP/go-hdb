@@ -42,26 +42,29 @@ type ParameterMode int8
 
 // ParameterMode constants.
 const (
-	PmIn    ParameterMode = 0x01
+	pmIn    ParameterMode = 0x01
 	pmInout ParameterMode = 0x02
-	PmOut   ParameterMode = 0x04
+	pmOut   ParameterMode = 0x04
 )
 
-var parameterModeText = []string{
-	PmIn:    "in",
-	pmInout: "inout",
-	PmOut:   "out",
-}
+const (
+	pmInText    = "in"
+	pmInoutText = "inout"
+	pmOutText   = "out"
+)
 
 func (k ParameterMode) String() string {
-	t := make([]string, 0, len(parameterModeText))
-
-	for mode, text := range parameterModeText {
-		if (k & ParameterMode(mode)) != 0 {
-			t = append(t, text)
-		}
+	var s []string
+	if k&pmIn != 0 {
+		s = append(s, pmInText)
 	}
-	return fmt.Sprintf("%v", t)
+	if k&pmInout != 0 {
+		s = append(s, pmInoutText)
+	}
+	if k&pmOut != 0 {
+		s = append(s, pmOutText)
+	}
+	return fmt.Sprintf("%v", s)
 }
 
 // ParameterField contains database field attributes for parameters.
@@ -78,7 +81,7 @@ type ParameterField struct {
 
 // NewTableRowsParameterField returns a ParameterField representing table rows.
 func NewTableRowsParameterField(idx int) *ParameterField {
-	return &ParameterField{ofs: idx, tc: TcTableRows, mode: PmOut}
+	return &ParameterField{ofs: idx, tc: TcTableRows, mode: pmOut}
 }
 
 func (f *ParameterField) fieldName() string {
@@ -147,10 +150,10 @@ func (f *ParameterField) TypePrecisionScale() (int64, int64, bool) {
 func (f *ParameterField) Nullable() bool { return f.parameterOptions == poOptional }
 
 // In returns true if the parameter field is an input field.
-func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == PmIn }
+func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == pmIn }
 
 // Out returns true if the parameter field is an output field.
-func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == PmOut }
+func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == pmOut }
 
 // InOut returns true if the parameter field is an in,- output field.
 func (f *ParameterField) InOut() bool { return f.mode == pmInout }

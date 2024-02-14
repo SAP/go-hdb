@@ -35,9 +35,6 @@ func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 	}
 }
 
-// ResetCnt resets the byte read counter.
-func (d *Decoder) ResetCnt() { d.cnt = 0 }
-
 // Cnt returns the value of the byte read counter.
 func (d *Decoder) Cnt() int { return d.cnt }
 

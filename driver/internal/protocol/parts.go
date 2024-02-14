@@ -27,8 +27,8 @@ type bufLenPart interface {
 	decodeBufLen(dec *encoding.Decoder, bufLen int) error
 }
 
-// WritablePart represents a protocol part the driver is able to write.
-type WritablePart interface {
+// writablePart represents a protocol part the driver is able to write.
+type writablePart interface {
 	Part
 	numArg() int
 	size() int
@@ -90,20 +90,20 @@ func (ReadLobRequest) size() int { return readLobRequestSize }
 
 // check if part types implement WritablePart interface.
 var (
-	_ WritablePart = (*AuthInitRequest)(nil)
-	_ WritablePart = (*AuthFinalRequest)(nil)
-	_ WritablePart = (*ClientID)(nil)
-	_ WritablePart = (*clientInfo)(nil)
-	_ WritablePart = (*Command)(nil)
-	_ WritablePart = (*StatementID)(nil)
-	_ WritablePart = (*InputParameters)(nil)
-	_ WritablePart = (*ResultsetID)(nil)
-	_ WritablePart = (*Fetchsize)(nil)
-	_ WritablePart = (*ReadLobRequest)(nil)
-	_ WritablePart = (*WriteLobRequest)(nil)
-	_ WritablePart = (*ClientContext)(nil)
-	_ WritablePart = (*ConnectOptions)(nil)
-	_ WritablePart = (*DBConnectInfo)(nil)
+	_ writablePart = (*AuthInitRequest)(nil)
+	_ writablePart = (*AuthFinalRequest)(nil)
+	_ writablePart = (*ClientID)(nil)
+	_ writablePart = (*clientInfo)(nil)
+	_ writablePart = (*Command)(nil)
+	_ writablePart = (*StatementID)(nil)
+	_ writablePart = (*InputParameters)(nil)
+	_ writablePart = (*ResultsetID)(nil)
+	_ writablePart = (*Fetchsize)(nil)
+	_ writablePart = (*ReadLobRequest)(nil)
+	_ writablePart = (*WriteLobRequest)(nil)
+	_ writablePart = (*ClientContext)(nil)
+	_ writablePart = (*ConnectOptions)(nil)
+	_ writablePart = (*DBConnectInfo)(nil)
 )
 
 // check if part types implement the right part interface.

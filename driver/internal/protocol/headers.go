@@ -206,8 +206,8 @@ const (
 )
 
 var (
-	paList     = []PartAttributes{paLastPacket, paNextPacket, paFirstPacket, paRowNotFound, paResultsetClosed}
-	paListText = []string{"lastPacket", "nextPacket", "firstPacket", "rowNotFound", "resultsetClosed"}
+	paList     = [...]PartAttributes{paLastPacket, paNextPacket, paFirstPacket, paRowNotFound, paResultsetClosed}
+	paListText = [...]string{"lastPacket", "nextPacket", "firstPacket", "rowNotFound", "resultsetClosed"}
 )
 
 func (k PartAttributes) String() string {

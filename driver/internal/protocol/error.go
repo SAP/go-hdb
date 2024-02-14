@@ -9,10 +9,10 @@ import (
 // ErrorLevel send from database server.
 type errorLevel int8
 
-var errorLevelStrs = []string{"Warning", "Error", "FatalError"}
+var errorLevelStrs = [...]string{"Warning", "Error", "FatalError"}
 
 func (e errorLevel) String() string {
-	if int(e) >= len(errorLevelStrs) {
+	if int(e) < 0 || int(e) >= len(errorLevelStrs) {
 		return ""
 	}
 	return errorLevelStrs[e]
