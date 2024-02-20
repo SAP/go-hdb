@@ -2,13 +2,8 @@ package auth
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
 
 const (
@@ -17,13 +12,13 @@ const (
 
 // X509 implements X509 authentication.
 type X509 struct {
-	certKey     *x509.CertKey
+	certKey     *CertKey
 	serverNonce []byte
 	logonName   string
 }
 
 // NewX509 creates a new authX509 instance.
-func NewX509(certKey *x509.CertKey) *X509 { return &X509{certKey: certKey} }
+func NewX509(certKey *CertKey) *X509 { return &X509{certKey: certKey} }
 
 func (a *X509) String() string {
 	return fmt.Sprintf("method type %s %s", a.Typ(), a.certKey)
@@ -40,7 +35,7 @@ func (a *X509) PrepareInitReq(prms *Prms) error {
 	// prevent auth call to hdb with invalid certificate
 	// as hbd only allows a limited number of unsuccessful authentications
 	// - currently only validity period is checked
-	if err := a.certKey.Validate(time.Now()); err != nil {
+	if err := a.certKey.validate(time.Now()); err != nil {
 		return err
 	}
 	prms.addString(a.Typ())
@@ -64,7 +59,7 @@ func (a *X509) PrepareFinalReq(prms *Prms) error {
 
 	subPrms := prms.addPrms()
 
-	certBlocks := a.certKey.CertBlocks()
+	certBlocks := a.certKey.certBlocks
 
 	numBlocks := len(certBlocks)
 
@@ -84,7 +79,7 @@ func (a *X509) PrepareFinalReq(prms *Prms) error {
 
 	message.Write(a.serverNonce)
 
-	signature, err := sign(a.certKey, message)
+	signature, err := a.certKey.sign(message)
 	if err != nil {
 		return err
 	}
@@ -108,14 +103,4 @@ func (a *X509) FinalRepDecode(d *Decoder) error {
 	var err error
 	a.logonName, err = d.cesu8String()
 	return err
-}
-
-func sign(certKey *x509.CertKey, message *bytes.Buffer) ([]byte, error) {
-	signer, err := certKey.Signer()
-	if err != nil {
-		return nil, err
-	}
-
-	hashed := sha256.Sum256(message.Bytes())
-	return signer.Sign(rand.Reader, hashed[:], crypto.SHA256)
 }

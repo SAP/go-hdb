@@ -7,7 +7,7 @@ import (
 	"path"
 	"sync"
 
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
+	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 )
 
 type redirectCacheKey struct {
@@ -53,7 +53,7 @@ func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector
 	c := NewConnector()
 	c._host = host
 	var err error
-	if c._certKey, err = x509.NewCertKey(clientCert, clientKey); err != nil {
+	if c._certKey, err = auth.NewCertKey(clientCert, clientKey); err != nil {
 		return nil, err
 	}
 	return c, nil

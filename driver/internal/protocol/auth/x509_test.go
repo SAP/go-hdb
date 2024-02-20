@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
 
 func testX509Validate(t *testing.T) {
@@ -27,11 +25,11 @@ func testX509Validate(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			certKey, err := x509.NewCertKey(data, nil)
+			certKey, err := NewCertKey(data, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := certKey.Validate(time.Now()); err != nil {
+			if err := certKey.validate(time.Now()); err != nil {
 				t.Fatal(err)
 			}
 		}

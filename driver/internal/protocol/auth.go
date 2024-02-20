@@ -5,7 +5,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 )
 
 // AuthHnd holds the client authentication methods dependent on the driver.Connector attributes and handles the authentication hdb protocol.
@@ -37,7 +36,7 @@ func (a *AuthHnd) AddBasic(username, password string) {
 func (a *AuthHnd) AddJWT(token string) { a.methods[auth.MtJWT] = auth.NewJWT(token) }
 
 // AddX509 adds X509 authentication method.
-func (a *AuthHnd) AddX509(certKey *x509.CertKey) { a.methods[auth.MtX509] = auth.NewX509(certKey) }
+func (a *AuthHnd) AddX509(certKey *auth.CertKey) { a.methods[auth.MtX509] = auth.NewX509(certKey) }
 
 // Selected returns the selected authentication method.
 func (a *AuthHnd) Selected() auth.Method { return a.selected }

@@ -5,9 +5,10 @@ Release Notes
 
 ### Minor revisions
 
-#### v1.8.4 - v1.8.5
+#### v1.8.4 - v1.8.6
 - source code cleanups
 - performance improvements
+- updated dependencies
 
 #### v1.8.3
 - updated dependencies

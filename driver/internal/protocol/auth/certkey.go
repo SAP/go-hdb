@@ -1,9 +1,10 @@
-// Package x509 provides X509 certificate methods.
-package x509
+package auth
 
 import (
 	"bytes"
 	"crypto"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -12,16 +13,25 @@ import (
 	"time"
 )
 
-// ValidationError is returned in case of X09 certificate validation errors.
-type ValidationError struct {
-	errorString string
+// CertValidationError is returned in case of X09 certificate validation errors.
+type CertValidationError struct {
+	t    time.Time
+	cert *x509.Certificate
 }
 
-func (e ValidationError) Error() string { return e.errorString }
+func (e CertValidationError) Error() string {
+	return fmt.Sprintf("certificate issuer %s subject %s not in validity period from %s to %s - now %s",
+		e.cert.Issuer.ToRDNSequence().String(),
+		e.cert.Subject.ToRDNSequence().String(),
+		e.cert.NotBefore,
+		e.cert.NotAfter,
+		e.t,
+	)
+}
 
 // CertKey represents a X509 certificate and key.
 type CertKey struct {
-	cert, key  []byte
+	cert, key  string // define as string for being immutable
 	certBlocks []*pem.Block
 	certs      []*x509.Certificate
 	keyBlock   *pem.Block
@@ -29,59 +39,49 @@ type CertKey struct {
 
 // NewCertKey returns a new certificate and key instance.
 func NewCertKey(cert, key []byte) (*CertKey, error) {
-	ck := &CertKey{cert: cert, key: key}
-	var err error
-	if ck.certBlocks, err = decodeClientCert(ck.cert); err != nil {
+	certBlocks, err := decodeClientCert(cert)
+	if err != nil {
 		return nil, err
 	}
-	if ck.certs, err = parseCerts(ck.certBlocks); err != nil {
+	certs, err := parseCerts(certBlocks)
+	if err != nil {
 		return nil, err
 	}
-	if ck.keyBlock, err = decodeClientKey(ck.key); err != nil {
+	keyBlock, err := decodeClientKey(key)
+	if err != nil {
 		return nil, err
 	}
-	return ck, nil
+	return &CertKey{cert: string(cert), key: string(key), certBlocks: certBlocks, certs: certs, keyBlock: keyBlock}, nil
 }
 
-func (ck *CertKey) String() string { return fmt.Sprintf("cert %v key %v", ck.cert, ck.key) }
+func (ck *CertKey) String() string { return fmt.Sprintf("cert %s key %s", ck.cert, ck.key) }
 
 // Equal returns true if the certificate and key equals the instance data, false otherwise.
 func (ck *CertKey) Equal(cert, key []byte) bool {
-	return bytes.Equal(ck.cert, cert) && bytes.Equal(ck.key, key)
+	return string(cert) == ck.cert && string(key) == ck.key
 }
 
 // Cert returns the certificate.
-func (ck *CertKey) Cert() []byte { return ck.cert }
+func (ck *CertKey) Cert() []byte { return []byte(ck.cert) }
 
 // Key returns the key.
-func (ck *CertKey) Key() []byte { return ck.key }
+func (ck *CertKey) Key() []byte { return []byte(ck.key) }
 
-// CertBlocks returns the PEM blocks of the certificate.
-func (ck *CertKey) CertBlocks() []*pem.Block { return ck.certBlocks }
-
-// Validate validates the certificate (currently validity period only).
-func (ck *CertKey) Validate(t time.Time) error {
+// validate validates the certificate (currently validity period only).
+func (ck *CertKey) validate(t time.Time) error {
 	t = t.UTC() // cert.NotBefore and cert.NotAfter in UTC as well
 	for _, cert := range ck.certs {
 		// checks
 		// .check validity period
 		if t.Before(cert.NotBefore) || t.After(cert.NotAfter) {
-			issuerRDN := cert.Issuer.ToRDNSequence().String()
-			subjectRDN := cert.Subject.ToRDNSequence().String()
-			return &ValidationError{fmt.Sprintf("certificate issuer %s subject %s not in validity period from %s to %s - now %s",
-				issuerRDN,
-				subjectRDN,
-				cert.NotBefore,
-				cert.NotAfter,
-				t,
-			)}
+			return &CertValidationError{t: t, cert: cert}
 		}
 	}
 	return nil
 }
 
-// Signer returns the cryptographic signer of the key.
-func (ck *CertKey) Signer() (crypto.Signer, error) {
+// signer returns the cryptographic signer of the key.
+func (ck *CertKey) signer() (crypto.Signer, error) {
 	switch ck.keyBlock.Type {
 	case "RSA PRIVATE KEY":
 		return x509.ParsePKCS1PrivateKey(ck.keyBlock.Bytes)
@@ -100,6 +100,16 @@ func (ck *CertKey) Signer() (crypto.Signer, error) {
 	default:
 		return nil, fmt.Errorf("unsupported key type %q", ck.keyBlock.Type)
 	}
+}
+
+func (ck *CertKey) sign(message *bytes.Buffer) ([]byte, error) {
+	signer, err := ck.signer()
+	if err != nil {
+		return nil, err
+	}
+
+	hashed := sha256.Sum256(message.Bytes())
+	return signer.Sign(rand.Reader, hashed[:], crypto.SHA256)
 }
 
 func decodePEM(data []byte) []*pem.Block {

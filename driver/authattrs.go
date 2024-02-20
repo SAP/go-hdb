@@ -6,16 +6,15 @@ import (
 	"sync/atomic"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
+	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 )
 
 // authAttrs is holding authentication relevant attributes.
 type authAttrs struct {
 	hasCookie            atomic.Bool
-	version              atomic.Uint64 // auth attributes version
 	mu                   sync.RWMutex
 	_username, _password string        // basic authentication
-	_certKey             *x509.CertKey // X509
+	_certKey             *auth.CertKey // X509
 	_token               string        // JWT
 	_logonname           string        // session cookie login does need logon name provided by JWT authentication.
 	_sessionCookie       []byte        // authentication via session cookie (HDB currently does support only SAML and JWT - go-hdb JWT)
@@ -99,18 +98,20 @@ func (c *authAttrs) callRefreshClientCertWithLock(refreshClientCert func() (clie
 	return refreshClientCert()
 }
 
-func (c *authAttrs) refresh() error {
+func (c *authAttrs) refresh() (bool, error) {
 	c.cbmu.Lock() // synchronize refresh calls
 	defer c.cbmu.Unlock()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	refreshed := false
+
 	if c._refreshPassword != nil {
 		if password, ok := c.callRefreshPasswordWithLock(c._refreshPassword); ok {
 			if password != c._password {
 				c._password = password
-				c.version.Add(1)
+				refreshed = true
 			}
 		}
 	}
@@ -118,23 +119,23 @@ func (c *authAttrs) refresh() error {
 		if token, ok := c.callRefreshTokenWithLock(c._refreshToken); ok {
 			if token != c._token {
 				c._token = token
-				c.version.Add(1)
+				refreshed = true
 			}
 		}
 	}
 	if c._refreshClientCert != nil {
 		if clientCert, clientKey, ok := c.callRefreshClientCertWithLock(c._refreshClientCert); ok {
 			if c._certKey == nil || !c._certKey.Equal(clientCert, clientKey) {
-				certKey, err := x509.NewCertKey(clientCert, clientKey)
+				certKey, err := auth.NewCertKey(clientCert, clientKey)
 				if err != nil {
-					return err
+					return refreshed, err
 				}
 				c._certKey = certKey
-				c.version.Add(1)
+				refreshed = true
 			}
 		}
 	}
-	return nil
+	return refreshed, nil
 }
 
 func (c *authAttrs) invalidateCookie() { c.hasCookie.Store(false) }

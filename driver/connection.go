@@ -22,7 +22,6 @@ import (
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
-	"github.com/SAP/go-hdb/driver/internal/protocol/x509"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
@@ -204,8 +203,8 @@ type conn struct {
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
 func isAuthError(err error) bool {
-	var validationError *x509.ValidationError
-	if errors.As(err, &validationError) {
+	var certValidationError *auth.CertValidationError
+	if errors.As(err, &certValidationError) {
 		return true
 	}
 	var hdbErrors *p.HdbErrors
@@ -229,8 +228,6 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 	}
 
 	refreshed := false
-	lastVersion := authAttrs.version.Load()
-
 	for {
 		authHnd := authAttrs.authHnd()
 
@@ -248,15 +245,13 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 			return nil, err
 		}
 
-		if err := authAttrs.refresh(); err != nil {
+		ok, refreshErr := authAttrs.refresh()
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		if !ok { // no connection retry if no refresh did happen
 			return nil, err
 		}
-
-		version := authAttrs.version.Load()
-		if version == lastVersion { // no connection retry in case no new version available
-			return nil, err
-		}
-		lastVersion = version
 
 		refreshed = true
 	}
