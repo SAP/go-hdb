@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.8
+- updated dependencies
+
 #### v1.8.7
 - fixed github action issue
 

@@ -247,9 +247,6 @@ func (ts *tests) setup(batchSize int) (*sql.DB, int, error) {
 	}
 	ctr.SetBulkSize(batchSize)
 	ctr.SetBufferSize(bufferSize)
-	if err != nil {
-		return nil, 0, err
-	}
 	return sql.OpenDB(ctr), ctr.BulkSize(), nil
 }
 

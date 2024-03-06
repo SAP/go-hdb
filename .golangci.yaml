@@ -1,4 +1,6 @@
 linters-settings:
+  govet:
+    enable: [nilness]
   gosec:
     excludes:
       - G113

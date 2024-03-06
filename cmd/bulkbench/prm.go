@@ -32,12 +32,7 @@ func (v prmsValue) String() string {
 
 // Set implements the flag.Value interface.
 func (v *prmsValue) Set(s string) error {
-	if v == nil {
-		*v = []prm{}
-	} else {
-		*v = (*v)[:0]
-	}
-
+	*v = nil // clear slice
 	for _, ts := range strings.Split(s, " ") {
 		t := strings.Split(ts, "x")
 		if len(t) != 2 {
