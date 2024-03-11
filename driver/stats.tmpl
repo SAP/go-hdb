@@ -3,8 +3,8 @@
 {{end -}}
 {{define "bounds" -}}{{range $k, $v := . -}}{{printf "%10.1f" $k}}{{end}}{{end -}}
 openConnections  {{.OpenConnections}}
-openTransactions {{.OpenConnections}}
-openStatements   {{.OpenConnections}}
+openTransactions {{.OpenTransactions}}
+openStatements   {{.OpenStatements}}
 readBytes        {{.ReadBytes}}
 writtenBytes     {{.WrittenBytes}}
 timeUnit         {{.TimeUnit}}

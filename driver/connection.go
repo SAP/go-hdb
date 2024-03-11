@@ -227,7 +227,7 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 		authAttrs.invalidateCookie() // cookie auth was not successful - do not try again with the same data
 	}
 
-	refreshed := false
+	lastVersion := authAttrs.version.Load()
 	for {
 		authHnd := authAttrs.authHnd()
 
@@ -241,19 +241,16 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 		if !isAuthError(err) {
 			return nil, err
 		}
-		if refreshed {
+
+		if err := authAttrs.refresh(); err != nil {
 			return nil, err
 		}
 
-		ok, refreshErr := authAttrs.refresh()
-		if refreshErr != nil {
-			return nil, refreshErr
-		}
-		if !ok { // no connection retry if no refresh did happen
+		version := authAttrs.version.Load()
+		if version == lastVersion { // no connection retry in case no new version available
 			return nil, err
 		}
-
-		refreshed = true
+		lastVersion = version
 	}
 }
 

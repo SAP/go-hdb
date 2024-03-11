@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.10
+- fixed regression on authentication refresh
+- updated dependencies
+
 #### v1.8.8 - v1.8.9
 - updated dependencies
 

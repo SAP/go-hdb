@@ -12,6 +12,7 @@ import (
 // authAttrs is holding authentication relevant attributes.
 type authAttrs struct {
 	hasCookie            atomic.Bool
+	version              atomic.Uint64 // auth attributes version
 	mu                   sync.RWMutex
 	_username, _password string        // basic authentication
 	_certKey             *auth.CertKey // X509
@@ -98,20 +99,18 @@ func (c *authAttrs) callRefreshClientCertWithLock(refreshClientCert func() (clie
 	return refreshClientCert()
 }
 
-func (c *authAttrs) refresh() (bool, error) {
+func (c *authAttrs) refresh() error {
 	c.cbmu.Lock() // synchronize refresh calls
 	defer c.cbmu.Unlock()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	refreshed := false
-
 	if c._refreshPassword != nil {
 		if password, ok := c.callRefreshPasswordWithLock(c._refreshPassword); ok {
 			if password != c._password {
 				c._password = password
-				refreshed = true
+				c.version.Add(1)
 			}
 		}
 	}
@@ -119,7 +118,7 @@ func (c *authAttrs) refresh() (bool, error) {
 		if token, ok := c.callRefreshTokenWithLock(c._refreshToken); ok {
 			if token != c._token {
 				c._token = token
-				refreshed = true
+				c.version.Add(1)
 			}
 		}
 	}
@@ -128,14 +127,14 @@ func (c *authAttrs) refresh() (bool, error) {
 			if c._certKey == nil || !c._certKey.Equal(clientCert, clientKey) {
 				certKey, err := auth.NewCertKey(clientCert, clientKey)
 				if err != nil {
-					return refreshed, err
+					return err
 				}
 				c._certKey = certKey
-				refreshed = true
+				c.version.Add(1)
 			}
 		}
 	}
-	return refreshed, nil
+	return nil
 }
 
 func (c *authAttrs) invalidateCookie() { c.hasCookie.Store(false) }
