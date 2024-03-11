@@ -261,7 +261,7 @@ var typeSQLDatatypes = map[reflect.Type]string{
 	nullInt16Type:   "smallint",
 	nullInt32Type:   "integer",
 	nullInt64Type:   "bigint",
-	nullStringType:  "nvarchar(256",
+	nullStringType:  "nvarchar(256)",
 	nullTimeType:    "timestamp",
 	nullBytesType:   "varchar(256)",
 	nullDecimalType: "decimal",

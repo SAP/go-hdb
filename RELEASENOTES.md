@@ -6,6 +6,10 @@ Release Notes
 ### Minor revisions
 
 #### v1.8.10
+- fixed typo
+- fixed SQL datatype in StructScanner
+
+#### v1.8.10
 - fixed regression on authentication refresh
 - updated dependencies
 

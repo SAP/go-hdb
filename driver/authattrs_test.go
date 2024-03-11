@@ -86,7 +86,7 @@ func testRefresh(t *testing.T) {
 	for conn := range connCh {
 		conn.Close()
 	}
-	// check errors (especially authentication errors in case the password refreash didn't work for any connection)
+	// check errors (especially authentication errors in case the password refresh didn't work for any connection)
 	for err := range errCh {
 		t.Fatal(err)
 	}
