@@ -8,6 +8,7 @@ import (
 	"time"
 
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 const sqlTagKey = "sql"
@@ -112,7 +113,7 @@ func (c structColumns) defs() (string, error) {
 		buf = append(buf, definition...)
 	}
 	buf = append(buf, ')')
-	return string(buf), nil
+	return unsafe.ByteSlice2String(buf), nil
 }
 
 func (c structColumns) queryPlaceholders() string {
@@ -124,7 +125,7 @@ func (c structColumns) queryPlaceholders() string {
 		buf = append(buf, ",?"...)
 	}
 	buf = append(buf, ')')
-	return string(buf)
+	return unsafe.ByteSlice2String(buf)
 }
 
 // StructScanner is a database scanner to scan rows into a struct of type S.

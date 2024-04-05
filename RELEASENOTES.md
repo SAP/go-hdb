@@ -5,7 +5,10 @@ Release Notes
 
 ### Minor revisions
 
-#### v1.8.10
+#### v1.8.12
+- updated dependencies
+
+#### v1.8.11
 - fixed typo
 - fixed SQL datatype in StructScanner
 
