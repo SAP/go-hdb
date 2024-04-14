@@ -2,10 +2,12 @@ package encoding
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
@@ -24,6 +26,10 @@ type Decoder struct {
 	b   []byte // scratch buffer (used for skip, CESU8Bytes - define size not too small!)
 	tr  transform.Transformer
 	cnt int
+
+	// decoder options
+	alphanumDfv1    bool
+	emptyDateAsNull bool
 }
 
 // NewDecoder creates a new Decoder instance based on an io.Reader.
@@ -34,6 +40,15 @@ func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 		tr: decoder(),
 	}
 }
+
+// SetAlphanumDfv1 sets the alphanum dfv1 flag decoder.
+func (d *Decoder) SetAlphanumDfv1(alphanumDfv1 bool) { d.alphanumDfv1 = alphanumDfv1 }
+
+// EmptyDateAsNull returns the empty date as null flag.
+func (d *Decoder) EmptyDateAsNull() bool { return d.emptyDateAsNull }
+
+// SetEmptyDateAsNull sets the empty date as null flag.
+func (d *Decoder) SetEmptyDateAsNull(emptyDateAsNull bool) { d.emptyDateAsNull = emptyDateAsNull }
 
 // Cnt returns the value of the byte read counter.
 func (d *Decoder) Cnt() int { return d.cnt }
@@ -332,4 +347,248 @@ func (d *Decoder) CESU8LIBytes() (int, []byte, error) {
 func (d *Decoder) CESU8LIString() (int, string, error) {
 	n, b, err := d.CESU8LIBytes()
 	return n, unsafe.ByteSlice2String(b), err
+}
+
+// Fields.
+
+// BooleanField decodes a boolean field.
+func (d *Decoder) BooleanField() (any, error) {
+	b := d.Byte()
+	switch b {
+	case booleanNullValue:
+		return nil, nil
+	case booleanFalseValue:
+		return false, nil
+	default:
+		return true, nil
+	}
+}
+
+// RealField decodes a real field.
+func (d *Decoder) RealField() (any, error) {
+	v := d.Uint32()
+	if v == realNullValue {
+		return nil, nil
+	}
+	return float64(math.Float32frombits(v)), nil
+}
+
+// DoubleField decodes a double field.
+func (d *Decoder) DoubleField() (any, error) {
+	v := d.Uint64()
+	if v == doubleNullValue {
+		return nil, nil
+	}
+	return math.Float64frombits(v), nil
+}
+
+func (d *Decoder) decodeDate() (int, time.Month, int, bool) {
+	// decode.
+	/*
+	   null values: most sig bit unset
+	   year: unset second most sig bit (subtract 2^15)
+	   --> read year as unsigned
+	   month is 0-based
+	   day is 1 byte.
+	*/
+	year := d.Uint16()
+	null := ((year & 0x8000) == 0) // null value
+	year &= 0x3fff
+	month := d.Int8()
+	month++
+	day := d.Int8()
+	return int(year), time.Month(month), int(day), null
+}
+
+// DateField decodes a date field.
+func (d *Decoder) DateField() (any, error) {
+	year, month, day, null := d.decodeDate()
+	if null {
+		return nil, nil
+	}
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC), nil
+}
+
+func (d *Decoder) decodeTime() (int, int, int, int, bool) {
+	hour := d.Byte()
+	null := (hour & 0x80) == 0 // null value
+	hour &= 0x7f
+	min := d.Int8()
+	msec := d.Uint16()
+
+	sec := msec / 1000
+	msec %= 1000
+	nsec := int(msec) * 1000000
+
+	return int(hour), int(min), int(sec), nsec, null
+}
+
+// TimeField decodes a time field.
+func (d *Decoder) TimeField() (any, error) {
+	// time read gives only seconds (cut), no milliseconds
+	hour, min, sec, nsec, null := d.decodeTime()
+	if null {
+		return nil, nil
+	}
+	return time.Date(1, 1, 1, hour, min, sec, nsec, time.UTC), nil
+}
+
+// TimestampField decodes a timestamp field.
+func (d *Decoder) TimestampField() (any, error) {
+	year, month, day, dateNull := d.decodeDate()
+	hour, min, sec, nsec, timeNull := d.decodeTime()
+	if dateNull || timeNull {
+		return nil, nil
+	}
+	return time.Date(year, month, day, hour, min, sec, nsec, time.UTC), nil
+}
+
+// LongdateField decodes a longdate field.
+func (d *Decoder) LongdateField() (any, error) {
+	longdate := d.Int64()
+	if longdate == longdateNullValue {
+		return nil, nil
+	}
+	return convertLongdateToTime(longdate), nil
+}
+
+// SeconddateField decodes a seconddate field.
+func (d *Decoder) SeconddateField() (any, error) {
+	seconddate := d.Int64()
+	if seconddate == seconddateNullValue {
+		return nil, nil
+	}
+	return convertSeconddateToTime(seconddate), nil
+}
+
+// DaydateField decodes a daydate field.
+func (d *Decoder) DaydateField() (any, error) {
+	daydate := d.Int32()
+	if daydate == daydateNullValue || (d.EmptyDateAsNull() && daydate == 0) {
+		return nil, nil
+	}
+	return convertDaydateToTime(int64(daydate)), nil
+}
+
+// SecondtimeField decodes a secondtime field.
+func (d *Decoder) SecondtimeField() (any, error) {
+	secondtime := d.Int32()
+	if secondtime == secondtimeNullValue {
+		return nil, nil
+	}
+	return convertSecondtimeToTime(int(secondtime)), nil
+}
+
+// DecimalField decodes a decimal field.
+func (d *Decoder) DecimalField() (any, error) {
+	m, exp, err := d.Decimal()
+	if err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, nil
+	}
+	return convertDecimalToRat(m, exp), nil
+}
+
+func (d *Decoder) decodeFixed(size, scale int) (any, error) {
+	m := d.Fixed(size)
+	if m == nil { // important: return nil and not m (as m is of type *big.Int)
+		return nil, nil
+	}
+	return convertFixedToRat(m, scale), nil
+}
+
+// Fixed8Field decodes a fixed8 field.
+func (d *Decoder) Fixed8Field(scale int) (any, error) {
+	if !d.Bool() { // null value
+		return nil, nil
+	}
+	return d.decodeFixed(Fixed8FieldSize, scale)
+}
+
+// Fixed12Field decodes a fixed12 field.
+func (d *Decoder) Fixed12Field(scale int) (any, error) {
+	if !d.Bool() { // null value
+		return nil, nil
+	}
+	return d.decodeFixed(Fixed12FieldSize, scale)
+}
+
+// Fixed16Field decodes a fixed16 field.
+func (d *Decoder) Fixed16Field(scale int) (any, error) {
+	if !d.Bool() { // null value
+		return nil, nil
+	}
+	return d.decodeFixed(Fixed16FieldSize, scale)
+}
+
+// VarField decodes a var field.
+func (d *Decoder) VarField() (any, error) {
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
+		return nil, nil
+	}
+	return b, nil
+}
+
+// AlphanumField decodes a alphanum field.
+func (d *Decoder) AlphanumField() (any, error) {
+	if d.alphanumDfv1 { // like VarField
+		return d.VarField()
+	}
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
+		return nil, nil
+	}
+	/*
+	   first byte:
+	   - high bit set -> numeric
+	   - high bit unset -> alpha
+	   - bits 0-6: field size
+
+	   ignore first byte for now
+	*/
+	return b[1:], nil
+}
+
+// Cesu8Field decodes a cesu8 field.
+func (d *Decoder) Cesu8Field() (any, error) {
+	_, b, err := d.CESU8LIBytes()
+	if err != nil {
+		return nil, err
+	}
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
+		return nil, nil
+	}
+	return b, nil
+}
+
+// HexField decodes a hex field.
+func (d *Decoder) HexField() (any, error) {
+	_, b := d.LIBytes()
+	/*
+	   caution:
+	   - result is used as driver.Value and we do need to provide a 'real' nil value
+	   - returning b == nil does not work because b is of type []byte
+	*/
+	if b == nil {
+		return nil, nil
+	}
+	return hex.EncodeToString(b), nil
 }

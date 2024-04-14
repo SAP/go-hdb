@@ -2,11 +2,13 @@ package encoding
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -288,4 +290,282 @@ func (e *Encoder) CESU8LIString(s string) error {
 	}
 	_, err := e.CESU8String(s)
 	return err
+}
+
+// Fields.
+
+func formatInvalidValue(name string, value any) string {
+	return fmt.Sprintf("invalid %s value %v", name, value)
+}
+
+func asInt[E byte | int16 | int32 | int64](v any) E {
+	if v, ok := v.(bool); ok {
+		if v {
+			return 1
+		}
+		return 0
+	}
+
+	switch v := v.(type) {
+	case int:
+		return E(v)
+	case int8:
+		return E(v)
+	case int16:
+		return E(v)
+	case int32:
+		return E(v)
+	case int64:
+		return E(v)
+	case uint:
+		return E(v)
+	case uint8:
+		return E(v)
+	case uint16:
+		return E(v)
+	case uint32:
+		return E(v)
+	case uint64:
+		return E(v)
+	}
+	panic(formatInvalidValue("integer", v)) // should never happen
+}
+
+func asTime(v any) time.Time {
+	t, ok := v.(time.Time)
+	if !ok {
+		panic(formatInvalidValue("time", v)) // should never happen
+	}
+	// store in utc
+	return t.UTC()
+}
+
+// BooleanField encodes a boolean field.
+func (e *Encoder) BooleanField(v any) error {
+	if v == nil {
+		e.Byte(booleanNullValue)
+		return nil
+	}
+	b, ok := v.(bool)
+	if !ok {
+		panic(formatInvalidValue("boolean", v)) // should never happen
+	}
+	if b {
+		e.Byte(booleanTrueValue)
+	} else {
+		e.Byte(booleanFalseValue)
+	}
+	return nil
+}
+
+// TinyintField encodes a tinyint field.
+func (e *Encoder) TinyintField(v any) error {
+	e.Byte(asInt[byte](v))
+	return nil
+}
+
+// SmallintField encodes a smallint field.
+func (e *Encoder) SmallintField(v any) error {
+	e.Int16(asInt[int16](v))
+	return nil
+}
+
+// IntegerField encodes a integer field.
+func (e *Encoder) IntegerField(v any) error {
+	e.Int32(asInt[int32](v))
+	return nil
+}
+
+// BigintField encodes a bigint field.
+func (e *Encoder) BigintField(v any) error {
+	e.Int64(asInt[int64](v))
+	return nil
+}
+
+// RealField encodes a real field.
+func (e *Encoder) RealField(v any) error {
+	switch v := v.(type) {
+	case float32:
+		e.Float32(v)
+	case float64:
+		e.Float32(float32(v))
+	default:
+		panic(formatInvalidValue("real", v)) // should never happen
+	}
+	return nil
+}
+
+// DoubleField encodes a double field.
+func (e *Encoder) DoubleField(v any) error {
+	switch v := v.(type) {
+	case float32:
+		e.Float64(float64(v))
+	case float64:
+		e.Float64(v)
+	default:
+		panic(formatInvalidValue("double", v)) // should never happen
+	}
+	return nil
+}
+
+func (e *Encoder) encodeDate(t time.Time) {
+	// year: set most sig bit
+	// month 0 based
+	year, month, day := t.Date()
+	e.Uint16(uint16(year) | 0x8000)
+	e.Int8(int8(month) - 1)
+	e.Int8(int8(day))
+}
+
+// DateField encodes a dayte field.
+func (e *Encoder) DateField(v any) error {
+	e.encodeDate(asTime(v))
+	return nil
+}
+
+func (e *Encoder) encodeTime(t time.Time) {
+	e.Byte(byte(t.Hour()) | 0x80)
+	e.Int8(int8(t.Minute()))
+	msec := t.Second()*1000 + t.Nanosecond()/1000000
+	e.Uint16(uint16(msec))
+}
+
+// TimeField encodes a time field.
+func (e *Encoder) TimeField(v any) error {
+	e.encodeTime(asTime(v))
+	return nil
+}
+
+// TimestampField encodes a timestamp field.
+func (e *Encoder) TimestampField(v any) error {
+	t := asTime(v)
+	e.encodeDate(t)
+	e.encodeTime(t)
+	return nil
+}
+
+// LongdateField encodea a longdate field.
+func (e *Encoder) LongdateField(v any) error {
+	e.Int64(convertTimeToLongdate(asTime(v)))
+	return nil
+}
+
+// SeconddateField encodes a seconddate field.
+func (e *Encoder) SeconddateField(v any) error {
+	e.Int64(convertTimeToSeconddate(asTime(v)))
+	return nil
+}
+
+// DaydateField encodes a daydate field.
+func (e *Encoder) DaydateField(v any) error {
+	e.Int32(int32(convertTimeToDayDate(asTime(v))))
+	return nil
+}
+
+// SecondtimeField encodes a secondtime field.
+func (e *Encoder) SecondtimeField(v any) error {
+	if v == nil {
+		e.Int32(secondtimeNullValue)
+		return nil
+	}
+	e.Int32(int32(convertTimeToSecondtime(asTime(v))))
+	return nil
+}
+
+func (e *Encoder) encodeFixed(v any, size, prec, scale int) error {
+	r, ok := v.(*big.Rat)
+	if !ok {
+		panic(formatInvalidValue("fixed", v)) // should never happen
+	}
+
+	var m big.Int
+	df := convertRatToFixed(r, &m, prec, scale)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
+	}
+
+	e.Fixed(&m, size)
+	return nil
+}
+
+// DecimalField encodes a decimal field.
+func (e *Encoder) DecimalField(v any) error {
+	r, ok := v.(*big.Rat)
+	if !ok {
+		panic(formatInvalidValue("decimal", v)) // should never happen
+	}
+
+	var m big.Int
+	exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
+
+	if df&dfOverflow != 0 {
+		return ErrDecimalOutOfRange
+	}
+
+	if df&dfUnderflow != 0 { // set to zero
+		e.Decimal(natZero, 0)
+	} else {
+		e.Decimal(&m, exp)
+	}
+	return nil
+}
+
+// Fixed8Field encodes a fixed8 field.
+func (e *Encoder) Fixed8Field(v any, prec, scale int) error {
+	return e.encodeFixed(v, Fixed8FieldSize, prec, scale)
+}
+
+// Fixed12Field encodes a fixed12 field.
+func (e *Encoder) Fixed12Field(v any, prec, scale int) error {
+	return e.encodeFixed(v, Fixed12FieldSize, prec, scale)
+}
+
+// Fixed16Field encodes a fixed16 field.
+func (e *Encoder) Fixed16Field(v any, prec, scale int) error {
+	return e.encodeFixed(v, Fixed16FieldSize, prec, scale)
+}
+
+// VarField encodes a var field.
+func (e *Encoder) VarField(v any) error {
+	switch v := v.(type) {
+	case []byte:
+		return e.LIBytes(v)
+	case string:
+		return e.LIString(v)
+	default:
+		panic(formatInvalidValue("var", v)) // should never happen
+	}
+}
+
+// Cesu8Field encodes a cesu8 field.
+func (e *Encoder) Cesu8Field(v any) error {
+	switch v := v.(type) {
+	case []byte:
+		return e.CESU8LIBytes(v)
+	case string:
+		return e.CESU8LIString(v)
+	default:
+		panic(formatInvalidValue("cesu8", v)) // should never happen
+	}
+}
+
+// HexField encodes a hex field.
+func (e *Encoder) HexField(v any) error {
+	switch v := v.(type) {
+	case []byte:
+		b, err := hex.DecodeString(string(v))
+		if err != nil {
+			return err
+		}
+		return e.LIBytes(b)
+	case string:
+		b, err := hex.DecodeString(v)
+		if err != nil {
+			return err
+		}
+		return e.LIBytes(b)
+	default:
+		panic(formatInvalidValue("hex", v)) // should never happen
+	}
 }

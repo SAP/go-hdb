@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
@@ -73,13 +74,17 @@ func (s *Sniffer) Run() error {
 	go pipeData(wg, s.conn, s.dbConn, clientWr)
 	go pipeData(wg, s.dbConn, s.conn, dbWr)
 
-	pClientRd := p.NewClientReader(clientRd, true, s.logger, cesu8.DefaultDecoder)
-	pDBRd := p.NewDBReader(dbRd, true, s.logger, cesu8.DefaultDecoder)
+	clientDec := encoding.NewDecoder(clientRd, cesu8.DefaultDecoder)
+	dbDec := encoding.NewDecoder(dbRd, cesu8.DefaultDecoder)
+
+	pClientRd := p.NewClientReader(clientDec, true, s.logger)
+	pDBRd := p.NewDBReader(dbDec, true, s.logger)
 
 	go logData(ctx, wg, pClientRd)
 	go logData(ctx, wg, pDBRd)
 
 	wg.Wait()
 	log.Println("end run")
+
 	return nil
 }

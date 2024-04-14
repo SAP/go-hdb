@@ -120,6 +120,9 @@ func (d *LobInDescr) size() int { return d.buf.Len() }
 
 func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()) }
 
+// LocatorID represents a locotor id.
+type LocatorID uint64 // byte[locatorIdSize]
+
 // LobOutDescr represents a lob output descriptor.
 type LobOutDescr struct {
 	decoder     func(descr *LobOutDescr, wr io.Writer) error

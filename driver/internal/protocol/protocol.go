@@ -6,7 +6,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 
@@ -70,11 +69,11 @@ type Reader struct {
 	partCache partCache
 }
 
-func newReader(rd io.Reader, protTrace bool, logger *slog.Logger, decoder func() transform.Transformer) *Reader {
+func newReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
 	return &Reader{
 		protTrace: protTrace,
 		logger:    logger,
-		dec:       encoding.NewDecoder(rd, decoder),
+		dec:       dec,
 		partCache: partCache{},
 		mh:        &messageHeader{},
 		sh:        &segmentHeader{},
@@ -83,16 +82,16 @@ func newReader(rd io.Reader, protTrace bool, logger *slog.Logger, decoder func()
 }
 
 // NewDBReader returns an instance of a database protocol reader.
-func NewDBReader(rd io.Reader, protTrace bool, logger *slog.Logger, decoder func() transform.Transformer) *Reader {
-	reader := newReader(rd, protTrace, logger, decoder)
+func NewDBReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
+	reader := newReader(dec, protTrace, logger)
 	reader.ReadProlog = reader.readPrologDB
 	reader.prefix = prefixDB
 	return reader
 }
 
 // NewClientReader returns an instance of a client protocol reader.
-func NewClientReader(rd io.Reader, protTrace bool, logger *slog.Logger, decoder func() transform.Transformer) *Reader {
-	reader := newReader(rd, protTrace, logger, decoder)
+func NewClientReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
+	reader := newReader(dec, protTrace, logger)
 	reader.ReadProlog = reader.readPrologClient
 	reader.prefix = prefixClient
 	return reader
@@ -312,13 +311,13 @@ type Writer struct {
 }
 
 // NewWriter returns an instance of a protocol writer.
-func NewWriter(wr *bufio.Writer, protTrace bool, logger *slog.Logger, encoder func() transform.Transformer, sv map[string]string) *Writer {
+func NewWriter(wr *bufio.Writer, enc *encoding.Encoder, protTrace bool, logger *slog.Logger, encoder func() transform.Transformer, sv map[string]string) *Writer {
 	return &Writer{
 		protTrace: protTrace,
 		logger:    logger,
 		wr:        wr,
 		sv:        sv,
-		enc:       encoding.NewEncoder(wr, encoder),
+		enc:       enc,
 		mh:        new(messageHeader),
 		sh:        new(segmentHeader),
 		ph:        new(partHeader),

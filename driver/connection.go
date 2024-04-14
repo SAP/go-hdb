@@ -22,6 +22,7 @@ import (
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
+	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
@@ -195,10 +196,10 @@ type conn struct {
 
 	serverOptions *p.ConnectOptions
 	hdbVersion    *Version
-	fieldTypeCtx  *p.FieldTypeCtx
 
-	pr *p.Reader
-	pw *p.Writer
+	dec *encoding.Decoder
+	pr  *p.Reader
+	pw  *p.Writer
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -301,14 +302,18 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	protTrace := protTrace.Load()
 
+	enc := encoding.NewEncoder(rw.Writer, attrs._cesu8Encoder)
+	dec := encoding.NewDecoder(rw.Reader, attrs._cesu8Decoder)
+
 	c := &conn{
 		attrs:     attrs,
 		collector: collector,
 		dbConn:    dbConn,
 		sqlTrace:  sqlTrace.Load(),
 		logger:    logger,
-		pw:        p.NewWriter(rw.Writer, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables), // write upstream
-		pr:        p.NewDBReader(rw.Reader, protTrace, logger, attrs._cesu8Decoder),                        // read downstream
+		dec:       dec,
+		pw:        p.NewWriter(rw.Writer, enc, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables), // write upstream
+		pr:        p.NewDBReader(dec, protTrace, logger),                                                        // read downstream
 		sessionID: defaultSessionID,
 	}
 
@@ -367,7 +372,8 @@ func (c *conn) initSession(ctx context.Context, attrs *connAttrs, authHnd *p.Aut
 	}
 
 	c.hdbVersion = parseVersion(c.versionString())
-	c.fieldTypeCtx = p.NewFieldTypeCtx(c.serverOptions.DataFormatVersion2OrZero(), attrs._emptyDateAsNull)
+	c.dec.SetAlphanumDfv1(c.serverOptions.DataFormatVersion2OrZero() == p.DfvLevel1)
+	c.dec.SetEmptyDateAsNull(attrs._emptyDateAsNull)
 
 	if attrs._defaultSchema != "" {
 		if _, err := c.ExecContext(ctx, strings.Join([]string{setDefaultSchema, Identifier(attrs._defaultSchema).String()}, " "), nil); err != nil {
@@ -812,7 +818,7 @@ func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driv
 	}
 
 	qr := &queryResult{conn: c}
-	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
+	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 
 	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
@@ -869,8 +875,8 @@ func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error
 	}
 
 	pr := &prepareResult{}
-	resMeta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
-	prmMeta := &p.ParameterMetadata{FieldTypeCtx: c.fieldTypeCtx}
+	resMeta := &p.ResultMetadata{}
+	prmMeta := &p.ParameterMetadata{}
 
 	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
 		switch kind {
@@ -986,7 +992,7 @@ func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (
 	rows := &p.RowsAffected{}
 	var ids []p.LocatorID
 	outPrms := &p.OutputParameters{}
-	meta := &p.ResultMetadata{FieldTypeCtx: c.fieldTypeCtx}
+	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 	lobReply := &p.WriteLobReply{}
 	var numRow int64

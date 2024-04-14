@@ -9,7 +9,6 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
 /*
@@ -175,10 +174,8 @@ func (p *Prms) Size() int {
 	size := encoding.SmallintFieldSize // no of parameters (2 bytes)
 	for _, e := range p.prms {
 		switch e := e.(type) {
-		case []byte:
-			size += encoding.VarFieldSize(len(e))
-		case string:
-			size += encoding.VarFieldSize(cesu8.StringSize(e))
+		case []byte, string:
+			size += encoding.VarFieldSize(e)
 		case *Prms:
 			subSize := subPrmsSize(e.Size())
 			size += (int(subSize) + subSize.fieldSize())
