@@ -61,7 +61,7 @@ var (
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type dbConn struct {
-	collector *metricsCollector
+	metrics   *metrics
 	conn      net.Conn
 	timeout   time.Duration
 	logger    *slog.Logger
@@ -86,8 +86,8 @@ func (c *dbConn) Read(b []byte) (int, error) {
 	}
 	c.lastRead = time.Now()
 	n, err := c.conn.Read(b)
-	c.collector.msgCh <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
-	c.collector.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)}
+	c.metrics.msgCh <- timeMsg{idx: timeRead, d: time.Since(c.lastRead)}
+	c.metrics.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)}
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
@@ -104,8 +104,8 @@ func (c *dbConn) Write(b []byte) (int, error) {
 	}
 	c.lastWrite = time.Now()
 	n, err := c.conn.Write(b)
-	c.collector.msgCh <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
-	c.collector.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
+	c.metrics.msgCh <- timeMsg{idx: timeWrite, d: time.Since(c.lastWrite)}
+	c.metrics.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
@@ -181,8 +181,8 @@ func (t *connTracker) callDB() *sql.DB {
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
-	attrs     *connAttrs
-	collector *metricsCollector
+	attrs   *connAttrs
+	metrics *metrics
 
 	sqlTrace bool
 	logger   *slog.Logger
@@ -287,6 +287,8 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 		return nil, err
 	}
 
+	metrics.lazyInit()
+
 	// is TLS connection requested?
 	if attrs._tlsConfig != nil {
 		netConn = tls.Client(netConn, attrs._tlsConfig)
@@ -294,9 +296,7 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	logger := attrs._logger.With(slog.Uint64("conn", connNo.Add(1)))
 
-	collector := newMetricsCollector(metrics)
-
-	dbConn := &dbConn{collector: collector, conn: netConn, timeout: attrs._timeout, logger: logger}
+	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
 	// buffer connection
 	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
 
@@ -307,7 +307,7 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	c := &conn{
 		attrs:     attrs,
-		collector: collector,
+		metrics:   metrics,
 		dbConn:    dbConn,
 		sqlTrace:  sqlTrace.Load(),
 		logger:    logger,
@@ -319,19 +319,17 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 
 	if err := c.pw.WriteProlog(ctx); err != nil {
 		dbConn.close()
-		collector.close()
 		return nil, err
 	}
 
 	if err := c.pr.ReadProlog(ctx); err != nil {
 		dbConn.close()
-		collector.close()
 		return nil, err
 	}
 
 	stdConnTracker.add()
 
-	c.collector.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
+	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 	return c, nil
 }
 
@@ -459,7 +457,6 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		c.collector.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
 		c.lastError = err
 		return stmt, err
 	}
@@ -467,14 +464,13 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
-	c.wg.Wait()                                          // wait until concurrent db calls are finalized
-	c.collector.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
+	c.wg.Wait()                                        // wait until concurrent db calls are finalized
+	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	// do not disconnect if isBad or invalid sessionID
 	if !c.isBad() && c.sessionID != defaultSessionID {
 		c.disconnect(context.Background()) //nolint:errcheck
 	}
 	err := c.dbConn.close()
-	c.collector.close()
 	stdConnTracker.remove()
 	return err
 }
@@ -527,7 +523,6 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.lastError = errCancelled
 		return nil, ctx.Err()
 	case <-done:
-		c.collector.msgCh <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
 		c.lastError = err
 		return tx, err
 	}
@@ -661,11 +656,11 @@ func (c *conn) logSQLTrace(ctx context.Context, start time.Time, query string, n
 }
 
 func (c *conn) addTimeValue(start time.Time, k int) {
-	c.collector.msgCh <- timeMsg{idx: k, d: time.Since(start)}
+	c.metrics.msgCh <- timeMsg{idx: k, d: time.Since(start)}
 }
 
 func (c *conn) addSQLTimeValue(start time.Time, k int) {
-	c.collector.msgCh <- sqlTimeMsg{idx: k, d: time.Since(start)}
+	c.metrics.msgCh <- sqlTimeMsg{idx: k, d: time.Since(start)}
 }
 
 // transaction.
@@ -680,7 +675,10 @@ type tx struct {
 	closed bool
 }
 
-func newTx(conn *conn) *tx { return &tx{conn: conn} }
+func newTx(conn *conn) *tx {
+	conn.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
+	return &tx{conn: conn}
+}
 
 func (t *tx) Commit() error   { return t.close(false) }
 func (t *tx) Rollback() error { return t.close(true) }
@@ -688,7 +686,7 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) (err error) {
 	c := t.conn
 
-	c.collector.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
+	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
 	if c.isBad() {
 		return driver.ErrBadConn

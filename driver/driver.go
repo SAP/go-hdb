@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.8.13"
+const DriverVersion = "1.8.14"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -42,6 +42,12 @@ func init() {
 	sql.Register(DriverName, stdHdbDriver)
 }
 
+// Unregister unregisters the go-hdb driver and frees all allocated ressources.
+// After calling any go-hdb access might panic.
+func Unregister() error {
+	return stdHdbDriver.shutdown()
+}
+
 // driver
 
 // check if driver implements all required interfaces.
@@ -61,6 +67,11 @@ type Driver interface {
 // hdbDriver represents the go sql driver implementation for hdb.
 type hdbDriver struct {
 	metrics *metrics
+}
+
+func (d hdbDriver) shutdown() error {
+	d.metrics.close()
+	return nil
 }
 
 // Open implements the driver.Driver interface.
@@ -103,6 +114,12 @@ func OpenDB(c *Connector) *DB {
 		DB:      sql.OpenDB(nc),
 		metrics: metrics,
 	}
+}
+
+// Close closes the database. It also calls the Close method of the sql package and returns its error.
+func (db *DB) Close() error {
+	db.metrics.close()
+	return db.DB.Close()
 }
 
 // ExStats returns the extended database statistics.

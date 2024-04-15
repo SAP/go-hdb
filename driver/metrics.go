@@ -97,8 +97,13 @@ type sqlTimeMsg struct {
 	idx int
 }
 
+const numMetricCollectorCh = 100
+
 type metrics struct {
-	mu sync.RWMutex
+	mu    sync.RWMutex
+	once  sync.Once // lazy init
+	wg    *sync.WaitGroup
+	msgCh chan any
 
 	parentMetrics *metrics
 
@@ -117,6 +122,8 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 		panic("invalid unit " + timeUnit)
 	}
 	rv := &metrics{
+		wg:            new(sync.WaitGroup),
+		msgCh:         make(chan any, numMetricCollectorCh),
 		parentMetrics: parentMetrics,
 		timeUnit:      timeUnit,
 		divider:       float64(d),
@@ -132,6 +139,30 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 		rv.sqlTimes[i] = newHistogram(timeUpperBounds)
 	}
 	return rv
+}
+
+func (m *metrics) collect(wg *sync.WaitGroup, msgCh <-chan any) {
+	defer wg.Done()
+	for msg := range msgCh {
+		m.handleMsg(msg)
+	}
+}
+
+func (m *metrics) lazyInit() {
+	/*
+	   start collect go routine only if go-hdb driver is used
+	   not to leak a go-routine in case only the package is
+	   imported by any other package.
+	*/
+	m.once.Do(func() {
+		m.wg.Add(1)
+		go m.collect(m.wg, m.msgCh)
+	})
+}
+
+func (m *metrics) close() {
+	close(m.msgCh)
+	m.wg.Wait()
 }
 
 func (m *metrics) stats() *Stats {
@@ -175,35 +206,4 @@ func (m *metrics) handleMsg(msg any) {
 	if m.parentMetrics != nil {
 		m.parentMetrics.handleMsg(msg)
 	}
-}
-
-const (
-	numMetricCollectorCh = 25
-)
-
-type metricsCollector struct {
-	wg    *sync.WaitGroup
-	msgCh chan any
-}
-
-func newMetricsCollector(metrics *metrics) *metricsCollector {
-	mc := &metricsCollector{
-		wg:    new(sync.WaitGroup),
-		msgCh: make(chan any, numMetricCollectorCh),
-	}
-	mc.wg.Add(1)
-	go mc.collect(mc.wg, mc.msgCh, metrics)
-	return mc
-}
-
-func (mc *metricsCollector) collect(wg *sync.WaitGroup, chMsg <-chan any, metrics *metrics) {
-	defer wg.Done()
-	for msg := range chMsg {
-		metrics.handleMsg(msg)
-	}
-}
-
-func (mc *metricsCollector) close() {
-	close(mc.msgCh)
-	mc.wg.Wait()
 }

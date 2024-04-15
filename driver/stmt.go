@@ -42,6 +42,7 @@ func (t *totalRowsAffected) add(r driver.Result) {
 }
 
 func newStmt(conn *conn, query string, pr *prepareResult) *stmt {
+	conn.metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
 	return &stmt{conn: conn, query: query, pr: pr}
 }
 
@@ -57,7 +58,7 @@ func (s *stmt) NumInput() int { return -1 }
 func (s *stmt) Close() error {
 	c := s.conn
 
-	c.collector.msgCh <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
+	c.metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	if s.rows != nil {
 		s.rows.Close()
