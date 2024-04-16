@@ -350,42 +350,82 @@ const (
 	maxDouble   = math.MaxFloat64
 )
 
+type (
+	testUint8 uint8
+	testInt8  int8
+)
+
 var tinyintTestData = []any{
+	testUint8(minTinyint),
+	testUint8(maxTinyint),
+	testInt8(minTinyint),
 	uint8(minTinyint),
 	uint8(maxTinyint),
 	sql.NullInt64{Valid: false, Int64: minTinyint},
 	sql.NullInt64{Valid: true, Int64: maxTinyint},
 }
 
+type (
+	testUint16 uint16
+	testInt16  int16
+)
+
 var smallintTestData = []any{
+	testUint16(maxSmallint),
+	testInt16(minSmallint),
+	testInt16(maxSmallint),
 	int16(minSmallint),
 	int16(maxSmallint),
 	sql.NullInt64{Valid: false, Int64: minSmallint},
 	sql.NullInt64{Valid: true, Int64: maxSmallint},
 }
 
+type (
+	testUint32 uint32
+	testInt32  int32
+)
+
 var integerTestData = []any{
+	testUint32(maxInteger),
+	testInt32(minInteger),
+	testInt32(maxInteger),
 	int32(minInteger),
 	int32(maxInteger),
 	sql.NullInt64{Valid: false, Int64: minInteger},
 	sql.NullInt64{Valid: true, Int64: maxInteger},
 }
 
+type (
+	testUint64 uint64
+	testInt64  int64
+)
+
 var bigintTestData = []any{
+	testUint64(maxBigint),
+	testInt64(minBigint),
+	testInt64(maxBigint),
 	int64(minBigint),
 	int64(maxBigint),
 	sql.NullInt64{Valid: false, Int64: minBigint},
 	sql.NullInt64{Valid: true, Int64: maxBigint},
 }
 
+type testFloat32 float32
+
 var realTestData = []any{
+	testFloat32(-maxReal),
+	testFloat32(maxReal),
 	float32(-maxReal),
 	float32(maxReal),
 	sql.NullFloat64{Valid: false, Float64: -maxReal},
 	sql.NullFloat64{Valid: true, Float64: maxReal},
 }
 
+type testFloat64 float64
+
 var doubleTestData = []any{
+	testFloat64(-maxDouble),
+	testFloat64(maxDouble),
 	float64(-maxDouble),
 	float64(maxDouble),
 	sql.NullFloat64{Valid: false, Float64: -maxDouble},

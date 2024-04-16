@@ -124,7 +124,7 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) {
 		if i64 > max || i64 < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
-		return v, nil
+		return i64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u64 := rv.Uint()
 		if u64 >= 1<<63 {
@@ -133,7 +133,7 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) {
 		if int64(u64) > max || int64(u64) < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
-		return v, nil
+		return u64, nil
 	// conversions with allocations (return i64)
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
@@ -178,10 +178,11 @@ func convertFloat(tc typeCode, v any, max float64) (any, error) {
 	switch rv.Kind() {
 	// conversions without allocations (return v)
 	case reflect.Float32, reflect.Float64:
-		if math.Abs(rv.Float()) > max {
+		f64 := rv.Float()
+		if math.Abs(f64) > max {
 			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
 		}
-		return v, nil
+		return f64, nil
 	// conversions with allocations (return f64)
 	case reflect.String:
 		f64, err := strconv.ParseFloat(rv.String(), 64)
