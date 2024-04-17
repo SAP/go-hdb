@@ -633,24 +633,24 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 }
 
 func (c *conn) logSQLTrace(ctx context.Context, start time.Time, query string, nvargs []driver.NamedValue) {
-	if nvargs == nil {
+	const maxArg = 5 // limit the number of arguments to 5
+	l := len(nvargs)
+
+	if l == 0 {
 		c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
 		return
 	}
-	const numArg = 5 // limit the number of arguments to 5
+
 	var attrs []slog.Attr
-	for i, nv := range nvargs {
-		if i >= numArg {
-			break
+	for i := 0; i < min(l, maxArg); i++ {
+		name := nvargs[i].Name
+		if name == "" {
+			name = strconv.Itoa(nvargs[i].Ordinal)
 		}
-		if nv.Name != "" {
-			attrs = append(attrs, slog.String(nv.Name, fmt.Sprintf("%v", nv.Value)))
-		} else {
-			attrs = append(attrs, slog.String(strconv.Itoa(nv.Ordinal), fmt.Sprintf("%v", nv.Value)))
-		}
+		attrs = append(attrs, slog.String(name, fmt.Sprintf("%v", nvargs[i].Value)))
 	}
-	if len(nvargs) > numArg {
-		attrs = append(attrs, slog.Int("numArgSkip", len(nvargs)-numArg))
+	if l > maxArg {
+		attrs = append(attrs, slog.Int("numArgSkip", l-maxArg))
 	}
 	c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", slog.GroupValue(attrs...)))
 }
@@ -683,7 +683,7 @@ func newTx(conn *conn) *tx {
 func (t *tx) Commit() error   { return t.close(false) }
 func (t *tx) Rollback() error { return t.close(true) }
 
-func (t *tx) close(rollback bool) (err error) {
+func (t *tx) close(rollback bool) error {
 	c := t.conn
 
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
@@ -699,11 +699,9 @@ func (t *tx) close(rollback bool) (err error) {
 	c.inTx = false
 
 	if rollback {
-		err = c.rollback(context.Background())
-	} else {
-		err = c.commit(context.Background())
+		return c.rollback(context.Background())
 	}
-	return
+	return c.commit(context.Background())
 }
 
 const defaultSessionID = -1

@@ -299,33 +299,13 @@ func formatInvalidValue(name string, value any) string {
 }
 
 func asInt[E byte | int16 | int32 | int64](v any) E {
-	if v, ok := v.(bool); ok {
+	switch v := v.(type) {
+	case bool:
 		if v {
 			return 1
 		}
 		return 0
-	}
-
-	switch v := v.(type) {
-	case int:
-		return E(v)
-	case int8:
-		return E(v)
-	case int16:
-		return E(v)
-	case int32:
-		return E(v)
 	case int64:
-		return E(v)
-	case uint:
-		return E(v)
-	case uint8:
-		return E(v)
-	case uint16:
-		return E(v)
-	case uint32:
-		return E(v)
-	case uint64:
 		return E(v)
 	}
 	panic(formatInvalidValue("integer", v)) // should never happen
@@ -384,27 +364,21 @@ func (e *Encoder) BigintField(v any) error {
 
 // RealField encodes a real field.
 func (e *Encoder) RealField(v any) error {
-	switch v := v.(type) {
-	case float32:
-		e.Float32(v)
-	case float64:
-		e.Float32(float32(v))
-	default:
+	f64, ok := v.(float64)
+	if !ok {
 		panic(formatInvalidValue("real", v)) // should never happen
 	}
+	e.Float32(float32(f64))
 	return nil
 }
 
 // DoubleField encodes a double field.
 func (e *Encoder) DoubleField(v any) error {
-	switch v := v.(type) {
-	case float32:
-		e.Float64(float64(v))
-	case float64:
-		e.Float64(v)
-	default:
+	f64, ok := v.(float64)
+	if !ok {
 		panic(formatInvalidValue("double", v)) // should never happen
 	}
+	e.Float64(f64)
 	return nil
 }
 

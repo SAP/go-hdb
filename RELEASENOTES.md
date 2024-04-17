@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.16
+- fixed minimal go version in go.mod to comply to the 1.N.P syntax (https://go.dev/doc/toolchain#version)
+
 #### v1.8.15
 - fixed sql value conversion for integers and floats
 

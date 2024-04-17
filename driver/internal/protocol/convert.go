@@ -71,12 +71,17 @@ Conversion routines hdb parameters
     parameter is already of target type
 */
 func convertBool(tc typeCode, v any) (any, error) {
-	if v == nil {
+	switch v := v.(type) {
+	case bool:
 		return v, nil
-	}
-
-	if v, ok := v.(bool); ok {
-		return v, nil
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return v != 0, nil
+	case string:
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, newConvertError(tc, v, err)
+		}
+		return b, nil
 	}
 
 	rv := reflect.ValueOf(v)
@@ -96,29 +101,133 @@ func convertBool(tc typeCode, v any) (any, error) {
 		}
 		return b, nil
 	case reflect.Ptr:
-		// indirect pointers
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertBool(tc, rv.Elem().Interface())
+	default:
+		if rv.Type().ConvertibleTo(stringReflectType) {
+			return convertBool(tc, rv.Convert(stringReflectType).Interface())
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertBool(tc, rv.Convert(stringReflectType).Interface())
-	}
-	return nil, newConvertError(tc, v, nil)
 }
 
-func convertInteger(tc typeCode, v any, min, max int64) (any, error) {
-	if v == nil {
+func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint: gocyclo
+	switch v := v.(type) {
+	case bool:
 		return v, nil
+	case int:
+		i64 := int64(v)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case int8:
+		i64 := int64(v)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case int16:
+		i64 := int64(v)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case int32:
+		i64 := int64(v)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case int64:
+		if v > max || v < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return v, nil
+	case uint:
+		u64 := uint64(v)
+		if u64 >= 1<<63 {
+			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		}
+		i64 := int64(u64)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case uint8:
+		u64 := uint64(v)
+		if u64 >= 1<<63 {
+			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		}
+		i64 := int64(u64)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case uint16:
+		u64 := uint64(v)
+		if u64 >= 1<<63 {
+			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		}
+		i64 := int64(u64)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case uint32:
+		u64 := uint64(v)
+		if u64 >= 1<<63 {
+			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		}
+		i64 := int64(u64)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case uint64:
+		if v >= 1<<63 {
+			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		}
+		i64 := int64(v)
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case float32:
+		i64 := int64(v)
+		if v != float32(i64) { // should work for overflow, NaN, +-INF as well
+			return nil, newConvertError(tc, v, nil)
+		}
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case float64:
+		i64 := int64(v)
+		if v != float64(i64) { // should work for overflow, NaN, +-INF as well
+			return nil, newConvertError(tc, v, nil)
+		}
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case string:
+		i64, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, newConvertError(tc, v, err)
+		}
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
 	}
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	// conversions without allocations (return v)
 	case reflect.Bool:
-		return v, nil // return (no furhter check needed)
+		return v, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
 		if i64 > max || i64 < min {
@@ -130,11 +239,11 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) {
 		if u64 >= 1<<63 {
 			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
 		}
-		if int64(u64) > max || int64(u64) < min {
+		i64 := int64(u64)
+		if i64 > max || i64 < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
-		return u64, nil
-	// conversions with allocations (return i64)
+		return i64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		i64 := int64(f64)
@@ -154,36 +263,51 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
-	// pointer
 	case reflect.Ptr:
-		// indirect pointers
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertInteger(tc, rv.Elem().Interface(), min, max)
+	default:
+		if rv.Type().ConvertibleTo(stringReflectType) {
+			return convertInteger(tc, rv.Convert(stringReflectType).Interface(), min, max)
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-	// last resort (try via string)
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertInteger(tc, rv.Convert(stringReflectType).Interface(), min, max)
-	}
-	return nil, newConvertError(tc, v, nil)
 }
 
 func convertFloat(tc typeCode, v any, max float64) (any, error) {
-	if v == nil {
+	switch v := v.(type) {
+	case float32:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case float64:
+		if math.Abs(v) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
 		return v, nil
+	case string:
+		f64, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, newConvertError(tc, v, err)
+		}
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
 	}
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	// conversions without allocations (return v)
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		if math.Abs(f64) > max {
 			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
 		}
 		return f64, nil
-	// conversions with allocations (return f64)
 	case reflect.String:
 		f64, err := strconv.ParseFloat(rv.String(), 64)
 		if err != nil {
@@ -193,45 +317,38 @@ func convertFloat(tc typeCode, v any, max float64) (any, error) {
 			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
 		}
 		return f64, nil
-	// pointer
 	case reflect.Ptr:
-		// indirect pointers
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertFloat(tc, rv.Elem().Interface(), max)
+	default:
+		if rv.Type().ConvertibleTo(stringReflectType) {
+			return convertFloat(tc, rv.Convert(stringReflectType).Interface(), max)
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-	// last resort (try via string)
-	if rv.Type().ConvertibleTo(stringReflectType) {
-		return convertFloat(tc, rv.Convert(stringReflectType).Interface(), max)
-	}
-	return nil, newConvertError(tc, v, nil)
 }
 
 func convertTime(tc typeCode, v any) (any, error) {
-	if v == nil {
-		return nil, nil
-	}
-
 	if v, ok := v.(time.Time); ok {
 		return v, nil
 	}
 
 	rv := reflect.ValueOf(v)
-
-	if rv.Kind() == reflect.Ptr {
-		// indirect pointers
+	switch rv.Kind() {
+	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertTime(tc, rv.Elem().Interface())
+	default:
+		if rv.Type().ConvertibleTo(timeReflectType) {
+			tv := rv.Convert(timeReflectType)
+			return tv.Interface().(time.Time), nil
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-
-	if rv.Type().ConvertibleTo(timeReflectType) {
-		tv := rv.Convert(timeReflectType)
-		return tv.Interface().(time.Time), nil
-	}
-	return nil, newConvertError(tc, v, nil)
 }
 
 /*
@@ -246,65 +363,53 @@ but as the user needs to use Decimal anyway (scan), we go with
 *big.Rat only for the time being.
 */
 func convertDecimal(tc typeCode, v any) (any, error) {
-	if v == nil {
-		return nil, nil
-	}
 	if v, ok := v.(*big.Rat); ok {
 		return v, nil
 	}
 
 	rv := reflect.ValueOf(v)
-
-	if rv.Kind() == reflect.Ptr {
-		// indirect pointers
+	switch rv.Kind() {
+	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertDecimal(tc, rv.Elem().Interface())
+	default:
+		if rv.Type().ConvertibleTo(ratReflectType) {
+			tv := rv.Convert(ratReflectType)
+			return tv.Interface().(big.Rat), nil
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-
-	if rv.Type().ConvertibleTo(ratReflectType) {
-		tv := rv.Convert(ratReflectType)
-		return tv.Interface().(big.Rat), nil
-	}
-
-	return nil, newConvertError(tc, v, nil)
 }
 
 func convertBytes(tc typeCode, v any) (any, error) {
-	if v == nil {
-		return v, nil
-	}
-
 	switch v := v.(type) {
 	case string, []byte:
 		return v, nil
 	}
 
 	rv := reflect.ValueOf(v)
-
 	switch rv.Kind() {
 	case reflect.String:
 		return rv.String(), nil
-
-	case reflect.Slice:
-		if rv.Type() == bytesReflectType {
-			return rv.Bytes(), nil
-		}
-
 	case reflect.Ptr:
-		// indirect pointers
 		if rv.IsNil() {
 			return nil, nil
 		}
 		return convertBytes(tc, rv.Elem().Interface())
+	case reflect.Slice:
+		if rv.Type() == bytesReflectType {
+			return rv.Bytes(), nil
+		}
+		fallthrough
+	default:
+		if rv.Type().ConvertibleTo(bytesReflectType) {
+			bv := rv.Convert(bytesReflectType)
+			return bv.Interface().([]byte), nil
+		}
+		return nil, newConvertError(tc, v, nil)
 	}
-
-	if rv.Type().ConvertibleTo(bytesReflectType) {
-		bv := rv.Convert(bytesReflectType)
-		return bv.Interface().([]byte), nil
-	}
-	return nil, newConvertError(tc, v, nil)
 }
 
 // readProvider is the interface wrapping the Reader which provides an io.Reader.
@@ -319,11 +424,7 @@ func convertToLobInDescr(t transform.Transformer, rd io.Reader) *LobInDescr {
 	return newLobInDescr(rd)
 }
 
-func convertLob(t transform.Transformer, tc typeCode, v any) (any, error) {
-	if v == nil {
-		return v, nil
-	}
-
+func convertLob(tc typeCode, v any, t transform.Transformer) (any, error) {
 	switch v := v.(type) {
 	case io.Reader:
 		return convertToLobInDescr(t, v), nil
@@ -342,19 +443,22 @@ func convertLob(t transform.Transformer, tc typeCode, v any) (any, error) {
 	}
 
 	rv := reflect.ValueOf(v)
-
-	if rv.Kind() == reflect.Ptr {
-		// indirect pointers
+	switch rv.Kind() {
+	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertLob(t, tc, rv.Elem().Interface())
+		return convertLob(tc, rv.Elem().Interface(), t)
+	default:
+		return nil, newConvertError(tc, v, nil)
 	}
-
-	return nil, fmt.Errorf("invalid lob type %[1]T value %[1]v", v)
 }
 
 func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
 	switch tc {
 	case tcBoolean:
 		return convertBool(tc, v)
@@ -377,11 +481,11 @@ func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
 	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
 		return convertBytes(tc, v)
 	case tcBlob, tcClob, tcLocator:
-		return convertLob(nil, tc, v)
+		return convertLob(tc, v, nil)
 	case tcNclob, tcText, tcNlocator:
-		return convertLob(t, tc, v)
+		return convertLob(tc, v, t)
 	case tcBintext: // ?? lobCESU8Type
-		return convertLob(nil, tc, v)
+		return convertLob(tc, v, nil)
 	default:
 		panic(fmt.Sprintf("invalid type code %s", tc))
 	}
