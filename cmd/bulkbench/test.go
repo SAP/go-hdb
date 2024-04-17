@@ -37,6 +37,16 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	batchCount := q.getInt(urlQueryBatchCount, defBatchCount)
 	batchSize := q.getInt(urlQueryBatchSize, defBatchSize)
 
+	// CWE-770 mitigation https://cwe.mitre.org/data/definitions/770.html
+	if batchCount > maxBatchCount {
+		http.Error(w, fmt.Sprintf("batch count %d exceeds maximum of %d", batchCount, maxBatchCount), http.StatusBadRequest)
+		return
+	}
+	if batchSize > maxBatchSize {
+		http.Error(w, fmt.Sprintf("batch size %d exceeds maximum of %d", batchSize, maxBatchSize), http.StatusBadRequest)
+		return
+	}
+
 	result := h.ts.execute(sequential, batchCount, batchSize, drop)
 
 	log.Printf("%s", result)
@@ -76,6 +86,8 @@ const (
 	defSequential = true
 	defBatchCount = 10
 	defBatchSize  = 10000
+	maxBatchCount = 1000
+	maxBatchSize  = 1000000
 )
 
 type tests struct {
@@ -181,14 +193,13 @@ func (t *task) close() {
 
 func createTasks(db *sql.DB, prepareQuery string, batchCount, batchSize int) ([]*task, error) {
 	var err error
-	tasks := make([]*task, batchCount)
+	tasks := []*task{}
 	for i := 0; i < batchCount; i++ {
 		stmt, err := db.PrepareContext(context.Background(), prepareQuery)
 		if err != nil {
 			return nil, err
 		}
-
-		tasks[i] = &task{stmt: stmt, size: batchSize}
+		tasks = append(tasks, &task{stmt: stmt, size: batchSize})
 	}
 	return tasks, err
 }

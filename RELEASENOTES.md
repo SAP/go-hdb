@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.17
+- CWE-770 mitigation in bulkbench benchmark
+
 #### v1.8.16
 - fixed minimal go version in go.mod to comply to the 1.N.P syntax (https://go.dev/doc/toolchain#version)
 
