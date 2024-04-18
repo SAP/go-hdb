@@ -45,6 +45,9 @@ var ErrIntegerOutOfRange = errors.New("integer out of range error")
 // ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
 var ErrFloatOutOfRange = errors.New("float out of range error")
 
+// ErrRatConversion means that a conversion to big.Rat was not possible.
+var ErrRatConversion = errors.New("rat conversion error")
+
 // A ConvertError is returned by conversion methods if a go datatype to hdb datatype conversion fails.
 type ConvertError struct {
 	err error
@@ -157,31 +160,19 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint:
 		}
 		return i64, nil
 	case uint8:
-		u64 := uint64(v)
-		if u64 >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
-		}
-		i64 := int64(u64)
+		i64 := int64(v)
 		if i64 > max || i64 < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
 	case uint16:
-		u64 := uint64(v)
-		if u64 >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
-		}
-		i64 := int64(u64)
+		i64 := int64(v)
 		if i64 > max || i64 < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
 	case uint32:
-		u64 := uint64(v)
-		if u64 >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
-		}
-		i64 := int64(u64)
+		i64 := int64(v)
 		if i64 > max || i64 < min {
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
@@ -234,7 +225,13 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint:
 			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
 		}
 		return i64, nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
+		i64 := int64(rv.Uint())
+		if i64 > max || i64 < min {
+			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+		}
+		return i64, nil
+	case reflect.Uint64:
 		u64 := rv.Uint()
 		if u64 >= 1<<63 {
 			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
@@ -276,7 +273,12 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint:
 	}
 }
 
-func convertFloat(tc typeCode, v any, max float64) (any, error) {
+var (
+	floatZero = 0.0
+	floatOne  = 1.0
+)
+
+func convertFloat(tc typeCode, v any, max float64) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case float32:
 		f64 := float64(v)
@@ -289,6 +291,71 @@ func convertFloat(tc typeCode, v any, max float64) (any, error) {
 			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
 		}
 		return v, nil
+	case bool:
+		if v {
+			return floatOne, nil
+		}
+		return floatZero, nil
+	case int:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case int8:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case int16:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case int32:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case int64:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case uint:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case uint8:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case uint16:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case uint32:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case uint64:
+		f64 := float64(v)
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
 	case string:
 		f64, err := strconv.ParseFloat(v, 64)
 		if err != nil {
@@ -302,6 +369,23 @@ func convertFloat(tc typeCode, v any, max float64) (any, error) {
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
+	case reflect.Bool:
+		if rv.Bool() {
+			return floatOne, nil
+		}
+		return floatZero, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		f64 := float64(rv.Int())
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		f64 := float64(rv.Uint())
+		if math.Abs(f64) > max {
+			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+		}
+		return f64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		if math.Abs(f64) > max {
@@ -351,24 +435,95 @@ func convertTime(tc typeCode, v any) (any, error) {
 	}
 }
 
+var (
+	ratZero = big.NewRat(0, 1)
+	ratOne  = big.NewRat(1, 1)
+)
+
 /*
 Currently the min, max check is done during encoding, as the check is expensive and
 we want to avoid doing the conversion twice (convert + encode).
 These checks could be done in convert only, but then we would need a
 struct{m *big.Int, exp int} for decimals as intermediate format.
 
-We would be able to accept other datatypes as well, like
-int??, *big.Int, string, ...
-but as the user needs to use Decimal anyway (scan), we go with
-*big.Rat only for the time being.
+The conversion does support other types as well (int, *big.Int, string, ...)
+even though the user needs to use Decimal for scanning.
 */
-func convertDecimal(tc typeCode, v any) (any, error) {
-	if v, ok := v.(*big.Rat); ok {
+func convertDecimal(tc typeCode, v any) (any, error) { //nolint: gocyclo
+	switch v := v.(type) {
+	case *big.Rat:
 		return v, nil
+	case *big.Int:
+		return new(big.Rat).SetInt(v), nil
+	case *big.Float:
+		r, _ := v.Rat(nil) // ignore accuracy
+		return r, nil
+	case bool:
+		if v {
+			return ratOne, nil
+		}
+		return ratZero, nil
+	case int:
+		return new(big.Rat).SetInt64(int64(v)), nil
+	case int8:
+		return new(big.Rat).SetInt64(int64(v)), nil
+	case int16:
+		return new(big.Rat).SetInt64(int64(v)), nil
+	case int32:
+		return new(big.Rat).SetInt64(int64(v)), nil
+	case int64:
+		return new(big.Rat).SetInt64(v), nil
+	case uint:
+		return new(big.Rat).SetUint64(uint64(v)), nil
+	case uint8:
+		return new(big.Rat).SetUint64(uint64(v)), nil
+	case uint16:
+		return new(big.Rat).SetUint64(uint64(v)), nil
+	case uint32:
+		return new(big.Rat).SetUint64(uint64(v)), nil
+	case uint64:
+		return new(big.Rat).SetUint64(v), nil
+	case float32:
+		r := new(big.Rat).SetFloat64(float64(v))
+		if r == nil {
+			return nil, newConvertError(tc, v, ErrRatConversion)
+		}
+	case float64:
+		r := new(big.Rat).SetFloat64(v)
+		if r == nil {
+			return nil, newConvertError(tc, v, ErrRatConversion)
+		}
+	case string:
+		r, ok := new(big.Rat).SetString(v)
+		if !ok {
+			return nil, newConvertError(tc, v, ErrRatConversion)
+		}
+		return r, nil
 	}
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
+	case reflect.Bool:
+		if rv.Bool() {
+			return ratOne, nil
+		}
+		return ratZero, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return new(big.Rat).SetInt64(rv.Int()), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return new(big.Rat).SetUint64(rv.Uint()), nil
+	case reflect.Float32, reflect.Float64:
+		r := new(big.Rat).SetFloat64(rv.Float())
+		if r == nil {
+			return nil, newConvertError(tc, v, ErrRatConversion)
+		}
+		return r, nil
+	case reflect.String:
+		r, ok := new(big.Rat).SetString(rv.String())
+		if !ok {
+			return nil, newConvertError(tc, v, ErrRatConversion)
+		}
+		return r, nil
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil

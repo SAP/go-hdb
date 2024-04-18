@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.18
+- updated dependencies
+
 #### v1.8.17
 - CWE-770 mitigation in bulkbench benchmark
 
