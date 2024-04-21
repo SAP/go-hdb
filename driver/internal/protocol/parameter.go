@@ -107,8 +107,12 @@ func (f *ParameterField) String() string {
 func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(t transform.Transformer, v any) (any, error) {
-	return convertField(f.tc, v, t)
+func (f *ParameterField) Convert(v any, t transform.Transformer) (any, error) {
+	cv, err := convertField(f.tc, v, t)
+	if err != nil {
+		return nil, fmt.Errorf("field %[1]s type code %[2]s type %[3]T value %[3]v coversion error %[4]w", f.fieldName(), f.tc, v, err)
+	}
+	return cv, nil
 }
 
 // TypeName returns the type name of the field.

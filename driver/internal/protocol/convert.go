@@ -36,55 +36,27 @@ var (
 	ratReflectType    = hdbreflect.TypeFor[big.Rat]()
 )
 
-// ErrUint64OutOfRange means that a uint64 exceeds the size of a int64.
-var ErrUint64OutOfRange = errors.New("uint64 values with high bit set are not supported")
-
-// ErrIntegerOutOfRange means that an integer exceeds the size of the hdb integer field.
-var ErrIntegerOutOfRange = errors.New("integer out of range error")
-
-// ErrFloatOutOfRange means that a float exceeds the size of the hdb float field.
-var ErrFloatOutOfRange = errors.New("float out of range error")
-
-// ErrRatConversion means that a conversion to big.Rat was not possible.
-var ErrRatConversion = errors.New("rat conversion error")
-
-// A ConvertError is returned by conversion methods if a go datatype to hdb datatype conversion fails.
-type ConvertError struct {
-	err error
-	tc  typeCode
-	v   any
-}
-
-func (e *ConvertError) Error() string {
-	if e.err == nil {
-		return fmt.Sprintf("unsupported %[1]s conversion: %[2]T %[2]v", e.tc, e.v)
-	}
-	return fmt.Sprintf("unsupported %[1]s conversion: %[2]T %[2]v - %[3]s", e.tc, e.v, e.err)
-}
-
-// Unwrap returns the nested error.
-func (e *ConvertError) Unwrap() error { return e.err }
-func newConvertError(tc typeCode, v any, err error) *ConvertError {
-	return &ConvertError{tc: tc, v: v, err: err}
-}
+var (
+	errConversionNotSupported = errors.New("conversion not supported")
+	errUint64OutOfRange       = errors.New("uint64 values with high bit set are not supported")
+	errIntegerOutOfRange      = errors.New("integer out of range")
+	errFloatOutOfRange        = errors.New("float out of range")
+)
 
 /*
 Conversion routines hdb parameters
   - return value is any to avoid allocations in case
     parameter is already of target type
 */
-func convertBool(tc typeCode, v any) (any, error) {
+
+func convertBool(v any) (any, error) {
 	switch v := v.(type) {
 	case bool:
 		return v, nil
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return v != 0, nil
 	case string:
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return nil, newConvertError(tc, v, err)
-		}
-		return b, nil
+		return strconv.ParseBool(v)
 	}
 
 	rv := reflect.ValueOf(v)
@@ -98,119 +70,123 @@ func convertBool(tc typeCode, v any) (any, error) {
 	case reflect.Float32, reflect.Float64:
 		return rv.Float() != 0, nil
 	case reflect.String:
-		b, err := strconv.ParseBool(rv.String())
-		if err != nil {
-			return nil, newConvertError(tc, v, err)
-		}
-		return b, nil
+		return strconv.ParseBool(rv.String())
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertBool(tc, rv.Elem().Interface())
+		return convertBool(rv.Elem().Interface())
 	default:
 		if rv.Type().ConvertibleTo(stringReflectType) {
-			return convertBool(tc, rv.Convert(stringReflectType).Interface())
+			return convertBool(rv.Convert(stringReflectType).Interface())
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
-func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint: gocyclo
+var (
+	i64Zero = int64(0)
+	i64One  = int64(1)
+)
+
+func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case bool:
-		return v, nil
+		if v {
+			return i64One, nil
+		}
+		return i64Zero, nil
 	case int:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int8:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int16:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int32:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int64:
 		if v > max || v < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return v, nil
 	case uint:
 		u64 := uint64(v)
-		if u64 >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		if u64 > math.MaxInt64 {
+			return nil, errUint64OutOfRange
 		}
 		i64 := int64(u64)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint8:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint16:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint32:
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint64:
-		if v >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		if v > math.MaxInt64 {
+			return nil, errUint64OutOfRange
 		}
 		i64 := int64(v)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case float32:
 		i64 := int64(v)
 		if v != float32(i64) { // should work for overflow, NaN, +-INF as well
-			return nil, newConvertError(tc, v, nil)
+			return nil, errConversionNotSupported
 		}
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errConversionNotSupported
 		}
 		return i64, nil
 	case float64:
 		i64 := int64(v)
 		if v != float64(i64) { // should work for overflow, NaN, +-INF as well
-			return nil, newConvertError(tc, v, nil)
+			return nil, errConversionNotSupported
 		}
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case string:
 		i64, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			return nil, newConvertError(tc, v, err)
+			return nil, err
 		}
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	}
@@ -218,151 +194,154 @@ func convertInteger(tc typeCode, v any, min, max int64) (any, error) { //nolint:
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Bool:
-		return v, nil
+		if rv.Bool() {
+			return i64One, nil
+		}
+		return i64Zero, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
 		i64 := int64(rv.Uint())
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Uint64:
 		u64 := rv.Uint()
-		if u64 >= 1<<63 {
-			return nil, newConvertError(tc, v, ErrUint64OutOfRange)
+		if u64 > math.MaxInt64 {
+			return nil, errUint64OutOfRange
 		}
 		i64 := int64(u64)
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		i64 := int64(f64)
 		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
-			return nil, newConvertError(tc, v, nil)
+			return nil, errConversionNotSupported
 		}
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.String:
 		i64, err := strconv.ParseInt(rv.String(), 10, 64)
 		if err != nil {
-			return nil, newConvertError(tc, v, err)
+			return nil, errConversionNotSupported
 		}
 		if i64 > max || i64 < min {
-			return nil, newConvertError(tc, v, ErrIntegerOutOfRange)
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertInteger(tc, rv.Elem().Interface(), min, max)
+		return convertInteger(rv.Elem().Interface(), min, max)
 	default:
 		if rv.Type().ConvertibleTo(stringReflectType) {
-			return convertInteger(tc, rv.Convert(stringReflectType).Interface(), min, max)
+			return convertInteger(rv.Convert(stringReflectType).Interface(), min, max)
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
 var (
-	floatZero = 0.0
-	floatOne  = 1.0
+	f64Zero = float64(0.0)
+	f64One  = float64(1.0)
 )
 
-func convertFloat(tc typeCode, v any, max float64) (any, error) { //nolint: gocyclo
+func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case float32:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case float64:
 		if math.Abs(v) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return v, nil
 	case bool:
 		if v {
-			return floatOne, nil
+			return f64One, nil
 		}
-		return floatZero, nil
+		return f64Zero, nil
 	case int:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int8:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int16:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int32:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int64:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint8:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint16:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint32:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint64:
 		f64 := float64(v)
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case string:
 		f64, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return nil, newConvertError(tc, v, err)
+			return nil, err
 		}
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	}
@@ -371,50 +350,50 @@ func convertFloat(tc typeCode, v any, max float64) (any, error) { //nolint: gocy
 	switch rv.Kind() {
 	case reflect.Bool:
 		if rv.Bool() {
-			return floatOne, nil
+			return f64One, nil
 		}
-		return floatZero, nil
+		return f64Zero, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f64 := float64(rv.Int())
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		f64 := float64(rv.Uint())
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.String:
 		f64, err := strconv.ParseFloat(rv.String(), 64)
 		if err != nil {
-			return nil, newConvertError(tc, v, err)
+			return nil, err
 		}
 		if math.Abs(f64) > max {
-			return nil, newConvertError(tc, v, ErrFloatOutOfRange)
+			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertFloat(tc, rv.Elem().Interface(), max)
+		return convertFloat(rv.Elem().Interface(), max)
 	default:
 		if rv.Type().ConvertibleTo(stringReflectType) {
-			return convertFloat(tc, rv.Convert(stringReflectType).Interface(), max)
+			return convertFloat(rv.Convert(stringReflectType).Interface(), max)
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
-func convertTime(tc typeCode, v any) (any, error) {
+func convertTime(v any) (any, error) {
 	if v, ok := v.(time.Time); ok {
 		return v, nil
 	}
@@ -425,13 +404,13 @@ func convertTime(tc typeCode, v any) (any, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertTime(tc, rv.Elem().Interface())
+		return convertTime(rv.Elem().Interface())
 	default:
 		if rv.Type().ConvertibleTo(timeReflectType) {
 			tv := rv.Convert(timeReflectType)
 			return tv.Interface().(time.Time), nil
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
@@ -449,7 +428,7 @@ struct{m *big.Int, exp int} for decimals as intermediate format.
 The conversion does support other types as well (int, *big.Int, string, ...)
 even though the user needs to use Decimal for scanning.
 */
-func convertDecimal(tc typeCode, v any) (any, error) { //nolint: gocyclo
+func convertDecimal(v any) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case *big.Rat:
 		return v, nil
@@ -486,17 +465,17 @@ func convertDecimal(tc typeCode, v any) (any, error) { //nolint: gocyclo
 	case float32:
 		r := new(big.Rat).SetFloat64(float64(v))
 		if r == nil {
-			return nil, newConvertError(tc, v, ErrRatConversion)
+			return nil, errConversionNotSupported
 		}
 	case float64:
 		r := new(big.Rat).SetFloat64(v)
 		if r == nil {
-			return nil, newConvertError(tc, v, ErrRatConversion)
+			return nil, errConversionNotSupported
 		}
 	case string:
 		r, ok := new(big.Rat).SetString(v)
 		if !ok {
-			return nil, newConvertError(tc, v, ErrRatConversion)
+			return nil, errConversionNotSupported
 		}
 		return r, nil
 	}
@@ -515,30 +494,30 @@ func convertDecimal(tc typeCode, v any) (any, error) { //nolint: gocyclo
 	case reflect.Float32, reflect.Float64:
 		r := new(big.Rat).SetFloat64(rv.Float())
 		if r == nil {
-			return nil, newConvertError(tc, v, ErrRatConversion)
+			return nil, errConversionNotSupported
 		}
 		return r, nil
 	case reflect.String:
 		r, ok := new(big.Rat).SetString(rv.String())
 		if !ok {
-			return nil, newConvertError(tc, v, ErrRatConversion)
+			return nil, errConversionNotSupported
 		}
 		return r, nil
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertDecimal(tc, rv.Elem().Interface())
+		return convertDecimal(rv.Elem().Interface())
 	default:
 		if rv.Type().ConvertibleTo(ratReflectType) {
 			tv := rv.Convert(ratReflectType)
 			return tv.Interface().(big.Rat), nil
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
-func convertBytes(tc typeCode, v any) (any, error) {
+func convertBytes(v any) (any, error) {
 	switch v := v.(type) {
 	case string, []byte:
 		return v, nil
@@ -552,7 +531,7 @@ func convertBytes(tc typeCode, v any) (any, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertBytes(tc, rv.Elem().Interface())
+		return convertBytes(rv.Elem().Interface())
 	case reflect.Slice:
 		if rv.Type() == bytesReflectType {
 			return rv.Bytes(), nil
@@ -563,7 +542,7 @@ func convertBytes(tc typeCode, v any) (any, error) {
 			bv := rv.Convert(bytesReflectType)
 			return bv.Interface().([]byte), nil
 		}
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
@@ -579,7 +558,7 @@ func convertToLobInDescr(t transform.Transformer, rd io.Reader) *LobInDescr {
 	return newLobInDescr(rd)
 }
 
-func convertLob(tc typeCode, v any, t transform.Transformer) (any, error) {
+func convertLob(v any, t transform.Transformer) (any, error) {
 	switch v := v.(type) {
 	case io.Reader:
 		return convertToLobInDescr(t, v), nil
@@ -587,7 +566,7 @@ func convertLob(tc typeCode, v any, t transform.Transformer) (any, error) {
 		return convertToLobInDescr(t, v.Reader()), nil
 	default:
 		// check if string or []byte
-		if v, err := convertBytes(tc, v); err == nil {
+		if v, err := convertBytes(v); err == nil {
 			switch v := v.(type) {
 			case string:
 				return convertToLobInDescr(t, strings.NewReader(v)), nil
@@ -603,9 +582,9 @@ func convertLob(tc typeCode, v any, t transform.Transformer) (any, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertLob(tc, rv.Elem().Interface(), t)
+		return convertLob(rv.Elem().Interface(), t)
 	default:
-		return nil, newConvertError(tc, v, nil)
+		return nil, errConversionNotSupported
 	}
 }
 
@@ -616,31 +595,31 @@ func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
 
 	switch tc {
 	case tcBoolean:
-		return convertBool(tc, v)
+		return convertBool(v)
 	case tcTinyint:
-		return convertInteger(tc, v, minTinyint, maxTinyint)
+		return convertInteger(v, minTinyint, maxTinyint)
 	case tcSmallint:
-		return convertInteger(tc, v, minSmallint, maxSmallint)
+		return convertInteger(v, minSmallint, maxSmallint)
 	case tcInteger:
-		return convertInteger(tc, v, minInteger, maxInteger)
+		return convertInteger(v, minInteger, maxInteger)
 	case tcBigint:
-		return convertInteger(tc, v, minBigint, maxBigint)
+		return convertInteger(v, minBigint, maxBigint)
 	case tcReal:
-		return convertFloat(tc, v, maxReal)
+		return convertFloat(v, maxReal)
 	case tcDouble:
-		return convertFloat(tc, v, maxDouble)
+		return convertFloat(v, maxDouble)
 	case tcDate, tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
-		return convertTime(tc, v)
+		return convertTime(v)
 	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
-		return convertDecimal(tc, v)
+		return convertDecimal(v)
 	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
-		return convertBytes(tc, v)
+		return convertBytes(v)
 	case tcBlob, tcClob, tcLocator:
-		return convertLob(tc, v, nil)
+		return convertLob(v, nil)
 	case tcNclob, tcText, tcNlocator:
-		return convertLob(tc, v, t)
+		return convertLob(v, t)
 	case tcBintext: // ?? lobCESU8Type
-		return convertLob(tc, v, nil)
+		return convertLob(v, nil)
 	default:
 		panic(fmt.Sprintf("invalid type code %s", tc))
 	}

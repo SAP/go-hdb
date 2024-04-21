@@ -52,7 +52,7 @@ func convertArg(field *p.ParameterField, arg driver.Value, cesu8Encoder transfor
 		}
 	}
 	// convert field
-	return field.Convert(cesu8Encoder, arg)
+	return field.Convert(arg, cesu8Encoder)
 }
 
 /*

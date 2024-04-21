@@ -299,16 +299,11 @@ func formatInvalidValue(name string, value any) string {
 }
 
 func asInt[E byte | int16 | int32 | int64](v any) E {
-	switch v := v.(type) {
-	case bool:
-		if v {
-			return 1
-		}
-		return 0
-	case int64:
-		return E(v)
+	i64, ok := v.(int64)
+	if !ok {
+		panic(formatInvalidValue("integer", v)) // should never happen
 	}
-	panic(formatInvalidValue("integer", v)) // should never happen
+	return E(i64)
 }
 
 func asTime(v any) time.Time {

@@ -5,7 +5,7 @@ Release Notes
 
 ### Minor revisions
 
-#### v1.8.18
+#### v1.8.18 - v1.8.19
 - updated dependencies
 
 #### v1.8.17
