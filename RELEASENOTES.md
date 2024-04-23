@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.20
+- changed minimal go version in go.mod to 1.21.0
+
 #### v1.8.18 - v1.8.19
 - updated dependencies
 
