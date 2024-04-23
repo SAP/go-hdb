@@ -1,6 +1,6 @@
 module github.com/SAP/go-hdb
 
-go 1.21.9
+go 1.21.0
 
 toolchain go1.22.2
 
