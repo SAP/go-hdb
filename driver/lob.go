@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
@@ -25,6 +26,10 @@ func scanLob(src any, wr io.Writer) error {
 	return nil
 }
 
+var bufferPool = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
+
 // ScanLobBytes supports scanning Lob data into a byte slice.
 // This enables using []byte based custom types for scanning Lobs instead of using a Lob object.
 // For usage please refer to the example.
@@ -32,11 +37,14 @@ func ScanLobBytes(src any, b *[]byte) error {
 	if b == nil {
 		return fmt.Errorf("lob scan error: parameter b %T is nil", b)
 	}
-	wr := new(bytes.Buffer)
+	wr := bufferPool.Get().(*bytes.Buffer)
+	wr.Reset()
 	if err := scanLob(src, wr); err != nil {
+		bufferPool.Put(wr)
 		return err
 	}
 	*b = wr.Bytes()
+	bufferPool.Put(wr)
 	return nil
 }
 
@@ -47,11 +55,14 @@ func ScanLobString(src any, s *string) error {
 	if s == nil {
 		return fmt.Errorf("lob scan error: parameter s %T is nil", s)
 	}
-	wr := new(bytes.Buffer)
+	wr := bufferPool.Get().(*bytes.Buffer)
+	wr.Reset()
 	if err := scanLob(src, wr); err != nil {
+		bufferPool.Put(wr)
 		return err
 	}
 	*s = wr.String()
+	bufferPool.Put(wr)
 	return nil
 }
 
@@ -122,9 +133,26 @@ type NullLob struct {
 
 // Scan implements the database/sql/Scanner interface.
 func (n *NullLob) Scan(value any) error {
+	/*
+		In contrast to the Null[T] Scan implementation we do not
+		create a new lob instance in case of value == nil to
+		enable reuse of n.Lob.
+
+		func (n *Null[T]) Scan(value any) error {
+			if value == nil {
+				n.V, n.Valid = *new(T), false
+				return nil
+			}
+			n.Valid = true
+			return convertAssign(&n.V, value)
+		}
+	*/
 	if value == nil {
-		n.Lob, n.Valid = new(Lob), false
+		n.Valid = false
 		return nil
+	}
+	if n.Lob == nil {
+		n.Lob = new(Lob)
 	}
 	n.Valid = true
 	return n.Lob.Scan(value)

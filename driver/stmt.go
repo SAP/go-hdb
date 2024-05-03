@@ -176,14 +176,15 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		}
 	}
 
+	numOutputField := len(cr.outputFields)
 	// no output fields -> done
-	if len(cr.outputFields) == 0 {
+	if numOutputField == 0 {
 		return driver.RowsAffected(numRow), nil, nil
 	}
 
-	scanArgs := []any{}
-	for i := range cr.outputFields {
-		scanArgs = append(scanArgs, callArgs.outArgs[i].Value.(sql.Out).Dest)
+	scanArgs := make([]any, numOutputField)
+	for i := 0; i < numOutputField; i++ {
+		scanArgs[i] = callArgs.outArgs[i].Value.(sql.Out).Dest
 	}
 
 	// no table output parameters -> QueryRow

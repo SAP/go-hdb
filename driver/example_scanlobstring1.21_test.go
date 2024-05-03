@@ -1,4 +1,4 @@
-//go:build !unit
+//go:build !unit && !go1.22
 
 package driver_test
 
@@ -16,6 +16,22 @@ type StringLob string
 
 // Scan implements the database.sql.Scanner interface.
 func (s *StringLob) Scan(arg any) error { return driver.ScanLobString(arg, (*string)(s)) }
+
+// NullStringLob defines a string based null data type for scanning Lobs.
+type NullStringLob struct {
+	V     StringLob
+	Valid bool
+}
+
+// Scan implements the database/sql/Scanner interface.
+func (n *NullStringLob) Scan(value any) error {
+	if value == nil {
+		n.V, n.Valid = StringLob(""), false
+		return nil
+	}
+	n.Valid = true
+	return n.V.Scan(value)
+}
 
 // ExampleScanLobString demontrates how to read Lob data using a string based data type.
 func ExampleScanLobString() {
@@ -44,10 +60,27 @@ func ExampleScanLobString() {
 		log.Panic(err)
 	}
 
-	var arg StringLob
-	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select * from %s", table)).Scan(&arg); err != nil {
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
 		log.Panic(err)
 	}
-	fmt.Println(arg)
+	defer stmt.Close()
+
+	// Scan into StringLob.
+	var s StringLob
+	if err := stmt.QueryRow().Scan(&s); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(s)
+
+	// Scan into NullStringLob.
+	var ns NullStringLob
+	if err := stmt.QueryRow().Scan(&ns); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(ns.V)
+
 	// output: scan lob string
+	// scan lob string
 }

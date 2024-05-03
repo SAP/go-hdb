@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"regexp"
@@ -24,8 +23,6 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
-	"github.com/SAP/go-hdb/driver/unicode/cesu8"
-	"golang.org/x/text/transform"
 )
 
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
@@ -447,6 +444,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 		if pr, err = c.prepare(ctx, query); err == nil {
 			stmt = newStmt(c, query, pr)
+			if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
+				*stmtMetadata = pr
+			}
 		}
 
 		close(done)
@@ -1116,72 +1116,12 @@ read lob reply
   - seems like readLobreply returns only a result for one lob - even if more then one is requested
     --> read single lobs
 */
-func (c *conn) decodeLob(descr *p.LobOutDescr, wr io.Writer) error {
+func (c *conn) decodeLob(lobRequest *p.ReadLobRequest, lobReply *p.ReadLobReply) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
-	var err error
-
-	if descr.IsCharBased {
-		wrcl := transform.NewWriter(wr, c.attrs._cesu8Decoder()) // CESU8 transformer
-		err = c._decodeLob(descr, wrcl, func(b []byte) (size int, numChar int) {
-			for len(b) > 0 {
-				if !cesu8.FullRune(b) {
-					return
-				}
-				_, width := cesu8.DecodeRune(b)
-				size += width
-				if width == cesu8.CESUMax {
-					numChar += 2 // caution: hdb counts 2 chars in case of surrogate pair
-				} else {
-					numChar++
-				}
-				b = b[width:]
-			}
-			return
-		})
-	} else {
-		err = c._decodeLob(descr, wr, func(b []byte) (int, int) { return len(b), len(b) })
-	}
-
-	if pw, ok := wr.(*io.PipeWriter); ok { // if the writer is a pipe-end -> close at the end
-		if err != nil {
-			pw.CloseWithError(err)
-		} else {
-			pw.Close()
-		}
-	}
-	return err
-}
-
-func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b []byte) (int, int)) error {
-	lobChunkSize := int64(c.attrs._lobChunkSize)
-
-	chunkSize := func(numChar, ofs int64) int32 {
-		chunkSize := numChar - ofs
-		if chunkSize > lobChunkSize {
-			return int32(lobChunkSize)
-		}
-		return int32(chunkSize)
-	}
-
-	size, numChar := countChars(descr.B)
-	if _, err := wr.Write(descr.B[:size]); err != nil {
-		return err
-	}
-
-	lobRequest := &p.ReadLobRequest{}
-	lobRequest.ID = descr.ID
-
-	lobReply := &p.ReadLobReply{}
-
-	eof := descr.Opt.IsLastData()
-
+	lobRequest.SetChunkSize(c.attrs._lobChunkSize)
 	ctx := context.Background()
-
-	for !eof {
-		lobRequest.Ofs += int64(numChar)
-		lobRequest.ChunkSize = chunkSize(descr.NumChar, lobRequest.Ofs)
-
+	for {
 		if err := c.pw.Write(ctx, c.sessionID, p.MtWriteLob, false, lobRequest); err != nil {
 			return err
 		}
@@ -1194,15 +1134,15 @@ func (c *conn) _decodeLob(descr *p.LobOutDescr, wr io.Writer, countChars func(b 
 			return err
 		}
 
-		if lobReply.ID != lobRequest.ID {
-			return fmt.Errorf("internal error: invalid lob locator %d - expected %d", lobReply.ID, lobRequest.ID)
-		}
-
-		size, numChar = countChars(lobReply.B)
-		if _, err := wr.Write(lobReply.B[:size]); err != nil {
+		numChar, err := lobReply.Write()
+		if err != nil {
 			return err
 		}
-		eof = lobReply.Opt.IsLastData()
+
+		if lobReply.IsLastData() {
+			break
+		}
+		lobRequest.AddOfs(numChar)
 	}
 	return nil
 }
@@ -1228,7 +1168,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 			if j > len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
 			}
-			if !lobInDescr.Opt.IsLastData() {
+			if !lobInDescr.IsLastData() {
 				descrs = append(descrs, &p.WriteLobDescr{LobInDescr: lobInDescr, ID: ids[j]})
 				j++
 			}
@@ -1284,7 +1224,7 @@ func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Pa
 		// remove done descr
 		j := 0
 		for _, descr := range descrs {
-			if !descr.Opt.IsLastData() {
+			if !descr.IsLastData() {
 				descrs[j] = descr
 				j++
 			}

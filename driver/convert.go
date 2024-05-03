@@ -11,20 +11,6 @@ import (
 	"golang.org/x/text/transform"
 )
 
-func isNilArg(v any) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr {
-		return false
-	}
-	if rv.IsNil() {
-		return true
-	}
-	return isNilArg(rv.Elem().Interface())
-}
-
 // TODO: test.
 func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	for i := pos; i < len(nvargs); i++ {
@@ -38,19 +24,32 @@ func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	}
 }
 
-func convertArg(field *p.ParameterField, arg driver.Value, cesu8Encoder transform.Transformer) (any, error) {
+// This function is take from the database/sql package.
+// The Elem() test is not needed bacause the function is only
+// called for values implementing the driver.Valuer interface.
+func callValuerValue(vr driver.Valuer) (v driver.Value, err error) {
+	if rv := reflect.ValueOf(vr); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		// && rv.Type().Elem().Implements(valuerReflectType) {
+		return nil, nil
+	}
+	return vr.Value()
+}
+
+func convertArg(field *p.ParameterField, arg any, cesu8Encoder transform.Transformer) (any, error) {
 	// let fields with own value converter convert themselves first (e.g. NullInt64, ...)
 	// .check nested Value converters as well (e.g. sql.Null[T] has driver.Decimal as value)
-	for !isNilArg(arg) {
+	for {
 		valuer, ok := arg.(driver.Valuer)
 		if !ok {
 			break
 		}
 		var err error
-		if arg, err = valuer.Value(); err != nil {
+		arg, err = callValuerValue(valuer)
+		if err != nil {
 			return nil, err
 		}
 	}
+
 	// convert field
 	return field.Convert(arg, cesu8Encoder)
 }
@@ -92,7 +91,7 @@ func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ces
 				if err := lobInDescr.FetchNext(lobChunkSize); err != nil {
 					return nil, err
 				}
-				if !lobInDescr.Opt.IsLastData() {
+				if !lobInDescr.IsLastData() {
 					hasAddLobData = true
 				}
 			}

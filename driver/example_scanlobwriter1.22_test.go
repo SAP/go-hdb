@@ -1,4 +1,4 @@
-//go:build !unit
+//go:build !unit && go1.22
 
 package driver_test
 
@@ -50,10 +50,27 @@ func ExampleScanLobWriter() {
 		log.Panic(err)
 	}
 
-	var arg WriterLob
-	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select * from %s", table)).Scan(&arg); err != nil {
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
 		log.Panic(err)
 	}
-	fmt.Println(string(arg))
+	defer stmt.Close()
+
+	// Scan into WriterLob.
+	var w WriterLob
+	if err := stmt.QueryRow().Scan(&w); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(string(w))
+
+	// Scan into sql.Null[WriterLob].
+	var nw sql.Null[WriterLob]
+	if err := stmt.QueryRow().Scan(&nw); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(string(nw.V))
+
 	// output: scan lob writer
+	// scan lob writer
 }

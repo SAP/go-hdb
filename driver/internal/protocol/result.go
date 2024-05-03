@@ -72,38 +72,41 @@ func (f *ResultField) String() string {
 	)
 }
 
-// TypeName returns the type name of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *ResultField) TypeName() string { return f.tc.typeName() }
+func (f *ResultField) isNullable() bool { return f.columnOptions == coOptional }
 
-// ScanType returns the scan type of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *ResultField) ScanType() reflect.Type { return f.tc.dataType().ScanType(f.Nullable()) }
+// DatabaseTypeName returns the type name of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ResultField) DatabaseTypeName() string { return f.tc.typeName() }
 
-// TypeLength returns the type length of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *ResultField) TypeLength() (int64, bool) {
-	if f.tc.isVariableLength() {
-		return int64(f.prec), true
-	}
-	return 0, false
-}
-
-// TypePrecisionScale returns the type precision and scale (decimal types) of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *ResultField) TypePrecisionScale() (int64, int64, bool) {
+// DecimalSize returns the type precision and scale of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ResultField) DecimalSize() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.prec), int64(f.scale), true
 	}
 	return 0, 0, false
 }
 
-// Nullable returns true if the field may be null, false otherwise.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *ResultField) Nullable() bool { return f.columnOptions == coOptional }
+// Length returns the type length of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ResultField) Length() (int64, bool) {
+	if f.tc.isVariableLength() {
+		return int64(f.prec), true
+	}
+	return 0, false
+}
 
 // Name returns the result field name.
+// It implements the go-hdb driver ColumnType interface.
 func (f *ResultField) Name() string { return f.names.name(f.columnDisplayNameOfs) }
+
+// Nullable returns true if the field may be null, false otherwise.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ResultField) Nullable() (bool, bool) { return f.isNullable(), true }
+
+// ScanType returns the scan type of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ResultField) ScanType() reflect.Type { return f.tc.dataType().ScanType(f.isNullable()) }
 
 func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.columnOptions = columnOptions(dec.Int8())

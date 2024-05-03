@@ -41,6 +41,9 @@ func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
 	}
 }
 
+// Transformer returns the cesu8 transformer.
+func (d *Decoder) Transformer() transform.Transformer { return d.tr }
+
 // SetAlphanumDfv1 sets the alphanum dfv1 flag decoder.
 func (d *Decoder) SetAlphanumDfv1(alphanumDfv1 bool) { d.alphanumDfv1 = alphanumDfv1 }
 

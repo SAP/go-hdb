@@ -35,6 +35,49 @@ type prepareResult struct {
 	resultFields    []*p.ResultField
 }
 
+// deprecated
+// Parameters implements the PrepareMetadata interface.
+func (pr *prepareResult) Parameters() []ParameterType { return pr.ParameterTypes() }
+
+// ParameterTypes implements the PrepareMetadata interface.
+func (pr *prepareResult) ParameterTypes() []ParameterType {
+	parameters := make([]ParameterType, len(pr.parameterFields))
+	for i, f := range pr.parameterFields {
+		parameters[i] = f
+	}
+	return parameters
+}
+
+func (pr *prepareResult) columns() []ColumnType {
+	columns := make([]ColumnType, len(pr.resultFields))
+	for i, f := range pr.resultFields {
+		columns[i] = f
+	}
+	return columns
+}
+
+func (pr *prepareResult) procedureCallColumns() []ColumnType {
+	var columns []ColumnType
+	for _, f := range pr.parameterFields {
+		if f.InOut() || f.Out() {
+			columns = append(columns, f)
+		}
+	}
+	return columns
+}
+
+// deprecated
+// Columns implements the PrepareMetadata interface.
+func (pr *prepareResult) Columns() []ColumnType { return pr.ColumnTypes() }
+
+// ColumnTypes implements the PrepareMetadata interface.
+func (pr *prepareResult) ColumnTypes() []ColumnType {
+	if pr.isProcedureCall() {
+		return pr.procedureCallColumns()
+	}
+	return pr.columns()
+}
+
 // isProcedureCall returns true if the statement is a call statement.
 func (pr *prepareResult) isProcedureCall() bool { return pr.fc.IsProcedureCall() }
 
@@ -131,25 +174,23 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 }
 
 // ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
-func (qr *queryResult) ColumnTypeDatabaseTypeName(idx int) string { return qr.fields[idx].TypeName() }
+func (qr *queryResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return qr.fields[idx].DatabaseTypeName()
+}
 
 // ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
-func (qr *queryResult) ColumnTypeLength(idx int) (int64, bool) { return qr.fields[idx].TypeLength() }
+func (qr *queryResult) ColumnTypeLength(idx int) (int64, bool) { return qr.fields[idx].Length() }
 
 // ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
-func (qr *queryResult) ColumnTypeNullable(idx int) (bool, bool) {
-	return qr.fields[idx].Nullable(), true
-}
+func (qr *queryResult) ColumnTypeNullable(idx int) (bool, bool) { return qr.fields[idx].Nullable() }
 
 // ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
 func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
-	return qr.fields[idx].TypePrecisionScale()
+	return qr.fields[idx].DecimalSize()
 }
 
 // ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
-func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type {
-	return qr.fields[idx].ScanType()
-}
+func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type { return qr.fields[idx].ScanType() }
 
 type callResult struct { // call output parameters
 	conn         *conn

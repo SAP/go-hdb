@@ -6,24 +6,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-func decodeLobResult(d *encoding.Decoder, isCharBased bool) (any, error) {
-	descr := &LobOutDescr{IsCharBased: isCharBased}
-	descr.ltc = lobTypecode(d.Int8())
-	descr.Opt = LobOptions(d.Int8())
-	if descr.Opt.isNull() {
-		return nil, nil
-	}
-	d.Skip(2)
-	descr.NumChar = d.Int64()
-	descr.numByte = d.Int64()
-	descr.ID = LocatorID(d.Uint64())
-	size := int(d.Int32())
-	descr.B = make([]byte, size)
-	d.Bytes(descr.B)
-	return descr, nil
-}
-
-func decodeResult(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
+func decodeResult(tc typeCode, d *encoding.Decoder, scale int) (any, error) { //nolint: gocyclo
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -82,9 +65,17 @@ func decodeResult(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 	case tcStPoint, tcStGeometry:
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
-		return decodeLobResult(d, false)
+		descr := new(lobOutBytesDescr)
+		if descr.decode(d) {
+			return nil, nil
+		}
+		return descr, nil
 	case tcText, tcNclob, tcNlocator:
-		return decodeLobResult(d, true)
+		descr := newLobOutCharsDescr(d.Transformer())
+		if descr.decode(d) {
+			return nil, nil
+		}
+		return descr, nil
 	default:
 		panic(fmt.Sprintf("invalid type code %s", tc))
 	}

@@ -1,0 +1,70 @@
+//go:build !unit && go1.22
+
+package driver_test
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
+
+	"github.com/SAP/go-hdb/driver"
+)
+
+// StringLob defines a string based data type for scanning Lobs.
+type StringLob string
+
+// Scan implements the database.sql.Scanner interface.
+func (s *StringLob) Scan(arg any) error { return driver.ScanLobString(arg, (*string)(s)) }
+
+// ExampleScanLobString demontrates how to read Lob data using a string based data type.
+func ExampleScanLobString() {
+	// Open Test database.
+	db := sql.OpenDB(driver.MT.Connector())
+	defer db.Close()
+
+	table := driver.RandomIdentifier("lob_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob)", table)); err != nil {
+		log.Panicf("create table failed: %s", err)
+	}
+
+	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Lob content can be written using a string.
+	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), "scan lob string")
+	if err != nil {
+		log.Panic(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Panic(err)
+	}
+
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
+		log.Panic(err)
+	}
+	defer stmt.Close()
+
+	// Scan into StringLob.
+	var s StringLob
+	if err := stmt.QueryRow().Scan(&s); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(s)
+
+	// Scan into sql.Null[StringLob].
+	var ns sql.Null[StringLob]
+	if err := stmt.QueryRow().Scan(&ns); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(ns.V)
+
+	// output: scan lob string
+	// scan lob string
+}

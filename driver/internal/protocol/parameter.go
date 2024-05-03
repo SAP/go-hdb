@@ -92,6 +92,8 @@ func (f *ParameterField) fieldName() string {
 	}
 }
 
+func (f *ParameterField) isNullable() bool { return f.parameterOptions == poOptional }
+
 func (f *ParameterField) String() string {
 	return fmt.Sprintf("parameterOptions %s typeCode %s mode %s precision %d scale %d name %s",
 		f.parameterOptions,
@@ -115,47 +117,51 @@ func (f *ParameterField) Convert(v any, t transform.Transformer) (any, error) {
 	return cv, nil
 }
 
-// TypeName returns the type name of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
-func (f *ParameterField) TypeName() string { return f.tc.typeName() }
+// DatabaseTypeName returns the type name of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) DatabaseTypeName() string { return f.tc.typeName() }
 
-// ScanType returns the scan type of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
-func (f *ParameterField) ScanType() reflect.Type { return f.tc.dataType().ScanType(f.Nullable()) }
-
-// TypeLength returns the type length of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeLength
-func (f *ParameterField) TypeLength() (int64, bool) {
-	if f.tc.isVariableLength() {
-		return int64(f.prec), true
-	}
-	return 0, false
-}
-
-// TypePrecisionScale returns the type precision and scale (decimal types) of the field.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypePrecisionScale
-func (f *ParameterField) TypePrecisionScale() (int64, int64, bool) {
+// DecimalSize returns the type precision and scale of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) DecimalSize() (int64, int64, bool) {
 	if f.tc.isDecimalType() {
 		return int64(f.prec), int64(f.scale), true
 	}
 	return 0, 0, false
 }
 
+// Length returns the type length of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) Length() (int64, bool) {
+	if f.tc.isVariableLength() {
+		return int64(f.prec), true
+	}
+	return 0, false
+}
+
+// Name returns the parameter field name.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) Name() string { return f.fieldName() }
+
 // Nullable returns true if the field may be null, false otherwise.
-// see https://golang.org/pkg/database/sql/driver/#RowsColumnTypeNullable
-func (f *ParameterField) Nullable() bool { return f.parameterOptions == poOptional }
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) Nullable() (bool, bool) { return f.isNullable(), true }
+
+// ScanType returns the scan type of the field.
+// It implements the go-hdb driver ColumnType interface.
+func (f *ParameterField) ScanType() reflect.Type { return f.tc.dataType().ScanType(f.isNullable()) }
 
 // In returns true if the parameter field is an input field.
+// It implements the go-hdb driver ParameterType interface.
 func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == pmIn }
 
 // Out returns true if the parameter field is an output field.
+// It implements the go-hdb driver ParameterType interface.
 func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == pmOut }
 
 // InOut returns true if the parameter field is an in,- output field.
+// It implements the go-hdb driver ParameterType interface.
 func (f *ParameterField) InOut() bool { return f.mode == pmInout }
-
-// Name returns the parameter field name.
-func (f *ParameterField) Name() string { return f.fieldName() }
 
 func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
@@ -278,7 +284,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 		if !ok {
 			panic("invalid lob value") // should never happen
 		}
-		enc.Byte(byte(descr.Opt))
+		enc.Byte(byte(descr.opt))
 		enc.Int32(int32(descr.size()))
 		enc.Int32(int32(descr.pos))
 		return nil

@@ -1,4 +1,4 @@
-//go:build !unit
+//go:build !unit && !go1.22
 
 package driver_test
 
@@ -16,6 +16,22 @@ type BytesLob []byte
 
 // Scan implements the database.sql.Scanner interface.
 func (b *BytesLob) Scan(arg any) error { return driver.ScanLobBytes(arg, (*[]byte)(b)) }
+
+// NullBytesLob defines a []byte based null data type for scanning Lobs.
+type NullBytesLob struct {
+	V     BytesLob
+	Valid bool
+}
+
+// Scan implements the database/sql/Scanner interface.
+func (n *NullBytesLob) Scan(value any) error {
+	if value == nil {
+		n.V, n.Valid = []byte(nil), false
+		return nil
+	}
+	n.Valid = true
+	return n.V.Scan(value)
+}
 
 // ExampleScanLobBytes demontrates how to read Lob data using a []byte based data type.
 func ExampleScanLobBytes() {
@@ -44,10 +60,27 @@ func ExampleScanLobBytes() {
 		log.Panic(err)
 	}
 
-	var arg BytesLob
-	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select * from %s", table)).Scan(&arg); err != nil {
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
 		log.Panic(err)
 	}
-	fmt.Println(string(arg))
+	defer stmt.Close()
+
+	// Scan into BytesLob.
+	var b BytesLob
+	if err := stmt.QueryRow().Scan(&b); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(string(b))
+
+	// Scan into NullBytesLob.
+	var nb NullBytesLob
+	if err := stmt.QueryRow().Scan(&nb); err != nil {
+		log.Panic(err)
+	}
+	fmt.Println(string(nb.V))
+
 	// output: scan lob bytes
+	// scan lob bytes
 }
