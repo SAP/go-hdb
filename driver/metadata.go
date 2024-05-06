@@ -27,8 +27,6 @@ type ParameterType interface {
 
 // StmtMetadata provides access to the parameter and result metadata of a prepared statement.
 type StmtMetadata interface {
-	Parameters() []ParameterType // deprecated
-	Columns() []ColumnType       // deprecated
 	ParameterTypes() []ParameterType
 	ColumnTypes() []ColumnType
 }

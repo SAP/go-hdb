@@ -11,20 +11,20 @@ import (
 
 // check if rows types do implement all driver row interfaces.
 var (
-	_ driver.Rows = (*noResultType)(nil)
-
+	// queryResult.
 	_ driver.Rows                           = (*queryResult)(nil)
 	_ driver.RowsColumnTypeDatabaseTypeName = (*queryResult)(nil)
 	_ driver.RowsColumnTypeLength           = (*queryResult)(nil)
 	_ driver.RowsColumnTypeNullable         = (*queryResult)(nil)
 	_ driver.RowsColumnTypePrecisionScale   = (*queryResult)(nil)
 	_ driver.RowsColumnTypeScanType         = (*queryResult)(nil)
-	/*
-		currently not used
-		could be implemented as pointer to next queryResult (advancing by copying data from next)
-		_ driver.RowsNextResultSet = (*queryResult)(nil)
-	*/
+	//	currently not used
+	//	could be implemented as pointer to next queryResult (advancing by copying data from next)
+	//	_ driver.RowsNextResultSet = (*queryResult)(nil)
 
+	// noResultType.
+	_ driver.Rows = (*noResultType)(nil)
+	// callResult.
 	_ driver.Rows = (*callResult)(nil)
 )
 
@@ -35,47 +35,39 @@ type prepareResult struct {
 	resultFields    []*p.ResultField
 }
 
-// deprecated
-// Parameters implements the PrepareMetadata interface.
-func (pr *prepareResult) Parameters() []ParameterType { return pr.ParameterTypes() }
-
 // ParameterTypes implements the PrepareMetadata interface.
 func (pr *prepareResult) ParameterTypes() []ParameterType {
-	parameters := make([]ParameterType, len(pr.parameterFields))
+	parameterTypes := make([]ParameterType, len(pr.parameterFields))
 	for i, f := range pr.parameterFields {
-		parameters[i] = f
+		parameterTypes[i] = f
 	}
-	return parameters
+	return parameterTypes
 }
 
-func (pr *prepareResult) columns() []ColumnType {
-	columns := make([]ColumnType, len(pr.resultFields))
+func (pr *prepareResult) columnTypes() []ColumnType {
+	columnTypes := make([]ColumnType, len(pr.resultFields))
 	for i, f := range pr.resultFields {
-		columns[i] = f
+		columnTypes[i] = f
 	}
-	return columns
+	return columnTypes
 }
 
-func (pr *prepareResult) procedureCallColumns() []ColumnType {
-	var columns []ColumnType
+func (pr *prepareResult) procedureCallColumnTypes() []ColumnType {
+	var columnTypes []ColumnType
 	for _, f := range pr.parameterFields {
 		if f.InOut() || f.Out() {
-			columns = append(columns, f)
+			columnTypes = append(columnTypes, f)
 		}
 	}
-	return columns
+	return columnTypes
 }
-
-// deprecated
-// Columns implements the PrepareMetadata interface.
-func (pr *prepareResult) Columns() []ColumnType { return pr.ColumnTypes() }
 
 // ColumnTypes implements the PrepareMetadata interface.
 func (pr *prepareResult) ColumnTypes() []ColumnType {
 	if pr.isProcedureCall() {
-		return pr.procedureCallColumns()
+		return pr.procedureCallColumnTypes()
 	}
-	return pr.columns()
+	return pr.columnTypes()
 }
 
 // isProcedureCall returns true if the statement is a call statement.
@@ -111,12 +103,12 @@ type queryResult struct {
 
 // Columns implements the driver.Rows interface.
 func (qr *queryResult) Columns() []string {
-	if qr._columns == nil {
-		numField := len(qr.fields)
-		qr._columns = make([]string, numField)
-		for i := 0; i < numField; i++ {
-			qr._columns[i] = qr.fields[i].Name()
-		}
+	if qr._columns != nil {
+		return qr._columns
+	}
+	qr._columns = make([]string, len(qr.fields))
+	for i, f := range qr.fields {
+		qr._columns[i] = f.Name()
 	}
 	return qr._columns
 }
@@ -140,11 +132,6 @@ func (qr *queryResult) numRow() int {
 	return len(qr.fieldValues) / len(qr.fields)
 }
 
-func (qr *queryResult) copyRow(idx int, dest []driver.Value) {
-	cols := len(qr.fields)
-	copy(dest, qr.fieldValues[idx*cols:(idx+1)*cols])
-}
-
 // Next implements the driver.Rows interface.
 func (qr *queryResult) Next(dest []driver.Value) error {
 	if qr.pos >= qr.numRow() {
@@ -161,13 +148,16 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 		qr.pos = 0
 	}
 
-	qr.copyRow(qr.pos, dest)
-	err := qr.decodeErrors.RowError(qr.pos)
+	// copy row.
+	cols := len(qr.fields)
+	copy(dest, qr.fieldValues[qr.pos*cols:(qr.pos+1)*cols])
+
+	err := qr.decodeErrors.RowErrors(qr.pos)
 	qr.pos++
 
 	for _, v := range dest {
-		if v, ok := v.(p.LobDecoderSetter); ok {
-			v.SetDecoder(qr.conn.decodeLob)
+		if v, ok := v.(p.LobReadFnSetter); ok {
+			v.SetLobReadFn(qr.conn.readLob)
 		}
 	}
 	return err
@@ -203,12 +193,12 @@ type callResult struct { // call output parameters
 
 // Columns implements the driver.Rows interface.
 func (cr *callResult) Columns() []string {
-	if cr._columns == nil {
-		numField := len(cr.outputFields)
-		cr._columns = make([]string, numField)
-		for i := 0; i < numField; i++ {
-			cr._columns[i] = cr.outputFields[i].Name()
-		}
+	if cr._columns != nil {
+		return cr._columns
+	}
+	cr._columns = make([]string, len(cr.outputFields))
+	for i, f := range cr.outputFields {
+		cr._columns[i] = f.Name()
 	}
 	return cr._columns
 }
@@ -220,11 +210,11 @@ func (cr *callResult) Next(dest []driver.Value) error {
 	}
 
 	copy(dest, cr.fieldValues)
-	err := cr.decodeErrors.RowError(0)
+	err := cr.decodeErrors.RowErrors(0)
 	cr.eof = true
 	for _, v := range dest {
-		if v, ok := v.(p.LobDecoderSetter); ok {
-			v.SetDecoder(cr.conn.decodeLob)
+		if v, ok := v.(p.LobReadFnSetter); ok {
+			v.SetLobReadFn(cr.conn.readLob)
 		}
 	}
 	return err

@@ -447,7 +447,7 @@ func (p *OutputParameters) decodeNumArg(dec *encoding.Decoder, numArg int) error
 		for j, f := range p.OutputFields {
 			var err error
 			if p.FieldValues[i*cols+j], err = f.decodeResult(dec); err != nil {
-				p.DecodeErrors = append(p.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), s: err.Error()}) // collect decode / conversion errors
+				p.DecodeErrors = append(p.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}
 	}

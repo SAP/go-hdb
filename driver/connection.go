@@ -970,7 +970,7 @@ func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 			write lob data only for the last record as lob streaming is only available for the last one
 		*/
 		startLastRec := len(nvargs) - len(pr.parameterFields)
-		if err := c.encodeLobs(nil, ids, pr.parameterFields, nvargs[startLastRec:]); err != nil {
+		if err := c.writeLobs(nil, ids, pr.parameterFields, nvargs[startLastRec:]); err != nil {
 			return nil, err
 		}
 	}
@@ -1109,14 +1109,14 @@ func (c *conn) disconnect(ctx context.Context) error {
 	return nil
 }
 
-// decodeLobs decodes (reads from db) output lob or result lob parameters.
-
 /*
+readLob reads output lob or result lob parameters from db.
+
 read lob reply
   - seems like readLobreply returns only a result for one lob - even if more then one is requested
     --> read single lobs
 */
-func (c *conn) decodeLob(lobRequest *p.ReadLobRequest, lobReply *p.ReadLobReply) error {
+func (c *conn) readLob(lobRequest *p.ReadLobRequest, lobReply *p.ReadLobReply) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
 	lobRequest.SetChunkSize(c.attrs._lobChunkSize)
@@ -1153,8 +1153,8 @@ func assertEqual[T comparable](s string, a, b T) {
 	}
 }
 
-// encodeLobs encodes (write to db) input lob parameters.
-func (c *conn) encodeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
+// writeLobs writes input lob parameters to db.
+func (c *conn) writeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
 	assertEqual("lob streaming can only be done for one (the last) record", len(inPrmFields), len(nvargs))
 
 	descrs := make([]*p.WriteLobDescr, 0, len(ids))

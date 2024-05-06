@@ -3,7 +3,6 @@
 package driver_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -25,7 +24,7 @@ func ExampleScanLobBytes() {
 
 	table := driver.RandomIdentifier("lob_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (b1 blob, b2 blob)", table)); err != nil {
 		log.Panicf("create table failed: %s", err)
 	}
 
@@ -35,7 +34,8 @@ func ExampleScanLobBytes() {
 	}
 
 	// Lob content can be written using a byte slice.
-	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), []byte("scan lob bytes"))
+	content := []byte("scan lob bytes")
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -51,18 +51,13 @@ func ExampleScanLobBytes() {
 	}
 	defer stmt.Close()
 
-	// Scan into BytesLob.
+	// Scan into BytesLob and sql.Null[BytesLob].
 	var b BytesLob
-	if err := stmt.QueryRow().Scan(&b); err != nil {
+	var nb sql.Null[BytesLob]
+	if err := stmt.QueryRow().Scan(&b, &nb); err != nil {
 		log.Panic(err)
 	}
 	fmt.Println(string(b))
-
-	// Scan into sql.Null[BytesLob].
-	var nb sql.Null[BytesLob]
-	if err := stmt.QueryRow().Scan(&nb); err != nil {
-		log.Panic(err)
-	}
 	fmt.Println(string(nb.V))
 
 	// output: scan lob bytes

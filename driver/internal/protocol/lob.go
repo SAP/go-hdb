@@ -75,16 +75,16 @@ type LobScanner interface {
 	Scan(w io.Writer) error
 }
 
-// LobDecoderSetter is the interface wrapping the setDecoder method for Lob reading.
-type LobDecoderSetter interface {
-	SetDecoder(fn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error)
+// LobReadFnSetter is the interface wrapping the setDecoder method for Lob reading.
+type LobReadFnSetter interface {
+	SetLobReadFn(fn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error)
 }
 
 var (
-	_ LobScanner       = (*lobOutBytesDescr)(nil)
-	_ LobDecoderSetter = (*lobOutBytesDescr)(nil)
-	_ LobScanner       = (*lobOutCharsDescr)(nil)
-	_ LobDecoderSetter = (*lobOutCharsDescr)(nil)
+	_ LobScanner      = (*lobOutBytesDescr)(nil)
+	_ LobReadFnSetter = (*lobOutBytesDescr)(nil)
+	_ LobScanner      = (*lobOutCharsDescr)(nil)
+	_ LobReadFnSetter = (*lobOutCharsDescr)(nil)
 )
 
 // LobInDescr represents a lob input descriptor.
@@ -135,7 +135,7 @@ type LocatorID uint64 // byte[locatorIdSize]
 
 // lobOutDescr represents a lob output descriptor.
 type lobOutDescr struct {
-	decoder func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error
+	readFn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error
 	/*
 		HDB does not return lob type code but undefined only
 		--> ltc is always ltcUndefined
@@ -153,9 +153,9 @@ func (d *lobOutDescr) String() string {
 	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
 }
 
-// SetDecoder implements the LobDecoderSetter interface.
-func (d *lobOutDescr) SetDecoder(decoder func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error) {
-	d.decoder = decoder
+// SetConnReader implements the LobConnReaderSetter interface.
+func (d *lobOutDescr) SetLobReadFn(fn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error) {
+	d.readFn = fn
 }
 
 func (d *lobOutDescr) decode(dec *encoding.Decoder) bool {
@@ -205,7 +205,7 @@ func (d *lobOutBytesDescr) scan(wr io.Writer) error {
 	}
 	lobRequest := &ReadLobRequest{ofs: int64(len(d.b)), id: d.id}
 	lobReply := &ReadLobReply{write: d.write, wr: wr, id: d.id}
-	return d.decoder(lobRequest, lobReply)
+	return d.readFn(lobRequest, lobReply)
 }
 
 // Scan implements the LobScanner interface.
@@ -261,7 +261,7 @@ func (d *lobOutCharsDescr) scan(wr io.Writer) error {
 	}
 	lobRequest := &ReadLobRequest{ofs: int64(numChar), id: d.id}
 	lobReply := &ReadLobReply{write: d.write, wr: wr, id: d.id}
-	return d.decoder(lobRequest, lobReply)
+	return d.readFn(lobRequest, lobReply)
 }
 
 // Scan implements the LobScanner interface.

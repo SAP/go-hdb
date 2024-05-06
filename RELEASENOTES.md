@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.22
+- updated dependencies
+- source code cleanups
+
 #### v1.8.21
 - experimental statement metadata
 

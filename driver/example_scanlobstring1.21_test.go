@@ -3,7 +3,6 @@
 package driver_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -41,7 +40,7 @@ func ExampleScanLobString() {
 
 	table := driver.RandomIdentifier("lob_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob)", table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n1 nclob, n2 nclob)", table)); err != nil {
 		log.Panicf("create table failed: %s", err)
 	}
 
@@ -51,7 +50,8 @@ func ExampleScanLobString() {
 	}
 
 	// Lob content can be written using a string.
-	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), "scan lob string")
+	content := "scan lob string"
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -67,18 +67,13 @@ func ExampleScanLobString() {
 	}
 	defer stmt.Close()
 
-	// Scan into StringLob.
+	// Scan into StringLob and NullStringLob.
 	var s StringLob
-	if err := stmt.QueryRow().Scan(&s); err != nil {
+	var ns NullStringLob
+	if err := stmt.QueryRow().Scan(&s, &ns); err != nil {
 		log.Panic(err)
 	}
 	fmt.Println(s)
-
-	// Scan into NullStringLob.
-	var ns NullStringLob
-	if err := stmt.QueryRow().Scan(&ns); err != nil {
-		log.Panic(err)
-	}
 	fmt.Println(ns.V)
 
 	// output: scan lob string

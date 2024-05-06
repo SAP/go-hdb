@@ -3,7 +3,6 @@
 package driver_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -31,7 +30,7 @@ func ExampleScanLobWriter() {
 
 	table := driver.RandomIdentifier("lob_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob)", table)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n1 nclob, n2 nclob)", table)); err != nil {
 		log.Panicf("create table failed: %s", err)
 	}
 
@@ -41,7 +40,8 @@ func ExampleScanLobWriter() {
 	}
 
 	// Lob content can be written using a string.
-	_, err = tx.ExecContext(context.Background(), fmt.Sprintf("insert into %s values (?)", table), "scan lob writer")
+	content := "scan lob writer"
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -57,18 +57,13 @@ func ExampleScanLobWriter() {
 	}
 	defer stmt.Close()
 
-	// Scan into WriterLob.
+	// Scan into WriterLob and sql.Null[WriterLob].
 	var w WriterLob
-	if err := stmt.QueryRow().Scan(&w); err != nil {
+	var nw sql.Null[WriterLob]
+	if err := stmt.QueryRow().Scan(&w, &nw); err != nil {
 		log.Panic(err)
 	}
 	fmt.Println(string(w))
-
-	// Scan into sql.Null[WriterLob].
-	var nw sql.Null[WriterLob]
-	if err := stmt.QueryRow().Scan(&nw); err != nil {
-		log.Panic(err)
-	}
 	fmt.Println(string(nw.V))
 
 	// output: scan lob writer
