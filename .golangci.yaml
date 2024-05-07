@@ -72,7 +72,7 @@ linters:
     - funlen
     - gocognit
     - gofumpt
-    - goerr113
+    - err113
     - depguard
     - wrapcheck
     - cyclop
@@ -99,6 +99,7 @@ linters:
     - noctx
     - execinquery
     - rowserrcheck
+    - mnd
   #enable-all: false
   #enable:
   #  - ...

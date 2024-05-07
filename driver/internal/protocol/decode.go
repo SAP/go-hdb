@@ -6,7 +6,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-func decodeResult(tc typeCode, d *encoding.Decoder, scale int) (any, error) { //nolint: gocyclo
+func decodeResult(tc typeCode, d *encoding.Decoder, readFn lobReadFn, scale int) (any, error) { //nolint: gocyclo
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -66,13 +66,13 @@ func decodeResult(tc typeCode, d *encoding.Decoder, scale int) (any, error) { //
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
 		descr := new(lobOutBytesDescr)
-		if descr.decode(d) {
+		if descr.decode(d, readFn) {
 			return nil, nil
 		}
 		return descr, nil
 	case tcText, tcNclob, tcNlocator:
 		descr := newLobOutCharsDescr(d.Transformer())
-		if descr.decode(d) {
+		if descr.decode(d, readFn) {
 			return nil, nil
 		}
 		return descr, nil

@@ -149,7 +149,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, false, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, false, (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
 		return nil, nil, err
 	}
 

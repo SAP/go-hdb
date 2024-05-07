@@ -37,9 +37,9 @@ func padBytes(size int) int {
 	return 0
 }
 
-type partCache map[PartKind]Part
+type partCache map[PartKind]DecodePart
 
-func (c *partCache) get(kind PartKind) (Part, bool) {
+func (c *partCache) get(kind PartKind) (DecodePart, bool) {
 	if part, ok := (*c)[kind]; ok {
 		return part, true
 	}
@@ -53,14 +53,14 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 
 // Reader represents a protocol reader.
 type Reader struct {
+	dec        *encoding.Decoder
+	decodePrms *decodePrms
+	protTrace  bool
+	logger     *slog.Logger
+
+	prefix string
 	// ReadProlog reads the protocol prolog.
 	ReadProlog func(ctx context.Context) error
-
-	protTrace bool
-	prefix    string
-	logger    *slog.Logger
-
-	dec *encoding.Decoder
 
 	mh *messageHeader
 	sh *segmentHeader
@@ -69,29 +69,30 @@ type Reader struct {
 	partCache partCache
 }
 
-func newReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
+func newReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
 	return &Reader{
-		protTrace: protTrace,
-		logger:    logger,
-		dec:       dec,
-		partCache: partCache{},
-		mh:        &messageHeader{},
-		sh:        &segmentHeader{},
-		ph:        &partHeader{},
+		dec:        dec,
+		decodePrms: &decodePrms{readFn: readFn},
+		protTrace:  protTrace,
+		logger:     logger,
+		partCache:  partCache{},
+		mh:         &messageHeader{},
+		sh:         &segmentHeader{},
+		ph:         &partHeader{},
 	}
 }
 
 // NewDBReader returns an instance of a database protocol reader.
-func NewDBReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
-	reader := newReader(dec, protTrace, logger)
+func NewDBReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
+	reader := newReader(dec, readFn, protTrace, logger)
 	reader.ReadProlog = reader.readPrologDB
 	reader.prefix = prefixDB
 	return reader
 }
 
 // NewClientReader returns an instance of a client protocol reader.
-func NewClientReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger) *Reader {
-	reader := newReader(dec, protTrace, logger)
+func NewClientReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
+	reader := newReader(dec, readFn, protTrace, logger)
 	reader.ReadProlog = reader.readPrologClient
 	reader.prefix = prefixClient
 	return reader
@@ -145,21 +146,14 @@ func (r *Reader) skipPaddingLastPart(numReadByte int64) {
 	}
 }
 
-func (r *Reader) readPart(ctx context.Context, part Part) error {
+func (r *Reader) readPart(ctx context.Context, part DecodePart) error {
 	cntBefore := r.dec.Cnt()
 
-	var err error
-	switch part := part.(type) {
+	r.decodePrms.numArg = r.ph.numArg()
+	r.decodePrms.bufLen = r.ph.bufLen()
+
+	err := part.decode(r.dec, r.decodePrms)
 	// do not return here in case of error -> read stream would be broken
-	case defPart:
-		err = part.decode(r.dec)
-	case numArgPart:
-		err = part.decodeNumArg(r.dec, r.ph.numArg())
-	case bufLenPart:
-		err = part.decodeBufLen(r.dec, r.ph.bufLen())
-	default:
-		panic(fmt.Errorf("decoder function part %v not found", part))
-	}
 
 	cnt := r.dec.Cnt() - cntBefore
 
@@ -178,7 +172,7 @@ func (r *Reader) readPart(ctx context.Context, part Part) error {
 }
 
 // IterateParts iterates through all protocol parts.
-func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs PartAttributes, read func(part Part))) error {
+func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs PartAttributes, read func(part DecodePart))) error {
 	var lastErrors *HdbErrors
 	var lastRowsAffected *RowsAffected
 
@@ -220,7 +214,7 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 			partRequested := false
 			if kind != PkError && fn != nil { // caller must not handle hdb errors
 				var err error
-				fn(kind, r.ph.partAttributes, func(part Part) {
+				fn(kind, r.ph.partAttributes, func(part DecodePart) {
 					partRequested = true
 					err = r.readPart(ctx, part)
 					if part.kind() == PkRowsAffected {
@@ -349,10 +343,10 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	return w.wr.Flush()
 }
 
-func (w *Writer) _write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...writablePart) error {
+func (w *Writer) _write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...encodePart) error {
 	// check on session variables to be send as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
-		parts = append([]writablePart{(*clientInfo)(&w.sv)}, parts...)
+		parts = append([]encodePart{(*clientInfo)(&w.sv)}, parts...)
 		w.svSent = true
 	}
 
@@ -437,7 +431,7 @@ func (w *Writer) _write(ctx context.Context, sessionID int64, messageType Messag
 	return w.wr.Flush()
 }
 
-func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...writablePart) error {
+func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...encodePart) error {
 	if err := w._write(ctx, sessionID, messageType, commit, parts...); err != nil {
 		return errors.Join(err, driver.ErrBadConn)
 	}

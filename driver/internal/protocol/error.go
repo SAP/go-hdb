@@ -152,11 +152,11 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 	}
 }
 
-func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (e *HdbErrors) decode(dec *encoding.Decoder, prms *decodePrms) error {
 	e.onlyWarnings = true
 	e.errs = nil
 
-	for i := 0; i < numArg; i++ {
+	for i := 0; i < prms.numArg; i++ {
 		err := new(HdbError)
 		e.errs = append(e.errs, err)
 
@@ -187,7 +187,7 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 			e.onlyWarnings = false
 		}
 
-		if numArg == 1 {
+		if prms.numArg == 1 {
 			// Error (protocol error?):
 			// if only one error (numArg == 1): s.ph.bufferLength is one byte greater than data to be read
 			// if more than one error: s.ph.bufferlength matches read bytes + padding

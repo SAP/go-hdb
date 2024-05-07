@@ -293,8 +293,8 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	}
 }
 
-func (f *ParameterField) decodeResult(dec *encoding.Decoder) (any, error) {
-	return decodeResult(f.tc, dec, f.scale)
+func (f *ParameterField) decodeResult(dec *encoding.Decoder, readFn lobReadFn) (any, error) {
+	return decodeResult(f.tc, dec, readFn, f.scale)
 }
 
 /*
@@ -321,8 +321,8 @@ func (m *ParameterMetadata) String() string {
 	return fmt.Sprintf("parameter %v", m.ParameterFields)
 }
 
-func (m *ParameterMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	m.ParameterFields = make([]*ParameterField, numArg)
+func (m *ParameterMetadata) decode(dec *encoding.Decoder, prms *decodePrms) error {
+	m.ParameterFields = make([]*ParameterField, prms.numArg)
 	names := &fieldNames{}
 	for i := 0; i < len(m.ParameterFields); i++ {
 		f := &ParameterField{names: names}
@@ -391,7 +391,7 @@ func (p *InputParameters) numArg() int {
 	return len(p.nvargs) / numColumns
 }
 
-func (p *InputParameters) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (p *InputParameters) decode(dec *encoding.Decoder, prms *decodePrms) error {
 	// TODO Sniffer
 	// return fmt.Errorf("not implemented")
 	return nil
@@ -439,14 +439,14 @@ func (p *OutputParameters) String() string {
 	return fmt.Sprintf("fields %v values %v", p.OutputFields, p.FieldValues)
 }
 
-func (p *OutputParameters) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (p *OutputParameters) decode(dec *encoding.Decoder, prms *decodePrms) error {
 	cols := len(p.OutputFields)
-	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
+	p.FieldValues = resizeSlice(p.FieldValues, prms.numArg*cols)
 
-	for i := 0; i < numArg; i++ {
+	for i := 0; i < prms.numArg; i++ {
 		for j, f := range p.OutputFields {
 			var err error
-			if p.FieldValues[i*cols+j], err = f.decodeResult(dec); err != nil {
+			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, prms.readFn); err != nil {
 				p.DecodeErrors = append(p.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}

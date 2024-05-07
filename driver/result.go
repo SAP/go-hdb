@@ -151,16 +151,8 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 	// copy row.
 	cols := len(qr.fields)
 	copy(dest, qr.fieldValues[qr.pos*cols:(qr.pos+1)*cols])
-
-	err := qr.decodeErrors.RowErrors(qr.pos)
 	qr.pos++
-
-	for _, v := range dest {
-		if v, ok := v.(p.LobReadFnSetter); ok {
-			v.SetLobReadFn(qr.conn.readLob)
-		}
-	}
-	return err
+	return qr.decodeErrors.RowErrors(qr.pos)
 }
 
 // ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
@@ -209,15 +201,9 @@ func (cr *callResult) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 
-	copy(dest, cr.fieldValues)
-	err := cr.decodeErrors.RowErrors(0)
 	cr.eof = true
-	for _, v := range dest {
-		if v, ok := v.(p.LobReadFnSetter); ok {
-			v.SetLobReadFn(cr.conn.readLob)
-		}
-	}
-	return err
+	copy(dest, cr.fieldValues)
+	return cr.decodeErrors.RowErrors(0)
 }
 
 // Close implements the driver.Rows interface.

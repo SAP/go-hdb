@@ -35,7 +35,7 @@ func (k columnOptions) String() string {
 type ResultsetID uint64
 
 func (id ResultsetID) String() string { return fmt.Sprintf("%d", id) }
-func (id *ResultsetID) decode(dec *encoding.Decoder) error {
+func (id *ResultsetID) decode(dec *encoding.Decoder, prms *decodePrms) error {
 	*id = ResultsetID(dec.Uint64())
 	return dec.Error()
 }
@@ -125,8 +125,8 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.names.insert(f.columnDisplayNameOfs)
 }
 
-func (f *ResultField) decodeResult(dec *encoding.Decoder) (any, error) {
-	return decodeResult(f.tc, dec, f.scale)
+func (f *ResultField) decodeResult(dec *encoding.Decoder, readFn lobReadFn) (any, error) {
+	return decodeResult(f.tc, dec, readFn, f.scale)
 }
 
 // ResultMetadata represents the metadata of a set of database result fields.
@@ -138,8 +138,8 @@ func (r *ResultMetadata) String() string {
 	return fmt.Sprintf("result fields %v", r.ResultFields)
 }
 
-func (r *ResultMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	r.ResultFields = newResultFields(numArg)
+func (r *ResultMetadata) decode(dec *encoding.Decoder, prms *decodePrms) error {
+	r.ResultFields = newResultFields(prms.numArg)
 	names := &fieldNames{}
 	for i := 0; i < len(r.ResultFields); i++ {
 		f := &ResultField{names: names}
@@ -163,14 +163,14 @@ func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
 }
 
-func (r *Resultset) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (r *Resultset) decode(dec *encoding.Decoder, prms *decodePrms) error {
 	cols := len(r.ResultFields)
-	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
+	r.FieldValues = resizeSlice(r.FieldValues, prms.numArg*cols)
 
-	for i := 0; i < numArg; i++ {
+	for i := 0; i < prms.numArg; i++ {
 		for j, f := range r.ResultFields {
 			var err error
-			if r.FieldValues[i*cols+j], err = f.decodeResult(dec); err != nil {
+			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, prms.readFn); err != nil {
 				r.DecodeErrors = append(r.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}
