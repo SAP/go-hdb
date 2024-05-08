@@ -35,7 +35,7 @@ func (k columnOptions) String() string {
 type ResultsetID uint64
 
 func (id ResultsetID) String() string { return fmt.Sprintf("%d", id) }
-func (id *ResultsetID) decode(dec *encoding.Decoder, prms *decodePrms) error {
+func (id *ResultsetID) decode(dec *encoding.Decoder) error {
 	*id = ResultsetID(dec.Uint64())
 	return dec.Error()
 }
@@ -138,8 +138,8 @@ func (r *ResultMetadata) String() string {
 	return fmt.Sprintf("result fields %v", r.ResultFields)
 }
 
-func (r *ResultMetadata) decode(dec *encoding.Decoder, prms *decodePrms) error {
-	r.ResultFields = newResultFields(prms.numArg)
+func (r *ResultMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.ResultFields = newResultFields(numArg)
 	names := &fieldNames{}
 	for i := 0; i < len(r.ResultFields); i++ {
 		f := &ResultField{names: names}
@@ -163,14 +163,14 @@ func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
 }
 
-func (r *Resultset) decode(dec *encoding.Decoder, prms *decodePrms) error {
+func (r *Resultset) decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn) error {
 	cols := len(r.ResultFields)
-	r.FieldValues = resizeSlice(r.FieldValues, prms.numArg*cols)
+	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 
-	for i := 0; i < prms.numArg; i++ {
+	for i := 0; i < numArg; i++ {
 		for j, f := range r.ResultFields {
 			var err error
-			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, prms.readFn); err != nil {
+			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, readFn); err != nil {
 				r.DecodeErrors = append(r.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}

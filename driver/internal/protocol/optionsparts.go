@@ -303,14 +303,13 @@ type TopologyInformation struct {
 
 func (ti TopologyInformation) String() string { return fmt.Sprintf("%v", ti.hosts) }
 
-func (ti *TopologyInformation) decode(dec *encoding.Decoder, prms *decodePrms) error {
-	numArg := prms.numArg
+func (ti *TopologyInformation) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	ti.hosts = resizeSlice(ti.hosts, numArg)
 	for i := 0; i < numArg; i++ {
 		host := &options[topologyOption]{}
 		ti.hosts[i] = host
-		prms.numArg = int(dec.Int16())
-		if err := host.decode(dec, prms); err != nil {
+		hostNumArg := int(dec.Int16())
+		if err := host.decodeNumArg(dec, hostNumArg); err != nil {
 			return err
 		}
 	}
@@ -373,9 +372,9 @@ func (ops options[K]) size() int {
 
 func (ops options[K]) numArg() int { return len(ops) }
 
-func (ops *options[K]) decode(dec *encoding.Decoder, prms *decodePrms) error {
+func (ops *options[K]) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	*ops = options[K]{} // no reuse of maps - create new one
-	for i := 0; i < prms.numArg; i++ {
+	for i := 0; i < numArg; i++ {
 		k := K(dec.Int8())
 		tc := typeCode(dec.Byte())
 		ot := optTypeViaTypeCode(tc)

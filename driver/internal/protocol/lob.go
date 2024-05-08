@@ -342,9 +342,9 @@ func (r *WriteLobRequest) size() int {
 func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 
 // sniffer.
-func (r *WriteLobRequest) decode(dec *encoding.Decoder, prms *decodePrms) error {
-	r.Descrs = make([]*WriteLobDescr, prms.numArg)
-	for i := 0; i < prms.numArg; i++ {
+func (r *WriteLobRequest) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.Descrs = make([]*WriteLobDescr, numArg)
+	for i := 0; i < numArg; i++ {
 		r.Descrs[i] = &WriteLobDescr{}
 		if err := r.Descrs[i].decode(dec); err != nil {
 			return err
@@ -371,10 +371,10 @@ type WriteLobReply struct {
 
 func (r *WriteLobReply) String() string { return fmt.Sprintf("ids %v", r.IDs) }
 
-func (r *WriteLobReply) decode(dec *encoding.Decoder, prms *decodePrms) error {
-	r.IDs = resizeSlice(r.IDs, prms.numArg)
+func (r *WriteLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	r.IDs = resizeSlice(r.IDs, numArg)
 
-	for i := 0; i < prms.numArg; i++ {
+	for i := 0; i < numArg; i++ {
 		r.IDs[i] = LocatorID(dec.Uint64())
 	}
 	return dec.Error()
@@ -409,7 +409,7 @@ func (r *ReadLobRequest) AddOfs(n int) { r.ofs += int64(n) }
 func (r *ReadLobRequest) SetChunkSize(size int) { r.chunkSize = int32(size) }
 
 // sniffer.
-func (r *ReadLobRequest) decode(dec *encoding.Decoder, prms *decodePrms) error {
+func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 	r.id = LocatorID(dec.Uint64())
 	r.ofs = dec.Int64()
 	r.chunkSize = dec.Int32()
@@ -442,8 +442,8 @@ func (r *ReadLobReply) String() string {
 // IsLastData returns true in case of last data package read, false otherwise.
 func (r *ReadLobReply) IsLastData() bool { return r.opt.isLastData() }
 
-func (r *ReadLobReply) decode(dec *encoding.Decoder, prms *decodePrms) error {
-	if prms.numArg != 1 {
+func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+	if numArg != 1 {
 		panic("numArg == 1 expected")
 	}
 	id := LocatorID(dec.Uint64())

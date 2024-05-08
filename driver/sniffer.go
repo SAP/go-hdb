@@ -46,7 +46,7 @@ func pipeData(wg *sync.WaitGroup, conn net.Conn, dbConn net.Conn, wr io.Writer) 
 
 func readMsg(ctx context.Context, prd *p.Reader) error {
 	// TODO complete for non generic parts, see internal/protocol/parts/newGenPartReader for details
-	return prd.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.DecodePart)) {})
+	return prd.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {})
 }
 
 func logData(ctx context.Context, wg *sync.WaitGroup, prd *p.Reader) {

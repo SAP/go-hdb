@@ -8,28 +8,32 @@ import (
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
-// decodePrms is an (extentable) structure of optional decoding parameters.
-type decodePrms struct {
-	readFn lobReadFn
-	numArg int
-	bufLen int
-}
-
-// part represents a protocol part.
-type part interface {
+// Part represents a protocol part.
+type Part interface {
 	String() string // should support Stringer interface
 	kind() PartKind
 }
 
-// DecodePart represents a protocol part the driver is able to decode.
-type DecodePart interface {
-	part
-	decode(dec *encoding.Decoder, prms *decodePrms) error
+type partDecoder interface {
+	Part
+	decode(dec *encoding.Decoder) error
+}
+type numArgPartDecoder interface {
+	Part
+	decodeNumArg(dec *encoding.Decoder, numArg int) error
+}
+type bufLenPartDecoder interface {
+	Part
+	decodeBufLen(dec *encoding.Decoder, bufLen int) error
+}
+type resultPartDecoder interface {
+	Part
+	decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn) error
 }
 
-// encodePart represents a protocol part the driver is able to encode.
-type encodePart interface {
-	part
+// partEncoder represents a protocol part the driver is able to encode.
+type partEncoder interface {
+	Part
 	numArg() int
 	size() int
 	encode(enc *encoding.Encoder) error
@@ -88,53 +92,53 @@ func (ReadLobRequest) size() int { return readLobRequestSize }
 
 // func (lobFlags) size() int       { return tinyintFieldSize }
 
-// check if part types implement encodePart interface.
+// check if part types implement the part encoder interface.
 var (
-	_ encodePart = (*AuthInitRequest)(nil)
-	_ encodePart = (*AuthFinalRequest)(nil)
-	_ encodePart = (*ClientID)(nil)
-	_ encodePart = (*clientInfo)(nil)
-	_ encodePart = (*Command)(nil)
-	_ encodePart = (*StatementID)(nil)
-	_ encodePart = (*InputParameters)(nil)
-	_ encodePart = (*ResultsetID)(nil)
-	_ encodePart = (*Fetchsize)(nil)
-	_ encodePart = (*ReadLobRequest)(nil)
-	_ encodePart = (*WriteLobRequest)(nil)
-	_ encodePart = (*ClientContext)(nil)
-	_ encodePart = (*ConnectOptions)(nil)
-	_ encodePart = (*DBConnectInfo)(nil)
+	_ partEncoder = (*AuthInitRequest)(nil)
+	_ partEncoder = (*AuthFinalRequest)(nil)
+	_ partEncoder = (*ClientID)(nil)
+	_ partEncoder = (*clientInfo)(nil)
+	_ partEncoder = (*Command)(nil)
+	_ partEncoder = (*StatementID)(nil)
+	_ partEncoder = (*InputParameters)(nil)
+	_ partEncoder = (*ResultsetID)(nil)
+	_ partEncoder = (*Fetchsize)(nil)
+	_ partEncoder = (*ReadLobRequest)(nil)
+	_ partEncoder = (*WriteLobRequest)(nil)
+	_ partEncoder = (*ClientContext)(nil)
+	_ partEncoder = (*ConnectOptions)(nil)
+	_ partEncoder = (*DBConnectInfo)(nil)
 )
 
-// check if part types implement the decode part interface.
+// check if part types implement the right part decoder interface.
 var (
-	_ DecodePart = (*HdbErrors)(nil)
-	_ DecodePart = (*AuthInitRequest)(nil)
-	_ DecodePart = (*AuthInitReply)(nil)
-	_ DecodePart = (*AuthFinalRequest)(nil)
-	_ DecodePart = (*AuthFinalReply)(nil)
-	_ DecodePart = (*ClientID)(nil)
-	_ DecodePart = (*clientInfo)(nil)
-	_ DecodePart = (*TopologyInformation)(nil)
-	_ DecodePart = (*Command)(nil)
-	_ DecodePart = (*RowsAffected)(nil)
-	_ DecodePart = (*StatementID)(nil)
-	_ DecodePart = (*ParameterMetadata)(nil)
-	_ DecodePart = (*InputParameters)(nil)
-	_ DecodePart = (*OutputParameters)(nil)
-	_ DecodePart = (*ResultMetadata)(nil)
-	_ DecodePart = (*ResultsetID)(nil)
-	_ DecodePart = (*Resultset)(nil)
-	_ DecodePart = (*Fetchsize)(nil)
-	_ DecodePart = (*ReadLobRequest)(nil)
-	_ DecodePart = (*WriteLobRequest)(nil)
-	_ DecodePart = (*ReadLobReply)(nil)
-	_ DecodePart = (*WriteLobReply)(nil)
-	_ DecodePart = (*ClientContext)(nil)
-	_ DecodePart = (*ConnectOptions)(nil)
-	_ DecodePart = (*DBConnectInfo)(nil)
-	_ DecodePart = (*statementContext)(nil)
-	_ DecodePart = (*transactionFlags)(nil)
+	_ numArgPartDecoder = (*HdbErrors)(nil)
+	_ partDecoder       = (*AuthInitRequest)(nil)
+	_ partDecoder       = (*AuthInitReply)(nil)
+	_ partDecoder       = (*AuthFinalRequest)(nil)
+	_ partDecoder       = (*AuthFinalReply)(nil)
+	_ bufLenPartDecoder = (*ClientID)(nil)
+	_ numArgPartDecoder = (*clientInfo)(nil)
+	_ numArgPartDecoder = (*TopologyInformation)(nil)
+	_ bufLenPartDecoder = (*Command)(nil)
+	_ numArgPartDecoder = (*RowsAffected)(nil)
+	_ partDecoder       = (*StatementID)(nil)
+	_ numArgPartDecoder = (*ParameterMetadata)(nil)
+	_ numArgPartDecoder = (*InputParameters)(nil)
+	_ resultPartDecoder = (*OutputParameters)(nil)
+	_ numArgPartDecoder = (*ResultMetadata)(nil)
+	_ partDecoder       = (*ResultsetID)(nil)
+	_ resultPartDecoder = (*Resultset)(nil)
+	_ partDecoder       = (*Fetchsize)(nil)
+	_ partDecoder       = (*ReadLobRequest)(nil)
+	_ numArgPartDecoder = (*WriteLobRequest)(nil)
+	_ numArgPartDecoder = (*ReadLobReply)(nil)
+	_ numArgPartDecoder = (*WriteLobReply)(nil)
+	_ numArgPartDecoder = (*ClientContext)(nil)
+	_ numArgPartDecoder = (*ConnectOptions)(nil)
+	_ numArgPartDecoder = (*DBConnectInfo)(nil)
+	_ numArgPartDecoder = (*statementContext)(nil)
+	_ numArgPartDecoder = (*transactionFlags)(nil)
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
@@ -168,7 +172,7 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 }
 
 // newGenPartReader returns a generic part reader.
-func newGenPartReader(kind PartKind) DecodePart {
+func newGenPartReader(kind PartKind) Part {
 	if kind == PkAuthentication {
 		return nil // cannot instantiate generically
 	}
@@ -179,7 +183,7 @@ func newGenPartReader(kind PartKind) DecodePart {
 		return nil
 	}
 	// create instance
-	part, ok := reflect.New(pt).Interface().(DecodePart)
+	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
 		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
 	}

@@ -21,10 +21,10 @@ func (c clientInfo) size() int {
 
 func (c clientInfo) numArg() int { return len(c) }
 
-func (c *clientInfo) decode(dec *encoding.Decoder, prms *decodePrms) error {
+func (c *clientInfo) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	*c = clientInfo{} // no reuse of maps - create new one
 
-	for i := 0; i < prms.numArg; i++ {
+	for i := 0; i < numArg; i++ {
 		k, err := dec.Cesu8Field()
 		if err != nil {
 			return err

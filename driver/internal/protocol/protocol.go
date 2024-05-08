@@ -37,9 +37,9 @@ func padBytes(size int) int {
 	return 0
 }
 
-type partCache map[PartKind]DecodePart
+type partCache map[PartKind]Part
 
-func (c *partCache) get(kind PartKind) (DecodePart, bool) {
+func (c *partCache) get(kind PartKind) (Part, bool) {
 	if part, ok := (*c)[kind]; ok {
 		return part, true
 	}
@@ -53,10 +53,10 @@ func (c *partCache) get(kind PartKind) (DecodePart, bool) {
 
 // Reader represents a protocol reader.
 type Reader struct {
-	dec        *encoding.Decoder
-	decodePrms *decodePrms
-	protTrace  bool
-	logger     *slog.Logger
+	dec       *encoding.Decoder
+	readFn    lobReadFn
+	protTrace bool
+	logger    *slog.Logger
 
 	prefix string
 	// ReadProlog reads the protocol prolog.
@@ -71,14 +71,14 @@ type Reader struct {
 
 func newReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
 	return &Reader{
-		dec:        dec,
-		decodePrms: &decodePrms{readFn: readFn},
-		protTrace:  protTrace,
-		logger:     logger,
-		partCache:  partCache{},
-		mh:         &messageHeader{},
-		sh:         &segmentHeader{},
-		ph:         &partHeader{},
+		dec:       dec,
+		readFn:    readFn,
+		protTrace: protTrace,
+		logger:    logger,
+		partCache: partCache{},
+		mh:        &messageHeader{},
+		sh:        &segmentHeader{},
+		ph:        &partHeader{},
 	}
 }
 
@@ -146,13 +146,23 @@ func (r *Reader) skipPaddingLastPart(numReadByte int64) {
 	}
 }
 
-func (r *Reader) readPart(ctx context.Context, part DecodePart) error {
+func (r *Reader) readPart(ctx context.Context, part Part) error {
 	cntBefore := r.dec.Cnt()
 
-	r.decodePrms.numArg = r.ph.numArg()
-	r.decodePrms.bufLen = r.ph.bufLen()
-
-	err := part.decode(r.dec, r.decodePrms)
+	var err error
+	switch part := part.(type) {
+	// do not return here in case of error -> read stream would be broken
+	case partDecoder:
+		err = part.decode(r.dec)
+	case bufLenPartDecoder:
+		err = part.decodeBufLen(r.dec, r.ph.bufLen())
+	case numArgPartDecoder:
+		err = part.decodeNumArg(r.dec, r.ph.numArg())
+	case resultPartDecoder:
+		err = part.decodeResult(r.dec, r.ph.numArg(), r.readFn)
+	default:
+		panic(fmt.Errorf("invalid part decoder %[1]T %[1]v", part))
+	}
 	// do not return here in case of error -> read stream would be broken
 
 	cnt := r.dec.Cnt() - cntBefore
@@ -172,7 +182,7 @@ func (r *Reader) readPart(ctx context.Context, part DecodePart) error {
 }
 
 // IterateParts iterates through all protocol parts.
-func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs PartAttributes, read func(part DecodePart))) error {
+func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs PartAttributes, read func(part Part))) error {
 	var lastErrors *HdbErrors
 	var lastRowsAffected *RowsAffected
 
@@ -214,7 +224,7 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 			partRequested := false
 			if kind != PkError && fn != nil { // caller must not handle hdb errors
 				var err error
-				fn(kind, r.ph.partAttributes, func(part DecodePart) {
+				fn(kind, r.ph.partAttributes, func(part Part) {
 					partRequested = true
 					err = r.readPart(ctx, part)
 					if part.kind() == PkRowsAffected {
@@ -343,10 +353,10 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	return w.wr.Flush()
 }
 
-func (w *Writer) _write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...encodePart) error {
+func (w *Writer) _write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...partEncoder) error {
 	// check on session variables to be send as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
-		parts = append([]encodePart{(*clientInfo)(&w.sv)}, parts...)
+		parts = append([]partEncoder{(*clientInfo)(&w.sv)}, parts...)
 		w.svSent = true
 	}
 
@@ -431,7 +441,7 @@ func (w *Writer) _write(ctx context.Context, sessionID int64, messageType Messag
 	return w.wr.Flush()
 }
 
-func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...encodePart) error {
+func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...partEncoder) error {
 	if err := w._write(ctx, sessionID, messageType, commit, parts...); err != nil {
 		return errors.Join(err, driver.ErrBadConn)
 	}
