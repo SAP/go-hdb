@@ -12,7 +12,7 @@ all:
 	@echo execute tests on latest go version	
 	go test ./...
 	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.21.9 go1.21.9 test ./...
+	GOTOOLCHAIN=go1.21.10 go1.21.10 test ./...
 	@echo execute tests on future supported go versions
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
@@ -40,5 +40,5 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.21.9@latest
-	go1.21.9 download
+	go install golang.org/dl/go1.21.10@latest
+	go1.21.10 download
