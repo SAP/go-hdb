@@ -15,6 +15,8 @@ import (
 	"testing"
 	"text/template"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 //go:embed stats.tmpl
@@ -106,6 +108,8 @@ func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {
 	}
 
 	db.Close() // close before printing stats
+
+	stdHdbDriver.metrics.close() // wait for all pending metrics
 
 	t := template.Must(template.New("stats").Parse(statsTemplate))
 	b := new(bytes.Buffer)
@@ -219,6 +223,10 @@ func (mt *MainTest) querySchemasPrefix(db *sql.DB, prefix string) ([]string, err
 	return names, nil
 }
 
+const (
+	cpuProfileName = "test.cpuprofile"
+)
+
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -235,21 +243,31 @@ func TestMain(m *testing.M) {
 		dk = dropKind(i)
 		return nil
 	})
+	leak := flag.Bool("leak", false, "enable goleak test")
 
 	if !flag.Parsed() {
 		flag.Parse()
 	}
+
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == cpuProfileName {
+			cpuProfile = true
+		}
+	})
 
 	exitCode, err := MT.run(m, *schema, dk)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	/* goleak (https://github.com/uber-go/goleak) test
-	if err := goleak.Find(); err != nil {
-		log.Print(err)
+	if *leak {
+		// cleanup go-hdb driver.
+		Unregister() //nolint: errcheck
+		// goleak (https://github.com/uber-go/goleak) test
+		if err := goleak.Find(); err != nil {
+			log.Print(err)
+		}
 	}
-	*/
 
 	os.Exit(exitCode)
 }

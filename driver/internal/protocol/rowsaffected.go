@@ -9,20 +9,19 @@ import (
 // rows affected.
 const (
 	raSuccessNoInfo   = -2
-	RaExecutionFailed = -3
+	raExecutionFailed = -3
 )
 
-// RowsAffected represents a rows affected part.
-type RowsAffected struct {
-	Ofs  int
+// rowsAffected represents a rows affected part.
+type rowsAffected struct {
 	rows []int32
 }
 
-func (r RowsAffected) String() string {
+func (r rowsAffected) String() string {
 	return fmt.Sprintf("%v", r.rows)
 }
 
-func (r *RowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (r *rowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.rows = resizeSlice(r.rows, numArg)
 
 	for i := 0; i < numArg; i++ {
@@ -32,7 +31,7 @@ func (r *RowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 }
 
 // Total return the total number of all affected rows.
-func (r RowsAffected) Total() int64 {
+func (r rowsAffected) Total() int64 {
 	total := int64(0)
 	for _, rows := range r.rows {
 		if rows > 0 {

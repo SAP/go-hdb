@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 func scanLob(src any, wr io.Writer) error {
@@ -26,10 +26,6 @@ func scanLob(src any, wr io.Writer) error {
 	return nil
 }
 
-var bufferPool = sync.Pool{
-	New: func() any { return new(bytes.Buffer) },
-}
-
 // ScanLobBytes supports scanning Lob data into a byte slice.
 // This enables using []byte based custom types for scanning Lobs instead of using a Lob object.
 // For usage please refer to the example.
@@ -37,14 +33,11 @@ func ScanLobBytes(src any, b *[]byte) error {
 	if b == nil {
 		return fmt.Errorf("lob scan error: parameter b %T is nil", b)
 	}
-	wr := bufferPool.Get().(*bytes.Buffer)
-	wr.Reset()
+	wr := new(bytes.Buffer) // cannot pool as we use the underlaying buffer (*).
 	if err := scanLob(src, wr); err != nil {
-		bufferPool.Put(wr)
 		return err
 	}
-	*b = wr.Bytes()
-	bufferPool.Put(wr)
+	*b = wr.Bytes() // (*) use underlaying buffer.
 	return nil
 }
 
@@ -55,14 +48,11 @@ func ScanLobString(src any, s *string) error {
 	if s == nil {
 		return fmt.Errorf("lob scan error: parameter s %T is nil", s)
 	}
-	wr := bufferPool.Get().(*bytes.Buffer)
-	wr.Reset()
+	wr := new(bytes.Buffer) // cannot pool as we use the underlaying buffer (*).
 	if err := scanLob(src, wr); err != nil {
-		bufferPool.Put(wr)
 		return err
 	}
-	*s = wr.String()
-	bufferPool.Put(wr)
+	*s = unsafe.ByteSlice2String(wr.Bytes()) // (*) use underlaying buffer.
 	return nil
 }
 

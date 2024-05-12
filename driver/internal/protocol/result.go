@@ -125,8 +125,8 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.names.insert(f.columnDisplayNameOfs)
 }
 
-func (f *ResultField) decodeResult(dec *encoding.Decoder, readFn lobReadFn) (any, error) {
-	return decodeResult(f.tc, dec, readFn, f.scale)
+func (f *ResultField) decodeResult(dec *encoding.Decoder, readFn lobReadFn, lobChunkSize int) (any, error) {
+	return decodeResult(f.tc, dec, readFn, lobChunkSize, f.scale)
 }
 
 // ResultMetadata represents the metadata of a set of database result fields.
@@ -163,14 +163,14 @@ func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
 }
 
-func (r *Resultset) decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn) error {
+func (r *Resultset) decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn, lobChunkSize int) error {
 	cols := len(r.ResultFields)
 	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 
 	for i := 0; i < numArg; i++ {
 		for j, f := range r.ResultFields {
 			var err error
-			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, readFn); err != nil {
+			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, readFn, lobChunkSize); err != nil {
 				r.DecodeErrors = append(r.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}

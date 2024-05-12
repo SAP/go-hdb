@@ -53,10 +53,11 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 
 // Reader represents a protocol reader.
 type Reader struct {
-	dec       *encoding.Decoder
-	readFn    lobReadFn
-	protTrace bool
-	logger    *slog.Logger
+	dec          *encoding.Decoder
+	readFn       lobReadFn
+	protTrace    bool
+	logger       *slog.Logger
+	lobChunkSize int
 
 	prefix string
 	// ReadProlog reads the protocol prolog.
@@ -67,39 +68,48 @@ type Reader struct {
 	ph *partHeader
 
 	partCache partCache
+
+	hdbErrors    *HdbErrors
+	rowsAffected *rowsAffected
 }
 
-func newReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
+func newReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
 	return &Reader{
-		dec:       dec,
-		readFn:    readFn,
-		protTrace: protTrace,
-		logger:    logger,
-		partCache: partCache{},
-		mh:        &messageHeader{},
-		sh:        &segmentHeader{},
-		ph:        &partHeader{},
+		dec:          dec,
+		readFn:       readFn,
+		protTrace:    protTrace,
+		logger:       logger,
+		lobChunkSize: lobChunkSize,
+		partCache:    partCache{},
+		mh:           &messageHeader{},
+		sh:           &segmentHeader{},
+		ph:           &partHeader{},
+		hdbErrors:    &HdbErrors{},
+		rowsAffected: &rowsAffected{},
 	}
 }
 
 // NewDBReader returns an instance of a database protocol reader.
-func NewDBReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
-	reader := newReader(dec, readFn, protTrace, logger)
+func NewDBReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
+	reader := newReader(dec, readFn, protTrace, logger, lobChunkSize)
 	reader.ReadProlog = reader.readPrologDB
 	reader.prefix = prefixDB
 	return reader
 }
 
 // NewClientReader returns an instance of a client protocol reader.
-func NewClientReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger) *Reader {
-	reader := newReader(dec, readFn, protTrace, logger)
+func NewClientReader(dec *encoding.Decoder, readFn lobReadFn, protTrace bool, logger *slog.Logger, chunkSize int) *Reader {
+	reader := newReader(dec, readFn, protTrace, logger, chunkSize)
 	reader.ReadProlog = reader.readPrologClient
 	reader.prefix = prefixClient
 	return reader
 }
 
 // SkipParts reads and discards all protocol parts.
-func (r *Reader) SkipParts(ctx context.Context) error { return r.IterateParts(ctx, nil) }
+func (r *Reader) SkipParts(ctx context.Context) error {
+	_, err := r.IterateParts(ctx, 0, nil)
+	return err
+}
 
 // SessionID returns the session ID.
 func (r *Reader) SessionID() int64 { return r.mh.sessionID }
@@ -146,10 +156,9 @@ func (r *Reader) skipPaddingLastPart(numReadByte int64) {
 	}
 }
 
-func (r *Reader) readPart(ctx context.Context, part Part) error {
+func (r *Reader) readPart(ctx context.Context, part Part) (err error) {
 	cntBefore := r.dec.Cnt()
 
-	var err error
 	switch part := part.(type) {
 	// do not return here in case of error -> read stream would be broken
 	case partDecoder:
@@ -159,7 +168,7 @@ func (r *Reader) readPart(ctx context.Context, part Part) error {
 	case numArgPartDecoder:
 		err = part.decodeNumArg(r.dec, r.ph.numArg())
 	case resultPartDecoder:
-		err = part.decodeResult(r.dec, r.ph.numArg(), r.readFn)
+		err = part.decodeResult(r.dec, r.ph.numArg(), r.readFn, r.lobChunkSize)
 	default:
 		panic(fmt.Errorf("invalid part decoder %[1]T %[1]v", part))
 	}
@@ -182,12 +191,12 @@ func (r *Reader) readPart(ctx context.Context, part Part) error {
 }
 
 // IterateParts iterates through all protocol parts.
-func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs PartAttributes, read func(part Part))) error {
-	var lastErrors *HdbErrors
-	var lastRowsAffected *RowsAffected
+func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind PartKind, attrs PartAttributes, readFn func(part Part))) (int64, error) {
+	var hdbErrors *HdbErrors
+	var rowsAffected *rowsAffected
 
 	if err := r.mh.decode(r.dec); err != nil {
-		return err
+		return 0, err
 	}
 
 	var numReadByte int64 = 0 // header bytes are not calculated in header varPartBytes: start with zero
@@ -197,7 +206,7 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 
 	for i := 0; i < int(r.mh.noOfSegm); i++ {
 		if err := r.sh.decode(r.dec); err != nil {
-			return err
+			return 0, err
 		}
 
 		numReadByte += segmentHeaderSize
@@ -209,7 +218,7 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 		lastPart := int(r.sh.noOfParts) - 1
 		for j := 0; j <= lastPart; j++ {
 			if err := r.ph.decode(r.dec); err != nil {
-				return err
+				return 0, err
 			}
 			kind := r.ph.partKind
 
@@ -221,40 +230,43 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 
 			cntBefore := r.dec.Cnt()
 
-			partRequested := false
-			if kind != PkError && fn != nil { // caller must not handle hdb errors
-				var err error
-				fn(kind, r.ph.partAttributes, func(part Part) {
-					partRequested = true
-					err = r.readPart(ctx, part)
-					if part.kind() == PkRowsAffected {
-						lastRowsAffected = part.(*RowsAffected)
-					}
-				})
-				if err != nil {
-					return err
+			switch kind {
+			case pkRowsAffected:
+				if err := r.readPart(ctx, r.rowsAffected); err != nil {
+					return 0, err
 				}
-			}
-			if !partRequested {
-				// if trace is on or mandatory parts need to be read we cannot skip
-				if !(r.protTrace || kind == PkError || kind == PkRowsAffected) {
-					r.dec.Skip(int(r.ph.bufferLength))
-				} else {
-					if part, ok := r.partCache.get(kind); ok {
-						if err := r.readPart(ctx, part); err != nil {
-							return err
-						}
-						switch kind {
-						case PkError:
-							lastErrors = part.(*HdbErrors)
-						case PkRowsAffected:
-							lastRowsAffected = part.(*RowsAffected)
+				rowsAffected = r.rowsAffected
+			case pkError:
+				if err := r.readPart(ctx, r.hdbErrors); err != nil {
+					return 0, err
+				}
+				hdbErrors = r.hdbErrors
+			default:
+				read := false
+				// caller must not handle hdb errors and rows affected.
+				if fn != nil {
+					var err error
+					fn(kind, r.ph.partAttributes, func(part Part) {
+						read = true
+						err = r.readPart(ctx, part)
+					})
+					if err != nil {
+						return 0, err
+					}
+				}
+				if !read {
+					// if trace is on or mandatory parts need to be read we cannot skip
+					if r.protTrace {
+						if part, ok := r.partCache.get(kind); ok {
+							if err := r.readPart(ctx, part); err != nil {
+								return 0, err
+							}
+						} else {
+							r.dec.Skip(int(r.ph.bufferLength))
+							r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textSkip, kind.String()))
 						}
 					} else {
 						r.dec.Skip(int(r.ph.bufferLength))
-						if r.protTrace {
-							r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textSkip, kind.String()))
-						}
 					}
 				}
 			}
@@ -272,29 +284,34 @@ func (r *Reader) IterateParts(ctx context.Context, fn func(kind PartKind, attrs 
 
 	if err := r.dec.Error(); err != nil {
 		r.dec.ResetError()
-		return err
+		return 0, err
 	}
 
-	if lastErrors == nil {
-		return nil
+	var numRow int64
+	if rowsAffected != nil {
+		numRow = rowsAffected.Total()
 	}
 
-	if lastRowsAffected != nil { // link statement to error
+	if hdbErrors == nil {
+		return numRow, nil
+	}
+
+	if rowsAffected != nil { // link statement to error
 		j := 0
-		for i, rows := range lastRowsAffected.rows {
-			if rows == RaExecutionFailed {
-				lastErrors.setStmtNo(j, lastRowsAffected.Ofs+i)
+		for i, rows := range rowsAffected.rows {
+			if rows == raExecutionFailed {
+				hdbErrors.setStmtNo(j, offset+i)
 				j++
 			}
 		}
 	}
-	if lastErrors.onlyWarnings {
-		for _, err := range lastErrors.errs {
+	if hdbErrors.onlyWarnings {
+		for _, err := range hdbErrors.errs {
 			r.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
 		}
-		return nil
+		return numRow, nil
 	}
-	return lastErrors
+	return numRow, hdbErrors
 }
 
 // Writer represents a protocol writer.

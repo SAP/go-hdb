@@ -9,9 +9,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"regexp"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,6 +56,10 @@ var (
 	_ = p.RegisterScanType(p.DtBytes, hdbreflect.TypeFor[[]byte](), hdbreflect.TypeFor[NullBytes]())
 	_ = p.RegisterScanType(p.DtDecimal, hdbreflect.TypeFor[Decimal](), hdbreflect.TypeFor[NullDecimal]())
 	_ = p.RegisterScanType(p.DtLob, hdbreflect.TypeFor[Lob](), hdbreflect.TypeFor[NullLob]())
+)
+
+var (
+	cpuProfile = false
 )
 
 // dbConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
@@ -109,6 +115,24 @@ func (c *dbConn) Write(b []byte) (int, error) {
 		return n, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
 	return n, nil
+}
+
+type profileDBConn struct {
+	*dbConn
+}
+
+func (c *profileDBConn) Read(b []byte) (n int, err error) {
+	pprof.Do(context.Background(), pprof.Labels("db", "read"), func(ctx context.Context) {
+		n, err = c.dbConn.Read(b)
+	})
+	return
+}
+
+func (c *profileDBConn) Write(b []byte) (n int, err error) {
+	pprof.Do(context.Background(), pprof.Labels("db", "write"), func(ctx context.Context) {
+		n, err = c.dbConn.Write(b)
+	})
+	return
 }
 
 // check if conn implements all required interfaces.
@@ -257,14 +281,15 @@ var (
 	sqlTrace  atomic.Bool
 )
 
-func init() {
-	setTrace := func(b *atomic.Bool, s string) error {
-		v, err := strconv.ParseBool(s)
-		if err == nil {
-			b.Store(v)
-		}
-		return err
+func setTrace(b *atomic.Bool, s string) error {
+	v, err := strconv.ParseBool(s)
+	if err == nil {
+		b.Store(v)
 	}
+	return err
+}
+
+func init() {
 	flag.BoolFunc("hdb.protTrace", "enabling hdb protocol trace", func(s string) error { return setTrace(&protTrace, s) })
 	flag.BoolFunc("hdb.sqlTrace", "enabling hdb sql trace", func(s string) error { return setTrace(&sqlTrace, s) })
 }
@@ -277,6 +302,14 @@ func SetSQLTrace(on bool) { sqlTrace.Store(on) }
 
 // unique connection number.
 var connNo atomic.Uint64
+
+func bufferedReaderWriter(dbConn *dbConn, bufferSize int) (*bufio.Reader, *bufio.Writer) {
+	if cpuProfile {
+		profileDBConn := &profileDBConn{dbConn: dbConn}
+		return bufio.NewReaderSize(profileDBConn, bufferSize), bufio.NewWriterSize(profileDBConn, bufferSize)
+	}
+	return bufio.NewReaderSize(dbConn, bufferSize), bufio.NewWriterSize(dbConn, bufferSize)
+}
 
 func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttrs) (*conn, error) {
 	netConn, err := attrs._dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
@@ -292,19 +325,17 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 	}
 
 	logger := attrs._logger.With(slog.Uint64("conn", connNo.Add(1)))
-
-	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
-	// buffer connection
-	rw := bufio.NewReadWriter(bufio.NewReaderSize(dbConn, attrs._bufferSize), bufio.NewWriterSize(dbConn, attrs._bufferSize))
-
 	protTrace := protTrace.Load()
 
-	enc := encoding.NewEncoder(rw.Writer, attrs._cesu8Encoder)
-	dec := encoding.NewDecoder(rw.Reader, attrs._cesu8Decoder)
+	dbConn := &dbConn{metrics: metrics, conn: netConn, timeout: attrs._timeout, logger: logger}
+	reader, writer := bufferedReaderWriter(dbConn, attrs._bufferSize)
+
+	enc := encoding.NewEncoder(writer, attrs._cesu8Encoder)
+	dec := encoding.NewDecoder(reader, attrs._cesu8Decoder)
 
 	c := &conn{attrs: attrs, metrics: metrics, dbConn: dbConn, sqlTrace: sqlTrace.Load(), logger: logger, dec: dec, sessionID: defaultSessionID}
-	c.pw = p.NewWriter(rw.Writer, enc, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
-	c.pr = p.NewDBReader(dec, c.readLob, protTrace, logger)                                             // read downstream
+	c.pw = p.NewWriter(writer, enc, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
+	c.pr = p.NewDBReader(dec, c.readLob, protTrace, logger, attrs._lobChunkSize)                     // read downstream
 
 	if err := c.pw.WriteProlog(ctx); err != nil {
 		dbConn.close()
@@ -705,9 +736,9 @@ func (c *conn) dbConnectInfo(ctx context.Context, databaseName string) (*DBConne
 		return nil, err
 	}
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		if kind == p.PkDBConnectInfo {
-			read(ci)
+			readFn(ci)
 		}
 	}); err != nil {
 		return nil, err
@@ -742,9 +773,9 @@ func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *conn
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		if kind == p.PkAuthentication {
-			read(initReply)
+			readFn(initReply)
 		}
 	}); err != nil {
 		return 0, nil, err
@@ -780,14 +811,14 @@ func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *conn
 
 	ti := new(p.TopologyInformation)
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		switch kind {
 		case p.PkAuthentication:
-			read(finalReply)
+			readFn(finalReply)
 		case p.PkConnectOptions:
-			read(co)
+			readFn(co)
 		case p.PkTopologyInformation:
-			read(ti)
+			readFn(ti)
 		}
 	}); err != nil {
 		return 0, nil, err
@@ -809,16 +840,16 @@ func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driv
 	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		switch kind {
 		case p.PkResultMetadata:
-			read(meta)
+			readFn(meta)
 			qr.fields = meta.ResultFields
 		case p.PkResultsetID:
-			read((*p.ResultsetID)(&qr.rsID))
+			readFn((*p.ResultsetID)(&qr.rsID))
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			read(resSet)
+			readFn(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = attrs
@@ -839,14 +870,8 @@ func (c *conn) execDirect(ctx context.Context, query string, commit bool) (drive
 		return nil, err
 	}
 
-	rows := &p.RowsAffected{}
-	var numRow int64
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
-		if kind == p.PkRowsAffected {
-			read(rows)
-			numRow = rows.Total()
-		}
-	}); err != nil {
+	numRow, err := c.pr.IterateParts(ctx, 0, nil)
+	if err != nil {
 		return nil, err
 	}
 	if c.pr.FunctionCode() == p.FcDDL {
@@ -866,15 +891,15 @@ func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error
 	resMeta := &p.ResultMetadata{}
 	prmMeta := &p.ParameterMetadata{}
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		switch kind {
 		case p.PkStatementID:
-			read((*p.StatementID)(&pr.stmtID))
+			readFn((*p.StatementID)(&pr.stmtID))
 		case p.PkResultMetadata:
-			read(resMeta)
+			readFn(resMeta)
 			pr.resultFields = resMeta.ResultFields
 		case p.PkParameterMetadata:
-			read(prmMeta)
+			readFn(prmMeta)
 			pr.parameterFields = prmMeta.ParameterFields
 		}
 	}); err != nil {
@@ -903,13 +928,13 @@ func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.Nam
 	qr := &queryResult{conn: c, fields: pr.resultFields}
 	resSet := &p.Resultset{}
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		switch kind {
 		case p.PkResultsetID:
-			read((*p.ResultsetID)(&qr.rsID))
+			readFn((*p.ResultsetID)(&qr.rsID))
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			read(resSet)
+			readFn(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = attrs
@@ -923,7 +948,7 @@ func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.Nam
 	return qr, nil
 }
 
-func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, ofs int) (driver.Result, error) {
+func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, offset int) (driver.Result, error) {
 	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
 	if err != nil {
 		return nil, err
@@ -932,21 +957,16 @@ func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 		return nil, err
 	}
 
-	rows := &p.RowsAffected{Ofs: ofs}
 	var ids []p.LocatorID
 	lobReply := &p.WriteLobReply{}
-	var rowsAffected int64
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
-		switch kind {
-		case p.PkRowsAffected:
-			read(rows)
-			rowsAffected = rows.Total()
-		case p.PkWriteLobReply:
-			read(lobReply)
+	numRow, err := c.pr.IterateParts(ctx, offset, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
+		if kind == p.PkWriteLobReply {
+			readFn(lobReply)
 			ids = lobReply.IDs
 		}
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 	fc := c.pr.FunctionCode()
@@ -962,7 +982,7 @@ func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 			write lob data only for the last record as lob streaming is only available for the last one
 		*/
 		startLastRec := len(nvargs) - len(pr.parameterFields)
-		if err := c.writeLobs(nil, ids, pr.parameterFields, nvargs[startLastRec:]); err != nil {
+		if err := c.writeLobs(ctx, nil, ids, pr.parameterFields, nvargs[startLastRec:]); err != nil {
 			return nil, err
 		}
 	}
@@ -970,30 +990,25 @@ func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 	if fc == p.FcDDL {
 		return driver.ResultNoRows, nil
 	}
-	return driver.RowsAffected(rowsAffected), nil
+	return driver.RowsAffected(numRow), nil
 }
 
 func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (*callResult, []p.LocatorID, int64, error) {
 	cr := &callResult{conn: c, outputFields: outputFields}
 
 	var qr *queryResult
-	rows := &p.RowsAffected{}
 	var ids []p.LocatorID
 	outPrms := &p.OutputParameters{}
 	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 	lobReply := &p.WriteLobReply{}
-	var numRow int64
 	tableRowIdx := 0
 
-	if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	numRow, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		switch kind {
-		case p.PkRowsAffected:
-			read(rows)
-			numRow = rows.Total()
 		case p.PkOutputParameters:
 			outPrms.OutputFields = cr.outputFields
-			read(outPrms)
+			readFn(outPrms)
 			cr.fieldValues = outPrms.FieldValues
 			cr.decodeErrors = outPrms.DecodeErrors
 		case p.PkResultMetadata:
@@ -1008,21 +1023,22 @@ func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (
 			cr.outputFields = append(cr.outputFields, p.NewTableRowsParameterField(tableRowIdx))
 			cr.fieldValues = append(cr.fieldValues, qr)
 			tableRowIdx++
-			read(meta)
+			readFn(meta)
 			qr.fields = meta.ResultFields
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			read(resSet)
+			readFn(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = attrs
 		case p.PkResultsetID:
-			read((*p.ResultsetID)(&qr.rsID))
+			readFn((*p.ResultsetID)(&qr.rsID))
 		case p.PkWriteLobReply:
-			read(lobReply)
+			readFn(lobReply)
 			ids = lobReply.IDs
 		}
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, nil, 0, err
 	}
 	return cr, ids, numRow, nil
@@ -1037,14 +1053,15 @@ func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
 
 	resSet := &p.Resultset{ResultFields: qr.fields, FieldValues: qr.fieldValues} // reuse field values
 
-	return c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+	_, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 		if kind == p.PkResultset {
-			read(resSet)
+			readFn(resSet)
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = attrs
 		}
 	})
+	return err
 }
 
 func (c *conn) dropStatementID(ctx context.Context, id uint64) error {
@@ -1108,33 +1125,28 @@ read lob reply
   - seems like readLobreply returns only a result for one lob - even if more then one is requested
     --> read single lobs
 */
-func (c *conn) readLob(lobRequest *p.ReadLobRequest, lobReply *p.ReadLobReply) error {
+func (c *conn) readLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
-	lobRequest.SetChunkSize(c.attrs._lobChunkSize)
 	ctx := context.Background()
-	for {
-		if err := c.pw.Write(ctx, c.sessionID, p.MtWriteLob, false, lobRequest); err != nil {
+	var err error
+	for err != io.EOF { //nolint: errorlint
+		if err = c.pw.Write(ctx, c.sessionID, p.MtWriteLob, false, request); err != nil {
 			return err
 		}
 
-		if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+		if _, err = c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 			if kind == p.PkReadLobReply {
-				read(lobReply)
+				readFn(reply)
 			}
 		}); err != nil {
 			return err
 		}
 
-		numChar, err := lobReply.Write()
-		if err != nil {
+		_, err = reply.Write()
+		if err != nil && err != io.EOF { //nolint: errorlint
 			return err
 		}
-
-		if lobReply.IsLastData() {
-			break
-		}
-		lobRequest.AddOfs(numChar)
 	}
 	return nil
 }
@@ -1146,7 +1158,7 @@ func assertEqual[T comparable](s string, a, b T) {
 }
 
 // writeLobs writes input lob parameters to db.
-func (c *conn) writeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
+func (c *conn) writeLobs(ctx context.Context, cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
 	assertEqual("lob streaming can only be done for one (the last) record", len(inPrmFields), len(nvargs))
 
 	descrs := make([]*p.WriteLobDescr, 0, len(ids))
@@ -1168,9 +1180,6 @@ func (c *conn) writeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Par
 	}
 
 	writeLobRequest := &p.WriteLobRequest{}
-
-	ctx := context.Background()
-
 	for len(descrs) != 0 {
 
 		if len(descrs) != len(ids) {
@@ -1198,15 +1207,15 @@ func (c *conn) writeLobs(cr *callResult, ids []p.LocatorID, inPrmFields []*p.Par
 		lobReply := &p.WriteLobReply{}
 		outPrms := &p.OutputParameters{}
 
-		if err := c.pr.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {
+		if _, err := c.pr.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, readFn func(part p.Part)) {
 			switch kind {
 			case p.PkOutputParameters:
 				outPrms.OutputFields = cr.outputFields
-				read(outPrms)
+				readFn(outPrms)
 				cr.fieldValues = outPrms.FieldValues
 				cr.decodeErrors = outPrms.DecodeErrors
 			case p.PkWriteLobReply:
-				read(lobReply)
+				readFn(lobReply)
 				ids = lobReply.IDs
 			}
 		}); err != nil {

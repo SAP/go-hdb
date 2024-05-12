@@ -100,10 +100,11 @@ type sqlTimeMsg struct {
 const numMetricCollectorCh = 100
 
 type metrics struct {
-	mu    sync.RWMutex
-	once  sync.Once // lazy init
-	wg    *sync.WaitGroup
-	msgCh chan any
+	mu     sync.RWMutex
+	once   sync.Once // lazy init
+	wg     *sync.WaitGroup
+	msgCh  chan any
+	closed bool
 
 	parentMetrics *metrics
 
@@ -161,6 +162,14 @@ func (m *metrics) lazyInit() {
 }
 
 func (m *metrics) close() {
+	m.mu.Lock()
+	if m.closed { // make close idempotent
+		m.mu.Unlock()
+		return
+	}
+	m.closed = true
+	m.mu.Unlock()
+
 	close(m.msgCh)
 	m.wg.Wait()
 }

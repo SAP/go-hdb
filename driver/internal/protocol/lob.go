@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
 )
 
@@ -75,10 +76,7 @@ type LobScanner interface {
 	Scan(w io.Writer) error
 }
 
-var (
-	_ LobScanner = (*lobOutBytesDescr)(nil)
-	_ LobScanner = (*lobOutCharsDescr)(nil)
-)
+var _ LobScanner = (*lobOutDescr)(nil)
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
@@ -128,12 +126,17 @@ type LocatorID uint64 // byte[locatorIdSize]
 
 type lobReadFn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error
 
+var lobOutDescrPool = sync.Pool{New: func() any { return new(lobOutDescr) }}
+
 // lobOutDescr represents a lob output descriptor.
 type lobOutDescr struct {
+	// if set -> char based
+	tr transform.Transformer
 	/*
 	   readFn is set by decode if additional data packages need to be read (not last data)
 	*/
-	readFn lobReadFn
+	readFn    lobReadFn
+	chunkSize int
 	/*
 		HDB does not return lob type code but undefined only
 		--> ltc is always ltcUndefined
@@ -145,13 +148,26 @@ type lobOutDescr struct {
 	numByte int64
 	id      LocatorID
 	b       []byte
+
+	// scan attributes.
+	wr         io.Writer
+	lobRequest *ReadLobRequest
+	lobReply   *ReadLobReply
+}
+
+func newLobOutDescr(tr transform.Transformer, readFn lobReadFn, chunkSize int) *lobOutDescr {
+	descr := lobOutDescrPool.Get().(*lobOutDescr)
+	descr.tr = tr
+	descr.readFn = readFn
+	descr.chunkSize = chunkSize
+	return descr
 }
 
 func (d *lobOutDescr) String() string {
 	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
 }
 
-func (d *lobOutDescr) decode(dec *encoding.Decoder, readFn lobReadFn) bool {
+func (d *lobOutDescr) decode(dec *encoding.Decoder) bool {
 	d.ltc = lobTypecode(dec.Int8())
 	d.opt = lobOptions(dec.Int8())
 	if d.opt.isNull() {
@@ -162,16 +178,70 @@ func (d *lobOutDescr) decode(dec *encoding.Decoder, readFn lobReadFn) bool {
 	d.numByte = dec.Int64()
 	d.id = LocatorID(dec.Uint64())
 	size := int(dec.Int32())
-	d.b = make([]byte, size)
+	d.b = slices.Grow(d.b, size)[:size]
 	dec.Bytes(d.b)
-	// if not last data -> set readFn for scan
-	if !d.opt.isLastData() {
-		d.readFn = readFn
-	}
 	return false
 }
 
-func (d *lobOutDescr) closePipeWriter(wr io.Writer, err error) {
+func (d *lobOutDescr) countChars(b []byte) (numChar int) {
+	s := unsafe.ByteSlice2String(b)
+	for _, r := range s {
+		numChar++
+		if utf8.RuneLen(r) == 4 {
+			numChar++ // caution: hdb counts 2 chars in case of surrogate pair
+		}
+	}
+	return
+}
+
+func (d *lobOutDescr) write(b []byte) (int, error) {
+	if d.tr == nil {
+		if _, err := d.wr.Write(b); err != nil {
+			return len(b), err
+		}
+		return len(b), nil
+	}
+	d.tr.Reset()
+	// cesu8 -> utf8 (always enough space)
+	nDst, _, err := d.tr.Transform(b, b, false)
+	if err != nil && err != transform.ErrShortSrc { //nolint: errorlint
+		return nDst, err
+	}
+
+	numChar := d.countChars(b[:nDst])
+	if _, err := d.wr.Write(b[:nDst]); err != nil {
+		return numChar, err
+	}
+	return numChar, nil
+}
+
+func (d *lobOutDescr) scan(wr io.Writer) error {
+	d.wr = wr
+
+	numChar, err := d.write(d.b)
+	if err != nil {
+		return err
+	}
+
+	if d.opt.isLastData() {
+		return nil
+	}
+
+	if d.lobRequest == nil {
+		d.lobRequest = new(ReadLobRequest)
+	}
+	if d.lobReply == nil {
+		d.lobReply = &ReadLobReply{lobOutDescr: d}
+	}
+	d.lobRequest.id = d.id
+	d.lobRequest.ofs = int64(numChar)
+	d.lobRequest.chunkSize = d.chunkSize
+	return d.readFn(d.lobRequest, d.lobReply)
+}
+
+// Scan implements the LobScanner interface.
+func (d *lobOutDescr) Scan(wr io.Writer) error {
+	err := d.scan(wr)
 	// if the writer is a pipe-end -> close at the end
 	if pwr, ok := wr.(*io.PipeWriter); ok {
 		if err != nil {
@@ -180,92 +250,20 @@ func (d *lobOutDescr) closePipeWriter(wr io.Writer, err error) {
 			pwr.Close()
 		}
 	}
-}
-
-type lobOutBytesDescr struct {
-	lobOutDescr
-}
-
-func (d *lobOutBytesDescr) write(wr io.Writer, b []byte) (int, error) {
-	if _, err := wr.Write(b); err != nil {
-		return len(b), err
-	}
-	return len(b), nil
-}
-
-func (d *lobOutBytesDescr) scan(wr io.Writer) error {
-	if _, err := wr.Write(d.b); err != nil {
-		return err
-	}
-	if d.readFn == nil {
-		return nil
-	}
-	lobRequest := &ReadLobRequest{ofs: int64(len(d.b)), id: d.id}
-	lobReply := &ReadLobReply{write: d.write, wr: wr, id: d.id}
-	return d.readFn(lobRequest, lobReply)
-}
-
-// Scan implements the LobScanner interface.
-func (d *lobOutBytesDescr) Scan(wr io.Writer) error {
-	err := d.scan(wr)
-	d.closePipeWriter(wr, err)
+	lobOutDescrPool.Put(d)
 	return err
 }
 
-type lobOutCharsDescr struct {
-	tr transform.Transformer
-	lobOutDescr
-}
-
-func newLobOutCharsDescr(tr transform.Transformer) *lobOutCharsDescr {
-	return &lobOutCharsDescr{tr: tr}
-}
-
-func (d *lobOutCharsDescr) countFullChars(b []byte) (size int, numChar int) {
-	for len(b) > 0 {
-		r, width := cesu8.DecodeRune(b)
-		if r == utf8.RuneError {
-			return // stop if not full rune
-		}
-
-		size += width
-		if width == cesu8.CESUMax {
-			numChar += 2 // caution: hdb counts 2 chars in case of surrogate pair
-		} else {
-			numChar++
-		}
-		b = b[width:]
+func (d *lobOutDescr) Write() (int, error) {
+	n, err := d.write(d.b)
+	if err != nil {
+		return n, err
 	}
-	return
-}
-
-func (d *lobOutCharsDescr) write(wr io.Writer, b []byte) (int, error) {
-	size, numChar := d.countFullChars(b)
-	if _, err := wr.Write(b[:size]); err != nil {
-		return numChar, err
+	if d.opt.isLastData() {
+		return n, io.EOF
 	}
-	return numChar, nil
-}
-
-func (d *lobOutCharsDescr) scan(wr io.Writer) error {
-	wr = transform.NewWriter(wr, d.tr) // CESU8 transformer
-	size, numChar := d.countFullChars(d.b)
-	if _, err := wr.Write(d.b[:size]); err != nil {
-		return err
-	}
-	if d.readFn == nil {
-		return nil
-	}
-	lobRequest := &ReadLobRequest{ofs: int64(numChar), id: d.id}
-	lobReply := &ReadLobReply{write: d.write, wr: wr, id: d.id}
-	return d.readFn(lobRequest, lobReply)
-}
-
-// Scan implements the LobScanner interface.
-func (d *lobOutCharsDescr) Scan(wr io.Writer) error {
-	err := d.scan(wr)
-	d.closePipeWriter(wr, err)
-	return err
+	d.lobRequest.ofs += int64(n)
+	return n, nil
 }
 
 /*
@@ -395,24 +393,18 @@ type ReadLobRequest struct {
 	*/
 	id        LocatorID
 	ofs       int64
-	chunkSize int32
+	chunkSize int
 }
 
 func (r *ReadLobRequest) String() string {
 	return fmt.Sprintf("id %d offset %d size %d", r.id, r.ofs, r.chunkSize)
 }
 
-// AddOfs adds n to offset.
-func (r *ReadLobRequest) AddOfs(n int) { r.ofs += int64(n) }
-
-// SetChunkSize sets the chunk size.
-func (r *ReadLobRequest) SetChunkSize(size int) { r.chunkSize = int32(size) }
-
 // sniffer.
 func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 	r.id = LocatorID(dec.Uint64())
 	r.ofs = dec.Int64()
-	r.chunkSize = dec.Int32()
+	r.chunkSize = int(dec.Int32())
 	dec.Skip(4)
 	return nil
 }
@@ -420,27 +412,19 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(r.id))
 	enc.Int64(r.ofs + 1) // 1-based
-	enc.Int32(r.chunkSize)
+	enc.Int32(int32(r.chunkSize))
 	enc.Zeroes(4)
 	return nil
 }
 
 // ReadLobReply represents a lob read reply part.
 type ReadLobReply struct {
-	id  LocatorID
-	opt lobOptions
-	b   []byte
-
-	write func(wr io.Writer, b []byte) (int, error)
-	wr    io.Writer
+	*lobOutDescr
 }
 
 func (r *ReadLobReply) String() string {
 	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.opt, r.b)
 }
-
-// IsLastData returns true in case of last data package read, false otherwise.
-func (r *ReadLobReply) IsLastData() bool { return r.opt.isLastData() }
 
 func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if numArg != 1 {
@@ -457,5 +441,3 @@ func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	dec.Bytes(r.b)
 	return nil
 }
-
-func (r *ReadLobReply) Write() (int, error) { return r.write(r.wr, r.b) }

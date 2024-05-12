@@ -45,7 +45,10 @@ func TestSCRUM(t *testing.T) {
 		default:
 			t.Fatalf("unknown authentication method %s", r.method)
 		}
-		clientProof := clientProof(key, r.salt, r.serverChallenge, r.clientChallenge)
+		clientProof, err := clientProof(key, r.salt, r.serverChallenge, r.clientChallenge)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for i, v := range clientProof {
 			if v != r.clientProof[i] {
 				t.Fatalf("diff index % d - got %v - expected %v", i, clientProof, r.clientProof)

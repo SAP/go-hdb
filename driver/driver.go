@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.8.25"
+const DriverVersion = "1.8.26"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -31,7 +31,9 @@ var defaultApplicationName, _ = os.Executable()
 // driver singleton instance.
 var stdHdbDriver *hdbDriver
 
-func init() {
+func init() { register() }
+
+func register() {
 	// load stats configuration
 	if err := loadStatsCfg(); err != nil {
 		panic(err) // invalid configuration file

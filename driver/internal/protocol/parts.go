@@ -28,7 +28,7 @@ type bufLenPartDecoder interface {
 }
 type resultPartDecoder interface {
 	Part
-	decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn) error
+	decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn, lobChunkSize int) error
 }
 
 // partEncoder represents a protocol part the driver is able to encode.
@@ -39,7 +39,7 @@ type partEncoder interface {
 	encode(enc *encoding.Encoder) error
 }
 
-func (*HdbErrors) kind() PartKind           { return PkError }
+func (*HdbErrors) kind() PartKind           { return pkError }
 func (*AuthInitRequest) kind() PartKind     { return PkAuthentication }
 func (*AuthInitReply) kind() PartKind       { return PkAuthentication }
 func (*AuthFinalRequest) kind() PartKind    { return PkAuthentication }
@@ -48,7 +48,7 @@ func (ClientID) kind() PartKind             { return PkClientID }
 func (clientInfo) kind() PartKind           { return PkClientInfo }
 func (*TopologyInformation) kind() PartKind { return PkTopologyInformation }
 func (Command) kind() PartKind              { return PkCommand }
-func (*RowsAffected) kind() PartKind        { return PkRowsAffected }
+func (*rowsAffected) kind() PartKind        { return pkRowsAffected }
 func (StatementID) kind() PartKind          { return PkStatementID }
 func (*ParameterMetadata) kind() PartKind   { return PkParameterMetadata }
 func (*InputParameters) kind() PartKind     { return PkParameters }
@@ -121,7 +121,7 @@ var (
 	_ numArgPartDecoder = (*clientInfo)(nil)
 	_ numArgPartDecoder = (*TopologyInformation)(nil)
 	_ bufLenPartDecoder = (*Command)(nil)
-	_ numArgPartDecoder = (*RowsAffected)(nil)
+	_ numArgPartDecoder = (*rowsAffected)(nil)
 	_ partDecoder       = (*StatementID)(nil)
 	_ numArgPartDecoder = (*ParameterMetadata)(nil)
 	_ numArgPartDecoder = (*InputParameters)(nil)
@@ -142,12 +142,12 @@ var (
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
-	PkError:               hdbreflect.TypeFor[HdbErrors](),
+	pkError:               hdbreflect.TypeFor[HdbErrors](),
 	PkClientID:            hdbreflect.TypeFor[ClientID](),
 	PkClientInfo:          hdbreflect.TypeFor[clientInfo](),
 	PkTopologyInformation: hdbreflect.TypeFor[TopologyInformation](),
 	PkCommand:             hdbreflect.TypeFor[Command](),
-	PkRowsAffected:        hdbreflect.TypeFor[RowsAffected](),
+	pkRowsAffected:        hdbreflect.TypeFor[rowsAffected](),
 	PkStatementID:         hdbreflect.TypeFor[StatementID](),
 	PkResultsetID:         hdbreflect.TypeFor[ResultsetID](),
 	PkFetchSize:           hdbreflect.TypeFor[Fetchsize](),

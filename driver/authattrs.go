@@ -1,6 +1,8 @@
 package driver
 
 import (
+	"os"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -9,12 +11,33 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 )
 
+type certKeyFiles struct {
+	certFile, keyFile string
+}
+
+func newCertKeyFiles(certFile, keyFile string) *certKeyFiles {
+	return &certKeyFiles{certFile: path.Clean(certFile), keyFile: path.Clean(keyFile)}
+}
+
+func (f *certKeyFiles) read() ([]byte, []byte, error) {
+	cert, err := os.ReadFile(f.certFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := os.ReadFile(f.keyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cert, key, nil
+}
+
 // authAttrs is holding authentication relevant attributes.
 type authAttrs struct {
 	hasCookie            atomic.Bool
 	version              atomic.Uint64 // auth attributes version
 	mu                   sync.RWMutex
-	_username, _password string        // basic authentication
+	_username, _password string // basic authentication
+	_certKeyFiles        *certKeyFiles
 	_certKey             *auth.CertKey // X509
 	_token               string        // JWT
 	_logonname           string        // session cookie login does need logon name provided by JWT authentication.
@@ -122,7 +145,19 @@ func (c *authAttrs) refresh() error {
 			}
 		}
 	}
-	if c._refreshClientCert != nil {
+	switch {
+	case c._certKeyFiles != nil && c._refreshClientCert == nil:
+		if clientCert, clientKey, err := c._certKeyFiles.read(); err != nil {
+			if c._certKey == nil || !c._certKey.Equal(clientCert, clientKey) {
+				certKey, err := auth.NewCertKey(clientCert, clientKey)
+				if err != nil {
+					return err
+				}
+				c._certKey = certKey
+				c.version.Add(1)
+			}
+		}
+	case c._refreshClientCert != nil:
 		if clientCert, clientKey, ok := c.callRefreshClientCertWithLock(c._refreshClientCert); ok {
 			if c._certKey == nil || !c._certKey.Equal(clientCert, clientKey) {
 				certKey, err := auth.NewCertKey(clientCert, clientKey)

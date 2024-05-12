@@ -28,13 +28,6 @@ func checkServerChallenge(serverChallenge []byte) error {
 	return nil
 }
 
-func checkClientProof(clientProof []byte) error {
-	if len(clientProof) != clientProofSize {
-		return fmt.Errorf("invalid client proof size %d - expected %d", len(clientProof), clientProofSize)
-	}
-	return nil
-}
-
 func clientChallenge() []byte {
 	r := make([]byte, clientChallengeSize)
 	if _, err := rand.Read(r); err != nil {
@@ -43,17 +36,25 @@ func clientChallenge() []byte {
 	return r
 }
 
-func clientProof(key, salt, serverChallenge, clientChallenge []byte) []byte {
+func clientProof(key, salt, serverChallenge, clientChallenge []byte) ([]byte, error) {
+	if len(key) != clientProofSize {
+		return nil, fmt.Errorf("invalid key size %d - expected %d", len(key), clientProofSize)
+	}
 	sig := _hmac(_sha256(key), salt, serverChallenge, clientChallenge)
-	proof := xor(sig, key)
-	return proof
+	if len(sig) != clientProofSize {
+		return nil, fmt.Errorf("invalid sig size %d - expected %d", len(key), clientProofSize)
+	}
+	// xor sig and key into sig (inline: no further allocation).
+	for i, v := range key {
+		sig[i] ^= v
+	}
+	return sig, nil
 }
 
 func _sha256(p []byte) []byte {
 	hash := sha256.New()
 	hash.Write(p)
-	s := hash.Sum(nil)
-	return s
+	return hash.Sum(nil)
 }
 
 func _hmac(key []byte, prms ...[]byte) []byte {
@@ -61,15 +62,5 @@ func _hmac(key []byte, prms ...[]byte) []byte {
 	for _, p := range prms {
 		hash.Write(p)
 	}
-	s := hash.Sum(nil)
-	return s
-}
-
-func xor(sig, key []byte) []byte {
-	r := make([]byte, len(sig))
-
-	for i, v := range sig {
-		r[i] = v ^ key[i]
-	}
-	return r
+	return hash.Sum(nil)
 }

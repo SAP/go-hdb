@@ -46,7 +46,8 @@ func pipeData(wg *sync.WaitGroup, conn net.Conn, dbConn net.Conn, wr io.Writer) 
 
 func readMsg(ctx context.Context, prd *p.Reader) error {
 	// TODO complete for non generic parts, see internal/protocol/parts/newGenPartReader for details
-	return prd.IterateParts(ctx, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {})
+	_, err := prd.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes, read func(part p.Part)) {})
+	return err
 }
 
 func logData(ctx context.Context, wg *sync.WaitGroup, prd *p.Reader) {
@@ -78,8 +79,8 @@ func (s *Sniffer) Run() error {
 	dbDec := encoding.NewDecoder(dbRd, cesu8.DefaultDecoder)
 
 	// TODO: replace nil by lob reader
-	pClientRd := p.NewClientReader(clientDec, nil, true, s.logger)
-	pDBRd := p.NewDBReader(dbDec, nil, true, s.logger)
+	pClientRd := p.NewClientReader(clientDec, nil, true, s.logger, defaultLobChunkSize)
+	pDBRd := p.NewDBReader(dbDec, nil, true, s.logger, defaultLobChunkSize)
 
 	go logData(ctx, wg, pClientRd)
 	go logData(ctx, wg, pDBRd)

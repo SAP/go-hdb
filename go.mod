@@ -5,7 +5,8 @@ go 1.21.0
 toolchain go1.22.2
 
 require (
-	github.com/prometheus/client_golang v1.19.0
+	github.com/prometheus/client_golang v1.19.1
+	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.23.0
 	golang.org/x/text v0.15.0
 )

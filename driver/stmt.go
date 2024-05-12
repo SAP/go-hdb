@@ -171,7 +171,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 			- chunkReaders
 			- cr (callResult output parameters are set after all lob input parameters are written)
 		*/
-		if err := c.writeLobs(cr, ids, callArgs.inFields, callArgs.inArgs); err != nil {
+		if err := c.writeLobs(ctx, cr, ids, callArgs.inFields, callArgs.inArgs); err != nil {
 			return nil, nil, err
 		}
 	}

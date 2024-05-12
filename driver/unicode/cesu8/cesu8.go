@@ -95,8 +95,9 @@ func RuneLen(r rune) int {
 		return 3
 	case r <= utf8.MaxRune:
 		return CESUMax
+	default:
+		return -1
 	}
-	return -1
 }
 
 const (
