@@ -100,44 +100,14 @@ end
 	}
 }
 
-func testCallTableOut(t *testing.T, db *sql.DB) {
-	const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
-language SQLSCRIPT as
-begin
-  create local temporary table #test like %[2]s;
-  insert into #test values(0, 'A');
-  insert into #test values(1, 'B');
-  insert into #test values(2, 'C');
-  insert into #test values(3, 'D');
-  insert into #test values(4, 'E');
-  t1 = select * from #test;
-  insert into #test values(5, 'F');
-  insert into #test values(6, 'G');
-  insert into #test values(7, 'H');
-  insert into #test values(8, 'I');
-  insert into #test values(9, 'J');
-  t2 = select * from #test;
-  insert into #test values(10, 'K');
-  insert into #test values(11, 'L');
-  insert into #test values(12, 'M');
-  insert into #test values(13, 'N');
-  insert into #test values(14, 'O');
-  t3 = select * from #test;
-  drop table #test;
-end
-`
-	type testData struct {
+func testCallTable(t *testing.T, db *sql.DB) {
+
+	type testDataType struct {
 		i int
 		x string
 	}
 
-	data := [][]testData{
-		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}},
-		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}},
-		{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}, {10, "K"}, {11, "L"}, {12, "M"}, {13, "N"}, {14, "O"}},
-	}
-
-	check := func(data []testData, rows *sql.Rows) {
+	checkData := func(data []testDataType, rows *sql.Rows) {
 		j := 0
 		for rows.Next() {
 
@@ -165,47 +135,169 @@ end
 		}
 	}
 
-	tableType := driver.RandomIdentifier("tableType_")
-	proc := driver.RandomIdentifier("procTableOut_")
+	testCallTableOut := func() {
+		const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
+	language SQLSCRIPT as
+	begin
+	  create local temporary table #test like %[2]s;
+	  insert into #test values(0, 'A');
+	  insert into #test values(1, 'B');
+	  insert into #test values(2, 'C');
+	  insert into #test values(3, 'D');
+	  insert into #test values(4, 'E');
+	  t1 = select * from #test;
+	  insert into #test values(5, 'F');
+	  insert into #test values(6, 'G');
+	  insert into #test values(7, 'H');
+	  insert into #test values(8, 'I');
+	  insert into #test values(9, 'J');
+	  t2 = select * from #test;
+	  insert into #test values(10, 'K');
+	  insert into #test values(11, 'L');
+	  insert into #test values(12, 'M');
+	  insert into #test values(13, 'N');
+	  insert into #test values(14, 'O');
+	  t3 = select * from #test;
+	  drop table #test;
+	end
+	`
+		testData := [][]testDataType{
+			{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}},
+			{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}},
+			{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}, {5, "F"}, {6, "G"}, {7, "H"}, {8, "I"}, {9, "J"}, {10, "K"}, {11, "L"}, {12, "M"}, {13, "N"}, {14, "O"}},
+		}
 
-	// use same connection
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		t.Fatal()
+		tableType := driver.RandomIdentifier("tableTypeOut_")
+		proc := driver.RandomIdentifier("procTableOut_")
+
+		// use same connection
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal()
+		}
+		defer conn.Close()
+
+		// create table type
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
+			t.Fatal(err)
+		}
+		// create procedure
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
+			t.Fatal(err)
+		}
+
+		var resultRows1, resultRows2, resultRows3 sql.Rows
+
+		// need to prepare to keep statement open
+		stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stmt.Close()
+
+		if _, err := stmt.ExecContext(
+			ctx,
+			1,
+			sql.Named("T1", sql.Out{Dest: &resultRows1}),
+			sql.Named("T2", sql.Out{Dest: &resultRows2}),
+			sql.Named("T3", sql.Out{Dest: &resultRows3}),
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		checkData(testData[0], &resultRows1)
+		checkData(testData[1], &resultRows2)
+		checkData(testData[2], &resultRows3)
 	}
-	defer conn.Close()
 
-	// create table type
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
-		t.Fatal(err)
+	/*
+		Input table parameters can only be used referring to existent tables (inclusive temporary tables).
+		'Uploadiing' table content while executing a stored procedure is not possible.
+		see:
+		https://stackoverflow.com/questions/45830478/call-stored-procedure-passing-table-type-argument
+		https://stackoverflow.com/questions/60657309/error-while-calling-hana-stored-procedure-from-python-sqlalchemy
+	*/
+	testCallTableIn := func() {
+		const procTableIn = `create procedure %[1]s (in i integer, in t1 %[2]s, out t2 %[2]s)
+	language SQLSCRIPT as
+	begin
+	  t2 = select * from :t1;
+	end
+	`
+
+		testData := []testDataType{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}}
+
+		// use same connections
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal()
+		}
+		defer conn.Close()
+
+		tableType := driver.RandomIdentifier("tableTypeIn_")
+		tableName := driver.RandomIdentifier("#tableIn_") // local temp table needs to start with "#"
+		proc := driver.RandomIdentifier("procTableIn_")
+
+		// create table type
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
+			t.Fatal(err)
+		}
+		// create procedure
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableIn, proc, tableType)); err != nil {
+			t.Fatal(err)
+		}
+		// create temporary table
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create local temporary table %s like %s", tableName, tableType)); err != nil {
+			t.Fatal(err)
+		}
+
+		// insert test data into temp table
+		j := 0
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName), func(args []any) error {
+			if j >= len(testData) {
+				return driver.ErrEndOfRows
+			}
+			args[0], args[1] = testData[j].i, testData[j].x
+			j++
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		var resultRows2 sql.Rows
+
+		stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, %s, ?)", proc, tableName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stmt.Close()
+
+		if _, err := stmt.ExecContext(ctx, 1, sql.Named("T2", sql.Out{Dest: &resultRows2})); err != nil {
+			t.Fatal(err)
+		}
+
+		checkData(testData, &resultRows2)
+
 	}
-	// create procedure
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
-		t.Fatal(err)
+
+	tests := []struct {
+		name string
+		fct  func()
+	}{
+		{"tableOut", testCallTableOut},
+		{"tableIn", testCallTableIn},
 	}
 
-	var resultRows1, resultRows2, resultRows3 sql.Rows
+	for _, test := range tests {
+		test := test // new test to run in parallel
 
-	// need to prepare to keep statement open
-	stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
-	if err != nil {
-		t.Fatal(err)
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct()
+		})
 	}
-	defer stmt.Close()
-
-	if _, err := stmt.Exec(
-		1,
-		sql.Named("T1", sql.Out{Dest: &resultRows1}),
-		sql.Named("T2", sql.Out{Dest: &resultRows2}),
-		sql.Named("T3", sql.Out{Dest: &resultRows3}),
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	check(data[0], &resultRows1)
-	check(data[1], &resultRows2)
-	check(data[2], &resultRows3)
 }
 
 func testCallNoPrm(t *testing.T, db *sql.DB) {
@@ -283,7 +375,7 @@ func TestCall(t *testing.T) {
 	}{
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
-		{"tableOut", testCallTableOut},
+		{"table", testCallTable},
 		{"noPrm", testCallNoPrm},
 		{"noOut", testCallNoOut},
 	}

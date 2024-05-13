@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.27
+- added call procedure with input table example and test
+
 #### v1.8.22 - v1.8.26
 - updated dependencies
 - source code cleanups

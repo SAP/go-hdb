@@ -551,11 +551,8 @@ type readProvider interface {
 	Reader() io.Reader
 }
 
-func convertToLobInDescr(t transform.Transformer, rd io.Reader) *LobInDescr {
-	if t != nil { // cesu8Encoder
-		rd = transform.NewReader(rd, t)
-	}
-	return newLobInDescr(rd)
+func convertToLobInDescr(tr transform.Transformer, rd io.Reader) *LobInDescr {
+	return newLobInDescr(tr, rd)
 }
 
 func convertLob(v any, t transform.Transformer) (any, error) {
