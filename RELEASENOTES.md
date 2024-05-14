@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.30
+- updated README root certificate sections
+
 #### v1.8.29
 - updated dependencies
 

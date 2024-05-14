@@ -25,19 +25,11 @@ API documentation and documented examples can be found at <https://pkg.go.dev/gi
 ## HANA cloud connection
 
 HANA cloud connection proxy is using SNI which does require a TLS connection.
-To connect successfully you would need a valid root certificate in pem format (please see
-[SAP Help](https://help.sap.com/viewer/cc53ad464a57404b8d453bbadbc81ceb/Cloud/en-US/5bd9bcec690346a8b36df9161b1343c2.html)).
-
-The certificate (DigiCertGlobalRootCA.crt.pem) can be downloaded in 'pem-format' from
-[digicert](https://www.digicert.com/kb/digicert-root-certificates.htm).
+As default one can rely on the root certificate set provided by the host, which already comes with the nessecary
+DigiCert certificates (CA, G5).
+For more information on [Go](https://go.dev/) tls certificate handling, please see https://pkg.go.dev/crypto/tls#Config.
 
 Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443". Then the dsn should look as follows:
-
-```
-"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com&TLSRootCAFile=<PATH TO CERTIFICATE>/DigiCertGlobalRootCA.crt.pem"
-```
-
-or
 
 ```
 "hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com"
@@ -45,10 +37,10 @@ or
 
 with:
 - TLSServerName same as 'host'
-- TLSRootCAFile needs to point to the location in your filesystem where the file DigiCertGlobalRootCA.crt.pem is stored
 
-When omitting the TLSRootCAFile, TLS uses the host's root CA set (for more information please see
-[Config RootCAs](https://pkg.go.dev/crypto/tls#Config).
+## Specific root certificate
+In case a specific root certificate (e.g. self-signed) would be needed, the TLSRootCAFile DSN parameter needs to
+point to the location in the filesystem where a root certificate file in 'pem-format' is stored.
 
 ## Tests
 
