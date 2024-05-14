@@ -24,13 +24,13 @@ func ExampleNewDSNConnector() {
 
 	connector, err := driver.NewDSNConnector(dsn)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	// output:
 }
@@ -103,7 +103,7 @@ func ExampleNewBasicAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	// output:
 }
@@ -132,18 +132,18 @@ func ExampleNewX509AuthConnectorByFiles() {
 
 	connector, err := driver.NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
 		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
-			log.Panic(err)
+			log.Fatal(err)
 		}
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	// output:
 }
@@ -169,7 +169,7 @@ func ExampleNewJWTAuthConnector() {
 	connector := driver.NewJWTAuthConnector(host, invalidToken)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
 		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
-			log.Panic(err)
+			log.Fatal(err)
 		}
 	}
 	// in case JWT authentication fails provide a (new) valid token.
@@ -179,7 +179,7 @@ func ExampleNewJWTAuthConnector() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	// output:
 }
@@ -213,14 +213,14 @@ func ExampleConnector_WithDatabase() {
 	connector := driver.NewBasicAuthConnector(host, username, password).WithDatabase(database)
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
 		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
-			log.Panic(err)
+			log.Fatal(err)
 		}
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	// output:
 }

@@ -11,15 +11,15 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
+const numRow = 1000 // Number of rows to be inserted into table.
+
 /*
 ExampleBulkInsert inserts 2000 rows into a database table:
-  - 1000 rows are inserted via an extended argument list and
-  - 1000 rows are inserted with the help of a argument function
+
+	1000 rows are inserted via an extended argument list and
+	1000 rows are inserted with the help of a argument function
 */
 func Example_bulkInsert() {
-	// Number of rows to be inserted into table.
-	numRow := 1000
-
 	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
@@ -27,13 +27,13 @@ func Example_bulkInsert() {
 
 	// Create table.
 	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Prepare statement.
 	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?, ?)", tableName))
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	defer stmt.Close()
 
@@ -43,7 +43,7 @@ func Example_bulkInsert() {
 		args[i*2], args[i*2+1] = i, float64(i)
 	}
 	if _, err := stmt.Exec(args...); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Bulk insert via function.
@@ -56,18 +56,19 @@ func Example_bulkInsert() {
 		i++
 		return nil
 	}); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Select number of inserted rows.
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&numRow); err != nil {
-		log.Panic(err)
+	var count int
+	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&count); err != nil {
+		log.Fatal(err)
 	}
-	fmt.Print(numRow)
+	fmt.Print(count)
 
 	// Drop table.
 	if _, err := db.Exec(fmt.Sprintf("drop table %s", tableName)); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// output: 2000

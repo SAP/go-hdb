@@ -50,11 +50,11 @@ DROP TABLE #my_local_temp_table
 
 	for scanner.Scan() {
 		if _, err := db.Exec(scanner.Text()); err != nil {
-			log.Panic(err)
+			log.Fatal(err)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// output:

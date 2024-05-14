@@ -27,7 +27,7 @@ end
 	procedure := driver.RandomIdentifier("procOut_")
 
 	if _, err := db.Exec(fmt.Sprintf(procOut, procedure)); err != nil { // Create stored procedure.
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Call PrepareContext with statement metadata context value.
@@ -36,7 +36,7 @@ end
 
 	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("call %s(?)", procedure))
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	defer stmt.Close()
 
@@ -52,7 +52,7 @@ end
 
 	// .. and execute Exec.
 	if _, err := stmt.Exec(args...); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Finally print the values.

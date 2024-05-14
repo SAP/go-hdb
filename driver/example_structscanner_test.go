@@ -38,18 +38,18 @@ func ExampleStructScanner() {
 
 	// Create table.
 	if _, err := db.Exec(fmt.Sprintf("create table %s (a varchar(30), b integer, c boolean, d varchar(20))", table)); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Insert test row data.
 	if _, err := db.Exec(fmt.Sprintf("insert into %s values (?,?,?,?)", table), "test", 42, true, "I am D"); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Create scanner.
 	scanner, err := driver.NewStructScanner[ExampleScanRow]()
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Scan target.
@@ -73,7 +73,7 @@ func ExampleStructScanner() {
 		}
 		return rows.Close()
 	}(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Scan a single row with the help of the struct scanner.
@@ -85,7 +85,7 @@ func ExampleStructScanner() {
 		// Rows will be closed by scanner.ScanRow.
 		return scanner.ScanRow(rows, row)
 	}(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// output:

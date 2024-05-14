@@ -19,13 +19,13 @@ func main() {
 
 	l, err := net.Listen(addr.Network(), addr.String())
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	defer l.Close()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Panic(err)
+			log.Fatal(err)
 		}
 
 		go handler(conn, dbAddr)

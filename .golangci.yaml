@@ -1,4 +1,7 @@
 linters-settings:
+  gocritic:
+    disabled-checks:
+      - exitAfterDefer
   govet:
     enable: [nilness]
   gosec:

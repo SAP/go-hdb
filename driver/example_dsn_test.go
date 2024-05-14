@@ -27,6 +27,6 @@ func ExampleDSN() {
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 }

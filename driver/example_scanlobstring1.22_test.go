@@ -25,29 +25,29 @@ func ExampleScanLobString() {
 	table := driver.RandomIdentifier("lob_")
 
 	if _, err := db.Exec(fmt.Sprintf("create table %s (n1 nclob, n2 nclob)", table)); err != nil {
-		log.Panicf("create table failed: %s", err)
+		log.Fatalf("create table failed: %s", err)
 	}
 
 	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Lob content can be written using a string.
 	content := "scan lob string"
 	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 
 	// Select.
 	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	defer stmt.Close()
 
@@ -55,7 +55,7 @@ func ExampleScanLobString() {
 	var s StringLob
 	var ns sql.Null[StringLob]
 	if err := stmt.QueryRow().Scan(&s, &ns); err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 	fmt.Println(s)
 	fmt.Println(ns.V)
