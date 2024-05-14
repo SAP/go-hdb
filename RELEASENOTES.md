@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.8.29
+- updated dependencies
+
 #### v1.8.28
 - restructured examples
 
