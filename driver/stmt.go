@@ -80,13 +80,13 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
 	c := s.conn
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), s.query, nvargs)
+		defer c.logSQLTrace(ctx, time.Now(), logQuery, s.query, &err, nvargs)
 	}
 
 	done := make(chan struct{})
 	var rows driver.Rows
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -96,10 +96,9 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return rows, err
 	}
 }
@@ -109,13 +108,13 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	if connHook != nil {
 		connHook(c, choStmtExec)
 	}
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), s.query, nvargs)
+		defer c.logSQLTrace(ctx, time.Now(), logExec, s.query, &err, nvargs)
 	}
 
 	done := make(chan struct{})
 	var result driver.Result
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -129,10 +128,9 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return result, err
 	}
 }
@@ -149,7 +147,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, false, (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtExecute, false, (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
 		return nil, nil, err
 	}
 
@@ -282,12 +280,10 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 			}
 		}
 
-		if len(args) != 0 {
-			r, err := s.exec(ctx, s.pr, args, !c.inTx, batch*c.attrs._bulkSize)
-			totalRowsAffected.add(r)
-			if err != nil {
-				return driver.RowsAffected(totalRowsAffected), err
-			}
+		r, err := s.exec(ctx, s.pr, args, !c.inTx, batch*c.attrs._bulkSize)
+		totalRowsAffected.add(r)
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
 		}
 		batch++
 	}

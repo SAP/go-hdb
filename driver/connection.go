@@ -158,8 +158,6 @@ const (
 	choStmtExec
 )
 
-var errCancelled = fmt.Errorf("%w: %w", driver.ErrBadConn, errors.New("db call cancelled"))
-
 // Conn enhances a connection with go-hdb specific connection functions.
 type Conn interface {
 	HDBVersion() *Version
@@ -210,10 +208,10 @@ type conn struct {
 
 	dbConn *dbConn
 
-	wg        sync.WaitGroup // wait for concurrent db calls when closing connections
-	inTx      bool           // in transaction
-	lastError error          // last error
-	sessionID int64
+	wg         sync.WaitGroup // wait for concurrent db calls when closing connections
+	inTx       bool           // in transaction
+	badConnErr error          // error that led to a bad connection.
+	sessionID  int64
 
 	serverOptions *p.ConnectOptions
 	hdbVersion    *Version
@@ -409,7 +407,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 
-	c.lastError = nil
+	c.badConnErr = nil
 
 	if c.attrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.attrs._pingInterval {
 		return nil
@@ -421,19 +419,30 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) isBad() bool { return errors.Is(c.lastError, driver.ErrBadConn) }
+func (c *conn) isBad() bool {
+	// we cannot work with nested errors containing driver.ErrBadConn
+	// as go sql retry these statements.
+	return c.badConnErr != nil
+}
+
+func (c *conn) setBad(err error) error {
+	if err != nil {
+		c.badConnErr = err
+	}
+	return err
+}
 
 // IsValid implements the driver.Validator interface.
 func (c *conn) IsValid() bool { return !c.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), dummyQuery, nil)
+		defer c.logSQLTrace(ctx, time.Now(), logPing, dummyQuery, &err, nil)
 	}
 
 	done := make(chan struct{})
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -443,23 +452,22 @@ func (c *conn) Ping(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return ctx.Err()
+		err = c.setBad(ctx.Err())
+		return err
 	case <-done:
-		c.lastError = err
 		return err
 	}
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), query, nil)
+		defer c.logSQLTrace(ctx, time.Now(), logPrepare, query, &err, nil)
 	}
 
 	done := make(chan struct{})
 	var stmt driver.Stmt
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -477,10 +485,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err := c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return stmt, err
 	}
 }
@@ -543,10 +550,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return tx, err
 	}
 }
@@ -561,13 +567,13 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), query, nvargs)
+		defer c.logSQLTrace(ctx, time.Now(), logQuery, query, &err, nvargs)
 	}
 
 	done := make(chan struct{})
 	var rows driver.Rows
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -577,10 +583,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return rows, err
 	}
 }
@@ -590,13 +595,13 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
+	var err error
 	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), query, nvargs)
+		defer c.logSQLTrace(ctx, time.Now(), logExec, query, &err, nvargs)
 	}
 
 	done := make(chan struct{})
 	var result driver.Result
-	var err error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -607,10 +612,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return result, err
 	}
 }
@@ -647,35 +651,51 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 
 	select {
 	case <-ctx.Done():
-		c.lastError = errCancelled
-		return nil, ctx.Err()
+		err = c.setBad(ctx.Err())
+		return nil, err
 	case <-done:
-		c.lastError = err
 		return ci, err
 	}
 }
 
-func (c *conn) logSQLTrace(ctx context.Context, start time.Time, query string, nvargs []driver.NamedValue) {
+const (
+	logPing    = "ping"
+	logPrepare = "prepare"
+	logQuery   = "query"
+	logExec    = "exec"
+)
+
+func (c *conn) logSQLTrace(ctx context.Context, start time.Time, logKind string, query string, err *error, nvargs []driver.NamedValue) {
 	const maxArg = 5 // limit the number of arguments to 5
 	l := len(nvargs)
 
+	attrs := []slog.Attr{
+		slog.String(logKind, query),
+		slog.Int64("ms", time.Since(start).Milliseconds()),
+	}
+	if *err != nil {
+		attrs = append(attrs, slog.String("error", (*err).Error()))
+	}
+
 	if l == 0 {
-		c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()))
+		c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
 		return
 	}
 
-	var attrs []slog.Attr
+	var argAttrs []slog.Attr
 	for i := 0; i < min(l, maxArg); i++ {
 		name := nvargs[i].Name
 		if name == "" {
 			name = strconv.Itoa(nvargs[i].Ordinal)
 		}
-		attrs = append(attrs, slog.String(name, fmt.Sprintf("%v", nvargs[i].Value)))
+		argAttrs = append(argAttrs, slog.String(name, fmt.Sprintf("%v", nvargs[i].Value)))
 	}
 	if l > maxArg {
-		attrs = append(attrs, slog.Int("numArgSkip", l-maxArg))
+		argAttrs = append(argAttrs, slog.Int("numArgSkip", l-maxArg))
 	}
-	c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", slog.String("query", query), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Any("arg", slog.GroupValue(attrs...)))
+	attrs = append(attrs, slog.Any("arg", slog.GroupValue(argAttrs...)))
+
+	c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
 }
 
 func (c *conn) addTimeValue(start time.Time, k int) {
@@ -727,12 +747,17 @@ func (t *tx) close(rollback bool) error {
 	return c.commit(context.Background())
 }
 
+func (c *conn) write(ctx context.Context, sessionID int64, messageType p.MessageType, commit bool, parts ...p.PartEncoder) error {
+	err := c.pw.Write(ctx, sessionID, messageType, commit, parts...)
+	return c.setBad(err)
+}
+
 const defaultSessionID = -1
 
 func (c *conn) dbConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
 	ci := &p.DBConnectInfo{}
 	ci.SetDatabaseName(databaseName)
-	if err := c.pw.Write(ctx, c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
 		return nil, err
 	}
 
@@ -765,7 +790,7 @@ func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *conn
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtAuthenticate, false, clientContext, initRequest); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtAuthenticate, false, clientContext, initRequest); err != nil {
 		return 0, nil, err
 	}
 
@@ -800,7 +825,7 @@ func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *conn
 		co.SetClientLocale(attrs._locale)
 	}
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtConnect, false, finalRequest, p.ClientID(clientID), co); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtConnect, false, finalRequest, p.ClientID(clientID), co); err != nil {
 		return 0, nil, err
 	}
 
@@ -832,7 +857,7 @@ func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driv
 	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
 		return nil, err
 	}
 
@@ -866,7 +891,7 @@ func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driv
 func (c *conn) execDirect(ctx context.Context, query string, commit bool) (driver.Result, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
 		return nil, err
 	}
 
@@ -883,7 +908,7 @@ func (c *conn) execDirect(ctx context.Context, query string, commit bool) (drive
 func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error) {
 	defer c.addSQLTimeValue(time.Now(), sqlTimePrepare)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
 		return nil, err
 	}
 
@@ -921,7 +946,7 @@ func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.Nam
 	if err != nil {
 		return nil, err
 	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -953,7 +978,7 @@ func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 	if err != nil {
 		return nil, err
 	}
-	if err := c.pw.Write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtExecute, commit, p.StatementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -1047,7 +1072,7 @@ func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (
 func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetch)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.attrs._fetchSize)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.attrs._fetchSize)); err != nil {
 		return err
 	}
 
@@ -1065,14 +1090,14 @@ func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
 }
 
 func (c *conn) dropStatementID(ctx context.Context, id uint64) error {
-	if err := c.pw.Write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
 	return c.pr.SkipParts(ctx)
 }
 
 func (c *conn) closeResultsetID(ctx context.Context, id uint64) error {
-	if err := c.pw.Write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
 	return c.pr.SkipParts(ctx)
@@ -1081,7 +1106,7 @@ func (c *conn) closeResultsetID(ctx context.Context, id uint64) error {
 func (c *conn) commit(ctx context.Context) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeCommit)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtCommit, false); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtCommit, false); err != nil {
 		return err
 	}
 	if err := c.pr.SkipParts(ctx); err != nil {
@@ -1093,7 +1118,7 @@ func (c *conn) commit(ctx context.Context) error {
 func (c *conn) rollback(ctx context.Context) error {
 	defer c.addSQLTimeValue(time.Now(), sqlTimeRollback)
 
-	if err := c.pw.Write(ctx, c.sessionID, p.MtRollback, false); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtRollback, false); err != nil {
 		return err
 	}
 	if err := c.pr.SkipParts(ctx); err != nil {
@@ -1103,7 +1128,7 @@ func (c *conn) rollback(ctx context.Context) error {
 }
 
 func (c *conn) disconnect(ctx context.Context) error {
-	if err := c.pw.Write(ctx, c.sessionID, p.MtDisconnect, false); err != nil {
+	if err := c.write(ctx, c.sessionID, p.MtDisconnect, false); err != nil {
 		return err
 	}
 	/*
@@ -1131,7 +1156,7 @@ func (c *conn) readLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
 	ctx := context.Background()
 	var err error
 	for err != io.EOF { //nolint: errorlint
-		if err = c.pw.Write(ctx, c.sessionID, p.MtWriteLob, false, request); err != nil {
+		if err = c.write(ctx, c.sessionID, p.MtWriteLob, false, request); err != nil {
 			return err
 		}
 
@@ -1200,7 +1225,7 @@ func (c *conn) writeLobs(ctx context.Context, cr *callResult, ids []p.LocatorID,
 
 		writeLobRequest.Descrs = descrs
 
-		if err := c.pw.Write(ctx, c.sessionID, p.MtReadLob, false, writeLobRequest); err != nil {
+		if err := c.write(ctx, c.sessionID, p.MtReadLob, false, writeLobRequest); err != nil {
 			return err
 		}
 

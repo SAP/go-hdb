@@ -244,6 +244,36 @@ func testComments(t *testing.T, db *sql.DB) {
 	}
 }
 
+func testDecodeErrors(t *testing.T, db *sql.DB) {
+	// guarantee that encoding errors will show up during scan.
+
+	tableName := driver.RandomIdentifier("testTemp")
+
+	if _, err := db.Exec(fmt.Sprintf("create column table %s (s nvarchar(20) not null)", tableName)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(fmt.Sprintf("insert into %s values(bintostr('2B301C39EDA2A81132306033'))", tableName)); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.Query(fmt.Sprintf("select s from %s", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var s sql.NullString
+	for rows.Next() {
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rows.Err(); err == nil {
+		t.Fatal("error expected")
+	}
+}
+
 func TestDriver(t *testing.T) {
 	t.Parallel()
 
@@ -261,6 +291,7 @@ func TestDriver(t *testing.T) {
 		{"upsert", testUpsert},
 		{"queryArgs", testQueryArgs},
 		{"queryComments", testComments},
+		{"decodeErrors", testDecodeErrors},
 	}
 
 	db := driver.MT.DB()

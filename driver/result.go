@@ -151,8 +151,9 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 	// copy row.
 	cols := len(qr.fields)
 	copy(dest, qr.fieldValues[qr.pos*cols:(qr.pos+1)*cols])
+	err := qr.decodeErrors.RowErrors(qr.pos)
 	qr.pos++
-	return qr.decodeErrors.RowErrors(qr.pos)
+	return err
 }
 
 // ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.

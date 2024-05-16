@@ -3,8 +3,6 @@ package protocol
 import (
 	"bufio"
 	"context"
-	"database/sql/driver"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -370,10 +368,10 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	return w.wr.Flush()
 }
 
-func (w *Writer) _write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...partEncoder) error {
+func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...PartEncoder) error {
 	// check on session variables to be send as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
-		parts = append([]partEncoder{(*clientInfo)(&w.sv)}, parts...)
+		parts = append([]PartEncoder{(*clientInfo)(&w.sv)}, parts...)
 		w.svSent = true
 	}
 
@@ -456,11 +454,4 @@ func (w *Writer) _write(ctx context.Context, sessionID int64, messageType Messag
 		bufferSize -= int64(partHeaderSize + size + pad)
 	}
 	return w.wr.Flush()
-}
-
-func (w *Writer) Write(ctx context.Context, sessionID int64, messageType MessageType, commit bool, parts ...partEncoder) error {
-	if err := w._write(ctx, sessionID, messageType, commit, parts...); err != nil {
-		return errors.Join(err, driver.ErrBadConn)
-	}
-	return nil
 }

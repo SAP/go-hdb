@@ -9,7 +9,7 @@ import (
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
-func authEncodeStep(t *testing.T, part partEncoder) []byte {
+func authEncodeStep(t *testing.T, part PartEncoder) []byte {
 	buf := bytes.Buffer{}
 	enc := encoding.NewEncoder(&buf, cesu8.DefaultEncoder)
 

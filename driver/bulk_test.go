@@ -384,6 +384,38 @@ func testBulkGeo(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 }
 
+func testBulkInsertInvalidUTF8(t *testing.T, ctr *Connector, db *sql.DB) {
+	// test, that bulk insert returns transformation errors.
+	var invalidUTF8 = string([]byte{0xed, 0xa2, 0xa8})
+
+	tableName := RandomIdentifier("bulkInvalidUTF8")
+
+	// Create table.
+	if _, err := db.Exec(fmt.Sprintf("create table %s (s nvarchar(123))", tableName)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare statement.
+	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?)", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	// Bulk insert via function.
+	i := 0
+	if _, err = stmt.Exec(func(args []any) error {
+		if i >= 1 {
+			return ErrEndOfRows
+		}
+		args[0] = invalidUTF8
+		i++
+		return nil
+	}); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestBulk(t *testing.T) {
 	t.Parallel()
 
@@ -396,6 +428,7 @@ func TestBulk(t *testing.T) {
 		{"testBulkBlob", testBulkBlob},
 		{"testBulkBlob106", testBulkBlob106},
 		{"testBulkGeo", testBulkGeo},
+		{"testBulkInsertInvalidUTF8", testBulkInsertInvalidUTF8},
 	}
 
 	ctr := MT.NewConnector()

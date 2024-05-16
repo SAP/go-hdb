@@ -1,6 +1,13 @@
 Release Notes
 =============
 
+## v1.9.0
+
+### New features
+
+- Added statement metadata (see example).
+- Improved sql trace.
+
 ## v1.8.0
 
 ### Minor revisions

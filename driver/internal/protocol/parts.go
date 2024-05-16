@@ -31,8 +31,8 @@ type resultPartDecoder interface {
 	decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn, lobChunkSize int) error
 }
 
-// partEncoder represents a protocol part the driver is able to encode.
-type partEncoder interface {
+// PartEncoder represents a protocol part the driver is able to encode.
+type PartEncoder interface {
 	Part
 	numArg() int
 	size() int
@@ -94,20 +94,20 @@ func (ReadLobRequest) size() int { return readLobRequestSize }
 
 // check if part types implement the part encoder interface.
 var (
-	_ partEncoder = (*AuthInitRequest)(nil)
-	_ partEncoder = (*AuthFinalRequest)(nil)
-	_ partEncoder = (*ClientID)(nil)
-	_ partEncoder = (*clientInfo)(nil)
-	_ partEncoder = (*Command)(nil)
-	_ partEncoder = (*StatementID)(nil)
-	_ partEncoder = (*InputParameters)(nil)
-	_ partEncoder = (*ResultsetID)(nil)
-	_ partEncoder = (*Fetchsize)(nil)
-	_ partEncoder = (*ReadLobRequest)(nil)
-	_ partEncoder = (*WriteLobRequest)(nil)
-	_ partEncoder = (*ClientContext)(nil)
-	_ partEncoder = (*ConnectOptions)(nil)
-	_ partEncoder = (*DBConnectInfo)(nil)
+	_ PartEncoder = (*AuthInitRequest)(nil)
+	_ PartEncoder = (*AuthFinalRequest)(nil)
+	_ PartEncoder = (*ClientID)(nil)
+	_ PartEncoder = (*clientInfo)(nil)
+	_ PartEncoder = (*Command)(nil)
+	_ PartEncoder = (*StatementID)(nil)
+	_ PartEncoder = (*InputParameters)(nil)
+	_ PartEncoder = (*ResultsetID)(nil)
+	_ PartEncoder = (*Fetchsize)(nil)
+	_ PartEncoder = (*ReadLobRequest)(nil)
+	_ PartEncoder = (*WriteLobRequest)(nil)
+	_ PartEncoder = (*ClientContext)(nil)
+	_ PartEncoder = (*ConnectOptions)(nil)
+	_ PartEncoder = (*DBConnectInfo)(nil)
 )
 
 // check if part types implement the right part decoder interface.

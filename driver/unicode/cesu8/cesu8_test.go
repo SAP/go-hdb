@@ -88,3 +88,9 @@ func TestString(t *testing.T) {
 		}
 	}
 }
+
+func TestReplacementChar(t *testing.T) {
+	if !utf8.ValidRune(utf8.RuneError) {
+		t.Fatalf("%c is not a valid utf8 rune", utf8.RuneError)
+	}
+}

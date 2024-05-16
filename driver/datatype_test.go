@@ -523,7 +523,8 @@ var stringTestData = []any{
 }
 
 var invalidUnicodeTestData = []any{
-	string([]byte{43, 48, 28, 57, 237, 162, 168, 17, 50, 48, 96, 51}), // invalid unicode
+	string([]byte{0xed, 0xa2, 0xa8}),
+	string([]byte{43, 48, 28, 57, 237, 162, 168, 17, 50, 48, 96, 51}),
 }
 
 var binaryTestData = []any{
