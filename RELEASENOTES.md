@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.9.0
 
+### Minor revisions
+
+#### v1.9.1
+- test performance improvements
+
 ### New features
 
 - Added statement metadata (see example).

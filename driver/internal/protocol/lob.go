@@ -429,6 +429,11 @@ func (r *ReadLobReply) String() string {
 	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.opt, r.b)
 }
 
+// needed if instantiated generically (e.g.sniffer).
+func (r *ReadLobReply) init() {
+	r.lobOutDescr = new(lobOutDescr)
+}
+
 func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if numArg != 1 {
 		panic("numArg == 1 expected")

@@ -549,12 +549,10 @@ var alphanumTestData = []any{
 }
 
 var unicodeData = func() []byte {
-	b := make([]byte, 0, utf8.MaxRune)
-	rb := make([]byte, utf8.UTFMax)
+	b := make([]byte, 0, utf8.MaxRune*4) // on average approx. 4 bytes per rune - avoid resizing by append.
 	for r := rune(0); r <= utf8.MaxRune; r++ {
-		l := utf8.EncodeRune(rb, r)
-		if r, _ := utf8.DecodeRune(rb); r != utf8.RuneError {
-			b = append(b, rb[:l]...)
+		if r != utf8.RuneError && utf8.ValidRune(r) {
+			b = utf8.AppendRune(b, r)
 		}
 	}
 	return b

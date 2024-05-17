@@ -171,6 +171,12 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 	*/
 }
 
+// to be implemented by parts needing initialization
+// in case the part is instatiated generically.
+type initer interface {
+	init()
+}
+
 // newGenPartReader returns a generic part reader.
 func newGenPartReader(kind PartKind) Part {
 	if kind == PkAuthentication {
@@ -186,6 +192,9 @@ func newGenPartReader(kind PartKind) Part {
 	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
 		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
+	}
+	if part, ok := part.(initer); ok {
+		part.init()
 	}
 	return part
 }
