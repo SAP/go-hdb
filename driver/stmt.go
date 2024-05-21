@@ -63,7 +63,7 @@ func (s *stmt) Close() error {
 	if s.rows != nil {
 		s.rows.Close()
 	}
-	if c.isBad() {
+	if c.isBad.Load() {
 		return driver.ErrBadConn
 	}
 	return c.dropStatementID(context.Background(), s.pr.stmtID)
@@ -79,59 +79,63 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
+
+	start := time.Now()
 	c := s.conn
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logQuery, s.query, &err, nvargs)
-	}
 
 	done := make(chan struct{})
 	var rows driver.Rows
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
-		rows, err = c.query(ctx, s.pr, nvargs, !s.conn.inTx)
+		rows, sqlErr = c.query(ctx, s.pr, nvargs, !s.conn.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logQuery, s.query, ctxErr, nvargs)
+		return nil, ctxErr
 	case <-done:
-		return rows, err
+		c.logSQLTrace(ctx, start, logQuery, s.query, sqlErr, nvargs)
+		return rows, sqlErr
 	}
 }
 
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	start := time.Now()
 	c := s.conn
-	if connHook != nil {
-		connHook(c, choStmtExec)
-	}
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logExec, s.query, &err, nvargs)
+
+	if fn := connHook.Load(); fn != nil {
+		(*fn)(c, choStmtExec)
 	}
 
 	done := make(chan struct{})
 	var result driver.Result
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
 		if s.pr.isProcedureCall() {
-			result, s.rows, err = s.execCall(ctx, s.pr, nvargs)
+			result, s.rows, sqlErr = s.execCall(ctx, s.pr, nvargs)
 		} else {
-			result, err = s.execDefault(ctx, nvargs)
+			result, sqlErr = s.execDefault(ctx, nvargs)
 		}
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logExec, s.query, ctxErr, nvargs)
+		return nil, ctxErr
 	case <-done:
-		return result, err
+		c.logSQLTrace(ctx, start, logExec, s.query, sqlErr, nvargs)
+		return result, sqlErr
 	}
 }
 

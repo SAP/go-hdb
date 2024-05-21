@@ -5,8 +5,12 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.2
+- performance improvements
+- fixed race conditions
+
 #### v1.9.1
-- test performance improvements
+- performance improvements
 
 ### New features
 

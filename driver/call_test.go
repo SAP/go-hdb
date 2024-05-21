@@ -312,9 +312,16 @@ end
 		t.Fatal(err)
 	}
 
+	// call by execute
 	if _, err := db.Exec(fmt.Sprintf("call %s", proc)); err != nil {
 		t.Fatal(err)
 	}
+
+	// call by query (allow for calls witout parameters)
+	if _, err := db.Query(fmt.Sprintf("call %s", proc)); err != nil { //nolint: sqlclosecheck
+		t.Fatal(err)
+	}
+
 }
 
 func testCallNoOut(t *testing.T, db *sql.DB) {

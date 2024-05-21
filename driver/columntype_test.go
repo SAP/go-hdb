@@ -141,60 +141,65 @@ func TestColumnType(t *testing.T) {
 		testTime    = time.Now()
 	)
 
-	var testFields = []struct {
+	type testField struct {
 		typ   types.Column
 		value any
-	}{
-		{types.NullTinyint, 1},
-		{types.NullSmallint, 42},
-		{types.NullInteger, 4711},
-		{types.NullBigint, 68000},
+	}
 
-		{types.NullReal, 1.0},
-		{types.NullDouble, 3.14},
+	testFields := func() []testField {
+		// create new set of fields to avoid race condition on bytes.Buffer.
+		return []testField{
+			{types.NullTinyint, 1},
+			{types.NullSmallint, 42},
+			{types.NullInteger, 4711},
+			{types.NullBigint, 68000},
 
-		{types.NullDate, testTime},
-		{types.NullTime, testTime},
-		{types.NullTimestamp, testTime},
-		{types.NullLongdate, testTime},
-		{types.NullSeconddate, testTime},
-		{types.NullDaydate, testTime},
-		{types.NullSecondtime, testTime},
+			{types.NullReal, 1.0},
+			{types.NullDouble, 3.14},
 
-		{types.NullClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{types.NullNClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{types.NullBlob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{types.NullDate, testTime},
+			{types.NullTime, testTime},
+			{types.NullTimestamp, testTime},
+			{types.NullLongdate, testTime},
+			{types.NullSeconddate, testTime},
+			{types.NullDaydate, testTime},
+			{types.NullSecondtime, testTime},
 
-		{types.NullText, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-		{types.NullBintext, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{types.NullClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{types.NullNClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{types.NullBlob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 
-		{types.Boolean, false},
+			{types.NullText, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{types.NullBintext, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 
-		{types.NewNullChar(30), testString},
-		{types.NewNullVarchar(30), testString},
-		{types.NewNullNChar(20), testString},
-		{types.NewNullNVarchar(20), testString},
+			{types.Boolean, false},
 
-		{types.NewNullShorttext(15), testString},
-		{types.NewNullAlphanum(15), testString},
+			{types.NewNullChar(30), testString},
+			{types.NewNullVarchar(30), testString},
+			{types.NewNullNChar(20), testString},
+			{types.NewNullNVarchar(20), testString},
 
-		{types.NewNullBinary(10), testBinary},
-		{types.NewNullVarbinary(10), testBinary},
+			{types.NewNullShorttext(15), testString},
+			{types.NewNullAlphanum(15), testString},
 
-		{types.NewNullDecimal(0, 0), testDecimal},  // decimal
-		{types.NewNullDecimal(18, 2), testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
-		{types.NewNullDecimal(28, 4), testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
-		{types.NewNullDecimal(38, 8), testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
+			{types.NewNullBinary(10), testBinary},
+			{types.NewNullVarbinary(10), testBinary},
 
-		{types.NewNullSmalldecimal(0, 0), testDecimal}, // smalldecimal
+			{types.NewNullDecimal(0, 0), testDecimal},  // decimal
+			{types.NewNullDecimal(18, 2), testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
+			{types.NewNullDecimal(28, 4), testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
+			{types.NewNullDecimal(38, 8), testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
 
-		// TODO: insert with function (e.g. st_geomfromewkb(?))
-		// {typ: datatypes.NewSpatialColumn(datatypes.DtSTPoint, 0), value: ""},
-		// {typ: datatypes.NewSpatialColumn(datatypes.DtSTGeometry, 0), value: ""},
+			{types.NewNullSmalldecimal(0, 0), testDecimal}, // smalldecimal
 
-		// not nullable
-		{types.Tinyint, 42},
-		{types.NewVarchar(25), testString},
+			// TODO: insert with function (e.g. st_geomfromewkb(?))
+			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTPoint, 0), value: ""},
+			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTGeometry, 0), value: ""},
+
+			// not nullable
+			{types.Tinyint, 42},
+			{types.NewVarchar(25), testString},
+		}
 	}
 
 	version := int(MT.Version().Major())
@@ -211,6 +216,7 @@ func TestColumnType(t *testing.T) {
 			db := sql.OpenDB(connector)
 			defer db.Close()
 
+			testFields := testFields()
 			types := make([]types.Column, 0, len(testFields))
 			values := make([]any, 0, len(testFields))
 			for _, field := range testFields {

@@ -19,13 +19,13 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 	// create cancel context
 	ctx, cancel := context.WithCancel(context.Background())
 	// callback function to cancel context
-	cancelCtx := func(c *conn, op int) {
+	cancelCtx := func(_ *conn, op int) {
 		if op == choStmtExec {
 			cancel()
 		}
 	}
 	// set hook
-	connHook = cancelCtx
+	connHook.Store(&cancelCtx)
 	/*
 		should return with err == context.Cancelled
 		- works only if stmt.Exec does evaluate ctx and call the callback function
@@ -35,34 +35,13 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 	// reset hook
-	connHook = nil
+	connHook.Store(nil)
 
 	// use statement again
 	// . should work even first stmt.Exec got cancelled
 	for i := 0; i < 5; i++ {
 		if _, err := stmt.Exec(); err != nil {
 			t.Fatal(err)
-		}
-	}
-}
-
-func testCheckCallStmt(t *testing.T, db *sql.DB) {
-	testData := []struct {
-		stmt  string
-		match bool
-	}{
-		{"call", false},
-		{"call ", true},
-		{"CALL ", true},
-		{"caller", false},
-		{"call function", true},
-		{" call function", true},
-		{"my call", false},
-	}
-
-	for _, data := range testData {
-		if match := callStmt.MatchString(data.stmt); match != data.match {
-			t.Fatalf("stmt %s regex match gives %t - expected %t", data.stmt, match, data.match)
 		}
 	}
 }
@@ -75,7 +54,6 @@ func TestConnection(t *testing.T) {
 		fct  func(t *testing.T, db *sql.DB)
 	}{
 		{"cancelContext", testCancelContext},
-		{"checkCallStmt", testCheckCallStmt},
 	}
 
 	db := MT.DB()

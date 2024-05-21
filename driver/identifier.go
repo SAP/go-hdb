@@ -1,13 +1,10 @@
 package driver
 
 import (
-	"regexp"
 	"strconv"
 
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
 )
-
-var reSimple = regexp.MustCompile("^[_A-Z][_#$A-Z0-9]*$")
 
 // Identifier in hdb SQL statements like schema or table name.
 type Identifier string
@@ -18,10 +15,21 @@ func RandomIdentifier(prefix string) Identifier {
 	return Identifier(prefix + alphanum.ReadString(16))
 }
 
-func (i Identifier) String() string {
-	s := string(i)
-	if reSimple.MatchString(s) {
-		return s
+func (i Identifier) isSimple() bool {
+	// var reSimple = regexp.MustCompile("^[_A-Z][_#$A-Z0-9]*$")
+	for i, r := range i {
+		switch {
+		case r == '_' || ('A' <= r && r <= 'Z'): // valid char
+		case i != 0 && (r == '#' || r == '$' || ('0' <= r && r <= '9')): // valid char for non first char
+		default:
+			return false
+		}
 	}
-	return strconv.Quote(s)
+	return true
+}
+func (i Identifier) String() string {
+	if i.isSimple() {
+		return string(i)
+	}
+	return strconv.Quote(string(i))
 }

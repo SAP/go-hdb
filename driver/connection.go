@@ -12,7 +12,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"regexp"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -150,7 +149,7 @@ var (
 )
 
 // connHook is a hook for testing.
-var connHook func(c *conn, op int)
+var connHook atomic.Pointer[func(c *conn, op int)]
 
 // connection hook operations.
 const (
@@ -208,10 +207,14 @@ type conn struct {
 
 	dbConn *dbConn
 
-	wg         sync.WaitGroup // wait for concurrent db calls when closing connections
-	inTx       bool           // in transaction
-	badConnErr error          // error that led to a bad connection.
-	sessionID  int64
+	// bad connection flag (can be set by 'done' and 'write' concurrently).
+	// we cannot work with nested errors containing driver.ErrBadConn
+	// as go sql retry these statements.
+	isBad atomic.Bool
+
+	wg        sync.WaitGroup // wait for concurrent db calls when closing connections
+	inTx      bool           // in transaction
+	sessionID int64
 
 	serverOptions *p.ConnectOptions
 	hdbVersion    *Version
@@ -403,11 +406,11 @@ func (c *conn) versionString() (version string) { return c.serverOptions.FullVer
 
 // ResetSession implements the driver.SessionResetter interface.
 func (c *conn) ResetSession(ctx context.Context) error {
-	if c.isBad() {
+	if c.isBad.Load() {
 		return driver.ErrBadConn
 	}
 
-	c.badConnErr = nil
+	c.isBad.Store(false)
 
 	if c.attrs._pingInterval == 0 || c.dbConn.lastRead.IsZero() || time.Since(c.dbConn.lastRead) < c.attrs._pingInterval {
 		return nil
@@ -419,61 +422,47 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) isBad() bool {
-	// we cannot work with nested errors containing driver.ErrBadConn
-	// as go sql retry these statements.
-	return c.badConnErr != nil
-}
-
-func (c *conn) setBad(err error) error {
-	if err != nil {
-		c.badConnErr = err
-	}
-	return err
-}
-
 // IsValid implements the driver.Validator interface.
-func (c *conn) IsValid() bool { return !c.isBad() }
+func (c *conn) IsValid() bool { return !c.isBad.Load() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logPing, dummyQuery, &err, nil)
-	}
+	start := time.Now()
 
 	done := make(chan struct{})
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
-		_, err = c.queryDirect(ctx, dummyQuery, !c.inTx)
+		_, sqlErr = c.queryDirect(ctx, dummyQuery, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logPing, dummyQuery, ctxErr, nil)
+		return ctxErr
 	case <-done:
-		return err
+		c.logSQLTrace(ctx, start, logPing, dummyQuery, sqlErr, nil)
+		return sqlErr
 	}
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logPrepare, query, &err, nil)
-	}
+	start := time.Now()
 
 	done := make(chan struct{})
 	var stmt driver.Stmt
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
 		var pr *prepareResult
 
-		if pr, err = c.prepare(ctx, query); err == nil {
+		if pr, sqlErr = c.prepare(ctx, query); sqlErr == nil {
 			stmt = newStmt(c, query, pr)
 			if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
 				*stmtMetadata = pr
@@ -485,10 +474,13 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 	select {
 	case <-ctx.Done():
-		err := c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logPrepare, query, ctxErr, nil)
+		return nil, ctxErr
 	case <-done:
-		return stmt, err
+		c.logSQLTrace(ctx, start, logPrepare, query, sqlErr, nil)
+		return stmt, sqlErr
 	}
 }
 
@@ -497,7 +489,7 @@ func (c *conn) Close() error {
 	c.wg.Wait()                                        // wait until concurrent db calls are finalized
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	// do not disconnect if isBad or invalid sessionID
-	if !c.isBad() && c.sessionID != defaultSessionID {
+	if !c.isBad.Load() && c.sessionID != defaultSessionID {
 		c.disconnect(context.Background()) //nolint:errcheck
 	}
 	err := c.dbConn.close()
@@ -525,21 +517,21 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	done := make(chan struct{})
 	var tx driver.Tx
-	var err error
+	var sqlErr error
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		// set isolation level
-		if _, err = c.execDirect(ctx, isolationLevelQuery, !c.inTx); err != nil {
+		if _, sqlErr = c.execDirect(ctx, isolationLevelQuery, !c.inTx); sqlErr != nil {
 			goto done
 		}
 		// set access mode
 		if opts.ReadOnly {
-			_, err = c.execDirect(ctx, setAccessModeReadOnly, !c.inTx)
+			_, sqlErr = c.execDirect(ctx, setAccessModeReadOnly, !c.inTx)
 		} else {
-			_, err = c.execDirect(ctx, setAccessModeReadWrite, !c.inTx)
+			_, sqlErr = c.execDirect(ctx, setAccessModeReadWrite, !c.inTx)
 		}
-		if err != nil {
+		if sqlErr != nil {
 			goto done
 		}
 		c.inTx = true
@@ -550,43 +542,42 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		return nil, ctx.Err()
 	case <-done:
-		return tx, err
+		return tx, sqlErr
 	}
 }
 
-var callStmt = regexp.MustCompile(`(?i)^\s*call\s+.*`) // sql statement beginning with call
-
 // QueryContext implements the driver.QueryerContext interface.
 func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.NamedValue) (driver.Rows, error) {
-	if callStmt.MatchString(query) {
-		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", query)
-	}
+	// accepts stored procedures (call) without parameters to avoid parsing
+	// the query string which might have comments, etc.
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logQuery, query, &err, nvargs)
-	}
+
+	start := time.Now()
 
 	done := make(chan struct{})
 	var rows driver.Rows
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
-		rows, err = c.queryDirect(ctx, query, !c.inTx)
+		rows, sqlErr = c.queryDirect(ctx, query, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logQuery, query, ctxErr, nvargs)
+		return nil, ctxErr
 	case <-done:
-		return rows, err
+		c.logSQLTrace(ctx, start, logQuery, query, sqlErr, nvargs)
+		return rows, sqlErr
 	}
 }
 
@@ -595,27 +586,29 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	if len(nvargs) != 0 {
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
-	var err error
-	if c.sqlTrace {
-		defer c.logSQLTrace(ctx, time.Now(), logExec, query, &err, nvargs)
-	}
+
+	start := time.Now()
 
 	done := make(chan struct{})
 	var result driver.Result
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
 		// handle procesure call without parameters here as well
-		result, err = c.execDirect(ctx, query, !c.inTx)
+		result, sqlErr = c.execDirect(ctx, query, !c.inTx)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		ctxErr := ctx.Err()
+		c.logSQLTrace(ctx, start, logExec, query, ctxErr, nvargs)
+		return nil, ctxErr
 	case <-done:
-		return result, err
+		c.logSQLTrace(ctx, start, logExec, query, sqlErr, nvargs)
+		return result, sqlErr
 	}
 }
 
@@ -641,20 +634,20 @@ func (c *conn) DatabaseName() string { return c.serverOptions.DatabaseNameOrZero
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
 	done := make(chan struct{})
 	var ci *DBConnectInfo
-	var err error
 	c.wg.Add(1)
+	var sqlErr error
 	go func() {
 		defer c.wg.Done()
-		ci, err = c.dbConnectInfo(ctx, databaseName)
+		ci, sqlErr = c.dbConnectInfo(ctx, databaseName)
 		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
-		err = c.setBad(ctx.Err())
-		return nil, err
+		c.isBad.Store(true)
+		return nil, ctx.Err()
 	case <-done:
-		return ci, err
+		return ci, sqlErr
 	}
 }
 
@@ -665,7 +658,11 @@ const (
 	logExec    = "exec"
 )
 
-func (c *conn) logSQLTrace(ctx context.Context, start time.Time, logKind string, query string, err *error, nvargs []driver.NamedValue) {
+func (c *conn) logSQLTrace(ctx context.Context, start time.Time, logKind string, query string, err error, nvargs []driver.NamedValue) {
+	if !c.sqlTrace {
+		return
+	}
+
 	const maxArg = 5 // limit the number of arguments to 5
 	l := len(nvargs)
 
@@ -673,8 +670,8 @@ func (c *conn) logSQLTrace(ctx context.Context, start time.Time, logKind string,
 		slog.String(logKind, query),
 		slog.Int64("ms", time.Since(start).Milliseconds()),
 	}
-	if *err != nil {
-		attrs = append(attrs, slog.String("error", (*err).Error()))
+	if err != nil {
+		attrs = append(attrs, slog.String("error", (err).Error()))
 	}
 
 	if l == 0 {
@@ -731,7 +728,7 @@ func (t *tx) close(rollback bool) error {
 
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
-	if c.isBad() {
+	if c.isBad.Load() {
 		return driver.ErrBadConn
 	}
 	if t.closed {
@@ -749,7 +746,10 @@ func (t *tx) close(rollback bool) error {
 
 func (c *conn) write(ctx context.Context, sessionID int64, messageType p.MessageType, commit bool, parts ...p.PartEncoder) error {
 	err := c.pw.Write(ctx, sessionID, messageType, commit, parts...)
-	return c.setBad(err)
+	if err != nil {
+		c.isBad.Store(true)
+	}
+	return err
 }
 
 const defaultSessionID = -1
