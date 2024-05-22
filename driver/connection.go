@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -202,10 +201,8 @@ type conn struct {
 	attrs   *connAttrs
 	metrics *metrics
 
-	sqlTrace bool
-	logger   *slog.Logger
-
-	dbConn *dbConn
+	dbConn    *dbConn
+	sqlTracer *sqlTracer
 
 	// bad connection flag (can be set by 'done' and 'write' concurrently).
 	// we cannot work with nested errors containing driver.ErrBadConn
@@ -277,30 +274,6 @@ func connect(ctx context.Context, host string, metrics *metrics, connAttrs *conn
 	}
 }
 
-var (
-	protTrace atomic.Bool
-	sqlTrace  atomic.Bool
-)
-
-func setTrace(b *atomic.Bool, s string) error {
-	v, err := strconv.ParseBool(s)
-	if err == nil {
-		b.Store(v)
-	}
-	return err
-}
-
-func init() {
-	flag.BoolFunc("hdb.protTrace", "enabling hdb protocol trace", func(s string) error { return setTrace(&protTrace, s) })
-	flag.BoolFunc("hdb.sqlTrace", "enabling hdb sql trace", func(s string) error { return setTrace(&sqlTrace, s) })
-}
-
-// SQLTrace returns true if sql tracing output is active, false otherwise.
-func SQLTrace() bool { return sqlTrace.Load() }
-
-// SetSQLTrace sets sql tracing output active or inactive.
-func SetSQLTrace(on bool) { sqlTrace.Store(on) }
-
 // unique connection number.
 var connNo atomic.Uint64
 
@@ -334,7 +307,7 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 	enc := encoding.NewEncoder(writer, attrs._cesu8Encoder)
 	dec := encoding.NewDecoder(reader, attrs._cesu8Decoder)
 
-	c := &conn{attrs: attrs, metrics: metrics, dbConn: dbConn, sqlTrace: sqlTrace.Load(), logger: logger, dec: dec, sessionID: defaultSessionID}
+	c := &conn{attrs: attrs, metrics: metrics, dbConn: dbConn, sqlTracer: newSQLTracer(logger, 0), dec: dec, sessionID: defaultSessionID}
 	c.pw = p.NewWriter(writer, enc, protTrace, logger, attrs._cesu8Encoder, attrs._sessionVariables) // write upstream
 	c.pr = p.NewDBReader(dec, c.readLob, protTrace, logger, attrs._lobChunkSize)                     // read downstream
 
@@ -427,7 +400,7 @@ func (c *conn) IsValid() bool { return !c.isBad.Load() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	start := time.Now()
+	c.sqlTracer.begin()
 
 	done := make(chan struct{})
 	c.wg.Add(1)
@@ -442,17 +415,17 @@ func (c *conn) Ping(ctx context.Context) error {
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logPing, dummyQuery, ctxErr, nil)
+		c.sqlTracer.log(ctx, tracePing, dummyQuery, ctxErr, nil)
 		return ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logPing, dummyQuery, sqlErr, nil)
+		c.sqlTracer.log(ctx, tracePing, dummyQuery, sqlErr, nil)
 		return sqlErr
 	}
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	start := time.Now()
+	c.sqlTracer.begin()
 
 	done := make(chan struct{})
 	var stmt driver.Stmt
@@ -476,10 +449,10 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logPrepare, query, ctxErr, nil)
+		c.sqlTracer.log(ctx, tracePrepare, query, ctxErr, nil)
 		return nil, ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logPrepare, query, sqlErr, nil)
+		c.sqlTracer.log(ctx, tracePrepare, query, sqlErr, nil)
 		return stmt, sqlErr
 	}
 }
@@ -557,7 +530,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	start := time.Now()
+	c.sqlTracer.begin()
 
 	done := make(chan struct{})
 	var rows driver.Rows
@@ -573,10 +546,10 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logQuery, query, ctxErr, nvargs)
+		c.sqlTracer.log(ctx, traceQuery, query, ctxErr, nvargs)
 		return nil, ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logQuery, query, sqlErr, nvargs)
+		c.sqlTracer.log(ctx, traceQuery, query, sqlErr, nvargs)
 		return rows, sqlErr
 	}
 }
@@ -587,7 +560,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	start := time.Now()
+	c.sqlTracer.begin()
 
 	done := make(chan struct{})
 	var result driver.Result
@@ -604,10 +577,10 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logExec, query, ctxErr, nvargs)
+		c.sqlTracer.log(ctx, traceExec, query, ctxErr, nvargs)
 		return nil, ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logExec, query, sqlErr, nvargs)
+		c.sqlTracer.log(ctx, traceExec, query, sqlErr, nvargs)
 		return result, sqlErr
 	}
 }
@@ -649,50 +622,6 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 	case <-done:
 		return ci, sqlErr
 	}
-}
-
-const (
-	logPing    = "ping"
-	logPrepare = "prepare"
-	logQuery   = "query"
-	logExec    = "exec"
-)
-
-func (c *conn) logSQLTrace(ctx context.Context, start time.Time, logKind string, query string, err error, nvargs []driver.NamedValue) {
-	if !c.sqlTrace {
-		return
-	}
-
-	const maxArg = 5 // limit the number of arguments to 5
-	l := len(nvargs)
-
-	attrs := []slog.Attr{
-		slog.String(logKind, query),
-		slog.Int64("ms", time.Since(start).Milliseconds()),
-	}
-	if err != nil {
-		attrs = append(attrs, slog.String("error", (err).Error()))
-	}
-
-	if l == 0 {
-		c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
-		return
-	}
-
-	var argAttrs []slog.Attr
-	for i := 0; i < min(l, maxArg); i++ {
-		name := nvargs[i].Name
-		if name == "" {
-			name = strconv.Itoa(nvargs[i].Ordinal)
-		}
-		argAttrs = append(argAttrs, slog.String(name, fmt.Sprintf("%v", nvargs[i].Value)))
-	}
-	if l > maxArg {
-		argAttrs = append(argAttrs, slog.Int("numArgSkip", l-maxArg))
-	}
-	attrs = append(attrs, slog.Any("arg", slog.GroupValue(argAttrs...)))
-
-	c.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
 }
 
 func (c *conn) addTimeValue(start time.Time, k int) {

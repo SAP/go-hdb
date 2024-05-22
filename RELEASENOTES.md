@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.3
+- switching SQL trace on / off including pooled connections
+
 #### v1.9.2
 - performance improvements
 - fixed race conditions

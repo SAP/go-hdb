@@ -11,8 +11,10 @@ all:
 	golangci-lint run ./...
 	@echo execute tests on latest go version	
 	go test ./...
+	go test ./... -race
 	@echo execute tests on older supported go versions
 	GOTOOLCHAIN=go1.21.10 go1.21.10 test ./...
+	GOTOOLCHAIN=go1.21.10 go1.21.10 test ./... -race
 	@echo execute tests on future supported go versions
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"

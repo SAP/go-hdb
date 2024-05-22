@@ -80,8 +80,8 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
 
-	start := time.Now()
 	c := s.conn
+	c.sqlTracer.begin()
 
 	done := make(chan struct{})
 	var rows driver.Rows
@@ -97,17 +97,17 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logQuery, s.query, ctxErr, nvargs)
+		c.sqlTracer.log(ctx, traceQuery, s.query, ctxErr, nvargs)
 		return nil, ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logQuery, s.query, sqlErr, nvargs)
+		c.sqlTracer.log(ctx, traceQuery, s.query, sqlErr, nvargs)
 		return rows, sqlErr
 	}
 }
 
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	start := time.Now()
 	c := s.conn
+	c.sqlTracer.begin()
 
 	if fn := connHook.Load(); fn != nil {
 		(*fn)(c, choStmtExec)
@@ -131,10 +131,10 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	case <-ctx.Done():
 		c.isBad.Store(true)
 		ctxErr := ctx.Err()
-		c.logSQLTrace(ctx, start, logExec, s.query, ctxErr, nvargs)
+		c.sqlTracer.log(ctx, traceExec, s.query, ctxErr, nvargs)
 		return nil, ctxErr
 	case <-done:
-		c.logSQLTrace(ctx, start, logExec, s.query, sqlErr, nvargs)
+		c.sqlTracer.log(ctx, traceExec, s.query, sqlErr, nvargs)
 		return result, sqlErr
 	}
 }
