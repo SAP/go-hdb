@@ -11,12 +11,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 	"text/template"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 //go:embed stats.tmpl
@@ -227,6 +226,18 @@ const (
 	cpuProfileName = "test.cpuprofile"
 )
 
+// copied from runtime/debug.
+func stack() []byte {
+	buf := make([]byte, 1024)
+	for {
+		n := runtime.Stack(buf, true) // all stacks
+		if n < len(buf) {
+			return buf[:n]
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+}
+
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -243,7 +254,6 @@ func TestMain(m *testing.M) {
 		dk = dropKind(i)
 		return nil
 	})
-	leak := flag.Bool("leak", false, "enable goleak test")
 
 	if !flag.Parsed() {
 		flag.Parse()
@@ -260,13 +270,14 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
-	if *leak {
-		// cleanup go-hdb driver.
-		Unregister() //nolint: errcheck
-		// goleak (https://github.com/uber-go/goleak) test
-		if err := goleak.Find(); err != nil {
-			log.Print(err)
-		}
+	// cleanup go-hdb driver.
+	Unregister() //nolint: errcheck
+
+	// detect go routine leaks.
+	stack := stack()
+	numLeaking := bytes.Count(stack, []byte{'\n', '\n'}) // count newlines.
+	if numLeaking > 0 {
+		log.Printf("\nnumber of leaking go routines: %d\n%s\n", numLeaking, stack)
 	}
 
 	os.Exit(exitCode)
