@@ -18,27 +18,21 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 
 	// create cancel context
 	ctx, cancel := context.WithCancel(context.Background())
+
 	// callback function to cancel context
 	cancelCtx := func(_ *conn, op int) {
 		if op == choStmtExec {
 			cancel()
 		}
 	}
-	// set hook
-	connHook.Store(&cancelCtx)
-	/*
-		should return with err == context.Cancelled
-		- works only if stmt.Exec does evaluate ctx and call the callback function
-		  provided by context.WithValue
-	*/
-	if _, err := stmt.ExecContext(ctx); !errors.Is(err, context.Canceled) {
+	// set hook context.
+	hookCtx := withConnHook(ctx, cancelCtx)
+	// exec - should return with error context.Cancelled.
+	if _, err := stmt.ExecContext(hookCtx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	// reset hook
-	connHook.Store(nil)
 
-	// use statement again
-	// . should work even first stmt.Exec got cancelled
+	// use statement again - should work even first stmt.Exec got cancelled.
 	for i := 0; i < 5; i++ {
 		if _, err := stmt.Exec(); err != nil {
 			t.Fatal(err)

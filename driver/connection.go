@@ -147,14 +147,24 @@ var (
 	_ Conn                      = (*conn)(nil) // go-hdb enhancements
 )
 
-// connHook is a hook for testing.
-var connHook atomic.Pointer[func(c *conn, op int)]
+// connection hook for testing.
+// use unexported type to avoid key collisions.
+type connCtxKey struct{}
 
-// connection hook operations.
+var connHookCtxKey connCtxKey
+
+// ...connection hook operations.
 const (
 	choNone = iota
 	choStmtExec
 )
+
+// ...connection hook function.
+type connHookFn func(c *conn, op int)
+
+func withConnHook(ctx context.Context, fn connHookFn) context.Context {
+	return context.WithValue(ctx, connHookCtxKey, fn)
+}
 
 // Conn enhances a connection with go-hdb specific connection functions.
 type Conn interface {

@@ -109,8 +109,8 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	c := s.conn
 	c.sqlTracer.begin()
 
-	if fn := connHook.Load(); fn != nil {
-		(*fn)(c, choStmtExec)
+	if hookFn, ok := ctx.Value(connHookCtxKey).(connHookFn); ok {
+		hookFn(c, choStmtExec)
 	}
 
 	done := make(chan struct{})
