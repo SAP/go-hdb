@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.6
+- updated dependencies
+
 #### v1.9.5
 - replaced testing hook by context
 

@@ -4,8 +4,8 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
-		<script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
+		<script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
 		<title>bulkbench</title>
 		<script>
 			htmx.on("htmx:sendError", function(evt) {
@@ -15,12 +15,6 @@
 	</head>
 	<body>
 		<main class="container">
-			<nav>
-				<ul></ul>
-				<ul>
-					<li><a href="https://github.com/SAP/go-hdb/tree/main/cmd/bulkbench">github</a></li>
-				</ul>
-			</nav>
 			<details>
 				<summary>Runtime information</summary>
 				<table role="grid">
@@ -34,7 +28,7 @@
 				</table>
 			</details>
 			<details>
-				<summary>Test parameter</summary>
+				<summary>Benchmark parameter</summary>
 				<table role="grid">
 					<thead>
 						<tr>
@@ -55,7 +49,7 @@
 				</table>
 			</details>
 			<details open>
-				<summary>Tests</summary>
+				<summary>Benchmarks</summary>
 				<table>
 					<thead>
 						<tr>
@@ -68,8 +62,8 @@
 						{{- range .TestDefs}}
 						<tr>
 							<td>{{.Descr}}</td>
-							<td><a hx-get={{.SequentialLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
-							<td><a hx-get={{.ConcurrentLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
+							<td><a href="" hx-get={{.SequentialLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
+							<td><a href="" hx-get={{.ConcurrentLink}} hx-target="#testresult" hx-indicator="#indicator">start</a></td>
 						</tr>
 						{{- end}}
 					</tbody>
@@ -128,6 +122,13 @@
 				</footer>
 		  </blockquote>
 		</main>
+		<footer class="container">
+			<small>
+				<a href="https://github.com/SAP/go-hdb/tree/main/cmd/bulkbench">Source code</a> •
+				Built with <a href="https://picocss.com">pico</a> •
+				<a href="https://htmx.org/">htmx</a>
+			</small>
+		</footer>
 	</body>
 </html>
 {{end}}
