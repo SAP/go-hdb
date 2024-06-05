@@ -52,17 +52,6 @@ linters-settings:
 linters:
   enable-all: true
   disable:
-    #deprecated
-    - ifshort
-    - exhaustivestruct
-    - deadcode
-    - nosnakecase
-    - golint
-    - scopelint
-    - structcheck
-    - varcheck
-    - interfacer
-    - maligned
     #not used
     - varnamelen
     - nonamedreturns

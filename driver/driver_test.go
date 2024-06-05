@@ -274,12 +274,22 @@ func testDecodeErrors(t *testing.T, db *sql.DB) {
 	}
 }
 
-func TestDriver(t *testing.T) {
+func testDriverDB(t *testing.T) {
+	// test that db.Close() closes the metrics and db in the right order.
+	db := driver.OpenDB(driver.MT.Connector())
+	if _, err := db.Exec("select * from dummy"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	// output:
+}
+
+func testDriverWithDB(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB)
+		fn   func(t *testing.T, db *sql.DB)
 	}{
 		{"connection", testConnection},
 		{"ping", testPing},
@@ -300,7 +310,34 @@ func TestDriver(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db)
+			test.fn(t, db)
 		})
 	}
+}
+
+func testDriverWithoutDB(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		fn   func(t *testing.T)
+	}{
+		{"driverDB", testDriverDB},
+	}
+
+	for _, test := range tests {
+		test := test // new dfv to run in parallel
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fn(t)
+		})
+	}
+}
+
+func TestDriver(t *testing.T) {
+	t.Parallel()
+
+	t.Run("driverWithoutDB", testDriverWithoutDB)
+	t.Run("driverWithtDB", testDriverWithDB)
 }

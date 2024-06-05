@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.7
+- fixed panic calling driver.DB.Close()
+- updated dependencies
+
 #### v1.9.6
 - updated dependencies
 

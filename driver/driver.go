@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.9.6"
+const DriverVersion = "1.9.7"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -120,8 +120,10 @@ func OpenDB(c *Connector) *DB {
 
 // Close closes the database. It also calls the Close method of the sql package and returns its error.
 func (db *DB) Close() error {
+	err := db.DB.Close()
+	// close metrics only after db is closed.
 	db.metrics.close()
-	return db.DB.Close()
+	return err
 }
 
 // ExStats returns the extended database statistics.
