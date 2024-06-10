@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.8
+- changed go-mod go version back to go1.21
+
 #### v1.9.7
 - fixed panic calling driver.DB.Close()
 - updated dependencies
