@@ -16,6 +16,8 @@ all:
 	GOTOOLCHAIN=go1.21.11 go1.21.11 test ./...
 	GOTOOLCHAIN=go1.21.11 go1.21.11 test ./... -race
 	@echo execute tests on future supported go versions
+	GOTOOLCHAIN=go1.23rc1 go1.23rc1 test ./...
+	GOTOOLCHAIN=go1.23rc1 go1.23rc1 test ./... -race
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 	@echo "reuse (license) check"
 	pipx run reuse lint
@@ -44,3 +46,5 @@ tools:
 go:
 	go install golang.org/dl/go1.21.11@latest
 	go1.21.11 download
+	go install golang.org/dl/go1.23rc1@latest
+	go1.23rc1 download

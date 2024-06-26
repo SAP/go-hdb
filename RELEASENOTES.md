@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.9
+- updated dependencies
+- added go1.23rc1 make
+
 #### v1.9.8
 - changed go-mod go version back to go1.21
 
