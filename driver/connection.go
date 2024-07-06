@@ -229,6 +229,15 @@ type conn struct {
 	dec *encoding.Decoder
 	pr  *p.Reader
 	pw  *p.Writer
+
+	/*
+		all calls to go-hdb from go sql are under a mutex, but
+		go-hdb lob scanning might need to fetch additional data
+		and is not protected by the same mutex which might lead to
+		race conditions on connection access.
+		So, let's protect write / read protocol access by an own mutex.
+	*/
+	mu sync.Mutex
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -694,6 +703,9 @@ func (c *conn) write(ctx context.Context, sessionID int64, messageType p.Message
 const defaultSessionID = -1
 
 func (c *conn) dbConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	ci := &p.DBConnectInfo{}
 	ci.SetDatabaseName(databaseName)
 	if err := c.write(ctx, c.sessionID, p.MtDBConnectInfo, false, ci); err != nil {
@@ -793,6 +805,9 @@ func (c *conn) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *conn
 }
 
 func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driver.Rows, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
@@ -828,6 +843,9 @@ func (c *conn) queryDirect(ctx context.Context, query string, commit bool) (driv
 }
 
 func (c *conn) execDirect(ctx context.Context, query string, commit bool) (driver.Result, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeExec)
 
 	if err := c.write(ctx, c.sessionID, p.MtExecuteDirect, commit, p.Command(query)); err != nil {
@@ -845,6 +863,9 @@ func (c *conn) execDirect(ctx context.Context, query string, commit bool) (drive
 }
 
 func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimePrepare)
 
 	if err := c.write(ctx, c.sessionID, p.MtPrepare, false, p.Command(query)); err != nil {
@@ -874,6 +895,9 @@ func (c *conn) prepare(ctx context.Context, query string) (*prepareResult, error
 }
 
 func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool) (driver.Rows, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in exec
@@ -913,6 +937,9 @@ func (c *conn) query(ctx context.Context, pr *prepareResult, nvargs []driver.Nam
 }
 
 func (c *conn) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, commit bool, offset int) (driver.Result, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
 	if err != nil {
 		return nil, err
@@ -1009,6 +1036,9 @@ func (c *conn) execCall(ctx context.Context, outputFields []*p.ParameterField) (
 }
 
 func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetch)
 
 	if err := c.write(ctx, c.sessionID, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(c.attrs._fetchSize)); err != nil {
@@ -1029,6 +1059,9 @@ func (c *conn) fetchNext(ctx context.Context, qr *queryResult) error {
 }
 
 func (c *conn) dropStatementID(ctx context.Context, id uint64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if err := c.write(ctx, c.sessionID, p.MtDropStatementID, false, p.StatementID(id)); err != nil {
 		return err
 	}
@@ -1036,6 +1069,9 @@ func (c *conn) dropStatementID(ctx context.Context, id uint64) error {
 }
 
 func (c *conn) closeResultsetID(ctx context.Context, id uint64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if err := c.write(ctx, c.sessionID, p.MtCloseResultset, false, p.ResultsetID(id)); err != nil {
 		return err
 	}
@@ -1043,6 +1079,9 @@ func (c *conn) closeResultsetID(ctx context.Context, id uint64) error {
 }
 
 func (c *conn) commit(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeCommit)
 
 	if err := c.write(ctx, c.sessionID, p.MtCommit, false); err != nil {
@@ -1055,6 +1094,9 @@ func (c *conn) commit(ctx context.Context) error {
 }
 
 func (c *conn) rollback(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeRollback)
 
 	if err := c.write(ctx, c.sessionID, p.MtRollback, false); err != nil {
@@ -1067,6 +1109,9 @@ func (c *conn) rollback(ctx context.Context) error {
 }
 
 func (c *conn) disconnect(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if err := c.write(ctx, c.sessionID, p.MtDisconnect, false); err != nil {
 		return err
 	}
@@ -1090,6 +1135,9 @@ read lob reply
     --> read single lobs
 */
 func (c *conn) readLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeFetchLob)
 
 	ctx := context.Background()

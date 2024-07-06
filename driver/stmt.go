@@ -141,6 +141,10 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
 	c := s.conn
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	defer c.addSQLTimeValue(time.Now(), sqlTimeCall)
 
 	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, c.attrs._cesu8Encoder(), c.attrs._lobChunkSize)
@@ -198,7 +202,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	}
 
 	// table output parameters -> Query (needs to kept open)
-	rows, err := stdConnTracker.callDB().Query("", cr)
+	rows, err := stdConnTracker.callDB().Query("", cr) //nolint: sqlclosecheck
 	if err != nil {
 		return nil, rows, err
 	}
