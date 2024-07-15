@@ -5,9 +5,12 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.9.11
+- fixed race conditions on cancelled statement calls
+
 #### v1.9.10
 - updated dependencies
-- protect race conditions due to lob scans
+- avoid race conditions due to lob scans
 
 #### v1.9.9
 - updated dependencies

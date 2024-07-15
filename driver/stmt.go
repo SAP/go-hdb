@@ -117,10 +117,11 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	var result driver.Result
 	c.wg.Add(1)
 	var sqlErr error
+	var rows *sql.Rows // needed to avoid data race in close if context get cancelled.
 	go func() {
 		defer c.wg.Done()
 		if s.pr.isProcedureCall() {
-			result, s.rows, sqlErr = s.execCall(ctx, s.pr, nvargs)
+			result, rows, sqlErr = s.execCall(ctx, s.pr, nvargs) //nolint:sqlclosecheck
 		} else {
 			result, sqlErr = s.execDefault(ctx, nvargs)
 		}
@@ -134,6 +135,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		c.sqlTracer.log(ctx, traceExec, s.query, ctxErr, nvargs)
 		return nil, ctxErr
 	case <-done:
+		s.rows = rows
 		c.sqlTracer.log(ctx, traceExec, s.query, sqlErr, nvargs)
 		return result, sqlErr
 	}
