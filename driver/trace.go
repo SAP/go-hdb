@@ -57,9 +57,12 @@ func newSQLTracer(logger *slog.Logger, maxArg int) *sqlTracer {
 	return &sqlTracer{logger: logger, maxArg: maxArg}
 }
 
-func (t *sqlTracer) begin() { t.startTime = time.Now() }
+func (t *sqlTracer) begin() bool {
+	t.startTime = time.Now()
+	return sqlTrace.Load()
+}
 
-func (t *sqlTracer) _log(ctx context.Context, logKind string, query string, err error, nvargs []driver.NamedValue) {
+func (t *sqlTracer) log(ctx context.Context, logKind string, query string, err error, nvargs []driver.NamedValue) {
 	duration := time.Since(t.startTime).Milliseconds()
 	l := len(nvargs)
 
@@ -90,11 +93,4 @@ func (t *sqlTracer) _log(ctx context.Context, logKind string, query string, err 
 	attrs = append(attrs, slog.Any("arg", slog.GroupValue(argAttrs...)))
 
 	t.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
-}
-
-func (t *sqlTracer) log(ctx context.Context, logKind string, query string, err error, nvargs []driver.NamedValue) {
-	// split fastpath for go to inline
-	if sqlTrace.Load() {
-		t._log(ctx, logKind, query, err, nvargs)
-	}
 }

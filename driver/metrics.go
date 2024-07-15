@@ -1,15 +1,17 @@
 package driver
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 const (
 	counterBytesRead = iota
 	counterBytesWritten
+	counterSessionConnects
 	numCounter
 )
 
@@ -120,7 +122,7 @@ type metrics struct {
 func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float64) *metrics {
 	d, ok := timeUnitMap[timeUnit]
 	if !ok {
-		panic("invalid unit " + timeUnit)
+		assert.Panicf("invalid unit %s", timeUnit)
 	}
 	rv := &metrics{
 		wg:            new(sync.WaitGroup),
@@ -188,6 +190,7 @@ func (m *metrics) stats() *Stats {
 		OpenStatements:   int(m.gauges[gaugeStmt]),
 		ReadBytes:        m.counters[counterBytesRead],
 		WrittenBytes:     m.counters[counterBytesWritten],
+		SessionConnects:  m.counters[counterSessionConnects],
 		TimeUnit:         m.timeUnit,
 		ReadTime:         m.times[timeRead].stats(),
 		WriteTime:        m.times[timeWrite].stats(),
@@ -208,11 +211,19 @@ func (m *metrics) handleMsg(msg any) {
 	case sqlTimeMsg:
 		m.sqlTimes[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
 	default:
-		panic(fmt.Sprintf("invalid metric message type %T", msg))
+		assert.Panicf("invalid metric message type %T", msg)
 	}
 	m.mu.Unlock()
 
 	if m.parentMetrics != nil {
 		m.parentMetrics.handleMsg(msg)
 	}
+}
+
+func metricsAddTimeValue(metrics *metrics, start time.Time, k int) {
+	metrics.msgCh <- timeMsg{idx: k, d: time.Since(start)}
+}
+
+func metricsAddSQLTimeValue(metrics *metrics, start time.Time, k int) {
+	metrics.msgCh <- sqlTimeMsg{idx: k, d: time.Since(start)}
 }

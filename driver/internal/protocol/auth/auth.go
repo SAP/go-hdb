@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -112,7 +113,7 @@ func (s *subPrmsSize) decode(d *encoding.Decoder) {
 	case b == subPrmsSize2ByteIndicator:
 		*s = subPrmsSize(d.Uint16ByteOrder(binary.BigEndian))
 	default:
-		panic(fmt.Sprintf("invalid sub parameter size indicator %d", b))
+		assert.Panicf("invalid sub parameter size indicator %d", b)
 	}
 }
 
@@ -180,7 +181,7 @@ func (p *Prms) Size() int {
 			subSize := subPrmsSize(e.Size())
 			size += (int(subSize) + subSize.fieldSize())
 		default:
-			panic(fmt.Sprintf("invalid parameter %[1]v %[1]t", e)) // should not happen
+			assert.Panicf("invalid parameter %[1]v %[1]t", e) // should not happen
 		}
 	}
 	return size
@@ -213,7 +214,7 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 				return err
 			}
 		default:
-			panic(fmt.Sprintf("invalid parameter %[1]v %[1]t", e)) // should not happen
+			assert.Panicf("invalid parameter %[1]v %[1]t", e) // should not happen
 		}
 	}
 	return nil

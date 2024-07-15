@@ -9,6 +9,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -55,7 +56,7 @@ func logData(ctx context.Context, wg *sync.WaitGroup, prd *p.Reader) {
 	defer wg.Done()
 
 	if err := prd.ReadProlog(ctx); err != nil {
-		panic(err)
+		assert.Panicf("%s", err)
 	}
 
 	var err error
@@ -76,12 +77,13 @@ func (s *Sniffer) Run() error {
 	go pipeData(wg, s.conn, s.dbConn, clientWr)
 	go pipeData(wg, s.dbConn, s.conn, dbWr)
 
-	clientDec := encoding.NewDecoder(clientRd, cesu8.DefaultDecoder)
-	dbDec := encoding.NewDecoder(dbRd, cesu8.DefaultDecoder)
+	defaultDecoder := cesu8.DefaultDecoder()
 
-	// TODO: replace nil by lob reader
-	pClientRd := p.NewClientReader(clientDec, nil, true, s.logger, defaultLobChunkSize)
-	pDBRd := p.NewDBReader(dbDec, nil, true, s.logger, defaultLobChunkSize)
+	clientDec := encoding.NewDecoder(clientRd, defaultDecoder, false)
+	dbDec := encoding.NewDecoder(dbRd, defaultDecoder, false)
+
+	pClientRd := p.NewClientReader(clientDec, true, s.logger, defaultLobChunkSize)
+	pDBRd := p.NewDBReader(dbDec, true, s.logger, defaultLobChunkSize)
 
 	go logData(ctx, wg, pClientRd)
 	go logData(ctx, wg, pDBRd)

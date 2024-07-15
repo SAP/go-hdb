@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unparam
@@ -214,17 +216,13 @@ func TestConverter(t *testing.T) {
 
 func convertDirect(v any) int {
 	ci, ok := v.(int)
-	if !ok {
-		panic("should never happen")
-	}
+	assert.True("should be int", ok)
 	return ci
 }
 
 func convertReflect(v any) int {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Int {
-		panic("should never happen")
-	}
+	assert.Equal("should be int", rv.Kind(), reflect.Int)
 	return int(rv.Int())
 }
 
@@ -233,7 +231,7 @@ func convertGeneric[V any](v V) int {
 	case int:
 		return v
 	default:
-		panic("should never happen")
+		return assert.TPanicf[int]("should be int %v", v)
 	}
 }
 

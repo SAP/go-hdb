@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+
+	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 func coordToSlice(fs ...float64) []*float64 {
@@ -32,7 +34,7 @@ func jsonCoord(v reflect.Value) []*float64 {
 	case v.Type().ConvertibleTo(coordZMType):
 		return v.Convert(coordZMType).Interface().(CoordZM).coordToSlice()
 	default:
-		panic("invalid coordinate type")
+		return assert.TPanicf[[]*float64]("invalid coordinate type %v", v)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
@@ -225,7 +226,7 @@ func (f *ParameterField) prmSize(v any) int {
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
 		return encoding.LobInputParametersSize
 	default:
-		panic(fmt.Sprintf("invalid type code %s", f.tc))
+		return assert.TPanicf[int]("invalid type code %s", f.tc)
 	}
 }
 
@@ -282,19 +283,19 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
 		descr, ok := v.(*LobInDescr)
 		if !ok {
-			panic("invalid lob value") // should never happen
+			assert.Panic("invalid lob value") // should never happen
 		}
 		enc.Byte(byte(descr.opt))
 		enc.Int32(int32(descr.size()))
 		enc.Int32(int32(descr.pos))
 		return nil
 	default:
-		panic(fmt.Sprintf("invalid type code %s", f.tc))
+		return assert.TPanicf[error]("invalid type code %s", f.tc)
 	}
 }
 
-func (f *ParameterField) decodeResult(dec *encoding.Decoder, readFn lobReadFn, lobChunkSize int) (any, error) {
-	return decodeResult(f.tc, dec, readFn, lobChunkSize, f.scale)
+func (f *ParameterField) decodeResult(dec *encoding.Decoder, lobReader LobReader, lobChunkSize int) (any, error) {
+	return decodeResult(f.tc, dec, lobReader, lobChunkSize, f.scale)
 }
 
 /*
@@ -439,14 +440,14 @@ func (p *OutputParameters) String() string {
 	return fmt.Sprintf("fields %v values %v", p.OutputFields, p.FieldValues)
 }
 
-func (p *OutputParameters) decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn, lobChunkSize int) error {
+func (p *OutputParameters) decodeResult(dec *encoding.Decoder, numArg int, lobReader LobReader, lobChunkSize int) error {
 	cols := len(p.OutputFields)
 	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
 
 	for i := 0; i < numArg; i++ {
 		for j, f := range p.OutputFields {
 			var err error
-			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, readFn, lobChunkSize); err != nil {
+			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, lobReader, lobChunkSize); err != nil {
 				p.DecodeErrors = append(p.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}

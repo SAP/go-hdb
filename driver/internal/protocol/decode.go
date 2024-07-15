@@ -1,12 +1,11 @@
 package protocol
 
 import (
-	"fmt"
-
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-func decodeResult(tc typeCode, d *encoding.Decoder, readFn lobReadFn, lobChunkSize, scale int) (any, error) { //nolint: gocyclo
+func decodeResult(tc typeCode, d *encoding.Decoder, lobReader LobReader, lobChunkSize, scale int) (any, error) { //nolint: gocyclo
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -65,19 +64,19 @@ func decodeResult(tc typeCode, d *encoding.Decoder, readFn lobReadFn, lobChunkSi
 	case tcStPoint, tcStGeometry:
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
-		descr := newLobOutDescr(nil, readFn, lobChunkSize)
+		descr := newLobOutDescr(nil, lobReader, lobChunkSize)
 		if descr.decode(d) {
 			return nil, nil
 		}
 		return descr, nil
 	case tcText, tcNclob, tcNlocator:
-		descr := newLobOutDescr(d.Transformer(), readFn, lobChunkSize)
+		descr := newLobOutDescr(d.Transformer(), lobReader, lobChunkSize)
 		if descr.decode(d) {
 			return nil, nil
 		}
 		return descr, nil
 	default:
-		panic(fmt.Sprintf("invalid type code %s", tc))
+		return assert.T2Panicf[any, error]("invalid type code %s", tc)
 	}
 }
 
@@ -144,6 +143,6 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 	case tcText, tcNclob, tcNlocator:
 		return decodeLobParameter(d)
 	default:
-		panic(fmt.Sprintf("invalid type code %s", tc))
+		return assert.T2Panicf[any, error]("invalid type code %s", tc)
 	}
 }

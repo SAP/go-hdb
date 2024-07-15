@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 const (
@@ -31,7 +33,7 @@ func checkServerChallenge(serverChallenge []byte) error {
 func clientChallenge() []byte {
 	r := make([]byte, clientChallengeSize)
 	if _, err := rand.Read(r); err != nil {
-		panic(err)
+		assert.Panicf("%s", err)
 	}
 	return r
 }

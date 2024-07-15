@@ -7,10 +7,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.9.11"
+const DriverVersion = "1.10.0"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -36,7 +38,7 @@ func init() { register() }
 func register() {
 	// load stats configuration
 	if err := loadStatsCfg(); err != nil {
-		panic(err) // invalid configuration file
+		assert.Panicf("%s", err) // invalid configuration file
 	}
 	// create driver
 	stdHdbDriver = &hdbDriver{metrics: newMetrics(nil, statsCfg.TimeUnit, statsCfg.TimeUpperBounds)}

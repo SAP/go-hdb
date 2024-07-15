@@ -31,10 +31,8 @@ type StmtMetadata interface {
 	ColumnTypes() []ColumnType
 }
 
-// use unexported type to avoid key collisions.
-type stmtCtxKey struct{}
-
-var stmtMetadataCtxKey stmtCtxKey
+// use unexported var to avoid key collisions.
+var stmtMetadataCtxKey struct{}
 
 // WithStmtMetadata can be used to add a statement metadata reference to the context used for a Prepare call.
 // The Prepare call will set the stmtMetadata reference on successful preparation.

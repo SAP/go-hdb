@@ -33,11 +33,12 @@ type Decoder struct {
 }
 
 // NewDecoder creates a new Decoder instance based on an io.Reader.
-func NewDecoder(rd io.Reader, decoder func() transform.Transformer) *Decoder {
+func NewDecoder(rd io.Reader, tr transform.Transformer, emptyDateAsNull bool) *Decoder {
 	return &Decoder{
-		rd: rd,
-		b:  make([]byte, readScratchSize),
-		tr: decoder(),
+		rd:              rd,
+		b:               make([]byte, readScratchSize),
+		tr:              tr,
+		emptyDateAsNull: emptyDateAsNull,
 	}
 }
 
@@ -46,12 +47,6 @@ func (d *Decoder) Transformer() transform.Transformer { return d.tr }
 
 // SetAlphanumDfv1 sets the alphanum dfv1 flag decoder.
 func (d *Decoder) SetAlphanumDfv1(alphanumDfv1 bool) { d.alphanumDfv1 = alphanumDfv1 }
-
-// EmptyDateAsNull returns the empty date as null flag.
-func (d *Decoder) EmptyDateAsNull() bool { return d.emptyDateAsNull }
-
-// SetEmptyDateAsNull sets the empty date as null flag.
-func (d *Decoder) SetEmptyDateAsNull(emptyDateAsNull bool) { d.emptyDateAsNull = emptyDateAsNull }
 
 // Cnt returns the value of the byte read counter.
 func (d *Decoder) Cnt() int { return d.cnt }
@@ -467,7 +462,7 @@ func (d *Decoder) SeconddateField() (any, error) {
 // DaydateField decodes a daydate field.
 func (d *Decoder) DaydateField() (any, error) {
 	daydate := d.Int32()
-	if daydate == daydateNullValue || (d.EmptyDateAsNull() && daydate == 0) {
+	if daydate == daydateNullValue || (d.emptyDateAsNull && daydate == 0) {
 		return nil, nil
 	}
 	return convertDaydateToTime(int64(daydate)), nil

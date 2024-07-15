@@ -11,7 +11,7 @@ import (
 
 func authEncodeStep(t *testing.T, part PartEncoder) []byte {
 	buf := bytes.Buffer{}
-	enc := encoding.NewEncoder(&buf, cesu8.DefaultEncoder)
+	enc := encoding.NewEncoder(&buf, cesu8.DefaultEncoder())
 
 	if err := part.encode(enc); err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func authEncodeStep(t *testing.T, part PartEncoder) []byte {
 }
 
 func authDecodeStep(t *testing.T, part partDecoder, data []byte) {
-	dec := encoding.NewDecoder(bytes.NewBuffer(data), cesu8.DefaultDecoder)
+	dec := encoding.NewDecoder(bytes.NewBuffer(data), cesu8.DefaultDecoder(), false)
 
 	if err := part.decode(dec); err != nil {
 		t.Fatal(err)

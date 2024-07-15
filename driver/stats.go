@@ -18,8 +18,9 @@ type Stats struct {
 	OpenTransactions int // The number of current open driver transactions.
 	OpenStatements   int // The number of current open driver database statements.
 	// Counters
-	ReadBytes    uint64 // Total bytes read by client connection.
-	WrittenBytes uint64 // Total bytes written by client connection.
+	ReadBytes       uint64 // Total bytes read by client connection.
+	WrittenBytes    uint64 // Total bytes written by client connection.
+	SessionConnects uint64 // Total number of session connects (switch users).
 	// Time histograms (Sum and upper bounds in Unit)
 	TimeUnit  string                     // Time unit
 	ReadTime  *StatsHistogram            // Time spent on reading from connection.

@@ -19,6 +19,7 @@ all:
 	GOTOOLCHAIN=go1.23rc1 go1.23rc1 test ./...
 	GOTOOLCHAIN=go1.23rc1 go1.23rc1 test ./... -race
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
+#on linux: if pipx uses outdated packages, delete ~/.local/pipx/cache entries
 	@echo "reuse (license) check"
 	pipx run reuse lint
 

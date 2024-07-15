@@ -3,7 +3,6 @@ package protocol
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"golang.org/x/text/transform"
 )
@@ -618,6 +618,6 @@ func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
 	case tcBintext: // ?? lobCESU8Type
 		return convertLob(v, nil)
 	default:
-		panic(fmt.Sprintf("invalid type code %s", tc))
+		return assert.T2Panicf[any, error]("invalid type code %s", tc)
 	}
 }

@@ -20,7 +20,7 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// callback function to cancel context
-	cancelCtx := func(_ *conn, op int) {
+	cancelCtx := func(op int) {
 		if op == choStmtExec {
 			cancel()
 		}

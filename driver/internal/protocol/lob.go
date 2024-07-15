@@ -9,6 +9,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
@@ -127,7 +128,10 @@ func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()
 // LocatorID represents a locotor id.
 type LocatorID uint64 // byte[locatorIdSize]
 
-type lobReadFn func(lobRequest *ReadLobRequest, lobReply *ReadLobReply) error
+// LobReader is the interface for reading lob streams.
+type LobReader interface {
+	ReadLob(request *ReadLobRequest, reply *ReadLobReply) error
+}
 
 var lobOutDescrPool = sync.Pool{New: func() any { return new(lobOutDescr) }}
 
@@ -138,7 +142,7 @@ type lobOutDescr struct {
 	/*
 	   readFn is set by decode if additional data packages need to be read (not last data)
 	*/
-	readFn    lobReadFn
+	lobReader LobReader
 	chunkSize int
 	/*
 		HDB does not return lob type code but undefined only
@@ -158,10 +162,10 @@ type lobOutDescr struct {
 	lobReply   *ReadLobReply
 }
 
-func newLobOutDescr(tr transform.Transformer, readFn lobReadFn, chunkSize int) *lobOutDescr {
+func newLobOutDescr(tr transform.Transformer, lobReader LobReader, chunkSize int) *lobOutDescr {
 	descr := lobOutDescrPool.Get().(*lobOutDescr)
 	descr.tr = tr
-	descr.readFn = readFn
+	descr.lobReader = lobReader
 	descr.chunkSize = chunkSize
 	return descr
 }
@@ -239,7 +243,7 @@ func (d *lobOutDescr) scan(wr io.Writer) error {
 	d.lobRequest.id = d.id
 	d.lobRequest.ofs = int64(numChar)
 	d.lobRequest.chunkSize = d.chunkSize
-	return d.readFn(d.lobRequest, d.lobReply)
+	return d.lobReader.ReadLob(d.lobRequest, d.lobReply)
 }
 
 // Scan implements the LobScanner interface.
@@ -436,7 +440,7 @@ func (r *ReadLobReply) init() {
 
 func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if numArg != 1 {
-		panic("numArg == 1 expected")
+		assert.Panic("numArg == 1 expected")
 	}
 	id := LocatorID(dec.Uint64())
 	if id != r.id {

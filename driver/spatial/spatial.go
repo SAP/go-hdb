@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
@@ -275,6 +276,6 @@ func geoType(g Geometry) uint32 {
 	case "CircularString":
 		return geoCircularString
 	default:
-		panic("invalid geoTypeName")
+		return assert.TPanicf[uint32]("invalid geoTypeName %s", geoTypeName(g))
 	}
 }

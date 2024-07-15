@@ -4,6 +4,7 @@ package alphanum
 import (
 	"crypto/rand"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
@@ -25,7 +26,7 @@ func Read(p []byte) (n int, err error) {
 func ReadString(n int) string {
 	b := make([]byte, n)
 	if _, err := Read(b); err != nil {
-		panic(err) // rand should never fail
+		assert.Panicf("%s", err) // rand should never fail
 	}
 	return unsafe.ByteSlice2String(b)
 }

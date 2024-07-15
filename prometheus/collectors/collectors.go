@@ -19,6 +19,7 @@ type collector struct {
 	openStatements   *prometheus.Desc
 	readBytes        *prometheus.Desc
 	writtenBytes     *prometheus.Desc
+	sessionConnects  *prometheus.Desc
 	readTime         *prometheus.Desc
 	writeTime        *prometheus.Desc
 	authTime         *prometheus.Desc
@@ -62,6 +63,12 @@ func newCollector(fn func() *driver.Stats, subsystem string, labels prometheus.L
 			nil,
 			labels,
 		),
+		sessionConnects: prometheus.NewDesc(
+			fqName("session_connects"),
+			fmt.Sprintf("The total number of session connects (switched users) of %s.", subsystem),
+			nil,
+			labels,
+		),
 		readTime: prometheus.NewDesc(
 			fqName("read_time"),
 			fmt.Sprintf("The time spent measured in %s for reading from the database connection of %s.", stats.TimeUnit, subsystem),
@@ -96,6 +103,7 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.openStatements
 	ch <- c.readBytes
 	ch <- c.writtenBytes
+	ch <- c.sessionConnects
 	ch <- c.readTime
 	ch <- c.writeTime
 	ch <- c.authTime
@@ -110,6 +118,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.openStatements, prometheus.GaugeValue, float64(stats.OpenStatements))
 	ch <- prometheus.MustNewConstMetric(c.readBytes, prometheus.CounterValue, float64(stats.ReadBytes))
 	ch <- prometheus.MustNewConstMetric(c.writtenBytes, prometheus.CounterValue, float64(stats.WrittenBytes))
+	ch <- prometheus.MustNewConstMetric(c.sessionConnects, prometheus.CounterValue, float64(stats.SessionConnects))
 	ch <- prometheus.MustNewConstHistogram(c.readTime, stats.ReadTime.Count, stats.ReadTime.Sum, stats.ReadTime.Buckets)
 	ch <- prometheus.MustNewConstHistogram(c.writeTime, stats.WriteTime.Count, stats.WriteTime.Sum, stats.WriteTime.Buckets)
 	ch <- prometheus.MustNewConstHistogram(c.authTime, stats.AuthTime.Count, stats.AuthTime.Sum, stats.AuthTime.Buckets)

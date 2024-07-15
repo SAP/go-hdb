@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"golang.org/x/text/transform"
 )
 
@@ -90,7 +91,7 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		m := RuneLen(r)
 		switch {
 		case m == -1:
-			panic("internal UTF-8 to CESU-8 transformation error")
+			assert.Panic("internal UTF-8 to CESU-8 transformation error")
 		case j+m > len(dst):
 			return j, i, transform.ErrShortDst
 		}
@@ -148,7 +149,7 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		m := utf8.RuneLen(r)
 		switch {
 		case m == -1:
-			panic("internal CESU-8 to UTF-8 transformation error")
+			assert.Panic("internal CESU-8 to UTF-8 transformation error")
 		case j+m > len(dst):
 			return j, i, transform.ErrShortDst
 		}

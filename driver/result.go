@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"io"
 	"reflect"
 
@@ -95,11 +96,15 @@ type queryResult struct {
 	decodeErrors p.DecodeErrors
 	_columns     []string
 	lastErr      error
-	conn         *conn
+	session      *session
 	rsID         uint64
 	pos          int
 	attrs        p.PartAttributes
+	closed       bool
 }
+
+// ErrScanOnClosedResultset is the error raised in case a scan is executed on a closed resultset.
+var ErrScanOnClosedResultset = errors.New("scan on closed resultset")
 
 // Columns implements the driver.Rows interface.
 func (qr *queryResult) Columns() []string {
@@ -115,6 +120,7 @@ func (qr *queryResult) Columns() []string {
 
 // Close implements the driver.Rows interface.
 func (qr *queryResult) Close() error {
+	qr.closed = true
 	if qr.attrs.ResultsetClosed() {
 		return nil
 	}
@@ -122,7 +128,7 @@ func (qr *queryResult) Close() error {
 	if qr.lastErr != nil {
 		return qr.lastErr
 	}
-	return qr.conn.closeResultsetID(context.Background(), qr.rsID)
+	return qr.session.closeResultsetID(context.Background(), qr.rsID)
 }
 
 func (qr *queryResult) numRow() int {
@@ -138,7 +144,7 @@ func (qr *queryResult) Next(dest []driver.Value) error {
 		if qr.attrs.LastPacket() {
 			return io.EOF
 		}
-		if err := qr.conn.fetchNext(context.Background(), qr); err != nil {
+		if err := qr.session.fetchNext(context.Background(), qr); err != nil {
 			qr.lastErr = err // fieldValues and attrs are nil
 			return err
 		}
@@ -175,13 +181,22 @@ func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
 // ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
 func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type { return qr.fields[idx].ScanType() }
 
+// ReadLob used by protocol LobReader.
+func (qr *queryResult) ReadLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
+	if qr.closed {
+		return ErrScanOnClosedResultset
+	}
+	return qr.session.readLob(context.Background(), request, reply)
+}
+
 type callResult struct { // call output parameters
-	conn         *conn
-	outputFields []*p.ParameterField
+	session      *session
+	outFields    []*p.ParameterField
 	fieldValues  []driver.Value
 	decodeErrors p.DecodeErrors
 	_columns     []string
 	eof          bool
+	closed       bool
 }
 
 // Columns implements the driver.Rows interface.
@@ -189,8 +204,8 @@ func (cr *callResult) Columns() []string {
 	if cr._columns != nil {
 		return cr._columns
 	}
-	cr._columns = make([]string, len(cr.outputFields))
-	for i, f := range cr.outputFields {
+	cr._columns = make([]string, len(cr.outFields))
+	for i, f := range cr.outFields {
 		cr._columns[i] = f.Name()
 	}
 	return cr._columns
@@ -208,4 +223,12 @@ func (cr *callResult) Next(dest []driver.Value) error {
 }
 
 // Close implements the driver.Rows interface.
-func (cr *callResult) Close() error { return nil }
+func (cr *callResult) Close() error { cr.closed = true; return nil }
+
+// ReadLob used by protocol LobReader.
+func (cr *callResult) ReadLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
+	if cr.closed {
+		return ErrScanOnClosedResultset
+	}
+	return cr.session.readLob(context.Background(), request, reply)
+}

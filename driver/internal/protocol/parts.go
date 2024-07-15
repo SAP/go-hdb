@@ -1,9 +1,9 @@
 package protocol
 
 import (
-	"fmt"
 	"reflect"
 
+	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
@@ -28,7 +28,7 @@ type bufLenPartDecoder interface {
 }
 type resultPartDecoder interface {
 	Part
-	decodeResult(dec *encoding.Decoder, numArg int, readFn lobReadFn, lobChunkSize int) error
+	decodeResult(dec *encoding.Decoder, numArg int, lobReader LobReader, lobChunkSize int) error
 }
 
 // PartEncoder represents a protocol part the driver is able to encode.
@@ -191,7 +191,7 @@ func newGenPartReader(kind PartKind) Part {
 	// create instance
 	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
-		panic(fmt.Sprintf("part kind %s does not implement part reader interface", kind)) // should never happen
+		assert.Panicf("part kind %s does not implement part reader interface", kind) // should never happen
 	}
 	if part, ok := part.(initer); ok {
 		part.init()
