@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 func wktTypeName(g Geometry) string {
@@ -91,7 +89,7 @@ func encodeWKTCoord(b *wktBuffer, c any) {
 	case cv.Type().ConvertibleTo(coordZMType):
 		cv.Convert(coordZMType).Interface().(CoordZM).encodeWKT(b)
 	default:
-		assert.Panicf("invalid coordinate type %v", cv)
+		panic("invalid coordinate type")
 	}
 }
 

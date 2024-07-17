@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
@@ -37,8 +36,8 @@ func (u *SessionUser) clone() *SessionUser {
 // use unexported var to avoid key collisions.
 var switchUserCtxKey struct{}
 
-// WithUserSwitch can be used to switch a user on a new or an existing connection.
-// see https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/connect-statement-session-management
+// WithUserSwitch can be used to switch a user on a new or an existing connection
+// (see https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/connect-statement-session-management).
 func WithUserSwitch(ctx context.Context, u *SessionUser) context.Context {
 	return context.WithValue(ctx, switchUserCtxKey, u)
 }
@@ -723,8 +722,9 @@ func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply 
 
 // writeLobs writes input lob parameters to db.
 func (s *session) writeLobs(ctx context.Context, cr *callResult, ids []p.LocatorID, inPrmFields []*p.ParameterField, nvargs []driver.NamedValue) error {
-	assert.Equal("lob streaming can only be done for one (the last) record", len(inPrmFields), len(nvargs))
-
+	if len(inPrmFields) != len(nvargs) {
+		panic("lob streaming can only be done for one (the last) record")
+	}
 	descrs := make([]*p.WriteLobDescr, 0, len(ids))
 	j := 0
 	for i, f := range inPrmFields {

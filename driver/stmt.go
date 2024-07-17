@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 // check if statements implements all required interfaces.
@@ -255,7 +253,7 @@ func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.Na
 
 	fct, ok := nvargs[0].Value.(func(args []any) error)
 	if !ok {
-		assert.Panic("should never happen")
+		panic("invalid argument") // should never happen
 	}
 
 	done := false

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"math"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -145,7 +144,7 @@ func (r *Reader) skipPaddingLastPart(numReadByte int64) {
 	padBytes := int64(r.mh.varPartLength) - numReadByte
 	switch {
 	case padBytes < 0:
-		assert.Panicf("protocol error: bytes read %d > variable part length %d", numReadByte, r.mh.varPartLength)
+		panic(fmt.Sprintf("protocol error: bytes read %d > variable part length %d", numReadByte, r.mh.varPartLength))
 	case padBytes > 0:
 		r.dec.Skip(int(padBytes))
 	}
@@ -165,11 +164,11 @@ func (r *Reader) ReadPart(ctx context.Context, part Part, lobReader LobReader) (
 		err = part.decodeNumArg(r.dec, r.ph.numArg())
 	case resultPartDecoder:
 		if lobReader == nil {
-			assert.Panic("missing lob reader")
+			panic("missing lob reader") // should never happen
 		}
 		err = part.decodeResult(r.dec, r.ph.numArg(), lobReader, r.lobChunkSize)
 	default:
-		assert.Panicf("invalid part decoder %[1]T %[1]v", part)
+		panic("invalid part decoder") // should never happen
 	}
 	// do not return here in case of error -> read stream would be broken
 
@@ -184,7 +183,7 @@ func (r *Reader) ReadPart(ctx context.Context, part Part, lobReader LobReader) (
 	case cnt < bufferLen: // protocol buffer length > read bytes -> skip the unread bytes
 		r.dec.Skip(bufferLen - cnt)
 	case cnt > bufferLen: // read bytes > protocol buffer length -> should never happen
-		assert.Panicf("protocol error: read bytes %d > buffer length %d", cnt, bufferLen)
+		panic(fmt.Sprintf("protocol error: read bytes %d > buffer length %d", cnt, bufferLen))
 	}
 	return err
 }

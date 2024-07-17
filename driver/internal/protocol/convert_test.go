@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unparam
@@ -212,47 +210,4 @@ func TestConverter(t *testing.T) {
 			test.fct(t)
 		})
 	}
-}
-
-func convertDirect(v any) int {
-	ci, ok := v.(int)
-	assert.True("should be int", ok)
-	return ci
-}
-
-func convertReflect(v any) int {
-	rv := reflect.ValueOf(v)
-	assert.Equal("should be int", rv.Kind(), reflect.Int)
-	return int(rv.Int())
-}
-
-func convertGeneric[V any](v V) int {
-	switch v := any(v).(type) {
-	case int:
-		return v
-	default:
-		return assert.TPanicf[int]("should be int %v", v)
-	}
-}
-
-func BenchmarkConverter(b *testing.B) {
-	b.Run("convert direct", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			convertDirect(i)
-		}
-	})
-
-	b.Run("convert reflect", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			convertReflect(i)
-		}
-	})
-
-	b.Run("convert generic", func(b *testing.B) {
-		// var c any
-		for i := 0; i < b.N; i++ {
-			// c = i
-			convertGeneric(any(i))
-		}
-	})
 }

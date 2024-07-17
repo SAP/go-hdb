@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.10.0
 
+#### v1.10.1
+- updated dependencies
+
 ### New features
 
 - Added user switch on existing connection (see example).

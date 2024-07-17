@@ -4,8 +4,6 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 const (
@@ -122,7 +120,7 @@ type metrics struct {
 func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float64) *metrics {
 	d, ok := timeUnitMap[timeUnit]
 	if !ok {
-		assert.Panicf("invalid unit %s", timeUnit)
+		panic("invalid unit")
 	}
 	rv := &metrics{
 		wg:            new(sync.WaitGroup),
@@ -211,7 +209,7 @@ func (m *metrics) handleMsg(msg any) {
 	case sqlTimeMsg:
 		m.sqlTimes[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
 	default:
-		assert.Panicf("invalid metric message type %T", msg)
+		panic("invalid metric message type")
 	}
 	m.mu.Unlock()
 

@@ -12,8 +12,8 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleStmtMetadata demonstrates the use of statement metadata provided by PrepareContext.
-func ExampleStmtMetadata() {
+// ExampleWithStmtMetadata demonstrates the use of statement metadata provided by PrepareContext.
+func ExampleWithStmtMetadata() {
 	const procOut = `create procedure %s (out message nvarchar(1024))
 language SQLSCRIPT as
 begin
@@ -57,21 +57,10 @@ end
 
 	// Finally print the values.
 	for _, arg := range args {
-		namedArg, ok := arg.(sql.NamedArg)
-		if !ok {
-			panic("should never happen")
-		}
-		sqlOut, ok := namedArg.Value.(sql.Out)
-		if !ok {
-			panic("should never happen")
-		}
-
-		switch dest := sqlOut.Dest.(type) {
-		case *sql.NullString:
-			fmt.Printf("%s: %s", namedArg.Name, dest.String)
-		default:
-			panic("should never happen")
-		}
+		namedArg := arg.(sql.NamedArg)
+		sqlOut := namedArg.Value.(sql.Out)
+		dest := sqlOut.Dest.(*sql.NullString)
+		fmt.Printf("%s: %s", namedArg.Name, dest.String)
 	}
 
 	// output: MESSAGE: Hello World!

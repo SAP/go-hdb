@@ -3,7 +3,6 @@ package protocol
 import (
 	"reflect"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
@@ -191,7 +190,7 @@ func newGenPartReader(kind PartKind) Part {
 	// create instance
 	part, ok := reflect.New(pt).Interface().(Part)
 	if !ok {
-		assert.Panicf("part kind %s does not implement part reader interface", kind) // should never happen
+		panic("part kind does not implement part reader interface") // should never happen
 	}
 	if part, ok := part.(initer); ok {
 		part.init()

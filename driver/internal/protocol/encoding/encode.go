@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
@@ -297,7 +296,7 @@ func (e *Encoder) CESU8LIString(s string) error {
 func asInt[E byte | int16 | int32 | int64](v any) E {
 	i64, ok := v.(int64)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "integer", v) // should never happen
+		panic("invalid integer") // should never happen
 	}
 	return E(i64)
 }
@@ -305,7 +304,7 @@ func asInt[E byte | int16 | int32 | int64](v any) E {
 func asTime(v any) time.Time {
 	t, ok := v.(time.Time)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "time", v) // should never happen
+		panic("invalid time") // should never happen
 	}
 	// store in utc
 	return t.UTC()
@@ -319,7 +318,7 @@ func (e *Encoder) BooleanField(v any) error {
 	}
 	b, ok := v.(bool)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "boolean", v) // should never happen
+		panic("invalid boolean") // should never happen
 	}
 	if b {
 		e.Byte(booleanTrueValue)
@@ -357,7 +356,7 @@ func (e *Encoder) BigintField(v any) error {
 func (e *Encoder) RealField(v any) error {
 	f64, ok := v.(float64)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "real", v) // should never happen
+		panic("invalid real") // should never happen
 	}
 	e.Float32(float32(f64))
 	return nil
@@ -367,7 +366,7 @@ func (e *Encoder) RealField(v any) error {
 func (e *Encoder) DoubleField(v any) error {
 	f64, ok := v.(float64)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "double", v) // should never happen
+		panic("invalid double") // should never happen
 	}
 	e.Float64(f64)
 	return nil
@@ -440,7 +439,7 @@ func (e *Encoder) SecondtimeField(v any) error {
 func (e *Encoder) encodeFixed(v any, size, prec, scale int) error {
 	r, ok := v.(*big.Rat)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "fixed", v) // should never happen
+		panic("invalid fixed") // should never happen
 	}
 
 	var m big.Int
@@ -458,7 +457,7 @@ func (e *Encoder) encodeFixed(v any, size, prec, scale int) error {
 func (e *Encoder) DecimalField(v any) error {
 	r, ok := v.(*big.Rat)
 	if !ok {
-		assert.Panicf("invalid %s value %v", "decimal", v) // should never happen
+		panic("invalid decimal") // should never happen
 	}
 
 	var m big.Int
@@ -499,7 +498,7 @@ func (e *Encoder) VarField(v any) error {
 	case string:
 		return e.LIString(v)
 	default:
-		return assert.TPanicf[error]("invalid %s value %v", "var", v) // should never happen
+		panic("invalid var value") // should never happen
 	}
 }
 
@@ -511,7 +510,7 @@ func (e *Encoder) Cesu8Field(v any) error {
 	case string:
 		return e.CESU8LIString(v)
 	default:
-		return assert.TPanicf[error]("invalid %s value %v", "cesu8", v) // should never happen
+		panic("invalid cesu8 value") // should never happen
 	}
 }
 
@@ -531,6 +530,6 @@ func (e *Encoder) HexField(v any) error {
 		}
 		return e.LIBytes(b)
 	default:
-		return assert.TPanicf[error]("invalid %s value %v", "hex", v) // should never happen
+		panic("invalid hex value") // should never happen
 	}
 }

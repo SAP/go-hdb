@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -76,7 +75,7 @@ func decodeResult(tc typeCode, d *encoding.Decoder, lobReader LobReader, lobChun
 		}
 		return descr, nil
 	default:
-		return assert.T2Panicf[any, error]("invalid type code %s", tc)
+		panic("invalid type code")
 	}
 }
 
@@ -143,6 +142,6 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 	case tcText, tcNclob, tcNlocator:
 		return decodeLobParameter(d)
 	default:
-		return assert.T2Panicf[any, error]("invalid type code %s", tc)
+		panic("invalid type code")
 	}
 }

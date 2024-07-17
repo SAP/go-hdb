@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -104,7 +103,7 @@ func (_optBstringType) decode(d *encoding.Decoder) any {
 }
 
 func optTypeViaType(v any) optType {
-	switch v := v.(type) {
+	switch v.(type) {
 	case bool:
 		return optBooleanType
 	case int8:
@@ -120,7 +119,7 @@ func optTypeViaType(v any) optType {
 	case []byte:
 		return optBstringType
 	default:
-		return assert.TPanicf[optType]("type %T not implemented", v) // should never happen
+		panic("type not implemented") // should never happen
 	}
 }
 
@@ -141,6 +140,6 @@ func optTypeViaTypeCode(tc typeCode) optType {
 	case tcBstring:
 		return optBstringType
 	default:
-		return assert.TPanicf[optType]("missing optType for typeCode %s", tc)
+		panic("missing optType for typeCode")
 	}
 }

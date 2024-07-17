@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"io"
 	"reflect"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 // Byte orders.
@@ -113,7 +111,7 @@ func encodeWKBCoord(b *wkbBuffer, c any) error {
 	case cv.Type().ConvertibleTo(coordZMType):
 		err = cv.Convert(coordZMType).Interface().(CoordZM).encodeWKB(b)
 	default:
-		return assert.TPanicf[error]("invalid coordinate type %v", cv)
+		panic("invalid coordinate type")
 	}
 	return err
 }

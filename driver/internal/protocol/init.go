@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -56,7 +55,7 @@ func (r *initRequest) decode(dec *encoding.Decoder) error {
 
 	switch r.numOptions {
 	default:
-		assert.Panicf(fmt.Sprintf("invalid number of options %d", r.numOptions))
+		panic("invalid number of options")
 
 	case 0:
 		dec.Skip(2)
@@ -64,7 +63,7 @@ func (r *initRequest) decode(dec *encoding.Decoder) error {
 	case 1:
 		cnt := dec.Int8()
 		if cnt != 1 {
-			assert.Panicf("invalid number of options %d - 1 expected", cnt)
+			panic("invalid number of options - 1 expected")
 		}
 		r.endianess = endianess(dec.Int8())
 	}
@@ -80,7 +79,7 @@ func (r *initRequest) encode(enc *encoding.Encoder) error {
 
 	switch r.numOptions {
 	default:
-		assert.Panicf("invalid number of options %d", r.numOptions)
+		panic("invalid number of options")
 
 	case 0:
 		enc.Zeroes(4)

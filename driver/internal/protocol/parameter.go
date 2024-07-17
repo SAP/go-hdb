@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
@@ -226,7 +225,7 @@ func (f *ParameterField) prmSize(v any) int {
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
 		return encoding.LobInputParametersSize
 	default:
-		return assert.TPanicf[int]("invalid type code %s", f.tc)
+		panic("invalid type code")
 	}
 }
 
@@ -283,14 +282,14 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
 		descr, ok := v.(*LobInDescr)
 		if !ok {
-			assert.Panic("invalid lob value") // should never happen
+			panic("invalid lob value") // should never happen
 		}
 		enc.Byte(byte(descr.opt))
 		enc.Int32(int32(descr.size()))
 		enc.Int32(int32(descr.pos))
 		return nil
 	default:
-		return assert.TPanicf[error]("invalid type code %s", f.tc)
+		panic("invalid type code") // should never happen
 	}
 }
 

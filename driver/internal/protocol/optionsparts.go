@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
@@ -350,7 +349,7 @@ func (ops *options[K]) get(k K, v any) bool {
 	case *int32:
 		*v = mv.(int32)
 	default:
-		assert.Panicf("invalid option type %v", v)
+		panic("invalid option type")
 	}
 	return true
 }

@@ -9,7 +9,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -56,7 +55,7 @@ func logData(ctx context.Context, wg *sync.WaitGroup, prd *p.Reader) {
 	defer wg.Done()
 
 	if err := prd.ReadProlog(ctx); err != nil {
-		assert.Panicf("%s", err)
+		panic(err)
 	}
 
 	var err error

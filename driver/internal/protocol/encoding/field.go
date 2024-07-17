@@ -3,7 +3,6 @@ package encoding
 import (
 	"math"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
@@ -78,7 +77,7 @@ func Cesu8FieldSize(v any) int {
 	case string:
 		return varSize(cesu8.StringSize(v))
 	default:
-		return assert.TPanicf[int]("invalid type %T for cesu8 field", v) // should never happen
+		panic("invalid type for cesu8 field") // should never happen
 	}
 }
 
@@ -90,7 +89,7 @@ func VarFieldSize(v any) int {
 	case string:
 		return varSize(len(v))
 	default:
-		return assert.TPanicf[int]("invalid type %T for var field", v) // should never happen
+		panic("invalid type for var field") // should never happen
 	}
 }
 
@@ -100,16 +99,16 @@ func HexFieldSize(v any) int {
 	case []byte:
 		l := len(v)
 		if l%2 != 0 {
-			assert.Panic("even hex field length required")
+			panic("even hex field length required")
 		}
 		return varSize(l / 2)
 	case string:
 		l := len(v)
 		if l%2 != 0 {
-			assert.Panic("even hex field length required")
+			panic("even hex field length required")
 		}
 		return varSize(l / 2)
 	default:
-		return assert.TPanicf[int]("invalid type %T for hex field", v)
+		panic("invalid hex field type")
 	}
 }

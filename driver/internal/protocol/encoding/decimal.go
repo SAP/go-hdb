@@ -5,8 +5,6 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 // ErrDecimalOutOfRange means that a big.Rat exceeds the size of hdb decimal fields.
@@ -186,7 +184,7 @@ func convertDecimalToRat(m *big.Int, exp int) *big.Rat {
 
 func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 	if scale < 0 {
-		assert.Panicf("fixed: invalid scale: %d", scale)
+		panic("fixed: invalid scale")
 	}
 
 	var df byte
@@ -228,7 +226,7 @@ func convertFixedToRat(m *big.Int, scale int) *big.Rat {
 		return nil
 	}
 	if scale < 0 {
-		assert.Panicf("fixed: invalid scale: %d", scale)
+		panic("fixed: invalid scale")
 	}
 	q := exp10(scale)
 	return new(big.Rat).SetFrac(m, q)

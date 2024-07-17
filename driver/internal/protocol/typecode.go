@@ -2,8 +2,6 @@ package protocol
 
 import (
 	"strings"
-
-	"github.com/SAP/go-hdb/driver/internal/assert"
 )
 
 // typeCode identify the type of a field transferred to or from the database.
@@ -167,7 +165,7 @@ func (tc typeCode) dataType() DataType {
 	case TcTableRows:
 		return DtRows
 	default:
-		return assert.TPanicf[DataType]("missing DataType for typeCode %s", tc)
+		panic("missing DataType for typeCode")
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/SAP/go-hdb/driver/internal/assert"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
@@ -440,7 +439,7 @@ func (r *ReadLobReply) init() {
 
 func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if numArg != 1 {
-		assert.Panic("numArg == 1 expected")
+		panic("numArg == 1 expected")
 	}
 	id := LocatorID(dec.Uint64())
 	if id != r.id {
