@@ -329,7 +329,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	if c.session.tx != nil {
+	if c.session.isInTx() {
 		return nil, ErrNestedTransaction
 	}
 
@@ -347,6 +347,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	done := make(chan struct{})
 	var sqlErr error
+	var tx driver.Tx
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -367,7 +368,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			if sqlErr != nil {
 				return
 			}
-			c.session.tx = newTx(c)
+			tx = newTx(c)
+			s.setInTx(true)
+
 		})
 		close(done)
 	}()
@@ -377,7 +380,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.session.cancel()
 		return nil, ctx.Err()
 	case <-done:
-		return c.session.tx, sqlErr
+		return tx, sqlErr
 	}
 }
 
@@ -512,7 +515,7 @@ var (
 
 type tx struct {
 	conn   *conn
-	closed bool
+	closed atomic.Bool
 }
 
 func newTx(conn *conn) *tx {
@@ -526,17 +529,16 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) error {
 	c := t.conn
 
-	defer func() { c.session.tx = nil }()
-
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
+
+	defer c.session.setInTx(false)
 
 	if c.session.isBad() {
 		return driver.ErrBadConn
 	}
-	if t.closed {
+	if closed := t.closed.Swap(true); closed {
 		return nil
 	}
-	t.closed = true
 
 	if rollback {
 		return c.session.rollback(context.Background())

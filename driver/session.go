@@ -57,7 +57,10 @@ type session struct {
 
 	user *SessionUser // session user
 
-	tx driver.Tx // tx != nil if in transaction; false otherwise.
+	/*
+		use atomic access to double check on _inTx without holding a mutex
+	*/
+	_inTx atomic.Bool
 
 	/*
 		bad connection flag (can be set by 'done' and 'write' concurrently).
@@ -68,9 +71,11 @@ type session struct {
 
 	/*
 		all calls to go-hdb from go sql are under a mutex, but
-		go-hdb lob scanning might need to fetch additional data
+		.go-hdb lob scanning might need to fetch additional data
 		and is not protected by the same mutex which might lead to
-		race conditions on connection access.
+		race conditions on connection access and
+		.as go-hdb executes statements in own go-routines, the execution
+		might be ongoing whilst go sql is accessing the conn again
 		so, let's protect write / read protocol access by an own mutex.
 	*/
 	mu sync.Mutex
@@ -142,13 +147,11 @@ func (s *session) close() error {
 	return errors.Join(disconnectErr, closeErr)
 }
 
-func (s *session) isBad() bool {
-	return s._isBad.Load()
-}
+func (s *session) isInTx() bool      { return s._inTx.Load() }
+func (s *session) setInTx(inTx bool) { s._inTx.Store(inTx) }
 
-func (s *session) cancel() {
-	s._isBad.Store(true)
-}
+func (s *session) isBad() bool { return s._isBad.Load() }
+func (s *session) cancel()     { s._isBad.Store(true) }
 
 func (s *session) withLock(fn func(s *session)) {
 	s.mu.Lock()
@@ -249,7 +252,7 @@ func (s *session) switchUser(ctx context.Context) error {
 	if !ok || user.equal(s.user) {
 		return nil
 	}
-	if s.tx != nil {
+	if s.isInTx() {
 		return ErrSwitchUser
 	}
 	s.user = user.clone()
@@ -303,7 +306,7 @@ func (s *session) queryDirect(ctx context.Context, query string) (driver.Rows, e
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, s.tx == nil, p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.isInTx(), p.Command(query)); err != nil {
 		s._isBad.Store(true)
 		return nil, err
 	}
@@ -346,7 +349,7 @@ func (s *session) queryDirect(ctx context.Context, query string) (driver.Rows, e
 func (s *session) execDirect(ctx context.Context, query string) (driver.Result, error) {
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeExec)
 
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, s.tx == nil, p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.isInTx(), p.Command(query)); err != nil {
 		s._isBad.Store(true)
 		return nil, err
 	}
@@ -411,7 +414,7 @@ func (s *session) query(ctx context.Context, pr *prepareResult, nvargs []driver.
 	if err != nil {
 		return nil, err
 	}
-	if err := s.pwr.Write(ctx, p.MtExecute, s.tx == nil, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.isInTx(), p.StatementID(pr.stmtID), inputParameters); err != nil {
 		s._isBad.Store(true)
 		return nil, err
 	}
@@ -451,7 +454,7 @@ func (s *session) exec(ctx context.Context, pr *prepareResult, nvargs []driver.N
 	if err != nil {
 		return nil, err
 	}
-	if err := s.pwr.Write(ctx, p.MtExecute, s.tx == nil, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.isInTx(), p.StatementID(pr.stmtID), inputParameters); err != nil {
 		s._isBad.Store(true)
 		return nil, err
 	}
@@ -510,7 +513,7 @@ func (s *session) execCall(ctx context.Context, pr *prepareResult, nvargs []driv
 		return nil, nil, nil, 0, err
 	}
 
-	if err := s.pwr.Write(ctx, p.MtExecute, s.tx == nil, (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.isInTx(), (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
 		s._isBad.Store(true)
 		return nil, nil, nil, 0, err
 	}
