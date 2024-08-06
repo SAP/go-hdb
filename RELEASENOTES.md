@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.10.0
 
+#### v1.10.3
+- updated dependencies
+
 #### v1.10.2
 - fixed race condition closing transactions
 
