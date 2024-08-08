@@ -182,19 +182,24 @@ func (s *stmt) execCall(ctx context.Context, session *session, pr *prepareResult
 		}
 	}
 
-	numOutputField := len(cr.outFields)
-	// no output fields -> done
-	if numOutputField == 0 {
+	numOutArgs := len(callArgs.outArgs)
+	// no output args -> done
+	if numOutArgs == 0 {
 		return driver.RowsAffected(numRow), nil, nil
 	}
 
+	numOutputField := len(cr.outFields)
 	scanArgs := make([]any, numOutputField)
-	for i := 0; i < numOutputField; i++ {
+	for i := 0; i < numOutArgs; i++ {
 		scanArgs[i] = callArgs.outArgs[i].Value.(sql.Out).Dest
+	}
+	// acccount for table output fields without call arguments.
+	for i := numOutArgs; i < numOutputField; i++ {
+		scanArgs[i] = new(sql.Rows)
 	}
 
 	// no table output parameters -> QueryRow
-	if len(callArgs.outFields) == len(callArgs.outArgs) {
+	if len(callArgs.outFields) == numOutArgs {
 		if err := stdConnTracker.callDB().QueryRow("", cr).Scan(scanArgs...); err != nil {
 			return nil, nil, err
 		}

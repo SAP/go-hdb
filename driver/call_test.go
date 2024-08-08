@@ -374,6 +374,85 @@ end
 	checkTable(conn, ctx, table)
 }
 
+func testCallTableOutWithoutArg1(t *testing.T, db *sql.DB) {
+	const procWithoutArg = `create procedure %[1]s (in val integer)
+language SQLSCRIPT as
+begin
+	select val from dummy;
+end
+`
+	// use same connection
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal()
+	}
+	defer conn.Close()
+
+	// create procedure
+	proc := driver.RandomIdentifier("procTableOutWithoutArg1_")
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procWithoutArg, proc)); err != nil {
+		t.Fatal(err)
+	}
+
+	var i = 42
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?)", proc), i); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testCallTableOutWithoutArg2(t *testing.T, db *sql.DB) {
+	const procWithoutArg = `create procedure %[1]s (in input1 integer, in input2 integer, out output1 integer, out output2 integer, out output3 varchar(50))
+language SQLSCRIPT as
+begin
+	output1 := input1;
+	output2 := input2;
+	output3 := 'not used';
+	select 1 from dummy;
+end
+`
+	// use same connection
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal()
+	}
+	defer conn.Close()
+
+	// create procedure
+	proc := driver.RandomIdentifier("procTableOutWithoutArg2_")
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procWithoutArg, proc)); err != nil {
+		t.Fatal(err)
+	}
+
+	var in1, in2 = 42, 43
+	var out1, out2 int
+	var out3 string
+
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?,?,?,?,?)", proc),
+		in1,
+		in2,
+		sql.Named("OUTPUT1", sql.Out{Dest: &out1}),
+		sql.Named("OUTPUT2", sql.Out{Dest: &out2}),
+		sql.Named("OUTPUT3", sql.Out{Dest: &out3}),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	const notUsed = "not used"
+
+	if out1 != in1 {
+		t.Fatalf("invalid out1 value %d - expected %d", out1, in1)
+	}
+	if out2 != in2 {
+		t.Fatalf("invalid out2 value %d - expected %d", out2, in2)
+	}
+	if out3 != notUsed {
+		t.Fatalf("invalid out3 value %s - expected %s", out3, notUsed)
+	}
+}
+
 func TestCall(t *testing.T) {
 	t.Parallel()
 
@@ -386,6 +465,8 @@ func TestCall(t *testing.T) {
 		{"table", testCallTable},
 		{"noPrm", testCallNoPrm},
 		{"noOut", testCallNoOut},
+		{"tableOutWithoutArg1", testCallTableOutWithoutArg1},
+		{"tableOutWithoutArg2", testCallTableOutWithoutArg2},
 	}
 
 	db := driver.MT.DB()
