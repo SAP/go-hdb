@@ -218,7 +218,7 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 
 // Scan is a split function for a bufio.Scanner that returns each statement as a token.
 // It uses the default separator ';'. Comments are discarded - for adding leading comments
-// to each statement or specify a different separator please use SplitFunc.
+// to each statement or specify a different separator please use ScanFunc.
 func Scan(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	s := scanner{separator: DefaultSeparator, comments: false}
 	return s.scan(data, atEOF)

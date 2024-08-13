@@ -84,7 +84,7 @@ func testConvertRatToDecimal(t *testing.T) {
 
 	m := new(big.Int)
 
-	for i := 0; i < 1; i++ { // use for performance tests
+	for range 1 { // use for performance tests
 		for j, d := range testData {
 			exp, df := convertRatToDecimal(d.x, m, d.digits, d.minExp, d.maxExp)
 			if m.Cmp(d.cmp) != 0 || exp != d.exp || df != d.df {
@@ -118,7 +118,7 @@ func testConvertRatToFixed(t *testing.T) {
 
 	m := new(big.Int)
 
-	for i := 0; i < 1; i++ { // use for performance tests
+	for range 1 { // use for performance tests
 		for j, d := range testData {
 			df := convertRatToFixed(d.x, m, d.prec, d.scale)
 			if m.Cmp(d.cmp) != 0 || df != d.df {

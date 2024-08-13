@@ -71,8 +71,6 @@ func TestEmptyDate(t *testing.T) {
 	}
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		dfv := dfv // new dfv to run in parallel
-
 		t.Run(fmt.Sprintf("dfv %d emptyDateAsNull %t", dfv, false), func(t *testing.T) {
 			t.Parallel()
 			testEmptyDate(t, tableName, dfv, false)

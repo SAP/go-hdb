@@ -133,10 +133,10 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 		times:         make([]*histogram, numTime),
 		sqlTimes:      make([]*histogram, numSQLTime),
 	}
-	for i := 0; i < int(numTime); i++ {
+	for i := range int(numTime) {
 		rv.times[i] = newHistogram(timeUpperBounds)
 	}
-	for i := 0; i < int(numSQLTime); i++ {
+	for i := range int(numSQLTime) {
 		rv.sqlTimes[i] = newHistogram(timeUpperBounds)
 	}
 	return rv

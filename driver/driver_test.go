@@ -60,7 +60,7 @@ func testInsertByQuery(t *testing.T, db *sql.DB) {
 func testHDBError(t *testing.T, db *sql.DB) {
 	// select from not existing table with different table name length
 	// to check if padding, etc works (see hint in protocol.error.Read(...))
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		_, err := db.Query("select * from " + strings.Repeat("x", i+1)) //nolint:sqlclosecheck,gosec
 		if err == nil {
 			t.Fatal("hdb error expected")
@@ -148,7 +148,7 @@ func testRowsAffected(t *testing.T, db *sql.DB) {
 	defer stmt.Close()
 
 	// insert
-	for i := 0; i < maxRows; i++ {
+	for i := range maxRows {
 		result, err := stmt.Exec(i)
 		if err != nil {
 			t.Fatal(err)
@@ -306,8 +306,6 @@ func testDriverWithDB(t *testing.T) {
 
 	db := driver.MT.DB()
 	for _, test := range tests {
-		test := test // new dfv to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fn(t, db)
@@ -326,8 +324,6 @@ func testDriverWithoutDB(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test // new dfv to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fn(t)

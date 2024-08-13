@@ -91,6 +91,7 @@ func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {
 	// init default DB and default connector
 	mt.ctr.SetDefaultSchema(schema)         // important: set test schema! but after create schema
 	mt.ctr.SetPingInterval(1 * time.Second) // turn on connection validity check while resetting
+	// mt.ctr.setBulkSize(111)                 // limit bulk size
 	mt.db = sql.OpenDB(mt.ctr)
 	defer mt.db.Close()
 	mt.db.SetMaxIdleConns(25) // let's keep some more connections in the pool

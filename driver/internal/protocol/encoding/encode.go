@@ -40,7 +40,7 @@ func (e *Encoder) Zeroes(cnt int) {
 	if l > len(e.b) {
 		l = len(e.b)
 	}
-	for i := 0; i < l; i++ {
+	for i := range l {
 		e.b[i] = 0
 	}
 
@@ -145,7 +145,7 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
-		for i := 0; i < _S; i++ {
+		for range _S {
 			b[j] = byte(d)
 			d >>= 8
 			j++

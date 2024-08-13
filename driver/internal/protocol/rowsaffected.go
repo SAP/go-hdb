@@ -24,7 +24,7 @@ func (r rowsAffected) String() string {
 func (r *rowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.rows = resizeSlice(r.rows, numArg)
 
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		r.rows[i] = dec.Int32()
 	}
 	return dec.Error()

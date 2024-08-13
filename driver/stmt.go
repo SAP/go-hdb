@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sync"
 )
 
 // check if statements implements all required interfaces.
@@ -19,13 +18,11 @@ var (
 )
 
 type stmt struct {
-	session   *session
-	wg        *sync.WaitGroup
-	attrs     *connAttrs
-	metrics   *metrics
-	sqlTracer *sqlTracer
-	query     string
-	pr        *prepareResult
+	session *session
+	attrs   *connAttrs
+	metrics *metrics
+	query   string
+	pr      *prepareResult
 	// rows: stored procedures with table output parameters
 	rows *sql.Rows
 }
@@ -43,9 +40,9 @@ func (t *totalRowsAffected) add(r driver.Result) {
 	*t += totalRowsAffected(rows)
 }
 
-func newStmt(session *session, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics, sqlTracer *sqlTracer, query string, pr *prepareResult) *stmt {
+func newStmt(session *session, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
 	metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
-	return &stmt{session: session, wg: wg, attrs: attrs, metrics: metrics, sqlTracer: sqlTracer, query: query, pr: pr}
+	return &stmt{session: session, attrs: attrs, metrics: metrics, query: query, pr: pr}
 }
 
 /*
@@ -81,84 +78,34 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
 
-	trace := s.sqlTracer.begin()
-
-	done := make(chan struct{})
-	var rows driver.Rows
-	s.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer s.wg.Done()
-		s.session.withLock(func(sess *session) {
-			if sqlErr = s.session.preventSwitchUser(ctx); sqlErr != nil {
-				return
-			}
-			rows, sqlErr = sess.query(ctx, s.pr, nvargs)
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		s.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			s.sqlTracer.log(ctx, traceQuery, s.query, ctxErr, nvargs)
-		}
-		return nil, ctxErr
-	case <-done:
-		if trace {
-			s.sqlTracer.log(ctx, traceQuery, s.query, sqlErr, nvargs)
-		}
-		return rows, sqlErr
+	if err := s.session.preventSwitchUser(ctx); err != nil {
+		return nil, err
 	}
+	return s.session.query(ctx, s.query, s.pr, nvargs)
 }
 
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	trace := s.sqlTracer.begin()
-
 	if hookFn, ok := ctx.Value(connHookCtxKey).(connHookFn); ok {
 		hookFn(choStmtExec)
 	}
 
-	done := make(chan struct{})
-	var result driver.Result
-	s.wg.Add(1)
-	var sqlErr error
-	var rows *sql.Rows // needed to avoid data race in close if context get cancelled.
-	go func() {
-		defer s.wg.Done()
-		s.session.withLock(func(sess *session) {
-			if sqlErr = s.session.preventSwitchUser(ctx); sqlErr != nil {
-				return
-			}
-			if s.pr.isProcedureCall() {
-				result, rows, sqlErr = s.execCall(ctx, sess, s.pr, nvargs) //nolint:sqlclosecheck
-			} else {
-				result, sqlErr = s.execDefault(ctx, sess, nvargs)
-			}
-		})
-		close(done)
-	}()
+	var (
+		result driver.Result
+		err    error
+	)
 
-	select {
-	case <-ctx.Done():
-		s.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			s.sqlTracer.log(ctx, traceExec, s.query, ctxErr, nvargs)
-		}
-		return nil, ctxErr
-	case <-done:
-		s.rows = rows
-		if trace {
-			s.sqlTracer.log(ctx, traceExec, s.query, sqlErr, nvargs)
-		}
-		return result, sqlErr
+	if err := s.session.preventSwitchUser(ctx); err != nil {
+		return nil, err
 	}
+	if s.pr.isProcedureCall() {
+		result, s.rows, err = s.execCall(ctx, s.pr, nvargs) //nolint:sqlclosecheck
+	} else {
+		result, err = s.execDefault(ctx, nvargs)
+	}
+	return result, err
 }
 
-func (s *stmt) execCall(ctx context.Context, session *session, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
+func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
 	/*
 		call without lob input parameters:
 		--> callResult output parameter values are set after read call
@@ -166,20 +113,9 @@ func (s *stmt) execCall(ctx context.Context, session *session, pr *prepareResult
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, callArgs, ids, numRow, err := session.execCall(ctx, pr, nvargs)
+	cr, callArgs, numRow, err := s.session.execCall(ctx, s.query, pr, nvargs)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	if len(ids) != 0 {
-		/*
-			writeLobParameters:
-			- chunkReaders
-			- cr (callResult output parameters are set after all lob input parameters are written)
-		*/
-		if err := session.writeLobs(ctx, cr, ids, callArgs.inFields, callArgs.inArgs); err != nil {
-			return nil, nil, err
-		}
 	}
 
 	numOutArgs := len(callArgs.outArgs)
@@ -190,7 +126,7 @@ func (s *stmt) execCall(ctx context.Context, session *session, pr *prepareResult
 
 	numOutputField := len(cr.outFields)
 	scanArgs := make([]any, numOutputField)
-	for i := 0; i < numOutArgs; i++ {
+	for i := range numOutArgs {
 		scanArgs[i] = callArgs.outArgs[i].Value.(sql.Out).Dest
 	}
 	// acccount for table output fields without call arguments.
@@ -220,27 +156,29 @@ func (s *stmt) execCall(ctx context.Context, session *session, pr *prepareResult
 	return driver.RowsAffected(numRow), rows, nil
 }
 
-func (s *stmt) execDefault(ctx context.Context, session *session, nvargs []driver.NamedValue) (driver.Result, error) {
+type execFn func(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error)
+
+func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	numNVArg, numField := len(nvargs), s.pr.numField()
 
 	if numNVArg == 0 {
 		if numField != 0 {
 			return nil, fmt.Errorf("invalid number of arguments %d - expected %d", numNVArg, numField)
 		}
-		return session.exec(ctx, s.pr, nvargs, 0)
+		return s.session.exec(ctx, s.query, s.pr, nvargs, 0)
 	}
 	if numNVArg == 1 {
-		if _, ok := nvargs[0].Value.(func(args []any) error); ok {
-			return s.execFct(ctx, session, nvargs)
+		if execFn := s.detectExecFn(nvargs[0]); execFn != nil {
+			return execFn(ctx, nvargs)
 		}
 	}
 	if numNVArg == numField {
-		return s.exec(ctx, session, s.pr, nvargs, 0)
+		return s.exec(ctx, s.pr, nvargs, 0)
 	}
 	if numNVArg%numField != 0 {
 		return nil, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", numNVArg, numField)
 	}
-	return s.execMany(ctx, session, nvargs)
+	return s.execMany(ctx, nvargs)
 }
 
 // ErrEndOfRows is the error to be returned using a function based bulk exec to indicate
@@ -251,7 +189,7 @@ var ErrEndOfRows = errors.New("end of rows")
 Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.
 */
-func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.NamedValue) (driver.Result, error) {
+func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	totalRowsAffected := totalRowsAffected(0)
 	args := make([]driver.NamedValue, 0, s.pr.numField())
 	scanArgs := make([]any, s.pr.numField())
@@ -265,7 +203,7 @@ func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.Na
 	batch := 0
 	for !done {
 		args = args[:0]
-		for i := 0; i < s.attrs._bulkSize; i++ {
+		for range s.attrs._bulkSize {
 			err := fct(scanArgs)
 			if errors.Is(err, ErrEndOfRows) {
 				done = true
@@ -276,8 +214,8 @@ func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.Na
 			}
 
 			args = slices.Grow(args, len(scanArgs))
-			for j, scanArg := range scanArgs {
-				nv := driver.NamedValue{Ordinal: j + 1}
+			for i, scanArg := range scanArgs {
+				nv := driver.NamedValue{Ordinal: i + 1}
 				if t, ok := scanArg.(sql.NamedArg); ok {
 					nv.Name = t.Name
 					nv.Value = t.Value
@@ -289,7 +227,7 @@ func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.Na
 			}
 		}
 
-		r, err := s.exec(ctx, session, s.pr, args, batch*s.attrs._bulkSize)
+		r, err := s.exec(ctx, s.pr, args, batch*s.attrs._bulkSize)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
@@ -303,7 +241,7 @@ func (s *stmt) execFct(ctx context.Context, session *session, nvargs []driver.Na
 Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.
 */
-func (s *stmt) execMany(ctx context.Context, session *session, nvargs []driver.NamedValue) (driver.Result, error) {
+func (s *stmt) execMany(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	bulkSize := s.attrs._bulkSize
 
 	totalRowsAffected := totalRowsAffected(0)
@@ -315,13 +253,13 @@ func (s *stmt) execMany(ctx context.Context, session *session, nvargs []driver.N
 		numBatch++
 	}
 
-	for i := 0; i < numBatch; i++ {
+	for i := range numBatch {
 		from := i * numField * bulkSize
 		to := (i + 1) * numField * bulkSize
 		if to > numNVArg {
 			to = numNVArg
 		}
-		r, err := s.exec(ctx, session, s.pr, nvargs[from:to], i*bulkSize)
+		r, err := s.exec(ctx, s.pr, nvargs[from:to], i*bulkSize)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
@@ -350,7 +288,7 @@ Bulk insert containing LOBs:
   - Package invariant:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
-func (s *stmt) exec(ctx context.Context, session *session, pr *prepareResult, nvargs []driver.NamedValue, ofs int) (driver.Result, error) {
+func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, ofs int) (driver.Result, error) {
 	addLobDataRecs, err := convertExecArgs(pr.parameterFields, nvargs, s.attrs._cesu8Encoder(), s.attrs._lobChunkSize)
 	if err != nil {
 		return driver.ResultNoRows, err
@@ -360,10 +298,10 @@ func (s *stmt) exec(ctx context.Context, session *session, pr *prepareResult, nv
 	numColumn := len(pr.parameterFields)
 	totalRowsAffected := totalRowsAffected(0)
 	from := 0
-	for i := 0; i < len(addLobDataRecs); i++ {
+	for i := range len(addLobDataRecs) {
 		to := (addLobDataRecs[i] + 1) * numColumn
 
-		r, err := session.exec(ctx, pr, nvargs[from:to], ofs)
+		r, err := s.session.exec(ctx, s.query, pr, nvargs[from:to], ofs)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err

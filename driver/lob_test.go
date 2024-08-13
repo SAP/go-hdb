@@ -33,7 +33,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 	)
 	testData := make([]string, numRec)
 
-	for i := 0; i < numRec; i++ {
+	for i := range numRec {
 		testData[i] = alphanum.ReadString(blobSize)
 	}
 

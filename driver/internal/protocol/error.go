@@ -156,7 +156,7 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	e.onlyWarnings = true
 	e.errs = nil
 
-	for i := 0; i < numArg; i++ {
+	for range numArg {
 		err := new(HdbError)
 		e.errs = append(e.errs, err)
 

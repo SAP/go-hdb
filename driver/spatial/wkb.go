@@ -132,7 +132,7 @@ func encodeWKB(b *wkbBuffer, g Geometry) error {
 		if err := b.writeSize(size); err != nil {
 			return err
 		}
-		for i := 0; i < size; i++ {
+		for i := range size {
 			if err := encodeWKBCoord(b, gv.Index(i).Interface()); err != nil {
 				return err
 			}
@@ -143,13 +143,13 @@ func encodeWKB(b *wkbBuffer, g Geometry) error {
 		if err := b.writeSize(size); err != nil {
 			return err
 		}
-		for i := 0; i < size; i++ {
+		for i := range size {
 			ringv := gv.Index(i)
 			size := ringv.Len()
 			if err := b.writeSize(size); err != nil {
 				return err
 			}
-			for j := 0; j < size; j++ {
+			for j := range size {
 				if err := encodeWKBCoord(b, ringv.Index(j).Interface()); err != nil {
 					return err
 				}
@@ -161,7 +161,7 @@ func encodeWKB(b *wkbBuffer, g Geometry) error {
 		if err := b.writeSize(size); err != nil {
 			return err
 		}
-		for i := 0; i < size; i++ {
+		for i := range size {
 			if err := encodeWKB(b, gv.Index(i).Interface().(Geometry)); err != nil {
 				return err
 			}

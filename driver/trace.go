@@ -36,16 +36,23 @@ func SQLTrace() bool { return sqlTrace.Load() }
 func SetSQLTrace(on bool) { sqlTrace.Store(on) }
 
 const (
-	tracePing    = "ping"
-	tracePrepare = "prepare"
-	traceQuery   = "query"
-	traceExec    = "exec"
+	tracePing     = "ping"
+	tracePrepare  = "prepare"
+	traceQuery    = "query"
+	traceExec     = "exec"
+	traceExecCall = "call"
 )
 
+func traceQueryLogKind(query string) string {
+	if query == pingQuery {
+		return tracePing
+	}
+	return traceQuery
+}
+
 type sqlTracer struct {
-	logger    *slog.Logger
-	maxArg    int
-	startTime time.Time
+	logger *slog.Logger
+	maxArg int
 }
 
 const defSQLTracerMaxArg = 5 // default limit of number of arguments
@@ -57,21 +64,13 @@ func newSQLTracer(logger *slog.Logger, maxArg int) *sqlTracer {
 	return &sqlTracer{logger: logger, maxArg: maxArg}
 }
 
-func (t *sqlTracer) begin() bool {
-	t.startTime = time.Now()
-	return sqlTrace.Load()
-}
-
-func (t *sqlTracer) log(ctx context.Context, logKind string, query string, err error, nvargs []driver.NamedValue) {
-	duration := time.Since(t.startTime).Milliseconds()
+func (t *sqlTracer) log(ctx context.Context, startTime time.Time, logKind string, query string, nvargs ...driver.NamedValue) {
+	duration := time.Since(startTime).Milliseconds()
 	l := len(nvargs)
 
 	attrs := []slog.Attr{
 		slog.String(logKind, query),
 		slog.Int64("ms", duration),
-	}
-	if err != nil {
-		attrs = append(attrs, slog.String("error", (err).Error()))
 	}
 
 	if l == 0 {
@@ -79,8 +78,9 @@ func (t *sqlTracer) log(ctx context.Context, logKind string, query string, err e
 		return
 	}
 
-	var argAttrs []slog.Attr
-	for i := 0; i < min(l, t.maxArg); i++ {
+	numArg := min(l, t.maxArg)
+	argAttrs := make([]slog.Attr, 0, numArg)
+	for i := range numArg {
 		name := nvargs[i].Name
 		if name == "" {
 			name = strconv.Itoa(nvargs[i].Ordinal)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -15,7 +16,6 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
-	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
@@ -33,7 +33,7 @@ var ErrNestedQuery = errors.New("nested sql queries are not supported")
 
 // queries.
 const (
-	dummyQuery                      = "select 1 from dummy"
+	pingQuery                       = "select 1 from dummy"
 	setIsolationLevelReadCommitted  = "set transaction isolation level read committed"
 	setIsolationLevelRepeatableRead = "set transaction isolation level repeatable read"
 	setIsolationLevelSerializable   = "set transaction isolation level serializable"
@@ -43,9 +43,9 @@ const (
 
 var (
 	// register as var to execute even before init() funcs are called.
-	_ = p.RegisterScanType(p.DtBytes, hdbreflect.TypeFor[[]byte](), hdbreflect.TypeFor[NullBytes]())
-	_ = p.RegisterScanType(p.DtDecimal, hdbreflect.TypeFor[Decimal](), hdbreflect.TypeFor[NullDecimal]())
-	_ = p.RegisterScanType(p.DtLob, hdbreflect.TypeFor[Lob](), hdbreflect.TypeFor[NullLob]())
+	_ = p.RegisterScanType(p.DtBytes, reflect.TypeFor[[]byte](), reflect.TypeFor[NullBytes]())
+	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeFor[Decimal](), reflect.TypeFor[NullDecimal]())
+	_ = p.RegisterScanType(p.DtLob, reflect.TypeFor[Lob](), reflect.TypeFor[NullLob]())
 )
 
 // check if conn implements all required interfaces.
@@ -124,11 +124,7 @@ type conn struct {
 	attrs   *connAttrs
 	metrics *metrics
 	logger  *slog.Logger
-
-	session   *session
-	sqlTracer *sqlTracer
-
-	wg *sync.WaitGroup // wait for concurrent db calls when closing connections.
+	session *session
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -216,19 +212,11 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 	stdConnTracker.add()
 	metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
-	return &conn{
-		attrs:     attrs,
-		metrics:   metrics,
-		logger:    logger,
-		session:   session,
-		sqlTracer: newSQLTracer(logger, 0),
-		wg:        new(sync.WaitGroup),
-	}, nil
+	return &conn{attrs: attrs, metrics: metrics, logger: logger, session: session}, nil
 }
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
-	c.wg.Wait()                                        // wait until concurrent db calls are finalized
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	stdConnTracker.remove()
 	return c.session.close()
@@ -246,7 +234,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return nil
 	}
 
-	if _, err := c.session.queryDirect(ctx, dummyQuery); err != nil {
+	if _, err := c.session.queryDirect(ctx, pingQuery); err != nil {
 		return fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
 	return nil
@@ -257,80 +245,36 @@ func (c *conn) IsValid() bool { return !c.session.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	trace := c.sqlTracer.begin()
-
-	done := make(chan struct{})
-	c.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			_, sqlErr = s.queryDirect(ctx, dummyQuery)
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			c.sqlTracer.log(ctx, tracePing, dummyQuery, ctxErr, nil)
-		}
-		return ctxErr
-	case <-done:
-		if trace {
-			c.sqlTracer.log(ctx, tracePing, dummyQuery, sqlErr, nil)
-		}
-		return sqlErr
-	}
+	_, err := c.session.queryDirect(ctx, pingQuery)
+	return err
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	trace := c.sqlTracer.begin()
-
-	done := make(chan struct{})
-	var stmt driver.Stmt
-	c.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			if sqlErr = s.switchUser(ctx); sqlErr != nil {
-				return
-			}
-			var pr *prepareResult
-			if pr, sqlErr = s.prepare(ctx, query); sqlErr == nil {
-				stmt = newStmt(c.session, c.wg, c.attrs, c.metrics, c.sqlTracer, query, pr)
-				if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
-					*stmtMetadata = pr
-				}
-			}
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			c.sqlTracer.log(ctx, tracePrepare, query, ctxErr, nil)
-		}
-		return nil, ctxErr
-	case <-done:
-		if trace {
-			c.sqlTracer.log(ctx, tracePrepare, query, sqlErr, nil)
-		}
-		return stmt, sqlErr
+	if err := c.session.switchUser(ctx); err != nil {
+		return nil, err
 	}
+
+	pr, err := c.session.prepare(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	stmt := newStmt(c.session, c.attrs, c.metrics, query, pr)
+	if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
+		*stmtMetadata = pr
+	}
+	return stmt, nil
 }
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	if c.session.isInTx() {
+	if c.session.inTx {
 		return nil, ErrNestedTransaction
+	}
+
+	if err := c.session.switchUser(ctx); err != nil {
+		return nil, err
 	}
 
 	var isolationLevelQuery string
@@ -345,43 +289,26 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		return nil, ErrUnsupportedIsolationLevel
 	}
 
-	done := make(chan struct{})
-	var sqlErr error
-	var tx driver.Tx
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			if sqlErr = s.switchUser(ctx); sqlErr != nil {
-				return
-			}
-			// set isolation level
-			if _, sqlErr = s.execDirect(ctx, isolationLevelQuery); sqlErr != nil {
-				return
-			}
-			// set access mode
-			if opts.ReadOnly {
-				_, sqlErr = s.execDirect(ctx, setAccessModeReadOnly)
-			} else {
-				_, sqlErr = s.execDirect(ctx, setAccessModeReadWrite)
-			}
-			if sqlErr != nil {
-				return
-			}
-			tx = newTx(c)
-			s.setInTx(true)
-
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		return nil, ctx.Err()
-	case <-done:
-		return tx, sqlErr
+	var accessModeQuery string
+	if opts.ReadOnly {
+		accessModeQuery = setAccessModeReadOnly
+	} else {
+		accessModeQuery = setAccessModeReadWrite
 	}
+
+	// set isolation level
+	if _, err := c.session.execDirect(ctx, isolationLevelQuery); err != nil {
+		return nil, err
+	}
+	// set access mode
+	if _, err := c.session.execDirect(ctx, accessModeQuery); err != nil {
+		return nil, err
+	}
+
+	tx := newTx(c)
+	c.session.inTx = true
+
+	return tx, nil
 }
 
 // QueryContext implements the driver.QueryerContext interface.
@@ -392,37 +319,10 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	trace := c.sqlTracer.begin()
-
-	done := make(chan struct{})
-	var rows driver.Rows
-	c.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			if sqlErr = s.switchUser(ctx); sqlErr != nil {
-				return
-			}
-			rows, sqlErr = s.queryDirect(ctx, query)
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			c.sqlTracer.log(ctx, traceQuery, query, ctxErr, nvargs)
-		}
-		return nil, ctxErr
-	case <-done:
-		if trace {
-			c.sqlTracer.log(ctx, traceQuery, query, sqlErr, nvargs)
-		}
-		return rows, sqlErr
+	if err := c.session.switchUser(ctx); err != nil {
+		return nil, err
 	}
+	return c.session.queryDirect(ctx, query)
 }
 
 // ExecContext implements the driver.ExecerContext interface.
@@ -431,38 +331,11 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	trace := c.sqlTracer.begin()
-
-	done := make(chan struct{})
-	var result driver.Result
-	c.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			if sqlErr = s.switchUser(ctx); sqlErr != nil {
-				return
-			}
-			// handle procedure call without parameters here as well
-			result, sqlErr = s.execDirect(ctx, query)
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		ctxErr := ctx.Err()
-		if trace {
-			c.sqlTracer.log(ctx, traceExec, query, ctxErr, nvargs)
-		}
-		return nil, ctxErr
-	case <-done:
-		if trace {
-			c.sqlTracer.log(ctx, traceExec, query, sqlErr, nvargs)
-		}
-		return result, sqlErr
+	if err := c.session.switchUser(ctx); err != nil {
+		return nil, err
 	}
+	// handle procedure call without parameters here as well
+	return c.session.execDirect(ctx, query)
 }
 
 // CheckNamedValue implements the NamedValueChecker interface.
@@ -485,25 +358,7 @@ func (c *conn) DatabaseName() string { return c.session.databaseName }
 
 // DBConnectInfo implements the Conn interface.
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
-	done := make(chan struct{})
-	var ci *DBConnectInfo
-	c.wg.Add(1)
-	var sqlErr error
-	go func() {
-		defer c.wg.Done()
-		c.session.withLock(func(s *session) {
-			ci, sqlErr = c.session.dbConnectInfo(ctx, databaseName)
-		})
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		c.session.cancel()
-		return nil, ctx.Err()
-	case <-done:
-		return ci, sqlErr
-	}
+	return c.session.dbConnectInfo(ctx, databaseName)
 }
 
 // transaction.
@@ -531,7 +386,9 @@ func (t *tx) close(rollback bool) error {
 
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
-	defer c.session.setInTx(false)
+	defer func() {
+		c.session.inTx = false
+	}()
 
 	if c.session.isBad() {
 		return driver.ErrBadConn

@@ -41,7 +41,7 @@ func jsonConvert(rv reflect.Value) any {
 	case reflect.Slice:
 		size := rv.Len()
 		s := make([]any, size)
-		for i := 0; i < size; i++ {
+		for i := range size {
 			s[i] = jsonConvert(rv.Index(i))
 		}
 		return s
@@ -55,7 +55,7 @@ func jsonConvert(rv reflect.Value) any {
 func jsonConvertGeometries(rv reflect.Value) any {
 	size := rv.Len()
 	s := make([]any, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		iv := rv.Index(i)
 		s[i] = jsonType{Type: geoTypeName(iv.Interface().(Geometry)), Coordinates: jsonConvert(iv)}
 	}

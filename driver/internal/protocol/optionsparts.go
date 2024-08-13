@@ -305,7 +305,7 @@ func (ti TopologyInformation) String() string { return fmt.Sprintf("%v", ti.host
 
 func (ti *TopologyInformation) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	ti.hosts = resizeSlice(ti.hosts, numArg)
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		host := &options[topologyOption]{}
 		ti.hosts[i] = host
 		hostNumArg := int(dec.Int16())
@@ -374,7 +374,7 @@ func (ops options[K]) numArg() int { return len(ops) }
 
 func (ops *options[K]) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	*ops = options[K]{} // no reuse of maps - create new one
-	for i := 0; i < numArg; i++ {
+	for range numArg {
 		k := K(dec.Int8())
 		tc := typeCode(dec.Byte())
 		ot := optTypeViaTypeCode(tc)

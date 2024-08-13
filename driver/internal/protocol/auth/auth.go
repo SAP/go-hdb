@@ -222,7 +222,7 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 // Decode decodes the parameters.
 func (p *Prms) Decode(dec *encoding.Decoder) error {
 	numPrms := int(dec.Int16())
-	for i := 0; i < numPrms; i++ {
+	for range numPrms {
 
 	}
 	return nil

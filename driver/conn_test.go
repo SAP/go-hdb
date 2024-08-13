@@ -33,7 +33,7 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 	}
 
 	// use statement again - should work even first stmt.Exec got cancelled.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		if _, err := stmt.Exec(); err != nil {
 			t.Fatal(err)
 		}
@@ -52,8 +52,6 @@ func TestConnection(t *testing.T) {
 
 	db := MT.DB()
 	for _, test := range tests {
-		test := test // new dfv to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct(t, db)

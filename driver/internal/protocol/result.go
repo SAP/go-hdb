@@ -141,7 +141,7 @@ func (r *ResultMetadata) String() string {
 func (r *ResultMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.ResultFields = newResultFields(numArg)
 	names := &fieldNames{}
-	for i := 0; i < len(r.ResultFields); i++ {
+	for i := range len(r.ResultFields) {
 		f := &ResultField{names: names}
 		f.decode(dec)
 		r.ResultFields[i] = f
@@ -167,7 +167,7 @@ func (r *Resultset) decodeResult(dec *encoding.Decoder, numArg int, lobReader Lo
 	cols := len(r.ResultFields)
 	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		for j, f := range r.ResultFields {
 			var err error
 			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, lobReader, lobChunkSize); err != nil {

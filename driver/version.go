@@ -53,7 +53,7 @@ func parseVersionNumber(s string) versionNumber {
 	vn := make([]uint64, versionCount)
 
 	parts := strings.SplitN(s, ".", versionCount)
-	for i := 0; i < len(parts); i++ {
+	for i := range len(parts) {
 		vn[i], _ = strconv.ParseUint(parts[i], 10, 64)
 	}
 	return vn
@@ -92,7 +92,7 @@ func compareUint64(u1, u2 uint64) int {
 //
 //	1 in case version v has higher precedence than c2.
 func (vn versionNumber) compare(vn2 versionNumber) int {
-	for i := 0; i < (versionCount - 1); i++ { // ignore buildID - might not be ordered}
+	for i := range versionCount - 1 { // ignore buildID - might not be ordered}
 		if r := compareUint64(vn[i], vn2[i]); r != 0 {
 			return r
 		}

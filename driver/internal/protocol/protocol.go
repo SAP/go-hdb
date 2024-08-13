@@ -69,6 +69,8 @@ type Reader struct {
 
 	hdbErrors    *HdbErrors
 	rowsAffected *rowsAffected
+
+	cancelled bool
 }
 
 func newReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobChunkSize int, readFromDB bool, prefix string) *Reader {
@@ -97,6 +99,9 @@ func NewDBReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lob
 func NewClientReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
 	return newReader(dec, protTrace, logger, lobChunkSize, false, prefixClient)
 }
+
+// Cancelled returns true if reading got cancelled, else otherwise.
+func (r *Reader) Cancelled() bool { return r.cancelled }
 
 // SkipParts reads and discards all protocol parts.
 func (r *Reader) SkipParts(ctx context.Context) error {
@@ -205,7 +210,14 @@ func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind Part
 		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textMsgHdr, r.mh.String()))
 	}
 
-	for i := 0; i < int(r.mh.noOfSegm); i++ {
+	for range int(r.mh.noOfSegm) {
+
+		// check if ctx got cancelled
+		if err := ctx.Err(); err != nil {
+			r.cancelled = true
+			return 0, err
+		}
+
 		if err := r.sh.decode(r.dec); err != nil {
 			return 0, err
 		}
@@ -217,7 +229,7 @@ func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind Part
 		}
 
 		lastPart := int(r.sh.noOfParts) - 1
-		for j := 0; j <= lastPart; j++ {
+		for j := range lastPart + 1 { // <=
 			if err := r.ph.decode(r.dec); err != nil {
 				return 0, err
 			}
@@ -329,6 +341,8 @@ type Writer struct {
 	mh *messageHeader
 	sh *segmentHeader
 	ph *partHeader
+
+	cancelledOrError bool
 }
 
 // NewWriter returns an instance of a protocol writer.
@@ -353,6 +367,9 @@ const (
 	protocolVersionMinor = 1
 )
 
+// CancelledOrError returns true if writing got cancelled or raised an error, else otherwise.
+func (w *Writer) CancelledOrError() bool { return w.cancelledOrError }
+
 // WriteProlog writes the protocol prolog.
 func (w *Writer) WriteProlog(ctx context.Context) error {
 	req := &initRequest{}
@@ -375,6 +392,14 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 func (w *Writer) SetSessionID(sessionID int64) { w.sessionID = sessionID }
 
 func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
+	err := w._write(ctx, messageType, commit, parts...)
+	if err != nil {
+		w.cancelledOrError = true
+	}
+	return err
+}
+
+func (w *Writer) _write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
 	// check on session variables to be send as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
 		parts = append([]PartEncoder{(*clientInfo)(&w.sv)}, parts...)
@@ -431,6 +456,11 @@ func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool
 	bufferSize -= segmentHeaderSize
 
 	for i, part := range parts {
+		// check if ctx got cancelled
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		size := partSize[i]
 		pad := padBytes(size)
 

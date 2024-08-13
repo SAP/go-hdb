@@ -177,8 +177,6 @@ func TestEncoding(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test // new dfv to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct(t, tableName, testData)

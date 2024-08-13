@@ -348,7 +348,7 @@ func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 // sniffer.
 func (r *WriteLobRequest) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.Descrs = make([]*WriteLobDescr, numArg)
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		r.Descrs[i] = &WriteLobDescr{}
 		if err := r.Descrs[i].decode(dec); err != nil {
 			return err
@@ -378,7 +378,7 @@ func (r *WriteLobReply) String() string { return fmt.Sprintf("ids %v", r.IDs) }
 func (r *WriteLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.IDs = resizeSlice(r.IDs, numArg)
 
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		r.IDs[i] = LocatorID(dec.Uint64())
 	}
 	return dec.Error()

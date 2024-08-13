@@ -205,8 +205,6 @@ func TestColumnType(t *testing.T) {
 	version := int(MT.Version().Major())
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		dfv := dfv // new dfv to run in parallel
-
 		name := fmt.Sprintf("dfv %d", dfv)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

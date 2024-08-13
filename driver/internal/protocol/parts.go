@@ -4,7 +4,6 @@ import (
 	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // Part represents a protocol part.
@@ -141,24 +140,24 @@ var (
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
-	pkError:               hdbreflect.TypeFor[HdbErrors](),
-	PkClientID:            hdbreflect.TypeFor[ClientID](),
-	PkClientInfo:          hdbreflect.TypeFor[clientInfo](),
-	PkTopologyInformation: hdbreflect.TypeFor[TopologyInformation](),
-	PkCommand:             hdbreflect.TypeFor[Command](),
-	pkRowsAffected:        hdbreflect.TypeFor[rowsAffected](),
-	PkStatementID:         hdbreflect.TypeFor[StatementID](),
-	PkResultsetID:         hdbreflect.TypeFor[ResultsetID](),
-	PkFetchSize:           hdbreflect.TypeFor[Fetchsize](),
-	PkReadLobRequest:      hdbreflect.TypeFor[ReadLobRequest](),
-	PkReadLobReply:        hdbreflect.TypeFor[ReadLobReply](),
-	PkWriteLobReply:       hdbreflect.TypeFor[WriteLobReply](),
-	PkWriteLobRequest:     hdbreflect.TypeFor[WriteLobRequest](),
-	PkClientContext:       hdbreflect.TypeFor[ClientContext](),
-	PkConnectOptions:      hdbreflect.TypeFor[ConnectOptions](),
-	PkTransactionFlags:    hdbreflect.TypeFor[transactionFlags](),
-	PkStatementContext:    hdbreflect.TypeFor[statementContext](),
-	PkDBConnectInfo:       hdbreflect.TypeFor[DBConnectInfo](),
+	pkError:               reflect.TypeFor[HdbErrors](),
+	PkClientID:            reflect.TypeFor[ClientID](),
+	PkClientInfo:          reflect.TypeFor[clientInfo](),
+	PkTopologyInformation: reflect.TypeFor[TopologyInformation](),
+	PkCommand:             reflect.TypeFor[Command](),
+	pkRowsAffected:        reflect.TypeFor[rowsAffected](),
+	PkStatementID:         reflect.TypeFor[StatementID](),
+	PkResultsetID:         reflect.TypeFor[ResultsetID](),
+	PkFetchSize:           reflect.TypeFor[Fetchsize](),
+	PkReadLobRequest:      reflect.TypeFor[ReadLobRequest](),
+	PkReadLobReply:        reflect.TypeFor[ReadLobReply](),
+	PkWriteLobReply:       reflect.TypeFor[WriteLobReply](),
+	PkWriteLobRequest:     reflect.TypeFor[WriteLobRequest](),
+	PkClientContext:       reflect.TypeFor[ClientContext](),
+	PkConnectOptions:      reflect.TypeFor[ConnectOptions](),
+	PkTransactionFlags:    reflect.TypeFor[transactionFlags](),
+	PkStatementContext:    reflect.TypeFor[statementContext](),
+	PkDBConnectInfo:       reflect.TypeFor[DBConnectInfo](),
 	/*
 	   parts that cannot be used generically as additional parameters are needed
 

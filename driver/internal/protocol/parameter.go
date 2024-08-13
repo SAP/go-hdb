@@ -324,7 +324,7 @@ func (m *ParameterMetadata) String() string {
 func (m *ParameterMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	m.ParameterFields = make([]*ParameterField, numArg)
 	names := &fieldNames{}
-	for i := 0; i < len(m.ParameterFields); i++ {
+	for i := range len(m.ParameterFields) {
 		f := &ParameterField{names: names}
 		f.decode(dec)
 		m.ParameterFields[i] = f
@@ -357,12 +357,12 @@ func (p *InputParameters) size() int {
 		return 0
 	}
 
-	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
+	for i := range len(p.nvargs) / numColumns { // row-by-row
 		size += numColumns
 
 		hasInLob := false
 
-		for j := 0; j < numColumns; j++ {
+		for j := range numColumns {
 			f := p.InputFields[j]
 			size += f.prmSize(p.nvargs[i*numColumns+j].Value)
 			if f.IsLob() && f.In() {
@@ -372,7 +372,7 @@ func (p *InputParameters) size() int {
 
 		// lob input parameter: set offset position of lob data
 		if hasInLob {
-			for j := 0; j < numColumns; j++ {
+			for j := range numColumns {
 				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*LobInDescr); ok {
 					lobInDescr.setPos(size)
 					size += lobInDescr.size()
@@ -403,10 +403,10 @@ func (p *InputParameters) encode(enc *encoding.Encoder) error {
 		return nil
 	}
 
-	for i := 0; i < len(p.nvargs)/numColumns; i++ { // row-by-row
+	for i := range len(p.nvargs) / numColumns { // row-by-row
 		hasInLob := false
 
-		for j := 0; j < numColumns; j++ {
+		for j := range numColumns {
 			// mass insert
 			f := p.InputFields[j]
 			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
@@ -418,7 +418,7 @@ func (p *InputParameters) encode(enc *encoding.Encoder) error {
 		}
 		// lob input parameter: write first data chunk
 		if hasInLob {
-			for j := 0; j < numColumns; j++ {
+			for j := range numColumns {
 				if lobInDescr, ok := p.nvargs[i*numColumns+j].Value.(*LobInDescr); ok {
 					lobInDescr.writeFirst(enc)
 				}
@@ -443,7 +443,7 @@ func (p *OutputParameters) decodeResult(dec *encoding.Decoder, numArg int, lobRe
 	cols := len(p.OutputFields)
 	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
 
-	for i := 0; i < numArg; i++ {
+	for i := range numArg {
 		for j, f := range p.OutputFields {
 			var err error
 			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, lobReader, lobChunkSize); err != nil {

@@ -136,8 +136,6 @@ func TestUserSwitch(t *testing.T) {
 	createTable()
 
 	for _, test := range tests {
-		test := test // new test to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fn()

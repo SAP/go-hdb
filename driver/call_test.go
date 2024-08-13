@@ -291,8 +291,6 @@ func testCallTable(t *testing.T, db *sql.DB) {
 	}
 
 	for _, test := range tests {
-		test := test // new test to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct()
@@ -472,8 +470,6 @@ func TestCall(t *testing.T) {
 	db := driver.MT.DB()
 
 	for _, test := range tests {
-		test := test // new test to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct(t, db)

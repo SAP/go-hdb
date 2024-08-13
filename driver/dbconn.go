@@ -10,8 +10,6 @@ import (
 	"net"
 	"runtime/pprof"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/dial"
 )
 
 var (
@@ -53,7 +51,7 @@ type stdDBConn struct {
 }
 
 func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *metrics, attrs *connAttrs) (dbConn, error) {
-	conn, err := attrs._dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: attrs._timeout, TCPKeepAlive: attrs._tcpKeepAlive})
+	conn, err := attrs.dialContext(ctx, host)
 	if err != nil {
 		return nil, err
 	}

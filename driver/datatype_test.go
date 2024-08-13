@@ -970,8 +970,6 @@ func TestDataType(t *testing.T) {
 	version := int(MT.Version().Major())
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
-		dfv := dfv // new dfv to run in parallel
-
 		name := fmt.Sprintf("dfv %d", dfv)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -983,9 +981,6 @@ func TestDataType(t *testing.T) {
 			t.Cleanup(func() { db.Close() })
 
 			for i, test := range getTests() {
-				i := i       // new i to run in parallel
-				test := test // new test to run in parallel
-
 				if test.columnType().IsSupported(version, dfv) {
 					t.Run(fmt.Sprintf("%s %d", test.columnType().DataType(), i), func(t *testing.T) {
 						t.Parallel()

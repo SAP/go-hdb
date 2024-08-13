@@ -66,7 +66,7 @@ func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	stmtNo := []int{1, 2, 3}
 
-	for i := 0; i < hdbErr.NumError(); i++ {
+	for i := range hdbErr.NumError() {
 		hdbErr.SetIdx(i)
 		if hdbErr.StmtNo() != stmtNo[i] {
 			t.Fatalf("statement number: %d - %d expected", hdbErr.StmtNo(), stmtNo[i])
@@ -118,7 +118,7 @@ func testBulkInsertStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
 	// insert bulk data with duplicate > defaultBulkSize
 	numRow := bulkSize + 2
 	args = make([]any, numRow*2)
-	for i := 0; i < numRow; i++ {
+	for i := range numRow {
 		args[i*2], args[i*2+1] = i, i
 	}
 	_, err = stmt.Exec(args...)
@@ -249,7 +249,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	testData := [numRecsPerCall]string{}
 
-	for i := 0; i < numRecsPerCall; i++ {
+	for i := range numRecsPerCall {
 		if i == bigChunkSizeRecNo {
 			testData[i] = strings.Repeat("a", chunkSize+1)
 		} else {
@@ -270,8 +270,8 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	args := make([]any, 2*numRecsPerCall)
 
-	for i := 0; i < (numRecs / numRecsPerCall); i++ {
-		for j := 0; j < numRecsPerCall; j++ {
+	for i := range numRecs / numRecsPerCall {
+		for j := range numRecsPerCall {
 			args[j*2] = i*numRecsPerCall + j
 			args[j*2+1] = testData[j]
 		}
@@ -437,8 +437,6 @@ func TestBulk(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 
 	for _, test := range tests {
-		test := test // new test to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct(t, ctr, db)

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"golang.org/x/text/transform"
 )
 
@@ -29,10 +28,10 @@ const (
 )
 
 var (
-	timeReflectType   = hdbreflect.TypeFor[time.Time]()
-	bytesReflectType  = hdbreflect.TypeFor[[]byte]()
-	stringReflectType = hdbreflect.TypeFor[string]()
-	ratReflectType    = hdbreflect.TypeFor[big.Rat]()
+	timeReflectType   = reflect.TypeFor[time.Time]()
+	bytesReflectType  = reflect.TypeFor[[]byte]()
+	stringReflectType = reflect.TypeFor[string]()
+	ratReflectType    = reflect.TypeFor[big.Rat]()
 )
 
 var (

@@ -194,7 +194,7 @@ func (t *task) close() {
 func createTasks(db *sql.DB, prepareQuery string, batchCount, batchSize int) ([]*task, error) {
 	var err error
 	tasks := []*task{}
-	for i := 0; i < batchCount; i++ {
+	for range batchCount {
 		stmt, err := db.PrepareContext(context.Background(), prepareQuery)
 		if err != nil {
 			return nil, err

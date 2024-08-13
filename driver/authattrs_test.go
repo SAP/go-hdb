@@ -21,7 +21,7 @@ func testRefreshDeadlock(t *testing.T) {
 	wg := new(sync.WaitGroup)
 	wg.Add(numConcurrent)
 	start := make(chan struct{})
-	for i := 0; i < numConcurrent; i++ {
+	for range numConcurrent {
 		go func(start <-chan struct{}, wg *sync.WaitGroup) {
 			defer wg.Done()
 			<-start
@@ -64,7 +64,7 @@ func testRefresh(t *testing.T) {
 	start := make(chan struct{})
 	connCh := make(chan *sql.Conn, numConcurrent)
 	errCh := make(chan error, numConcurrent)
-	for i := 0; i < numConcurrent; i++ {
+	for range numConcurrent {
 		go func(start <-chan struct{}, connCh chan *sql.Conn, errCh chan error, wg *sync.WaitGroup) {
 			defer wg.Done()
 			<-start
@@ -104,8 +104,6 @@ func TestAuthAttrs(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test // new test to run in parallel
-
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			test.fct(t)

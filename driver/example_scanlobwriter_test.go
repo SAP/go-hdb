@@ -1,4 +1,4 @@
-//go:build !unit && !go1.22
+//go:build !unit
 
 package driver_test
 
@@ -21,22 +21,6 @@ func (b *WriterLob) Write(p []byte) (n int, err error) {
 
 // Scan implements the database.sql.Scanner interface.
 func (b *WriterLob) Scan(arg any) error { return driver.ScanLobWriter(arg, b) }
-
-// NullWriterLob defines a writer based null data type for scanning Lobs.
-type NullWriterLob struct {
-	V     WriterLob
-	Valid bool
-}
-
-// Scan implements the database/sql/Scanner interface.
-func (n *NullWriterLob) Scan(value any) error {
-	if value == nil {
-		n.V, n.Valid = WriterLob(nil), false
-		return nil
-	}
-	n.Valid = true
-	return n.V.Scan(value)
-}
 
 // ExampleScanLobWriter demontrates how to read Lob data using a io.Writer based data type.
 func ExampleScanLobWriter() {
@@ -73,9 +57,9 @@ func ExampleScanLobWriter() {
 	}
 	defer stmt.Close()
 
-	// Scan into WriterLob and NullWriterLob.
+	// Scan into WriterLob and sql.Null[WriterLob].
 	var w WriterLob
-	var nw NullWriterLob
+	var nw sql.Null[WriterLob]
 	if err := stmt.QueryRow().Scan(&w, &nw); err != nil {
 		log.Fatal(err)
 	}

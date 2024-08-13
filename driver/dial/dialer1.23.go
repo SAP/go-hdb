@@ -1,3 +1,5 @@
+//go:build go1.23
+
 // Package dial provides types to implement go-hdb custom dialers.
 package dial
 
@@ -10,6 +12,7 @@ import (
 // DialerOptions contains optional parameters that might be used by a Dialer.
 type DialerOptions struct {
 	Timeout, TCPKeepAlive time.Duration
+	TCPKeepAliveConfig    net.KeepAliveConfig
 }
 
 // The Dialer interface needs to be implemented by custom Dialers. A Dialer for providing a custom driver connection
@@ -25,6 +28,6 @@ var DefaultDialer Dialer = &dialer{}
 type dialer struct{}
 
 func (d *dialer) DialContext(ctx context.Context, address string, options DialerOptions) (net.Conn, error) {
-	dialer := net.Dialer{Timeout: options.Timeout, KeepAlive: options.TCPKeepAlive}
+	dialer := net.Dialer{Timeout: options.Timeout, KeepAlive: options.TCPKeepAlive, KeepAliveConfig: options.TCPKeepAliveConfig}
 	return dialer.DialContext(ctx, "tcp", address)
 }

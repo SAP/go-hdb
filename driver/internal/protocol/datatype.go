@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"reflect"
 	"time"
-
-	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 )
 
 // DataType is the type definition for data types supported by this package.
@@ -40,20 +38,20 @@ var scanTypes = []struct {
 	scanType     reflect.Type
 	scanNullType reflect.Type
 }{
-	DtUnknown:  {hdbreflect.TypeFor[any](), hdbreflect.TypeFor[any]()},
-	DtBoolean:  {hdbreflect.TypeFor[bool](), hdbreflect.TypeFor[sql.NullBool]()},
-	DtTinyint:  {hdbreflect.TypeFor[uint8](), hdbreflect.TypeFor[sql.NullByte]()},
-	DtSmallint: {hdbreflect.TypeFor[int16](), hdbreflect.TypeFor[sql.NullInt16]()},
-	DtInteger:  {hdbreflect.TypeFor[int32](), hdbreflect.TypeFor[sql.NullInt32]()},
-	DtBigint:   {hdbreflect.TypeFor[int64](), hdbreflect.TypeFor[sql.NullInt64]()},
-	DtReal:     {hdbreflect.TypeFor[float32](), hdbreflect.TypeFor[sql.NullFloat64]()},
-	DtDouble:   {hdbreflect.TypeFor[float64](), hdbreflect.TypeFor[sql.NullFloat64]()},
-	DtTime:     {hdbreflect.TypeFor[time.Time](), hdbreflect.TypeFor[sql.NullTime]()},
-	DtString:   {hdbreflect.TypeFor[string](), hdbreflect.TypeFor[sql.NullString]()},
+	DtUnknown:  {reflect.TypeFor[any](), reflect.TypeFor[any]()},
+	DtBoolean:  {reflect.TypeFor[bool](), reflect.TypeFor[sql.NullBool]()},
+	DtTinyint:  {reflect.TypeFor[uint8](), reflect.TypeFor[sql.NullByte]()},
+	DtSmallint: {reflect.TypeFor[int16](), reflect.TypeFor[sql.NullInt16]()},
+	DtInteger:  {reflect.TypeFor[int32](), reflect.TypeFor[sql.NullInt32]()},
+	DtBigint:   {reflect.TypeFor[int64](), reflect.TypeFor[sql.NullInt64]()},
+	DtReal:     {reflect.TypeFor[float32](), reflect.TypeFor[sql.NullFloat64]()},
+	DtDouble:   {reflect.TypeFor[float64](), reflect.TypeFor[sql.NullFloat64]()},
+	DtTime:     {reflect.TypeFor[time.Time](), reflect.TypeFor[sql.NullTime]()},
+	DtString:   {reflect.TypeFor[string](), reflect.TypeFor[sql.NullString]()},
 	DtBytes:    {nil, nil}, // to be registered by driver
 	DtDecimal:  {nil, nil}, // to be registered by driver
 	DtLob:      {nil, nil}, // to be registered by driver
-	DtRows:     {hdbreflect.TypeFor[sql.Rows](), hdbreflect.TypeFor[sql.Rows]()},
+	DtRows:     {reflect.TypeFor[sql.Rows](), reflect.TypeFor[sql.Rows]()},
 }
 
 // ScanType return the scan type (reflect.Type) of the corresponding data type.

@@ -1,6 +1,19 @@
 Release Notes
 =============
 
+## v1.11.0
+
+### New features
+
+- Added bulk insert via iterator (see example) for go versions >= go1.23.0
+- Added net.KeepAliveConfig to connector (TCPKeepAliveConfig)
+  and enable on default with default settings for go versions >= go1.23.0
+
+### Changes
+
+- Added support of Go 1.23.
+- Dropped support of Go language versions < Go 1.22.
+
 ## v1.10.0
 
 #### v1.10.4

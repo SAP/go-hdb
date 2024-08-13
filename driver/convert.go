@@ -68,7 +68,7 @@ func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ces
 	numRow := len(nvargs) / numField
 	addLobDataRecs := []int{}
 
-	for i := 0; i < numRow; i++ {
+	for i := range numRow {
 		hasAddLobData := false
 		for j, field := range fields {
 			nvarg := &nvargs[(i*numField)+j]

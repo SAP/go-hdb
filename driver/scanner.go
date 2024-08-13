@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	hdbreflect "github.com/SAP/go-hdb/driver/internal/reflect"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
@@ -234,21 +233,21 @@ var kindSQLDatatypes = map[reflect.Kind]string{
 }
 
 var (
-	decimalType     = hdbreflect.TypeFor[Decimal]()
-	lobType         = hdbreflect.TypeFor[Lob]()
-	timeType        = hdbreflect.TypeFor[time.Time]()
-	bytesType       = hdbreflect.TypeFor[[]byte]()
-	nullBoolType    = hdbreflect.TypeFor[sql.NullBool]()
-	nullByteType    = hdbreflect.TypeFor[sql.NullByte]()
-	nullFloat64Type = hdbreflect.TypeFor[sql.NullFloat64]()
-	nullInt16Type   = hdbreflect.TypeFor[sql.NullInt16]()
-	nullInt32Type   = hdbreflect.TypeFor[sql.NullInt32]()
-	nullInt64Type   = hdbreflect.TypeFor[sql.NullInt64]()
-	nullStringType  = hdbreflect.TypeFor[sql.NullString]()
-	nullTimeType    = hdbreflect.TypeFor[sql.NullTime]()
-	nullBytesType   = hdbreflect.TypeFor[NullBytes]()
-	nullDecimalType = hdbreflect.TypeFor[NullDecimal]()
-	nullLobType     = hdbreflect.TypeFor[NullLob]()
+	decimalType     = reflect.TypeFor[Decimal]()
+	lobType         = reflect.TypeFor[Lob]()
+	timeType        = reflect.TypeFor[time.Time]()
+	bytesType       = reflect.TypeFor[[]byte]()
+	nullBoolType    = reflect.TypeFor[sql.NullBool]()
+	nullByteType    = reflect.TypeFor[sql.NullByte]()
+	nullFloat64Type = reflect.TypeFor[sql.NullFloat64]()
+	nullInt16Type   = reflect.TypeFor[sql.NullInt16]()
+	nullInt32Type   = reflect.TypeFor[sql.NullInt32]()
+	nullInt64Type   = reflect.TypeFor[sql.NullInt64]()
+	nullStringType  = reflect.TypeFor[sql.NullString]()
+	nullTimeType    = reflect.TypeFor[sql.NullTime]()
+	nullBytesType   = reflect.TypeFor[NullBytes]()
+	nullDecimalType = reflect.TypeFor[NullDecimal]()
+	nullLobType     = reflect.TypeFor[NullLob]()
 )
 
 var typeSQLDatatypes = map[reflect.Type]string{
