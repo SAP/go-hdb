@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.11.0
 
+### Minor revisions
+
+#### v1.11.1
+- fixed linter issues
+
 ### New features
 
 - Added bulk insert via iterator (see example) for go versions >= go1.23.0
@@ -15,6 +20,8 @@ Release Notes
 - Dropped support of Go language versions < Go 1.22.
 
 ## v1.10.0
+
+### Minor revisions
 
 #### v1.10.4
 - fixed bug (panic) in go-hdb/driver/stmt.go function execCall on calling stored procedures with table output parameters without providing arguments (args)

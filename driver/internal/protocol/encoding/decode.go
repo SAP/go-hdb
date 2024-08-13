@@ -411,34 +411,34 @@ func (d *Decoder) decodeTime() (int, int, int, int, bool) {
 	hour := d.Byte()
 	null := (hour & 0x80) == 0 // null value
 	hour &= 0x7f
-	min := d.Int8()
+	minute := d.Int8()
 	msec := d.Uint16()
 
 	sec := msec / 1000
 	msec %= 1000
 	nsec := int(msec) * 1000000
 
-	return int(hour), int(min), int(sec), nsec, null
+	return int(hour), int(minute), int(sec), nsec, null
 }
 
 // TimeField decodes a time field.
 func (d *Decoder) TimeField() (any, error) {
 	// time read gives only seconds (cut), no milliseconds
-	hour, min, sec, nsec, null := d.decodeTime()
+	hour, minute, sec, nsec, null := d.decodeTime()
 	if null {
 		return nil, nil
 	}
-	return time.Date(1, 1, 1, hour, min, sec, nsec, time.UTC), nil
+	return time.Date(1, 1, 1, hour, minute, sec, nsec, time.UTC), nil
 }
 
 // TimestampField decodes a timestamp field.
 func (d *Decoder) TimestampField() (any, error) {
 	year, month, day, dateNull := d.decodeDate()
-	hour, min, sec, nsec, timeNull := d.decodeTime()
+	hour, minute, sec, nsec, timeNull := d.decodeTime()
 	if dateNull || timeNull {
 		return nil, nil
 	}
-	return time.Date(year, month, day, hour, min, sec, nsec, time.UTC), nil
+	return time.Date(year, month, day, hour, minute, sec, nsec, time.UTC), nil
 }
 
 // LongdateField decodes a longdate field.

@@ -63,8 +63,10 @@ var (
 )
 
 // connection hook for testing.
-// use unexported var to avoid key collisions.
-var connHookCtxKey struct{}
+// use unexported type to avoid key collisions.
+type connHookCtxKeyType struct{}
+
+var connHookCtxKey connHookCtxKeyType
 
 // ...connection hook operations.
 const (

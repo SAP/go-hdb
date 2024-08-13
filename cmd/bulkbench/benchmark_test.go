@@ -20,12 +20,10 @@ func Benchmark(b *testing.B) {
 	}
 	ts := newTests(dba)
 
-	const maxDuration time.Duration = 1<<63 - 1
-
 	f := func(b *testing.B, sequential bool, batchCount, batchSize int) {
 		ds := make([]time.Duration, b.N)
-		var avg, max time.Duration
-		min := maxDuration
+		var avgDuration, maxDuration time.Duration
+		var minDuration time.Duration = 1<<63 - 1
 
 		for i := 0; i < b.N; i++ {
 			tr := ts.execute(sequential, batchCount, batchSize, drop)
@@ -33,33 +31,33 @@ func Benchmark(b *testing.B) {
 				b.Fatal(tr.Err)
 			}
 
-			avg += tr.Duration
-			if tr.Duration < min {
-				min = tr.Duration
+			avgDuration += tr.Duration
+			if tr.Duration < minDuration {
+				minDuration = tr.Duration
 			}
-			if tr.Duration > max {
-				max = tr.Duration
+			if tr.Duration > maxDuration {
+				maxDuration = tr.Duration
 			}
 			ds[i] = tr.Duration
 		}
 
 		// Median.
-		var med time.Duration
+		var medDuration time.Duration
 		sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
 		l := len(ds)
 		switch {
 		case l == 0: // keep med == 0
 		case l%2 != 0: // odd number
-			med = ds[l/2] //  mid value
+			medDuration = ds[l/2] // mid value
 		default:
-			med = (ds[l/2] + ds[l/2-1]) / 2 // even number - return avg of the two mid numbers
+			medDuration = (ds[l/2] + ds[l/2-1]) / 2 // even number - return avg of the two mid numbers
 		}
 
 		// Add metrics.
-		b.ReportMetric((avg / time.Duration(b.N)).Seconds(), "avgsec/op")
-		b.ReportMetric(min.Seconds(), "minsec/op")
-		b.ReportMetric(max.Seconds(), "maxsec/op")
-		b.ReportMetric(med.Seconds(), "medsec/op")
+		b.ReportMetric((avgDuration / time.Duration(b.N)).Seconds(), "avgsec/op")
+		b.ReportMetric(minDuration.Seconds(), "minsec/op")
+		b.ReportMetric(maxDuration.Seconds(), "maxsec/op")
+		b.ReportMetric(medDuration.Seconds(), "medsec/op")
 	}
 
 	// Additional info.

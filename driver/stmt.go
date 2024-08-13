@@ -98,7 +98,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		return nil, err
 	}
 	if s.pr.isProcedureCall() {
-		result, s.rows, err = s.execCall(ctx, s.pr, nvargs) //nolint:sqlclosecheck
+		result, s.rows, err = s.execCall(ctx, s.pr, nvargs)
 	} else {
 		result, err = s.execDefault(ctx, nvargs)
 	}

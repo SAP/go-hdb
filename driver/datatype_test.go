@@ -458,8 +458,8 @@ func maxValue(prec int) *big.Rat {
 }
 
 func minValue(prec int) *big.Rat {
-	max := maxValue(prec)
-	return max.Neg(max)
+	v := maxValue(prec)
+	return v.Neg(v)
 }
 
 var (

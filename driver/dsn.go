@@ -89,11 +89,11 @@ func parameterNotSupportedError(k string) error {
 func invalidNumberOfParametersError(k string, act, exp int) error { //nolint:unparam
 	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected %d", k, act, exp)}
 }
-func invalidNumberOfParametersRangeError(k string, act, min, max int) error {
-	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected %d - %d", k, act, min, max)}
+func invalidNumberOfParametersRangeError(k string, actPrm, minPrm, maxPrm int) error {
+	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected %d - %d", k, actPrm, minPrm, maxPrm)}
 }
-func invalidNumberOfParametersMinError(k string, act, min int) error {
-	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected at least %d", k, act, min)}
+func invalidNumberOfParametersMinError(k string, actPrm, minPrm int) error {
+	return &ParseError{s: fmt.Sprintf("invalid number of parameters for %s %d - expected at least %d", k, actPrm, minPrm)}
 }
 func parseError(k, v string) error {
 	return &ParseError{s: fmt.Sprintf("failed to parse %s: %s", k, v)}

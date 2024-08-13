@@ -18,12 +18,12 @@ func Distance(a, b string, caseSensitive bool) int {
 
 // MinString returns the string attribute determined by fn out of x with the minimal Lewenshtein distance to s.
 func MinString[S ~[]E, E any](x S, fn func(a E) string, s string, caseSensitive bool) (rv string) {
-	min := math.MaxInt
+	minInt := math.MaxInt
 	for _, e := range x {
 		xs := fn(e)
-		if d := Distance(xs, s, caseSensitive); d < min {
+		if d := Distance(xs, s, caseSensitive); d < minInt {
 			rv = xs
-			min = d
+			minInt = d
 		}
 	}
 	return

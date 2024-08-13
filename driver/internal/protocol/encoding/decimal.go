@@ -212,10 +212,10 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 		}
 	}
 
-	max := exp10(prec)
-	min := new(big.Int).Neg(max)
+	maxInt := exp10(prec)
+	minInt := new(big.Int).Neg(maxInt)
 
-	if m.Cmp(min) <= 0 || m.Cmp(max) >= 0 {
+	if m.Cmp(minInt) <= 0 || m.Cmp(maxInt) >= 0 {
 		df |= dfOverflow
 	}
 	return df

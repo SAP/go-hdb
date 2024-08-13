@@ -87,7 +87,7 @@ var (
 	i64One  = int64(1)
 )
 
-func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
+func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case bool:
 		if v {
@@ -96,30 +96,30 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		return i64Zero, nil
 	case int:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int8:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int16:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int32:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case int64:
-		if v > max || v < min {
+		if v > maxI64 || v < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return v, nil
@@ -129,25 +129,25 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 			return nil, errUint64OutOfRange
 		}
 		i64 := int64(u64)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint8:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint16:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case uint32:
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -156,7 +156,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 			return nil, errUint64OutOfRange
 		}
 		i64 := int64(v)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -165,7 +165,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if v != float32(i64) { // should work for overflow, NaN, +-INF as well
 			return nil, errConversionNotSupported
 		}
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errConversionNotSupported
 		}
 		return i64, nil
@@ -174,7 +174,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if v != float64(i64) { // should work for overflow, NaN, +-INF as well
 			return nil, errConversionNotSupported
 		}
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -183,7 +183,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if err != nil {
 			return nil, err
 		}
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -198,13 +198,13 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		return i64Zero, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i64 := rv.Int()
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
 		i64 := int64(rv.Uint())
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -214,7 +214,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 			return nil, errUint64OutOfRange
 		}
 		i64 := int64(u64)
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -224,7 +224,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
 			return nil, errConversionNotSupported
 		}
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -233,7 +233,7 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if err != nil {
 			return nil, errConversionNotSupported
 		}
-		if i64 > max || i64 < min {
+		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
@@ -241,10 +241,10 @@ func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertInteger(rv.Elem().Interface(), min, max)
+		return convertInteger(rv.Elem().Interface(), minI64, maxI64)
 	default:
 		if rv.Type().ConvertibleTo(stringReflectType) {
-			return convertInteger(rv.Convert(stringReflectType).Interface(), min, max)
+			return convertInteger(rv.Convert(stringReflectType).Interface(), minI64, maxI64)
 		}
 		return nil, errConversionNotSupported
 	}
@@ -255,16 +255,16 @@ var (
 	f64One  = float64(1.0)
 )
 
-func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
+func convertFloat(v any, maxF64 float64) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
 	case float32:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case float64:
-		if math.Abs(v) > max {
+		if math.Abs(v) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return v, nil
@@ -275,61 +275,61 @@ func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 		return f64Zero, nil
 	case int:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int8:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int16:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int32:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case int64:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint8:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint16:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint32:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case uint64:
 		f64 := float64(v)
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
@@ -338,7 +338,7 @@ func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 		if err != nil {
 			return nil, err
 		}
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
@@ -353,19 +353,19 @@ func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 		return f64Zero, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		f64 := float64(rv.Int())
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		f64 := float64(rv.Uint())
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
@@ -374,7 +374,7 @@ func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 		if err != nil {
 			return nil, err
 		}
-		if math.Abs(f64) > max {
+		if math.Abs(f64) > maxF64 {
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
@@ -382,10 +382,10 @@ func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertFloat(rv.Elem().Interface(), max)
+		return convertFloat(rv.Elem().Interface(), maxF64)
 	default:
 		if rv.Type().ConvertibleTo(stringReflectType) {
-			return convertFloat(rv.Convert(stringReflectType).Interface(), max)
+			return convertFloat(rv.Convert(stringReflectType).Interface(), maxF64)
 		}
 		return nil, errConversionNotSupported
 	}
