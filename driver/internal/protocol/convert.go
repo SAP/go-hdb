@@ -49,10 +49,34 @@ Conversion routines hdb parameters
 */
 
 func convertBool(v any) (any, error) {
+	// check needs to be done on each type individually as if combining types in one case
+	// the v type stays on any and the comparison v != 0 would always be true.
 	switch v := v.(type) {
 	case bool:
 		return v, nil
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+	case int:
+		return v != 0, nil
+	case int8:
+		return v != 0, nil
+	case int16:
+		return v != 0, nil
+	case int32:
+		return v != 0, nil
+	case int64:
+		return v != 0, nil
+	case uint:
+		return v != 0, nil
+	case uint8:
+		return v != 0, nil
+	case uint16:
+		return v != 0, nil
+	case uint32:
+		return v != 0, nil
+	case uint64:
+		return v != 0, nil
+	case float32:
+		return v != 0, nil
+	case float64:
 		return v != 0, nil
 	case string:
 		return strconv.ParseBool(v)
@@ -88,7 +112,7 @@ var (
 	i64One  = int64(1)
 )
 
-func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo
+func convertInteger(v any, min, max int64) (any, error) { //nolint: gocyclo, predeclared
 	switch v := v.(type) {
 	case bool:
 		if v {
@@ -256,7 +280,7 @@ var (
 	f64One  = float64(1.0)
 )
 
-func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo
+func convertFloat(v any, max float64) (any, error) { //nolint: gocyclo, predeclared
 	switch v := v.(type) {
 	case float32:
 		f64 := float64(v)

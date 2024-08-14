@@ -9,6 +9,74 @@ import (
 	"time"
 )
 
+func assertEqualBool(t *testing.T, v any, r bool) {
+	cv, err := convertField(tcBoolean, v, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rv := reflect.ValueOf(cv)
+	switch rv.Kind() {
+	case reflect.Bool:
+		if rv.Bool() != r {
+			t.Fatalf("assert equal bool failed %v - %t expected", cv, r)
+		}
+	default:
+		t.Fatalf("invalid type %[1]T %[1]v", cv)
+	}
+}
+
+func testConvertBool(t *testing.T) {
+	type testCustomBool bool
+
+	// bool data types
+
+	assertEqualBool(t, true, true)
+	assertEqualBool(t, false, false)
+
+	assertEqualBool(t, uint(0), false)
+	assertEqualBool(t, uint8(0), false)
+	assertEqualBool(t, uint16(0), false)
+	assertEqualBool(t, uint32(0), false)
+	assertEqualBool(t, uint64(0), false)
+
+	assertEqualBool(t, int(0), false)
+	assertEqualBool(t, int8(0), false)
+	assertEqualBool(t, int16(0), false)
+	assertEqualBool(t, int32(0), false)
+	assertEqualBool(t, int64(0), false)
+
+	assertEqualBool(t, uint(1), true)
+	assertEqualBool(t, uint8(1), true)
+	assertEqualBool(t, uint16(1), true)
+	assertEqualBool(t, uint32(1), true)
+	assertEqualBool(t, uint64(1), true)
+
+	assertEqualBool(t, int(1), true)
+	assertEqualBool(t, int8(1), true)
+	assertEqualBool(t, int16(1), true)
+	assertEqualBool(t, int32(1), true)
+	assertEqualBool(t, int64(1), true)
+
+	assertEqualBool(t, float32(0), false)
+	assertEqualBool(t, float64(0), false)
+
+	assertEqualBool(t, float32(1), true)
+	assertEqualBool(t, float64(1), true)
+
+	// custom integer data type
+	assertEqualBool(t, testCustomBool(false), false)
+	assertEqualBool(t, testCustomBool(true), true)
+
+	// boolean reference
+	b := false
+	assertEqualBool(t, &b, false)
+
+	// boolean as string
+	assertEqualBool(t, "false", false)
+	assertEqualBool(t, "true", true)
+}
+
 func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unparam
 	cv, err := convertField(tc, v, nil)
 	if err != nil {
@@ -198,6 +266,7 @@ func TestConverter(t *testing.T) {
 		name string
 		fct  func(t *testing.T)
 	}{
+		{"convertBool", testConvertBool},
 		{"convertInteger", testConvertInteger},
 		{"convertFloat", testConvertFloat},
 		{"convertTime", testConvertTime},

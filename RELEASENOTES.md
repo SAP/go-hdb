@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.10.0
 
+#### v1.10.5
+- fixed bug in converting integer arguments to HANA boolean type
+
 #### v1.10.4
 - fixed bug (panic) in go-hdb/driver/stmt.go function execCall on calling stored procedures with table output parameters without providing arguments (args)
 

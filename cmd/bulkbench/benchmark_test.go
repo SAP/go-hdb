@@ -24,8 +24,8 @@ func Benchmark(b *testing.B) {
 
 	f := func(b *testing.B, sequential bool, batchCount, batchSize int) {
 		ds := make([]time.Duration, b.N)
-		var avg, max time.Duration
-		min := maxDuration
+		var avg, max time.Duration //nolint: predeclared
+		min := maxDuration         //nolint: predeclared
 
 		for i := 0; i < b.N; i++ {
 			tr := ts.execute(sequential, batchCount, batchSize, drop)

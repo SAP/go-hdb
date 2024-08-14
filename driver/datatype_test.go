@@ -458,7 +458,7 @@ func maxValue(prec int) *big.Rat {
 }
 
 func minValue(prec int) *big.Rat {
-	max := maxValue(prec)
+	max := maxValue(prec) //nolint: predeclared
 	return max.Neg(max)
 }
 

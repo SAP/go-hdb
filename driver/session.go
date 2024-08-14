@@ -33,8 +33,10 @@ func (u *SessionUser) clone() *SessionUser {
 	return &SessionUser{Username: u.Username, Password: u.Password}
 }
 
-// use unexported var to avoid key collisions.
-var switchUserCtxKey struct{}
+// use unexported type to avoid key collisions.
+type switchUserCtxKeyType struct{}
+
+var switchUserCtxKey switchUserCtxKeyType
 
 // WithUserSwitch can be used to switch a user on a new or an existing connection
 // (see https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/connect-statement-session-management).

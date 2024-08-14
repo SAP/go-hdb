@@ -411,7 +411,7 @@ func (d *Decoder) decodeTime() (int, int, int, int, bool) {
 	hour := d.Byte()
 	null := (hour & 0x80) == 0 // null value
 	hour &= 0x7f
-	min := d.Int8()
+	min := d.Int8() //nolint: predeclared
 	msec := d.Uint16()
 
 	sec := msec / 1000
@@ -424,7 +424,7 @@ func (d *Decoder) decodeTime() (int, int, int, int, bool) {
 // TimeField decodes a time field.
 func (d *Decoder) TimeField() (any, error) {
 	// time read gives only seconds (cut), no milliseconds
-	hour, min, sec, nsec, null := d.decodeTime()
+	hour, min, sec, nsec, null := d.decodeTime() //nolint: predeclared
 	if null {
 		return nil, nil
 	}
@@ -434,7 +434,7 @@ func (d *Decoder) TimeField() (any, error) {
 // TimestampField decodes a timestamp field.
 func (d *Decoder) TimestampField() (any, error) {
 	year, month, day, dateNull := d.decodeDate()
-	hour, min, sec, nsec, timeNull := d.decodeTime()
+	hour, min, sec, nsec, timeNull := d.decodeTime() //nolint: predeclared
 	if dateNull || timeNull {
 		return nil, nil
 	}
