@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.11.2
+- fixed bug in converting integer arguments to HANA boolean type
+
 #### v1.11.1
 - fixed linter issues
 
