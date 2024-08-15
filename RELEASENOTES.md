@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.11.3
+- fixed bug (panic) in sql trace output in case the sql trace is not switched on
+- updated dependencies
+
 #### v1.11.2
 - fixed bug in converting integer arguments to HANA boolean type
 

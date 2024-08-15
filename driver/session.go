@@ -383,7 +383,7 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 		return nil, err
 	}
 	pr.fc = s.prd.FunctionCode()
-	if s.prd.FunctionCode() == p.FcDDL {
+	if s.sqlTracer != nil {
 		s.sqlTracer.log(ctx, t, tracePrepare, query)
 	}
 	return pr, nil
