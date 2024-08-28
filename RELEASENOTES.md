@@ -1,6 +1,12 @@
 Release Notes
 =============
 
+## v1.12.0
+
+### Changes
+
+- Changed 'prometheus' into own go module to reduce dependencies on go-hdb.
+
 ## v1.11.0
 
 ### Minor revisions
