@@ -591,7 +591,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 func (s *session) fetchNext(ctx context.Context, qr *queryResult) error {
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetch)
 
-	if err := s.pwr.Write(ctx, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(s.attrs._fetchSize)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(s.attrs._fetchSize)); err != nil { //nolint: gosec
 		return err
 	}
 

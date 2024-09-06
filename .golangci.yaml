@@ -92,6 +92,7 @@ linters:
     - execinquery
     - rowserrcheck
     - mnd
+    - exportloopref
   #enable-all: false
   #enable:
   #  - ...

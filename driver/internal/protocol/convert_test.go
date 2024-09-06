@@ -90,7 +90,7 @@ func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unpara
 			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
 		}
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if int64(rv.Uint()) != r {
+		if int64(rv.Uint()) != r { //nolint: gosec
 			t.Fatalf("assert equal int failed %v - %d expected", cv, r)
 		}
 	default:

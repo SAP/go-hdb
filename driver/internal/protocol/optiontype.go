@@ -75,12 +75,12 @@ func (_optBigintType) encode(e *encoding.Encoder, v any)  { e.Int64(v.(int64)) }
 func (_optDoubleType) encode(e *encoding.Encoder, v any)  { e.Float64(v.(float64)) }
 func (_optStringType) encode(e *encoding.Encoder, v any) {
 	s := v.(string)
-	e.Int16(int16(len(s)))
+	e.Int16(int16(len(s))) //nolint: gosec
 	e.Bytes([]byte(s))
 }
 func (_optBstringType) encode(e *encoding.Encoder, v any) {
 	b := v.([]byte)
-	e.Int16(int16(len(b)))
+	e.Int16(int16(len(b))) //nolint: gosec
 	e.Bytes(b)
 }
 

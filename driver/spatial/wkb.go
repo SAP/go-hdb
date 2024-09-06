@@ -69,7 +69,7 @@ func newWKBBuffer(isXDR, extended bool, srid int32) *wkbBuffer {
 
 func (b *wkbBuffer) writeCoord(fs ...float64) error { return binary.Write(b, b.order, fs) }
 
-func (b *wkbBuffer) writeSize(size int) error { return binary.Write(b, b.order, uint32(size)) }
+func (b *wkbBuffer) writeSize(size int) error { return binary.Write(b, b.order, uint32(size)) } //nolint: gosec
 
 func (b *wkbBuffer) writeType(g Geometry) error {
 	if _, err := b.Write([]byte{b.orderByte}); err != nil {

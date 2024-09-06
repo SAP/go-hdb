@@ -59,7 +59,8 @@ func (fn *fieldNames) decode(dec *encoding.Decoder) (err error) {
 		var s string
 		n, s, err = dec.CESU8LIString()
 		fn.items[i].name = s
-		pos += uint32(n + diff) // len byte + size + diff
+		// len byte + size + diff
+		pos += uint32(n + diff) //nolint: gosec
 	}
 	return err
 }

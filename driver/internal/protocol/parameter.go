@@ -88,7 +88,7 @@ func (f *ParameterField) fieldName() string {
 	case TcTableRows:
 		return fmt.Sprintf("table %d", f.ofs)
 	default:
-		return f.names.name(uint32(f.ofs))
+		return f.names.name(uint32(f.ofs)) //nolint: gosec
 	}
 }
 
@@ -171,8 +171,8 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.ofs = int(dec.Uint32())
 	f.prec = int(dec.Int16())
 	f.scale = int(dec.Int16())
-	dec.Skip(4) // filler
-	f.names.insert(uint32(f.ofs))
+	dec.Skip(4)                   // filler
+	f.names.insert(uint32(f.ofs)) //nolint: gosec
 }
 
 func (f *ParameterField) prmSize(v any) int {
@@ -285,8 +285,8 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 			panic("invalid lob value") // should never happen
 		}
 		enc.Byte(byte(descr.opt))
-		enc.Int32(int32(descr.size()))
-		enc.Int32(int32(descr.pos))
+		enc.Int32(int32(descr.size())) //nolint: gosec
+		enc.Int32(int32(descr.pos))    //nolint: gosec
 		return nil
 	default:
 		panic("invalid type code") // should never happen

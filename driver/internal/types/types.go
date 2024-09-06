@@ -10,13 +10,13 @@ import (
 
 // Column represents a database column.
 type Column interface {
-	IsSupported(version, dfv int) bool
+	IsSupported(version uint64, dfv int) bool
 	TypeName() string
-	DatabaseTypeName(version, dfv int) string
+	DatabaseTypeName(version uint64, dfv int) string
 	DataType() string
 	Length() (length int64, ok bool)
 	PrecisionScale() (precision, scale int64, ok bool)
-	ScanType(version, dfv int) reflect.Type
+	ScanType(version uint64, dfv int) reflect.Type
 	Nullable() (nullable, ok bool)
 }
 
@@ -36,14 +36,14 @@ var (
 
 type _type struct {
 	minDfv       *int
-	maxVersion   *int
+	maxVersion   *uint64
 	typeName     string
-	fnDBTypeName func(version, dfv int) (bool, string)
+	fnDBTypeName func(version uint64, dfv int) (bool, string)
 	dataType     p.DataType
-	fnScanType   func(version, dfv int, nullable bool) (bool, reflect.Type)
+	fnScanType   func(version uint64, dfv int, nullable bool) (bool, reflect.Type)
 }
 
-func (t *_type) isSupported(version, dfv int) bool {
+func (t *_type) isSupported(version uint64, dfv int) bool {
 	switch {
 	case t.minDfv != nil && t.maxVersion != nil:
 		return version <= *t.maxVersion && dfv >= *t.minDfv
@@ -56,7 +56,7 @@ func (t *_type) isSupported(version, dfv int) bool {
 	}
 }
 
-func (t *_type) databaseTypeName(version, dfv int) string {
+func (t *_type) databaseTypeName(version uint64, dfv int) string {
 	if t.fnDBTypeName != nil {
 		if ok, name := t.fnDBTypeName(version, dfv); ok {
 			return name
@@ -65,7 +65,7 @@ func (t *_type) databaseTypeName(version, dfv int) string {
 	return t.typeName
 }
 
-func (t *_type) scanType(version, dfv int, nullable bool) reflect.Type {
+func (t *_type) scanType(version uint64, dfv int, nullable bool) reflect.Type {
 	if t.fnScanType != nil {
 		if ok, typ := t.fnScanType(version, dfv, nullable); ok {
 			return typ
@@ -118,107 +118,107 @@ const (
 	dbtnFixed16 = "FIXED16"
 )
 
-func _dateDBTypeName(version, dfv int) (bool, string) {
+func _dateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, dbtnDaydate
 	}
 	return false, ""
 }
 
-func _timeDBTypeName(version, dfv int) (bool, string) {
+func _timeDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, dbtnSecondtime
 	}
 	return false, ""
 }
 
-func _timestampDBTypeName(version, dfv int) (bool, string) {
+func _timestampDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
 		return true, dbtnLongdate
 	}
 	return false, ""
 }
 
-func _longdateDBTypeName(version, dfv int) (bool, string) {
+func _longdateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnTimestamp
 	}
 	return false, ""
 }
 
-func _seconddateDBTypeName(version, dfv int) (bool, string) {
+func _seconddateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnTimestamp
 	}
 	return false, ""
 }
 
-func _daydateDBTypeName(version, dfv int) (bool, string) {
+func _daydateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnDate
 	}
 	return false, ""
 }
 
-func _secondtimeDBTypeName(version, dfv int) (bool, string) {
+func _secondtimeDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnTime
 	}
 	return false, ""
 }
 
-func _clobDBTypeName(version, dfv int) (bool, string) {
+func _clobDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 {
 		return true, dbtnNClob
 	}
 	return false, ""
 }
 
-func _bintextDBTypeName(version, dfv int) (bool, string) {
+func _bintextDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel6 {
 		return true, dbtnNClob
 	}
 	return false, ""
 }
 
-func _booleanDBTypeName(version, dfv int) (bool, string) {
+func _booleanDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel7 {
 		return true, dbtnTinyint
 	}
 	return false, ""
 }
 
-func _charDBTypeName(version, dfv int) (bool, string) {
+func _charDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 { // since hdb version 4: char equals nchar
 		return true, dbtnNChar
 	}
 	return false, ""
 }
 
-func _varcharDBTypeName(version, dfv int) (bool, string) {
+func _varcharDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 { // since hdb version 4: char equals nchar
 		return true, dbtnNVarchar
 	}
 	return false, ""
 }
 
-func _shorttextDBTypeName(version, dfv int) (bool, string) {
+func _shorttextDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnNVarchar
 	}
 	return false, ""
 }
 
-func _alphanumDBTypeName(version, dfv int) (bool, string) {
+func _alphanumDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
 		return true, dbtnNVarchar
 	}
 	return false, ""
 }
 
-func _smalldecimalDBTypeName(version, dfv int) (bool, string) { return true, dbtnDecimal }
+func _smalldecimalDBTypeName(version uint64, dfv int) (bool, string) { return true, dbtnDecimal }
 
-func _booleanScanType(version, dfv int, nullable bool) (bool, reflect.Type) {
+func _booleanScanType(version uint64, dfv int, nullable bool) (bool, reflect.Type) {
 	if dfv < p.DfvLevel7 {
 		return true, p.DtTinyint.ScanType(nullable)
 	}
@@ -228,7 +228,7 @@ func _booleanScanType(version, dfv int, nullable bool) (bool, reflect.Type) {
 var (
 	dfvLevel4 = p.DfvLevel4
 	dfvLevel6 = p.DfvLevel6
-	mv3       = int(3)
+	mv3       = uint64(3)
 )
 
 type basicColumn struct {
@@ -236,16 +236,18 @@ type basicColumn struct {
 	nullable bool
 }
 
-func (t *basicColumn) IsSupported(version, dfv int) bool                 { return t.dt.isSupported(version, dfv) }
+func (t *basicColumn) IsSupported(version uint64, dfv int) bool {
+	return t.dt.isSupported(version, dfv)
+}
 func (t *basicColumn) TypeName() string                                  { return t.dt.typeName }
 func (t *basicColumn) DataType() string                                  { return formatColumn(t.TypeName(), t.nullable) }
 func (t *basicColumn) Length() (length int64, ok bool)                   { return 0, false }
 func (t *basicColumn) PrecisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
 func (t *basicColumn) Nullable() (nullable, ok bool)                     { return t.nullable, true }
-func (t *basicColumn) DatabaseTypeName(version, dfv int) string {
+func (t *basicColumn) DatabaseTypeName(version uint64, dfv int) string {
 	return t.dt.databaseTypeName(version, dfv)
 }
-func (t *basicColumn) ScanType(version, dfv int) reflect.Type {
+func (t *basicColumn) ScanType(version uint64, dfv int) reflect.Type {
 	return t.dt.scanType(version, dfv, t.nullable)
 }
 
@@ -255,16 +257,16 @@ type varColumn struct {
 	length   int64
 }
 
-func (t *varColumn) IsSupported(version, dfv int) bool                 { return t.dt.isSupported(version, dfv) }
+func (t *varColumn) IsSupported(version uint64, dfv int) bool          { return t.dt.isSupported(version, dfv) }
 func (t *varColumn) TypeName() string                                  { return t.dt.typeName }
 func (t *varColumn) DataType() string                                  { return formatVarColumn(t.TypeName(), t.length, t.nullable) }
 func (t *varColumn) Length() (length int64, ok bool)                   { return t.length, true }
 func (t *varColumn) PrecisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
 func (t *varColumn) Nullable() (nullable, ok bool)                     { return t.nullable, true }
-func (t *varColumn) DatabaseTypeName(version, dfv int) string {
+func (t *varColumn) DatabaseTypeName(version uint64, dfv int) string {
 	return t.dt.databaseTypeName(version, dfv)
 }
-func (t *varColumn) ScanType(version, dfv int) reflect.Type {
+func (t *varColumn) ScanType(version uint64, dfv int) reflect.Type {
 	return t.dt.scanType(version, dfv, t.nullable)
 }
 
@@ -274,7 +276,7 @@ type decimalColumn struct {
 	precision, scale int64
 }
 
-func (t *decimalColumn) IsSupported(version, dfv int) bool {
+func (t *decimalColumn) IsSupported(version uint64, dfv int) bool {
 	if t.precision == 38 && dfv < p.DfvLevel8 { // does not work with dfv < 8
 		return false
 	}
@@ -282,7 +284,7 @@ func (t *decimalColumn) IsSupported(version, dfv int) bool {
 }
 func (t *decimalColumn) TypeName() string { return t.dt.typeName }
 
-func (t *decimalColumn) DatabaseTypeName(version, dfv int) string {
+func (t *decimalColumn) DatabaseTypeName(version uint64, dfv int) string {
 	if dfv < p.DfvLevel8 {
 		return t.dt.databaseTypeName(version, dfv)
 	}
@@ -311,7 +313,7 @@ func (t *decimalColumn) PrecisionScale() (precision, scale int64, ok bool) {
 	}
 	return t.precision, t.scale, true
 }
-func (t *decimalColumn) ScanType(version, dfv int) reflect.Type {
+func (t *decimalColumn) ScanType(version uint64, dfv int) reflect.Type {
 	return t.dt.scanType(version, dfv, t.nullable)
 }
 func (t *decimalColumn) Nullable() (nullable, ok bool) { return t.nullable, true }
@@ -322,19 +324,21 @@ type spatialColumn struct {
 	srid     int32
 }
 
-func (t *spatialColumn) IsSupported(version, dfv int) bool                 { return t.dt.isSupported(version, dfv) }
+func (t *spatialColumn) IsSupported(version uint64, dfv int) bool {
+	return t.dt.isSupported(version, dfv)
+}
 func (t *spatialColumn) TypeName() string                                  { return t.dt.typeName }
 func (t *spatialColumn) Length() (length int64, ok bool)                   { return 0, false }
 func (t *spatialColumn) PrecisionScale() (precision, scale int64, ok bool) { return 0, 0, false }
 func (t *spatialColumn) Nullable() (nullable, ok bool)                     { return t.nullable, true }
 func (t *spatialColumn) SRID() int32                                       { return t.srid }
-func (t *spatialColumn) DatabaseTypeName(version, dfv int) string {
+func (t *spatialColumn) DatabaseTypeName(version uint64, dfv int) string {
 	return t.dt.databaseTypeName(version, dfv)
 }
 func (t *spatialColumn) DataType() string {
 	return formatSpatialColumn(t.TypeName(), t.srid, t.nullable)
 }
-func (t *spatialColumn) ScanType(version, dfv int) reflect.Type {
+func (t *spatialColumn) ScanType(version uint64, dfv int) reflect.Type {
 	return t.dt.scanType(version, dfv, t.nullable)
 }
 

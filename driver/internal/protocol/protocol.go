@@ -423,8 +423,8 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	bufferSize := size
 
 	w.mh.sessionID = w.sessionID
-	w.mh.varPartLength = uint32(size)
-	w.mh.varPartSize = uint32(bufferSize)
+	w.mh.varPartLength = uint32(size)     //nolint: gosec
+	w.mh.varPartSize = uint32(bufferSize) //nolint: gosec
 	w.mh.noOfSegm = 1
 
 	if err := w.mh.encode(w.enc); err != nil {
@@ -441,9 +441,9 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	w.sh.messageType = messageType
 	w.sh.commit = commit
 	w.sh.segmentKind = skRequest
-	w.sh.segmentLength = int32(size)
+	w.sh.segmentLength = int32(size) //nolint: gosec
 	w.sh.segmentOfs = 0
-	w.sh.noOfParts = int16(numPart)
+	w.sh.noOfParts = int16(numPart) //nolint: gosec
 	w.sh.segmentNo = 1
 
 	if err := w.sh.encode(w.enc); err != nil {
@@ -468,8 +468,8 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		if err := w.ph.setNumArg(part.numArg()); err != nil {
 			return err
 		}
-		w.ph.bufferLength = int32(size)
-		w.ph.bufferSize = int32(bufferSize)
+		w.ph.bufferLength = int32(size)     //nolint: gosec
+		w.ph.bufferSize = int32(bufferSize) //nolint: gosec
 
 		if err := w.ph.encode(w.enc); err != nil {
 			return err

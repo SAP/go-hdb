@@ -323,7 +323,7 @@ func (d *WriteLobDescr) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(d.ID))
 	enc.Int8(int8(d.opt))
 	enc.Int64(d.ofs)
-	enc.Int32(int32(len(d.b)))
+	enc.Int32(int32(len(d.b))) //nolint: gosec
 	enc.Bytes(d.b)
 	return nil
 }
@@ -417,8 +417,8 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 
 func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(r.id))
-	enc.Int64(r.ofs + 1) // 1-based
-	enc.Int32(int32(r.chunkSize))
+	enc.Int64(r.ofs + 1)          // 1-based
+	enc.Int32(int32(r.chunkSize)) //nolint: gosec
 	enc.Zeroes(4)
 	return nil
 }

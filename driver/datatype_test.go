@@ -967,7 +967,7 @@ func TestDataType(t *testing.T) {
 		)
 	}
 
-	version := int(MT.Version().Major())
+	version := MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		name := fmt.Sprintf("dfv %d", dfv)

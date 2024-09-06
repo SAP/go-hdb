@@ -45,7 +45,7 @@ func TestColumnType(t *testing.T) {
 		return string(buf)
 	}
 
-	compareColumnTypes := func(ct ColumnType, c types.Column, version, dfv int) error {
+	compareColumnTypes := func(ct ColumnType, c types.Column, version uint64, dfv int) error {
 		if ct.DatabaseTypeName() != c.DatabaseTypeName(version, dfv) {
 			return fmt.Errorf("sql type %s type name %s - expected %s", c.TypeName(), ct.DatabaseTypeName(), c.DatabaseTypeName(version, dfv))
 		}
@@ -75,7 +75,7 @@ func TestColumnType(t *testing.T) {
 		return nil
 	}
 
-	testColumnType := func(t *testing.T, db *sql.DB, version, dfv int, types []types.Column, values []any) {
+	testColumnType := func(t *testing.T, db *sql.DB, version uint64, dfv int, types []types.Column, values []any) {
 
 		tableName := RandomIdentifier("%s_" + t.Name())
 
@@ -202,7 +202,7 @@ func TestColumnType(t *testing.T) {
 		}
 	}
 
-	version := int(MT.Version().Major())
+	version := MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		name := fmt.Sprintf("dfv %d", dfv)

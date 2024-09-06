@@ -3,6 +3,12 @@ Release Notes
 
 ## v1.12.0
 
+### Minor revisions
+
+#### v1.12.1
+- updated dependencies
+- support of additional linter checks
+
 ### Changes
 
 - Changed 'prometheus' into own go module to reduce dependencies on go-hdb.

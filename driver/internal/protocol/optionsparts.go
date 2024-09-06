@@ -139,7 +139,7 @@ func (co *ConnectOptions) DataFormatVersion2OrZero() int {
 
 // SetDataFormatVersion2 sets the data format version 2 option.
 func (co *ConnectOptions) SetDataFormatVersion2(v int) {
-	co.options.set(coDataFormatVersion2, int32(v))
+	co.options.set(coDataFormatVersion2, int32(v)) //nolint: gosec
 }
 
 // SetClientDistributionMode sets the client distribution mode option.
