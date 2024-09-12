@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestSCRUM(t *testing.T) {
+func TestSCRAM(t *testing.T) {
 	testData := []struct {
 		method          string
 		salt            []byte

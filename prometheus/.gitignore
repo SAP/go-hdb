@@ -1,0 +1,5 @@
+# as we do want to update the go-hdb version before pushing the repository
+# we cannot 'go mod tidy' with the newest go-hdb version
+# so, as go.mod and go.sum would be out of sync we don't push go.sum 
+# for the time being until a better solution is available
+go.sum

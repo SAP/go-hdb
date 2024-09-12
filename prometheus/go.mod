@@ -4,8 +4,10 @@ go 1.22
 
 toolchain go1.23.1
 
+// replace github.com/SAP/go-hdb => ..
+
 require (
-	github.com/SAP/go-hdb v1.12.1
+	github.com/SAP/go-hdb v1.12.2
 	github.com/prometheus/client_golang v1.20.3
 )
 
@@ -22,5 +24,3 @@ require (
 	golang.org/x/text v0.18.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
-
-// replace github.com/SAP/go-hdb => ..

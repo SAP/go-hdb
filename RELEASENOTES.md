@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.12.2
+- [fixed typo in test name](https://github.com/SAP/go-hdb/pull/139)
+
 #### v1.12.1
 - updated dependencies
 - support of additional linter checks
