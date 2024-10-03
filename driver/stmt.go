@@ -298,8 +298,8 @@ func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 	numColumn := len(pr.parameterFields)
 	totalRowsAffected := totalRowsAffected(0)
 	from := 0
-	for i := range len(addLobDataRecs) {
-		to := (addLobDataRecs[i] + 1) * numColumn
+	for _, row := range addLobDataRecs {
+		to := (row + 1) * numColumn
 
 		r, err := s.session.exec(ctx, s.query, pr, nvargs[from:to], ofs)
 		totalRowsAffected.add(r)

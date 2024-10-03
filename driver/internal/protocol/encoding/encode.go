@@ -84,8 +84,8 @@ func (e *Encoder) Int8(i int8) {
 
 // Int16 encodes an int16.
 func (e *Encoder) Int16(i int16) {
-	binary.LittleEndian.PutUint16(e.b[:2], uint16(i))
-	e.wr.Write(e.b[:2]) //nolint:errcheck
+	binary.LittleEndian.PutUint16(e.b[:2], uint16(i)) //nolint: gosec
+	e.wr.Write(e.b[:2])                               //nolint:errcheck
 }
 
 // Uint16 encodes an uint16.
@@ -102,8 +102,8 @@ func (e *Encoder) Uint16ByteOrder(i uint16, byteOrder binary.ByteOrder) {
 
 // Int32 encodes an int32.
 func (e *Encoder) Int32(i int32) {
-	binary.LittleEndian.PutUint32(e.b[:4], uint32(i))
-	e.wr.Write(e.b[:4]) //nolint:errcheck
+	binary.LittleEndian.PutUint32(e.b[:4], uint32(i)) //nolint:gosec
+	e.wr.Write(e.b[:4])                               //nolint:errcheck
 }
 
 // Uint32 encodes an uint32.
@@ -114,8 +114,8 @@ func (e *Encoder) Uint32(i uint32) {
 
 // Int64 encodes an int64.
 func (e *Encoder) Int64(i int64) {
-	binary.LittleEndian.PutUint64(e.b[:8], uint64(i))
-	e.wr.Write(e.b[:8]) //nolint:errcheck
+	binary.LittleEndian.PutUint64(e.b[:8], uint64(i)) //nolint:gosec
+	e.wr.Write(e.b[:8])                               //nolint:errcheck
 }
 
 // Uint64 encodes an uint64.
@@ -246,10 +246,10 @@ func (e *Encoder) varFieldInd(size int) error {
 		e.Byte(byte(size))
 	case size <= math.MaxInt16:
 		e.Byte(bytesLenIndMedium)
-		e.Int16(int16(size)) //nolint: gosec
+		e.Int16(int16(size))
 	case size <= math.MaxInt32:
 		e.Byte(bytesLenIndBig)
-		e.Int32(int32(size)) //nolint: gosec
+		e.Int32(int32(size))
 	}
 	return nil
 }

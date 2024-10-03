@@ -53,8 +53,8 @@ func parseVersionNumber(s string) versionNumber {
 	vn := make([]uint64, versionCount)
 
 	parts := strings.SplitN(s, ".", versionCount)
-	for i := range len(parts) {
-		vn[i], _ = strconv.ParseUint(parts[i], 10, 64)
+	for i, part := range parts {
+		vn[i], _ = strconv.ParseUint(part, 10, 64)
 	}
 	return vn
 }

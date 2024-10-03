@@ -88,7 +88,7 @@ func (c *stdDBConn) Read(b []byte) (int, error) {
 	c._lastRead = time.Now()
 	n, err := c.conn.Read(b)
 	c.metrics.msgCh <- timeMsg{idx: timeRead, d: time.Since(c._lastRead)}
-	c.metrics.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)}
+	c.metrics.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)} //nolint:gosec
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn
@@ -106,7 +106,7 @@ func (c *stdDBConn) Write(b []byte) (int, error) {
 	c._lastWrite = time.Now()
 	n, err := c.conn.Write(b)
 	c.metrics.msgCh <- timeMsg{idx: timeWrite, d: time.Since(c._lastWrite)}
-	c.metrics.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)}
+	c.metrics.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)} //nolint:gosec
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
 		// wrap error in driver.ErrBadConn

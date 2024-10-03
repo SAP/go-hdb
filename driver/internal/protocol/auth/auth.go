@@ -193,7 +193,7 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 	if numPrms > math.MaxInt16 {
 		return fmt.Errorf("invalid number of parameters %d - maximum %d", numPrms, math.MaxInt16)
 	}
-	enc.Int16(int16(numPrms)) //nolint: gosec
+	enc.Int16(int16(numPrms))
 
 	for _, e := range p.prms {
 		switch e := e.(type) {

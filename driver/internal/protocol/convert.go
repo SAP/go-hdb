@@ -152,7 +152,7 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		if u64 > math.MaxInt64 {
 			return nil, errUint64OutOfRange
 		}
-		i64 := int64(u64) //nolint: gosec
+		i64 := int64(u64)
 		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
@@ -179,7 +179,7 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		if v > math.MaxInt64 {
 			return nil, errUint64OutOfRange
 		}
-		i64 := int64(v) //nolint: gosec
+		i64 := int64(v)
 		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}
@@ -237,7 +237,7 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		if u64 > math.MaxInt64 {
 			return nil, errUint64OutOfRange
 		}
-		i64 := int64(u64) //nolint: gosec
+		i64 := int64(u64)
 		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}

@@ -257,7 +257,7 @@ func (h *partHeader) setNumArg(numArg int) error {
 		h.bigArgumentCount = 0
 	case numArg <= math.MaxInt32:
 		h.argumentCount = bigNumArgInd
-		h.bigArgumentCount = int32(numArg) //nolint: gosec
+		h.bigArgumentCount = int32(numArg)
 	}
 	return nil
 }
