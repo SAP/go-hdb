@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.12.4
+- updated dependencies
+- fixed README.me HANA client link
+
 #### v1.12.3
 - updated dependencies
 - fixed linter issues
