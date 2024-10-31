@@ -47,6 +47,7 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 }
 
 // NewX509AuthConnector creates a connector for X509 (client certificate) authentication.
+// Parameters clientCert and clientKey in PEM format, clientKey not password encryped.
 func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector, error) {
 	c := NewConnector()
 	c._host = host
@@ -59,6 +60,7 @@ func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector
 
 // NewX509AuthConnectorByFiles creates a connector for X509 (client certificate) authentication
 // based on client certificate and client key files.
+// Parameters clientCertFile and clientKeyFile in PEM format, clientKeyFile not password encryped.
 func NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile string) (*Connector, error) {
 	c := NewConnector()
 	c._host = host
