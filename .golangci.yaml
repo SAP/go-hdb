@@ -57,7 +57,6 @@ linters:
     - nonamedreturns
     - nlreturn
     - ireturn
-    - gomnd
     - gochecknoglobals
     - exhaustruct
     - gochecknoinits
@@ -89,10 +88,10 @@ linters:
     - errchkjson
     - gci
     - noctx
-    - execinquery
     - rowserrcheck
     - mnd
     - exportloopref
+    - recvcheck
   #enable-all: false
   #enable:
   #  - ...
