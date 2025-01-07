@@ -7,7 +7,7 @@ toolchain go1.23.4
 // replace github.com/SAP/go-hdb => ..
 
 require (
-	github.com/SAP/go-hdb v1.12.6
+	github.com/SAP/go-hdb v1.12.8
 	github.com/prometheus/client_golang v1.20.5
 )
 
@@ -19,8 +19,8 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	golang.org/x/crypto v0.30.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.35.2 // indirect
+	google.golang.org/protobuf v1.36.2 // indirect
 )
