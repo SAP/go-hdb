@@ -25,7 +25,7 @@ func Benchmark(b *testing.B) {
 		var avgDuration, maxDuration time.Duration
 		var minDuration time.Duration = 1<<63 - 1
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			tr := ts.execute(sequential, batchCount, batchSize, drop)
 			if tr.Err != nil {
 				b.Fatal(tr.Err)

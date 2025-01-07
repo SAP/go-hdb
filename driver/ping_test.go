@@ -16,7 +16,7 @@ func benchmarkPing(b *testing.B) {
 }
 
 func benchmarkPingSeq(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		benchmarkPing(b)
 	}
 }
