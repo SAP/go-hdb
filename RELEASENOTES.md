@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.12.10
+- updated dependencies
+
 #### v1.12.9
 - fixed linter issues
 
