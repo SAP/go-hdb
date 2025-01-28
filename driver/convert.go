@@ -24,15 +24,92 @@ func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	}
 }
 
-// This function is take from the database/sql package.
-// The Elem() test is not needed bacause the function is only
-// called for values implementing the driver.Valuer interface.
-func callValuerValue(vr driver.Valuer) (v driver.Value, err error) {
-	if rv := reflect.ValueOf(vr); rv.Kind() == reflect.Pointer && rv.IsNil() {
+func valuerValue(v driver.Valuer) (driver.Value, error) {
+	// This is taken from the database/sql package.
+	// The Elem() test is not needed bacause the function is only
+	// called for values implementing the driver.Valuer interface.
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		// && rv.Type().Elem().Implements(valuerReflectType) {
 		return nil, nil
 	}
-	return vr.Value()
+	/*
+		func (n Null[T]) Value() (driver.Value, error) {
+			if !n.Valid {
+				return nil, nil
+			}
+			return n.V, nil
+		}
+	*/
+	// changes in sql.Null Value handling
+	// <= go1.23
+
+	// >= 1.24
+	/*
+		func (n Null[T]) Value() (driver.Value, error) {
+			if !n.Valid {
+				return nil, nil
+			}
+			v := any(n.V)
+			// See issue 69728.
+			if valuer, ok := v.(driver.Valuer); ok {
+				val, err := callValuerValue(valuer)
+				if err != nil {
+					return val, err
+				}
+				v = val
+			}
+			// See issue 69837.
+			return driver.DefaultParameterConverter.ConvertValue(v)
+		}
+	*/
+	// As sql.Null Value is now calling the default converter this totally breaks
+	// the generic usage on custom data types.
+	// Therefore we do need to handle custom types ourselves.
+
+	switch v := v.(type) {
+	case sql.Null[Decimal]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case sql.Null[*Decimal]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case *sql.Null[Decimal]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case *sql.Null[*Decimal]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case sql.Null[Lob]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case sql.Null[*Lob]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case *sql.Null[Lob]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	case *sql.Null[*Lob]:
+		if !v.Valid {
+			return nil, nil
+		}
+		return v.V, nil
+	default:
+		return v.Value()
+	}
 }
 
 func convertArg(field *p.ParameterField, arg any, cesu8Encoder transform.Transformer) (any, error) {
@@ -44,8 +121,7 @@ func convertArg(field *p.ParameterField, arg any, cesu8Encoder transform.Transfo
 			break
 		}
 		var err error
-		arg, err = callValuerValue(valuer)
-		if err != nil {
+		if arg, err = valuerValue(valuer); err != nil {
 			return nil, err
 		}
 	}

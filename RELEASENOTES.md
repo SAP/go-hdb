@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.12.11
+- go1.24 preparation
+
 #### v1.12.10
 - updated dependencies
 
