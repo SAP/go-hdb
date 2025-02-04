@@ -2,12 +2,12 @@ module github.com/SAP/go-hdb/prometheus
 
 go 1.22
 
-toolchain go1.23.5
+toolchain go1.23.6
 
 // replace github.com/SAP/go-hdb => ..
 
 require (
-	github.com/SAP/go-hdb v1.12.10
+	github.com/SAP/go-hdb v1.12.12
 	github.com/prometheus/client_golang v1.20.5
 )
 
@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.36.3 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
+	google.golang.org/protobuf v1.36.4 // indirect
 )
