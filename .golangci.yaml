@@ -90,8 +90,8 @@ linters:
     - noctx
     - rowserrcheck
     - mnd
-    - exportloopref
     - recvcheck
+    - tenv
   #enable-all: false
   #enable:
   #  - ...

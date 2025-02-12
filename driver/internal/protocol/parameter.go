@@ -109,8 +109,8 @@ func (f *ParameterField) String() string {
 func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(v any, t transform.Transformer) (any, error) {
-	cv, err := convertField(f.tc, v, t)
+func (f *ParameterField) Convert(v any, cesu8Encoder transform.Transformer) (any, error) {
+	cv, err := convertField(f.tc, v, cesu8Encoder)
 	if err != nil {
 		return nil, fmt.Errorf("field %[1]s type code %[2]s type %[3]T value %[3]v coversion error %[4]w", f.fieldName(), f.tc, v, err)
 	}
@@ -171,8 +171,8 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.ofs = int(dec.Uint32())
 	f.prec = int(dec.Int16())
 	f.scale = int(dec.Int16())
-	dec.Skip(4)                   // filler
-	f.names.insert(uint32(f.ofs)) //nolint: gosec
+	dec.Skip(4)                      // filler
+	f.names.insertOfs(uint32(f.ofs)) //nolint: gosec
 }
 
 func (f *ParameterField) prmSize(v any) int {

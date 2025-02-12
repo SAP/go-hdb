@@ -37,13 +37,17 @@ func TestSCRAM(t *testing.T) {
 
 	for _, r := range testData {
 		var key []byte
+		var err error
 		switch r.method {
 		case MtSCRAMSHA256:
-			key = scramsha256Key(r.password, r.salt)
+			key, err = scramsha256Key(r.password, r.salt)
 		case MtSCRAMPBKDF2SHA256:
-			key = scrampbkdf2sha256Key(r.password, r.salt, r.rounds)
+			key, err = scrampbkdf2sha256Key(string(r.password), r.salt, r.rounds)
 		default:
 			t.Fatalf("unknown authentication method %s", r.method)
+		}
+		if err != nil {
+			t.Fatal(err)
 		}
 		clientProof, err := clientProof(key, r.salt, r.serverChallenge, r.clientChallenge)
 		if err != nil {

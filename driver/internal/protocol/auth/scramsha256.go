@@ -9,12 +9,12 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/cache"
 )
 
-func scramsha256Key(password, salt []byte) []byte {
-	return _sha256(_hmac(password, salt))
+func scramsha256Key(password, salt []byte) ([]byte, error) {
+	return _sha256(_hmac(password, salt)), nil
 }
 
 // use cache as key calculation is expensive.
-var scramKeyCache = cache.NewList(3, func(k *SCRAMSHA256) []byte {
+var scramKeyCache = cache.NewList(3, func(k *SCRAMSHA256) ([]byte, error) {
 	return scramsha256Key([]byte(k.password), k.salt)
 })
 
@@ -72,7 +72,10 @@ func (a *SCRAMSHA256) InitRepDecode(d *Decoder) error {
 
 // PrepareFinalReq implements the Method interface.
 func (a *SCRAMSHA256) PrepareFinalReq(prms *Prms) error {
-	key := scramKeyCache.Get(a)
+	key, err := scramKeyCache.Get(a)
+	if err != nil {
+		return err
+	}
 	clientProof, err := clientProof(key, a.salt, a.serverChallenge, a.clientChallenge)
 	if err != nil {
 		return err

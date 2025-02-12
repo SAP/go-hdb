@@ -1,3 +1,5 @@
+//go:build go1.24
+
 package main
 
 import (
@@ -21,11 +23,11 @@ func Benchmark(b *testing.B) {
 	ts := newTests(dba)
 
 	f := func(b *testing.B, sequential bool, batchCount, batchSize int) {
-		ds := make([]time.Duration, b.N)
+		ds := make([]time.Duration, 0, b.N)
 		var avgDuration, maxDuration time.Duration
 		var minDuration time.Duration = 1<<63 - 1
 
-		for i := range b.N {
+		for b.Loop() {
 			tr := ts.execute(sequential, batchCount, batchSize, drop)
 			if tr.Err != nil {
 				b.Fatal(tr.Err)
@@ -38,7 +40,7 @@ func Benchmark(b *testing.B) {
 			if tr.Duration > maxDuration {
 				maxDuration = tr.Duration
 			}
-			ds[i] = tr.Duration
+			ds = append(ds, tr.Duration)
 		}
 
 		// Median.

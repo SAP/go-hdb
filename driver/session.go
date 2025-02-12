@@ -12,7 +12,6 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 // SessionUser provides the fields for a hdb 'connect' (switch user) statement.
@@ -51,8 +50,6 @@ type session struct {
 	prd *p.Reader
 	pwr *p.Writer
 
-	cesu8Encoder transform.Transformer
-
 	hdbVersion   *Version
 	databaseName string
 
@@ -69,18 +66,16 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 		return nil, err
 	}
 
-	rd := bufio.NewReaderSize(dbConn, attrs._bufferSize)
-	wr := bufio.NewWriterSize(dbConn, attrs._bufferSize)
+	rd := bufio.NewReaderSize(dbConn, attrs.bufferSize)
+	wr := bufio.NewWriterSize(dbConn, attrs.bufferSize)
 
-	cesu8Encoder := attrs._cesu8Encoder() // call function only once.
-
-	dec := encoding.NewDecoder(rd, attrs._cesu8Decoder(), attrs._emptyDateAsNull)
-	enc := encoding.NewEncoder(wr, cesu8Encoder)
+	dec := encoding.NewDecoder(rd, attrs.cesu8Decoder, attrs.emptyDateAsNull)
+	enc := encoding.NewEncoder(wr, attrs.cesu8Encoder)
 
 	protTrace := protTrace.Load()
 
-	prd := p.NewDBReader(dec, protTrace, logger, attrs._lobChunkSize)
-	pwr := p.NewWriter(wr, enc, protTrace, logger, attrs._sessionVariables)
+	prd := p.NewDBReader(dec, protTrace, logger, attrs.lobChunkSize)
+	pwr := p.NewWriter(wr, enc, protTrace, logger, attrs.sessionVariables)
 
 	// prolog
 	if err := pwr.WriteProlog(ctx); err != nil {
@@ -96,7 +91,7 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 	if sqlTrace.Load() {
 		sqlTracer = newSQLTracer(logger, 0)
 	}
-	s := &session{dbConn: dbConn, metrics: metrics, attrs: attrs, prd: prd, pwr: pwr, cesu8Encoder: cesu8Encoder, sqlTracer: sqlTracer}
+	s := &session{dbConn: dbConn, metrics: metrics, attrs: attrs, prd: prd, pwr: pwr, sqlTracer: sqlTracer}
 
 	if authHnd != nil { // authenticate
 		serverOptions, err := s.authenticate(ctx, authHnd, attrs)
@@ -138,7 +133,7 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *c
 	clientContext := &p.ClientContext{}
 	clientContext.SetVersion(DriverVersion)
 	clientContext.SetType(clientType)
-	clientContext.SetApplicationProgram(attrs._applicationName)
+	clientContext.SetApplicationProgram(attrs.applicationName)
 
 	initRequest, err := authHnd.InitRequest()
 	if err != nil {
@@ -167,7 +162,7 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *c
 	}
 
 	co := &p.ConnectOptions{}
-	co.SetDataFormatVersion2(attrs._dfv)
+	co.SetDataFormatVersion2(attrs.dfv)
 	co.SetClientDistributionMode(p.CdmOff)
 	// co.SetClientDistributionMode(p.CdmConnectionStatement)
 	// co.SetSelectForUpdateSupported(true) // doesn't seem to make a difference
@@ -176,8 +171,8 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *c
 		p.CoCompleteArrayExecution:      true,
 	*/
 
-	if attrs._locale != "" {
-		co.SetClientLocale(attrs._locale)
+	if attrs.locale != "" {
+		co.SetClientLocale(attrs.locale)
 	}
 
 	if err := s.pwr.Write(ctx, p.MtConnect, false, finalRequest, p.ClientID(clientID), co); err != nil {
@@ -221,8 +216,8 @@ func (s *session) setSchema(ctx context.Context) error {
 	case s.user != nil && s.user.Schema != "":
 		_, err := s.execDirect(ctx, "set schema "+Identifier(s.user.Schema).String())
 		return err
-	case s.attrs._defaultSchema != "":
-		_, err := s.execDirect(ctx, "set schema "+Identifier(s.attrs._defaultSchema).String())
+	case s.attrs.defaultSchema != "":
+		_, err := s.execDirect(ctx, "set schema "+Identifier(s.attrs.defaultSchema).String())
 		return err
 	default:
 		return nil
@@ -280,7 +275,7 @@ func (s *session) dbConnectInfo(ctx context.Context, databaseName string) (*DBCo
 	}, nil
 }
 
-func (s *session) queryDirect(ctx context.Context, query string) (driver.Rows, error) {
+func (s *session) queryDirect(ctx context.Context, query string, traceKind string) (driver.Rows, error) {
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
 
@@ -319,7 +314,7 @@ func (s *session) queryDirect(ctx context.Context, query string) (driver.Rows, e
 		return nil, err
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceQueryLogKind(query), query)
+		s.sqlTracer.log(ctx, t, traceKind, query)
 	}
 	if qr.rsID == 0 { // non select query
 		return noResult, nil
@@ -395,7 +390,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 
 	// allow e.g inserts as query -> handle commit like in exec
 
-	if err := convertQueryArgs(pr.parameterFields, nvargs, s.cesu8Encoder, s.attrs._lobChunkSize); err != nil {
+	if err := convertQueryArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize); err != nil {
 		return nil, err
 	}
 	inputParameters, err := p.NewInputParameters(pr.parameterFields, nvargs)
@@ -497,7 +492,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeCall)
 
-	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, s.cesu8Encoder, s.attrs._lobChunkSize)
+	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -591,7 +586,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 func (s *session) fetchNext(ctx context.Context, qr *queryResult) error {
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetch)
 
-	if err := s.pwr.Write(ctx, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(s.attrs._fetchSize)); err != nil { //nolint: gosec
+	if err := s.pwr.Write(ctx, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(s.attrs.fetchSize)); err != nil { //nolint: gosec
 		return err
 	}
 
@@ -738,7 +733,7 @@ func (s *session) writeLobs(ctx context.Context, cr *callResult, ids []p.Locator
 
 		// TODO check total size limit
 		for _, descr := range descrs {
-			if err := descr.FetchNext(s.attrs._lobChunkSize); err != nil {
+			if err := descr.FetchNext(s.attrs.lobChunkSize); err != nil {
 				return err
 			}
 		}

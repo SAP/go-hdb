@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"reflect"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,67 +140,11 @@ func isAuthError(err error) bool {
 	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
 }
 
-func fetchRedirectHost(ctx context.Context, host, databaseName string, metrics *metrics, attrs *connAttrs) (string, error) {
-	c, err := newConn(ctx, host, metrics, attrs, nil)
-	if err != nil {
-		return "", err
-	}
-	defer c.Close()
-	dbi, err := c.session.dbConnectInfo(ctx, databaseName)
-	if err != nil {
-		return "", err
-	}
-	if dbi.IsConnected { // if databaseName == "SYSTEMDB" and isConnected == true host and port are initial
-		return host, nil
-	}
-	return net.JoinHostPort(dbi.Host, strconv.Itoa(dbi.Port)), nil
-}
-
-func connect(ctx context.Context, host string, metrics *metrics, connAttrs *connAttrs, authAttrs *authAttrs) (driver.Conn, error) {
-	// can we connect via cookie?
-	if auth := authAttrs.cookieAuth(); auth != nil {
-		conn, err := newConn(ctx, host, metrics, connAttrs, auth)
-		if err == nil {
-			return conn, nil
-		}
-		if !isAuthError(err) {
-			return nil, err
-		}
-		authAttrs.invalidateCookie() // cookie auth was not successful - do not try again with the same data
-	}
-
-	lastVersion := authAttrs.version.Load()
-	for {
-		authHnd := authAttrs.authHnd()
-
-		conn, err := newConn(ctx, host, metrics, connAttrs, authHnd)
-		if err == nil {
-			if method, ok := authHnd.Selected().(auth.CookieGetter); ok {
-				authAttrs.setCookie(method.Cookie())
-			}
-			return conn, nil
-		}
-		if !isAuthError(err) {
-			return nil, err
-		}
-
-		if err := authAttrs.refresh(); err != nil {
-			return nil, err
-		}
-
-		version := authAttrs.version.Load()
-		if version == lastVersion { // no connection retry in case no new version available
-			return nil, err
-		}
-		lastVersion = version
-	}
-}
-
 // unique connection number.
 var connNo atomic.Uint64
 
 func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (*conn, error) {
-	logger := attrs._logger.With(slog.Uint64("conn", connNo.Add(1)))
+	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
 	metrics.lazyInit()
 
@@ -232,11 +174,11 @@ func (c *conn) ResetSession(ctx context.Context) error {
 
 	lastRead := c.session.dbConn.lastRead()
 
-	if c.attrs._pingInterval == 0 || lastRead.IsZero() || time.Since(lastRead) < c.attrs._pingInterval {
+	if c.attrs.pingInterval == 0 || lastRead.IsZero() || time.Since(lastRead) < c.attrs.pingInterval {
 		return nil
 	}
 
-	if _, err := c.session.queryDirect(ctx, pingQuery); err != nil {
+	if _, err := c.session.queryDirect(ctx, pingQuery, tracePing); err != nil {
 		return fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
 	return nil
@@ -247,7 +189,7 @@ func (c *conn) IsValid() bool { return !c.session.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	_, err := c.session.queryDirect(ctx, pingQuery)
+	_, err := c.session.queryDirect(ctx, pingQuery, tracePing)
 	return err
 }
 
@@ -324,7 +266,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	if err := c.session.switchUser(ctx); err != nil {
 		return nil, err
 	}
-	return c.session.queryDirect(ctx, query)
+	return c.session.queryDirect(ctx, query, traceQuery)
 }
 
 // ExecContext implements the driver.ExecerContext interface.

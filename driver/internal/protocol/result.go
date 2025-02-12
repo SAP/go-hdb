@@ -119,10 +119,10 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.columnNameOfs = dec.Uint32()
 	f.columnDisplayNameOfs = dec.Uint32()
 
-	f.names.insert(f.tableNameOfs)
-	f.names.insert(f.schemaNameOfs)
-	f.names.insert(f.columnNameOfs)
-	f.names.insert(f.columnDisplayNameOfs)
+	f.names.insertOfs(f.tableNameOfs)
+	f.names.insertOfs(f.schemaNameOfs)
+	f.names.insertOfs(f.columnNameOfs)
+	f.names.insertOfs(f.columnDisplayNameOfs)
 }
 
 func (f *ResultField) decodeResult(dec *encoding.Decoder, lobReader LobReader, lobChunkSize int) (any, error) {

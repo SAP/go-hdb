@@ -123,6 +123,12 @@ const (
 	coTopologyNetworkGroup                connectOption = 54 //!< NetworkGroup name sent by client to choose topology mapping (added to hana2sp04)
 	coIPAddress                           connectOption = 55 //!< IP Address of the sender (added to hana2sp04)
 	coLRRPingTime                         connectOption = 56 //!< Long running request ping time
+	coRedirectionType                     connectOption = 57 //!< Type of HANA Cloud redirection
+	coRedirectedHost                      connectOption = 58 //!< Cloud redirected hostname, if redirected
+	coRedirectedPort                      connectOption = 59 //!< Cloud redirected port, if redirected
+	coEndPointHost                        connectOption = 60 //!< Original hostname from user, before redirection
+	coEndPointPort                        connectOption = 61 //!< Original port from user, before redirection
+	coEndPointList                        connectOption = 62 //!< Original host:port;host:port list (including scale-out) from user
 )
 
 // ConnectOptions represents a connect options part.

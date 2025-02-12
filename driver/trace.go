@@ -43,13 +43,6 @@ const (
 	traceExecCall = "call"
 )
 
-func traceQueryLogKind(query string) string {
-	if query == pingQuery {
-		return tracePing
-	}
-	return traceQuery
-}
-
 type sqlTracer struct {
 	logger *slog.Logger
 	maxArg int
@@ -64,12 +57,12 @@ func newSQLTracer(logger *slog.Logger, maxArg int) *sqlTracer {
 	return &sqlTracer{logger: logger, maxArg: maxArg}
 }
 
-func (t *sqlTracer) log(ctx context.Context, startTime time.Time, logKind string, query string, nvargs ...driver.NamedValue) {
+func (t *sqlTracer) log(ctx context.Context, startTime time.Time, traceKind string, query string, nvargs ...driver.NamedValue) {
 	duration := time.Since(startTime).Milliseconds()
 	l := len(nvargs)
 
 	attrs := []slog.Attr{
-		slog.String(logKind, query),
+		slog.String(traceKind, query),
 		slog.Int64("ms", duration),
 	}
 

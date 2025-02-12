@@ -86,10 +86,7 @@ type LobInDescr struct {
 	buf bytes.Buffer
 }
 
-func newLobInDescr(tr transform.Transformer, rd io.Reader) *LobInDescr {
-	if tr != nil { // cesu8Encoder
-		rd = transform.NewReader(rd, tr)
-	}
+func newLobInDescr(rd io.Reader) *LobInDescr {
 	return &LobInDescr{rd: rd}
 }
 

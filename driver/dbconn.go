@@ -56,11 +56,11 @@ func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *m
 		return nil, err
 	}
 	// is TLS connection requested?
-	if attrs._tlsConfig != nil {
-		conn = tls.Client(conn, attrs._tlsConfig)
+	if attrs.tlsConfig != nil {
+		conn = tls.Client(conn, attrs.tlsConfig)
 	}
 
-	dbConn := &stdDBConn{metrics: metrics, conn: conn, timeout: attrs._timeout, logger: logger}
+	dbConn := &stdDBConn{metrics: metrics, conn: conn, timeout: attrs.timeout, logger: logger}
 	if cpuProfile {
 		return &profileDBConn{dbConn: dbConn}, nil
 	}

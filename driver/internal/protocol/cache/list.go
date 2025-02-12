@@ -12,21 +12,19 @@ type Comparer[E any] interface {
 
 // List is a generic cache list.
 type List[K Comparer[K], V any] struct {
-	maxEntries int
-	valueFn    func(k K) V
-	mu         sync.RWMutex
-	idx        int
-	keys       []K
-	values     []V
+	valueFn func(k K) (V, error)
+	mu      sync.RWMutex
+	idx     int
+	keys    []K
+	values  []V
 }
 
 // NewList returns a new cache list.
-func NewList[K Comparer[K], V any](maxEntries int, valueFn func(k K) V) *List[K, V] {
+func NewList[K Comparer[K], V any](maxEntry int, valueFn func(k K) (V, error)) *List[K, V] {
 	return &List[K, V]{
-		maxEntries: maxEntries,
-		valueFn:    valueFn,
-		keys:       make([]K, 0, maxEntries),
-		values:     make([]V, 0, maxEntries),
+		valueFn: valueFn,
+		keys:    make([]K, 0, maxEntry),
+		values:  make([]V, 0, maxEntry),
 	}
 }
 
@@ -42,19 +40,25 @@ func (l *List[K, V]) find(k K) (v V, ok bool) {
 }
 
 // Get returns the value for the given key.
-func (l *List[K, V]) Get(k K) V {
+func (l *List[K, V]) Get(k K) (V, error) {
 	if v, ok := l.find(k); ok {
-		return v
+		return v, nil
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	v := l.valueFn(k)
-	l.idx %= l.maxEntries
-	if l.idx >= len(l.keys) {
-		l.keys = l.keys[:l.idx+1]
-		l.values = l.values[:l.idx+1]
+	v, err := l.valueFn(k)
+	if err != nil {
+		return v, err
 	}
-	l.keys[l.idx], l.values[l.idx] = k, v
+	if l.idx < len(l.keys) {
+		l.keys[l.idx], l.values[l.idx] = k, v
+	} else {
+		l.keys = append(l.keys, k)
+		l.values = append(l.values, v)
+	}
 	l.idx++
-	return v
+	if l.idx >= cap(l.keys) {
+		l.idx = 0
+	}
+	return v, nil
 }

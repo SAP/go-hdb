@@ -573,26 +573,29 @@ type readProvider interface {
 	Reader() io.Reader
 }
 
-func convertToLobInDescr(tr transform.Transformer, rd io.Reader) *LobInDescr {
-	return newLobInDescr(tr, rd)
-}
-
-func convertLob(v any, t transform.Transformer) (any, error) {
+func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
+	var rd io.Reader = nil
 	switch v := v.(type) {
 	case io.Reader:
-		return convertToLobInDescr(t, v), nil
+		rd = v
 	case readProvider:
-		return convertToLobInDescr(t, v.Reader()), nil
+		rd = v.Reader()
 	default:
 		// check if string or []byte
 		if v, err := convertBytes(v); err == nil {
 			switch v := v.(type) {
 			case string:
-				return convertToLobInDescr(t, strings.NewReader(v)), nil
+				rd = strings.NewReader(v)
 			case []byte:
-				return convertToLobInDescr(t, bytes.NewReader(v)), nil
+				rd = bytes.NewReader(v)
 			}
 		}
+	}
+	if rd != nil {
+		if cesu8Encoder != nil {
+			rd = transform.NewReader(rd, cesu8Encoder)
+		}
+		return newLobInDescr(rd), nil
 	}
 
 	rv := reflect.ValueOf(v)
@@ -601,13 +604,13 @@ func convertLob(v any, t transform.Transformer) (any, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertLob(rv.Elem().Interface(), t)
+		return convertLob(rv.Elem().Interface(), cesu8Encoder)
 	default:
 		return nil, errConversionNotSupported
 	}
 }
 
-func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
+func convertField(tc typeCode, v any, cesu8Encoder transform.Transformer) (any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -636,7 +639,7 @@ func convertField(tc typeCode, v any, t transform.Transformer) (any, error) {
 	case tcBlob, tcClob, tcLocator:
 		return convertLob(v, nil)
 	case tcNclob, tcText, tcNlocator:
-		return convertLob(v, t)
+		return convertLob(v, cesu8Encoder)
 	case tcBintext: // ?? lobCESU8Type
 		return convertLob(v, nil)
 	default:

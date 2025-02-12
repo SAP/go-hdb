@@ -32,6 +32,8 @@ func valuerValue(v driver.Valuer) (driver.Value, error) {
 		// && rv.Type().Elem().Implements(valuerReflectType) {
 		return nil, nil
 	}
+	// changes in sql.Null Value handling
+	// <= go1.23
 	/*
 		func (n Null[T]) Value() (driver.Value, error) {
 			if !n.Valid {
@@ -40,9 +42,6 @@ func valuerValue(v driver.Valuer) (driver.Value, error) {
 			return n.V, nil
 		}
 	*/
-	// changes in sql.Null Value handling
-	// <= go1.23
-
 	// >= 1.24
 	/*
 		func (n Null[T]) Value() (driver.Value, error) {

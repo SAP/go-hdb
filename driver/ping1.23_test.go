@@ -1,4 +1,4 @@
-//go:build !unit
+//go:build !unit && !go1.24
 
 package driver_test
 

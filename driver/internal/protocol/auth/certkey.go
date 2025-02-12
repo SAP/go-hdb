@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unique"
 )
 
 // CertValidationError is returned in case of X09 certificate validation errors.
@@ -31,15 +32,15 @@ func (e CertValidationError) Error() string {
 
 // CertKey represents a X509 certificate and key.
 type CertKey struct {
-	cert, key  string // define as string for being immutable
-	certBlocks []*pem.Block
-	certs      []*x509.Certificate
-	keyBlock   *pem.Block
+	certHandle, keyHandle unique.Handle[string]
+	certBlocks            []*pem.Block
+	certs                 []*x509.Certificate
+	keyBlock              *pem.Block
 }
 
 // NewCertKey returns a new certificate and key instance.
-func NewCertKey(cert, key []byte) (*CertKey, error) {
-	certBlocks, err := decodeClientCert(cert)
+func NewCertKey(certHandle, keyHandle unique.Handle[string]) (*CertKey, error) {
+	certBlocks, err := decodeClientCert([]byte(certHandle.Value()))
 	if err != nil {
 		return nil, err
 	}
@@ -47,30 +48,35 @@ func NewCertKey(cert, key []byte) (*CertKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	keyBlock, err := decodeClientKey(key)
+	keyBlock, err := decodeClientKey([]byte(keyHandle.Value()))
 	if err != nil {
 		return nil, err
 	}
-	return &CertKey{cert: string(cert), key: string(key), certBlocks: certBlocks, certs: certs, keyBlock: keyBlock}, nil
+	return &CertKey{certHandle: certHandle, keyHandle: keyHandle, certBlocks: certBlocks, certs: certs, keyBlock: keyBlock}, nil
 }
 
-func (ck *CertKey) String() string { return fmt.Sprintf("cert %s key %s", ck.cert, ck.key) }
+func (ck *CertKey) String() string {
+	return fmt.Sprintf("cert %s key %s", ck.certHandle.Value(), ck.keyHandle.Value())
+}
 
 // Equal returns true if the certificate and key equals the instance data, false otherwise.
-func (ck *CertKey) Equal(cert, key []byte) bool {
-	return string(cert) == ck.cert && string(key) == ck.key
+func (ck *CertKey) Equal(certHandle, keyHandle unique.Handle[string]) bool {
+	return certHandle == ck.certHandle && keyHandle == ck.keyHandle
 }
 
 // Cert returns the certificate.
-func (ck *CertKey) Cert() []byte { return []byte(ck.cert) }
+func (ck *CertKey) Cert() []byte { return []byte(ck.certHandle.Value()) }
 
 // Key returns the key.
-func (ck *CertKey) Key() []byte { return []byte(ck.key) }
+func (ck *CertKey) Key() []byte { return []byte(ck.keyHandle.Value()) }
 
 // validate validates the certificate (currently validity period only).
-func (ck *CertKey) validate(t time.Time) error {
+func (ck *CertKey) validate(t time.Time) error { return validateCerts(ck.certs, t) }
+
+// validate validates the certificate (currently validity period only).
+func validateCerts(certs []*x509.Certificate, t time.Time) error {
 	t = t.UTC() // cert.NotBefore and cert.NotAfter in UTC as well
-	for _, cert := range ck.certs {
+	for _, cert := range certs {
 		// checks
 		// .check validity period
 		if t.Before(cert.NotBefore) || t.After(cert.NotAfter) {

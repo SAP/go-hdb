@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 )
 
@@ -156,8 +157,6 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	return driver.RowsAffected(numRow), rows, nil
 }
 
-type execFn func(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error)
-
 func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	numNVArg, numField := len(nvargs), s.pr.numField()
 
@@ -168,8 +167,11 @@ func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (dri
 		return s.session.exec(ctx, s.query, s.pr, nvargs, 0)
 	}
 	if numNVArg == 1 {
-		if execFn := s.detectExecFn(nvargs[0]); execFn != nil {
-			return execFn(ctx, nvargs)
+		switch nvargs[0].Value.(type) {
+		case func(args []any) error:
+			return s.execFct(ctx, nvargs)
+		case iter.Seq[[]any]:
+			return s.execSeq(ctx, nvargs)
 		}
 	}
 	if numNVArg == numField {
@@ -190,6 +192,8 @@ Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.
 */
 func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	bulkSize := s.attrs.bulkSize
+
 	totalRowsAffected := totalRowsAffected(0)
 	args := make([]driver.NamedValue, 0, s.pr.numField())
 	scanArgs := make([]any, s.pr.numField())
@@ -203,7 +207,7 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 	batch := 0
 	for !done {
 		args = args[:0]
-		for range s.attrs._bulkSize {
+		for range bulkSize {
 			err := fct(scanArgs)
 			if errors.Is(err, ErrEndOfRows) {
 				done = true
@@ -227,7 +231,7 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 			}
 		}
 
-		r, err := s.exec(ctx, s.pr, args, batch*s.attrs._bulkSize)
+		r, err := s.exec(ctx, s.pr, args, batch*bulkSize)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
@@ -237,12 +241,65 @@ func (s *stmt) execFct(ctx context.Context, nvargs []driver.NamedValue) (driver.
 	return driver.RowsAffected(totalRowsAffected), nil
 }
 
+func (s *stmt) execSeq(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
+	bulkSize := s.attrs.bulkSize
+
+	totalRowsAffected := totalRowsAffected(0)
+	args := make([]driver.NamedValue, 0, s.pr.numField())
+
+	seq, ok := nvargs[0].Value.(iter.Seq[[]any])
+	if !ok {
+		panic("invalid argument") // should never happen
+	}
+
+	batch, n := 0, 0
+	for scanArgs := range seq {
+		if len(scanArgs) != s.pr.numField() {
+			return driver.RowsAffected(totalRowsAffected), fmt.Errorf("invalid number of args %d - expected %d", len(scanArgs), s.pr.numField())
+		}
+
+		args = slices.Grow(args, len(scanArgs))
+		for i, scanArg := range scanArgs {
+			nv := driver.NamedValue{Ordinal: i + 1}
+			if t, ok := scanArg.(sql.NamedArg); ok {
+				nv.Name = t.Name
+				nv.Value = t.Value
+			} else {
+				nv.Name = ""
+				nv.Value = scanArg
+			}
+			args = append(args, nv)
+		}
+
+		n++
+		if n >= bulkSize {
+			r, err := s.exec(ctx, s.pr, args, batch*bulkSize)
+			totalRowsAffected.add(r)
+			if err != nil {
+				return driver.RowsAffected(totalRowsAffected), err
+			}
+			args = args[:0]
+			batch++
+		}
+	}
+
+	if n > 0 {
+		r, err := s.exec(ctx, s.pr, args, batch*bulkSize)
+		totalRowsAffected.add(r)
+		if err != nil {
+			return driver.RowsAffected(totalRowsAffected), err
+		}
+	}
+
+	return driver.RowsAffected(totalRowsAffected), nil
+}
+
 /*
 Non 'atomic' (transactional) operation due to the split in packages (bulkSize),
 execMany data might only be written partially to the database in case of hdb stmt errors.
 */
 func (s *stmt) execMany(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
-	bulkSize := s.attrs._bulkSize
+	bulkSize := s.attrs.bulkSize
 
 	totalRowsAffected := totalRowsAffected(0)
 	numField := s.pr.numField()
@@ -289,7 +346,7 @@ Bulk insert containing LOBs:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
 func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, ofs int) (driver.Result, error) {
-	addLobDataRecs, err := convertExecArgs(pr.parameterFields, nvargs, s.attrs._cesu8Encoder(), s.attrs._lobChunkSize)
+	addLobDataRecs, err := convertExecArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize)
 	if err != nil {
 		return driver.ResultNoRows, err
 	}

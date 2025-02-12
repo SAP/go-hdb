@@ -24,12 +24,15 @@ func testX509Validate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			certKey, err := NewCertKey(data, nil)
+			certBlocks, err := decodeClientCert(data)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := certKey.validate(time.Now()); err != nil {
+			certs, err := parseCerts(certBlocks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCerts(certs, time.Now()); err != nil {
 				t.Fatal(err)
 			}
 		}
