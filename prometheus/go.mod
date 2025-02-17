@@ -2,7 +2,7 @@ module github.com/SAP/go-hdb/prometheus
 
 go 1.23
 
-toolchain go1.24
+toolchain go1.24.0
 
 // replace github.com/SAP/go-hdb => ..
 

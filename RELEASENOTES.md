@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.13.2
+- fixed toolchain
+
 #### v1.13.1
 - performance improvements
 
