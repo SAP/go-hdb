@@ -186,17 +186,6 @@ func (d *lobOutDescr) decode(dec *encoding.Decoder) bool {
 	return false
 }
 
-func (d *lobOutDescr) countChars(b []byte) (numChar int) {
-	s := unsafe.ByteSlice2String(b)
-	for _, r := range s {
-		numChar++
-		if utf8.RuneLen(r) == 4 {
-			numChar++ // caution: hdb counts 2 chars in case of surrogate pair
-		}
-	}
-	return
-}
-
 func (d *lobOutDescr) write(b []byte) (int, error) {
 	if d.tr == nil {
 		if _, err := d.wr.Write(b); err != nil {
@@ -211,7 +200,15 @@ func (d *lobOutDescr) write(b []byte) (int, error) {
 		return nDst, err
 	}
 
-	numChar := d.countChars(b[:nDst])
+	// inline count runes
+	numChar := 0
+	for _, r := range unsafe.ByteSlice2String(b[:nDst]) {
+		numChar++
+		if utf8.RuneLen(r) == 4 {
+			numChar++ // caution: hdb counts 2 chars in case of surrogate pair
+		}
+	}
+
 	if _, err := d.wr.Write(b[:nDst]); err != nil {
 		return numChar, err
 	}

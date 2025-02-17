@@ -81,8 +81,8 @@ func (s *Sniffer) Run() error {
 	clientDec := encoding.NewDecoder(clientRd, defaultDecoder, false)
 	dbDec := encoding.NewDecoder(dbRd, defaultDecoder, false)
 
-	pClientRd := p.NewClientReader(clientDec, true, s.logger, defaultLobChunkSize)
-	pDBRd := p.NewDBReader(dbDec, true, s.logger, defaultLobChunkSize)
+	pClientRd := p.NewClientReader(clientDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
+	pDBRd := p.NewDBReader(dbDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 
 	go logData(ctx, wg, pClientRd)
 	go logData(ctx, wg, pDBRd)

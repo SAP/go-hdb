@@ -293,8 +293,8 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	}
 }
 
-func (f *ParameterField) decodeResult(dec *encoding.Decoder, lobReader LobReader, lobChunkSize int) (any, error) {
-	return decodeResult(f.tc, dec, lobReader, lobChunkSize, f.scale)
+func (f *ParameterField) decodeResult(dec *encoding.Decoder, tr transform.Transformer, lobReader LobReader, lobChunkSize int) (any, error) {
+	return decodeResult(f.tc, dec, tr, lobReader, lobChunkSize, f.scale)
 }
 
 /*
@@ -439,14 +439,14 @@ func (p *OutputParameters) String() string {
 	return fmt.Sprintf("fields %v values %v", p.OutputFields, p.FieldValues)
 }
 
-func (p *OutputParameters) decodeResult(dec *encoding.Decoder, numArg int, lobReader LobReader, lobChunkSize int) error {
+func (p *OutputParameters) decodeResult(dec *encoding.Decoder, tr transform.Transformer, numArg int, lobReader LobReader, lobChunkSize int) error {
 	cols := len(p.OutputFields)
 	p.FieldValues = resizeSlice(p.FieldValues, numArg*cols)
 
 	for i := range numArg {
 		for j, f := range p.OutputFields {
 			var err error
-			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, lobReader, lobChunkSize); err != nil {
+			if p.FieldValues[i*cols+j], err = f.decodeResult(dec, tr, lobReader, lobChunkSize); err != nil {
 				p.DecodeErrors = append(p.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}

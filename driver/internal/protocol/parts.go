@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 // Part represents a protocol part.
@@ -26,7 +27,7 @@ type bufLenPartDecoder interface {
 }
 type resultPartDecoder interface {
 	Part
-	decodeResult(dec *encoding.Decoder, numArg int, lobReader LobReader, lobChunkSize int) error
+	decodeResult(dec *encoding.Decoder, tr transform.Transformer, numArg int, lobReader LobReader, lobChunkSize int) error
 }
 
 // PartEncoder represents a protocol part the driver is able to encode.

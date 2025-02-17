@@ -3,6 +3,11 @@ Release Notes
 
 ## v1.13.0
 
+### Minor revisions
+
+#### v1.13.1
+- performance improvements
+
 ### Changes
 
 - Added support of Go 1.24.

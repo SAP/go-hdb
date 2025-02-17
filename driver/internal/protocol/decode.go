@@ -2,9 +2,10 @@ package protocol
 
 import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
-func decodeResult(tc typeCode, d *encoding.Decoder, lobReader LobReader, lobChunkSize, scale int) (any, error) { //nolint: gocyclo
+func decodeResult(tc typeCode, d *encoding.Decoder, tr transform.Transformer, lobReader LobReader, lobChunkSize, scale int) (any, error) { //nolint: gocyclo
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -69,7 +70,7 @@ func decodeResult(tc typeCode, d *encoding.Decoder, lobReader LobReader, lobChun
 		}
 		return descr, nil
 	case tcText, tcNclob, tcNlocator:
-		descr := newLobOutDescr(d.Transformer(), lobReader, lobChunkSize)
+		descr := newLobOutDescr(tr, lobReader, lobChunkSize)
 		if descr.decode(d) {
 			return nil, nil
 		}

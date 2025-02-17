@@ -9,6 +9,7 @@ import (
 	"math"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -52,6 +53,7 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 // Reader represents a protocol reader.
 type Reader struct {
 	dec *encoding.Decoder
+	tr  transform.Transformer
 
 	protTrace bool
 	logger    *slog.Logger
@@ -73,9 +75,10 @@ type Reader struct {
 	cancelled bool
 }
 
-func newReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobChunkSize int, readFromDB bool, prefix string) *Reader {
+func newReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int, readFromDB bool, prefix string) *Reader {
 	return &Reader{
 		dec:          dec,
+		tr:           tr,
 		protTrace:    protTrace,
 		logger:       logger,
 		lobChunkSize: lobChunkSize,
@@ -91,13 +94,13 @@ func newReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobCh
 }
 
 // NewDBReader returns an instance of a database protocol reader.
-func NewDBReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
-	return newReader(dec, protTrace, logger, lobChunkSize, true, prefixDB)
+func NewDBReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
+	return newReader(dec, tr, protTrace, logger, lobChunkSize, true, prefixDB)
 }
 
 // NewClientReader returns an instance of a client protocol reader.
-func NewClientReader(dec *encoding.Decoder, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
-	return newReader(dec, protTrace, logger, lobChunkSize, false, prefixClient)
+func NewClientReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
+	return newReader(dec, tr, protTrace, logger, lobChunkSize, false, prefixClient)
 }
 
 // Cancelled returns true if reading got cancelled, else otherwise.
@@ -171,7 +174,7 @@ func (r *Reader) ReadPart(ctx context.Context, part Part, lobReader LobReader) (
 		if lobReader == nil {
 			panic("missing lob reader") // should never happen
 		}
-		err = part.decodeResult(r.dec, r.ph.numArg(), lobReader, r.lobChunkSize)
+		err = part.decodeResult(r.dec, r.tr, r.ph.numArg(), lobReader, r.lobChunkSize)
 	default:
 		panic("invalid part decoder") // should never happen
 	}

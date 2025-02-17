@@ -74,7 +74,7 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 
 	protTrace := protTrace.Load()
 
-	prd := p.NewDBReader(dec, protTrace, logger, attrs.lobChunkSize)
+	prd := p.NewDBReader(dec, attrs.cesu8Decoder, protTrace, logger, attrs.lobChunkSize)
 	pwr := p.NewWriter(wr, enc, protTrace, logger, attrs.sessionVariables)
 
 	// prolog
