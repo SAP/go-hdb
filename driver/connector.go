@@ -293,6 +293,8 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, erro
 		c.invalidateCookie() // cookie auth was not successful - do not try again with the same data
 	}
 
+	c.cbmu.Lock() // synchronize refresh calls
+	defer c.cbmu.Unlock()
 	for {
 		authHnd := c.authHnd()
 
@@ -836,9 +838,6 @@ func (c *Connector) refresh() (bool, error) {
 		}
 		return unique.Make(string(clientCert)), unique.Make(string(clientKey)), true
 	}
-
-	c.cbmu.Lock() // synchronize refresh calls
-	defer c.cbmu.Unlock()
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
