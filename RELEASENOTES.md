@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.13.4
+- updated dependencies
+
 #### v1.13.3
 - fixed synchronize refresh calls
 
