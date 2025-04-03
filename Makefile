@@ -13,8 +13,8 @@ all:
 	go test ./...
 	go test ./... -race
 #	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.23.7 go1.23.7 test ./...
-	GOTOOLCHAIN=go1.23.7 go1.23.7 test ./... -race
+	GOTOOLCHAIN=go1.23.8 go1.23.8 test ./...
+	GOTOOLCHAIN=go1.23.8 go1.23.8 test ./... -race
 #	@echo execute tests on future supported go versions
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
@@ -44,5 +44,5 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.23.7@latest
-	go1.23.7 download
+	go install golang.org/dl/go1.23.8@latest
+	go1.23.8 download
