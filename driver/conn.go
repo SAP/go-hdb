@@ -125,6 +125,7 @@ type conn struct {
 	metrics *metrics
 	logger  *slog.Logger
 	session *session
+	wg      *sync.WaitGroup // wait for concurrent db calls when closing connections.
 }
 
 // isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
@@ -156,7 +157,7 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 	stdConnTracker.add()
 	metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
-	return &conn{attrs: attrs, metrics: metrics, logger: logger, session: session}, nil
+	return &conn{attrs: attrs, metrics: metrics, logger: logger, session: session, wg: new(sync.WaitGroup)}, nil
 }
 
 // Close implements the driver.Conn interface.
@@ -189,36 +190,59 @@ func (c *conn) IsValid() bool { return !c.session.isBad() }
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {
-	_, err := c.session.queryDirect(ctx, pingQuery, tracePing)
-	return err
+	var sqlErr error
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		_, sqlErr = c.session.queryDirect(ctx, pingQuery, tracePing)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return ctx.Err()
+	case <-done:
+		return sqlErr
+	}
 }
 
 // PrepareContext implements the driver.ConnPrepareContext interface.
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	if err := c.session.switchUser(ctx); err != nil {
-		return nil, err
-	}
+	var sqlErr error
+	var stmt driver.Stmt
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
+			return
+		}
+		var pr *prepareResult
+		if pr, sqlErr = c.session.prepare(ctx, query); sqlErr != nil {
+			return
+		}
+		stmt = newStmt(c.session, c.wg, c.attrs, c.metrics, query, pr)
+		if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
+			*stmtMetadata = pr
+		}
+	}()
 
-	pr, err := c.session.prepare(ctx, query)
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return stmt, sqlErr
 	}
-
-	stmt := newStmt(c.session, c.attrs, c.metrics, query, pr)
-	if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
-		*stmtMetadata = pr
-	}
-	return stmt, nil
 }
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	if c.session.inTx {
 		return nil, ErrNestedTransaction
-	}
-
-	if err := c.session.switchUser(ctx); err != nil {
-		return nil, err
 	}
 
 	var isolationLevelQuery string
@@ -240,19 +264,35 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		accessModeQuery = setAccessModeReadWrite
 	}
 
-	// set isolation level
-	if _, err := c.session.execDirect(ctx, isolationLevelQuery); err != nil {
-		return nil, err
-	}
-	// set access mode
-	if _, err := c.session.execDirect(ctx, accessModeQuery); err != nil {
-		return nil, err
-	}
+	var sqlErr error
+	var tx driver.Tx
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
+			return
+		}
+		// set isolation level
+		if _, sqlErr = c.session.execDirect(ctx, isolationLevelQuery); sqlErr != nil {
+			return
+		}
+		// set access mode
+		if _, sqlErr = c.session.execDirect(ctx, accessModeQuery); sqlErr != nil {
+			return
+		}
+		tx = newTx(c)
+		c.session.inTx = true
+	}()
 
-	tx := newTx(c)
-	c.session.inTx = true
-
-	return tx, nil
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return tx, sqlErr
+	}
 }
 
 // QueryContext implements the driver.QueryerContext interface.
@@ -263,10 +303,26 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	if err := c.session.switchUser(ctx); err != nil {
-		return nil, err
+	var sqlErr error
+	var rows driver.Rows
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
+			return
+		}
+		rows, sqlErr = c.session.queryDirect(ctx, query, traceQuery)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return rows, sqlErr
 	}
-	return c.session.queryDirect(ctx, query, traceQuery)
 }
 
 // ExecContext implements the driver.ExecerContext interface.
@@ -275,11 +331,27 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 		return nil, driver.ErrSkip // fast path not possible (prepare needed)
 	}
 
-	if err := c.session.switchUser(ctx); err != nil {
-		return nil, err
+	var sqlErr error
+	var result driver.Result
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
+			return
+		}
+		// handle procedure call without parameters here as well
+		result, sqlErr = c.session.execDirect(ctx, query)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return result, sqlErr
 	}
-	// handle procedure call without parameters here as well
-	return c.session.execDirect(ctx, query)
 }
 
 // CheckNamedValue implements the NamedValueChecker interface.
@@ -302,7 +374,23 @@ func (c *conn) DatabaseName() string { return c.session.databaseName }
 
 // DBConnectInfo implements the Conn interface.
 func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error) {
-	return c.session.dbConnectInfo(ctx, databaseName)
+	var sqlErr error
+	var ci *DBConnectInfo
+	done := make(chan struct{})
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		ci, sqlErr = c.session.dbConnectInfo(ctx, databaseName)
+	}()
+
+	select {
+	case <-ctx.Done():
+		c.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return ci, sqlErr
+	}
 }
 
 // transaction.

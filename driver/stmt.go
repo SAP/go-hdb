@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+	"sync"
 )
 
 // check if statements implements all required interfaces.
@@ -20,10 +21,12 @@ var (
 
 type stmt struct {
 	session *session
+	wg      *sync.WaitGroup // from conn
 	attrs   *connAttrs
 	metrics *metrics
 	query   string
 	pr      *prepareResult
+
 	// rows: stored procedures with table output parameters
 	rows *sql.Rows
 }
@@ -41,9 +44,9 @@ func (t *totalRowsAffected) add(r driver.Result) {
 	*t += totalRowsAffected(rows)
 }
 
-func newStmt(session *session, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
+func newStmt(session *session, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
 	metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
-	return &stmt{session: session, attrs: attrs, metrics: metrics, query: query, pr: pr}
+	return &stmt{session: session, wg: wg, attrs: attrs, metrics: metrics, query: query, pr: pr}
 }
 
 /*
@@ -78,32 +81,61 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
-
 	if err := s.session.preventSwitchUser(ctx); err != nil {
 		return nil, err
 	}
-	return s.session.query(ctx, s.query, s.pr, nvargs)
+
+	var sqlErr error
+	var rows driver.Rows
+	done := make(chan struct{})
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer close(done)
+		rows, sqlErr = s.session.query(ctx, s.query, s.pr, nvargs)
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		return rows, sqlErr
+	}
 }
 
 func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
 	if hookFn, ok := ctx.Value(connHookCtxKey).(connHookFn); ok {
 		hookFn(choStmtExec)
 	}
-
-	var (
-		result driver.Result
-		err    error
-	)
-
 	if err := s.session.preventSwitchUser(ctx); err != nil {
 		return nil, err
 	}
-	if s.pr.isProcedureCall() {
-		result, s.rows, err = s.execCall(ctx, s.pr, nvargs)
-	} else {
-		result, err = s.execDefault(ctx, nvargs)
+
+	var sqlErr error
+	var result driver.Result
+	var rows *sql.Rows // needed to avoid data race in case if context get cancelled.
+	done := make(chan struct{})
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer close(done)
+		if s.pr.isProcedureCall() {
+			result, s.rows, sqlErr = s.execCall(ctx, s.pr, nvargs)
+		} else {
+			result, sqlErr = s.execDefault(ctx, nvargs)
+		}
+
+	}()
+
+	select {
+	case <-ctx.Done():
+		s.session.cancel()
+		return nil, ctx.Err()
+	case <-done:
+		s.rows = rows
+		return result, sqlErr
 	}
-	return result, err
 }
 
 func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {

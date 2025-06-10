@@ -58,6 +58,13 @@ type session struct {
 	inTx bool
 
 	sqlTracer *sqlTracer
+
+	/*
+		bad connection flag (can be set by 'done' and 'write' concurrently).
+		we cannot work with nested errors containing driver.ErrBadConn
+		as go sql retries these statements.
+	*/
+	cancelled bool
 }
 
 func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (*session, error) {
@@ -114,7 +121,8 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 
 // we cannot work with nested errors containing driver.ErrBadConn
 // as go sql retries these statements.
-func (s *session) isBad() bool { return s.pwr.CancelledOrError() || s.prd.Cancelled() }
+func (s *session) isBad() bool { return s.cancelled || s.pwr.HasError() }
+func (s *session) cancel()     { s.cancelled = true }
 
 func (s *session) close() error {
 	// do not disconnect if isBad.

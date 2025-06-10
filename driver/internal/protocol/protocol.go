@@ -71,8 +71,6 @@ type Reader struct {
 
 	hdbErrors    *HdbErrors
 	rowsAffected *rowsAffected
-
-	cancelled bool
 }
 
 func newReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int, readFromDB bool, prefix string) *Reader {
@@ -102,9 +100,6 @@ func NewDBReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool
 func NewClientReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
 	return newReader(dec, tr, protTrace, logger, lobChunkSize, false, prefixClient)
 }
-
-// Cancelled returns true if reading got cancelled, else otherwise.
-func (r *Reader) Cancelled() bool { return r.cancelled }
 
 // SkipParts reads and discards all protocol parts.
 func (r *Reader) SkipParts(ctx context.Context) error {
@@ -214,13 +209,6 @@ func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind Part
 	}
 
 	for range int(r.mh.noOfSegm) {
-
-		// check if ctx got cancelled
-		if err := ctx.Err(); err != nil {
-			r.cancelled = true
-			return 0, err
-		}
-
 		if err := r.sh.decode(r.dec); err != nil {
 			return 0, err
 		}
@@ -345,7 +333,7 @@ type Writer struct {
 	sh *segmentHeader
 	ph *partHeader
 
-	cancelledOrError bool
+	hasError bool
 }
 
 // NewWriter returns an instance of a protocol writer.
@@ -370,8 +358,8 @@ const (
 	protocolVersionMinor = 1
 )
 
-// CancelledOrError returns true if writing got cancelled or raised an error, else otherwise.
-func (w *Writer) CancelledOrError() bool { return w.cancelledOrError }
+// HasError returns true if writing raised an error, false otherwise.
+func (w *Writer) HasError() bool { return w.hasError }
 
 // WriteProlog writes the protocol prolog.
 func (w *Writer) WriteProlog(ctx context.Context) error {
@@ -397,7 +385,7 @@ func (w *Writer) SetSessionID(sessionID int64) { w.sessionID = sessionID }
 func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
 	err := w._write(ctx, messageType, commit, parts...)
 	if err != nil {
-		w.cancelledOrError = true
+		w.hasError = true
 	}
 	return err
 }
@@ -459,11 +447,6 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	bufferSize -= segmentHeaderSize
 
 	for i, part := range parts {
-		// check if ctx got cancelled
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
 		size := partSize[i]
 		pad := padBytes(size)
 
