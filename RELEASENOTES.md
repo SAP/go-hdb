@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.13.9
+- test code cleanups
+
 #### v1.13.8
 - fixed UTF-8 check error (https://github.com/SAP/go-hdb/issues/145)
 

@@ -2,12 +2,11 @@ package cesu8
 
 import (
 	"bytes"
-	"log"
 	"testing"
 	"unicode/utf8"
 )
 
-func TestCodeLen(t *testing.T) {
+func testCodeLen(t *testing.T) {
 	b := make([]byte, CESUMax)
 	for i := rune(0); i <= utf8.MaxRune; i++ {
 		n := EncodeRune(b, i)
@@ -17,21 +16,19 @@ func TestCodeLen(t *testing.T) {
 	}
 }
 
-type testCP struct {
-	cp   rune
-	utf8 []byte
-}
+func testCP(t *testing.T) {
+	// see http://en.wikipedia.org/wiki/CESU-8
+	var testData = []*struct {
+		cp   rune
+		utf8 []byte
+	}{
+		{0x45, []byte{0x45}},
+		{0x205, []byte{0xc8, 0x85}},
+		{0x10400, []byte{0xed, 0xa0, 0x81, 0xed, 0xb0, 0x80}},
+	}
 
-// see http://en.wikipedia.org/wiki/CESU-8
-var testCPData = []*testCP{
-	{0x45, []byte{0x45}},
-	{0x205, []byte{0xc8, 0x85}},
-	{0x10400, []byte{0xed, 0xa0, 0x81, 0xed, 0xb0, 0x80}},
-}
-
-func TestCP(t *testing.T) {
 	b := make([]byte, CESUMax)
-	for _, d := range testCPData {
+	for _, d := range testData {
 		n1 := EncodeRune(b, d.cp)
 		if !bytes.Equal(b[:n1], d.utf8) {
 			t.Fatalf("encode code point %x char %c cesu-8 %x - expected %x", d.cp, d.cp, b[:n1], d.utf8)
@@ -48,19 +45,19 @@ func TestCP(t *testing.T) {
 	}
 }
 
-// took from https://golang.org/src/unicode/utf8/utf8_test.go
-var testStrings = []string{
-	"",
-	"abcd",
-	"☺☻☹",
-	"日a本b語ç日ð本Ê語þ日¥本¼語i日©",
-	"日a本b語ç日ð本Ê語þ日¥本¼語i日©日a本b語ç日ð本Ê語þ日¥本¼語i日©日a本b語ç日ð本Ê語þ日¥本¼語i日©",
-	"\x80\x80\x80\x80",
-}
+func testString(t *testing.T) {
+	// took from https://golang.org/src/unicode/utf8/utf8_test.go
+	var testData = []string{
+		"",
+		"abcd",
+		"☺☻☹",
+		"日a本b語ç日ð本Ê語þ日¥本¼語i日©",
+		"日a本b語ç日ð本Ê語þ日¥本¼語i日©日a本b語ç日ð本Ê語þ日¥本¼語i日©日a本b語ç日ð本Ê語þ日¥本¼語i日©",
+		"\x80\x80\x80\x80",
+	}
 
-func TestString(t *testing.T) {
 	b := make([]byte, CESUMax)
-	for i, s := range testStrings {
+	for i, s := range testData {
 		n := 0
 		for _, r := range s {
 			n += utf8.EncodeRune(b, r)
@@ -90,25 +87,45 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestReplacementChar(t *testing.T) {
+func testReplacementChar(t *testing.T) {
 	if !utf8.ValidRune(utf8.RuneError) {
 		t.Fatalf("%c is not a valid utf8 rune", utf8.RuneError)
 	}
 }
 
-// https://github.com/SAP/go-hdb/issues/145
-func TestInvalidUTF8(t *testing.T) {
+func testValidUTF8(t *testing.T) {
+	// https://github.com/SAP/go-hdb/issues/145
 	const sqlStmt = `UPSERT "DH_TEST"."INVALID" VALUES('6', '� لوحات واستمارات') with primary key`
 
 	if !utf8.ValidString(sqlStmt) {
-		log.Fatalf("invalid string %s", sqlStmt)
+		t.Fatalf("invalid string %s", sqlStmt)
 	}
 
 	encoder := NewEncoder(nil)
 	source := []byte(sqlStmt)
-	dest := make([]byte, 2*len(source)) // just make it big enough
-	_, _, err := encoder.Transform(dest, source, true)
+	dest := make([]byte, len(source)) // n == m
+	n, m, err := encoder.Transform(dest, source, true)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
+	}
+	t.Logf("dest len %d source len %d", n, m)
+}
+
+func TestCESU8(t *testing.T) {
+	tests := []struct {
+		name string
+		fct  func(t *testing.T)
+	}{
+		{"testCodeLen", testCodeLen},
+		{"testCP", testCP},
+		{"testString", testString},
+		{"testReplacementChar", testReplacementChar},
+		{"testValidUTF8", testValidUTF8},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.fct(t)
+		})
 	}
 }
