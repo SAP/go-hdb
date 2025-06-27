@@ -2,6 +2,7 @@ package cesu8
 
 import (
 	"bytes"
+	"log"
 	"testing"
 	"unicode/utf8"
 )
@@ -92,5 +93,22 @@ func TestString(t *testing.T) {
 func TestReplacementChar(t *testing.T) {
 	if !utf8.ValidRune(utf8.RuneError) {
 		t.Fatalf("%c is not a valid utf8 rune", utf8.RuneError)
+	}
+}
+
+// https://github.com/SAP/go-hdb/issues/145
+func TestInvalidUTF8(t *testing.T) {
+	const sqlStmt = `UPSERT "DH_TEST"."INVALID" VALUES('6', '� لوحات واستمارات') with primary key`
+
+	if !utf8.ValidString(sqlStmt) {
+		log.Fatalf("invalid string %s", sqlStmt)
+	}
+
+	encoder := NewEncoder(nil)
+	source := []byte(sqlStmt)
+	dest := make([]byte, 2*len(source)) // just make it big enough
+	_, _, err := encoder.Transform(dest, source, true)
+	if err != nil {
+		log.Fatal(err)
 	}
 }

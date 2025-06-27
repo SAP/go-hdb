@@ -77,7 +77,10 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			}
 		}
 		r, n := utf8.DecodeRune(src[i:])
-		if r == utf8.RuneError {
+		// invalid UTF-8 cases:
+		// - if p is empty it returns (RuneError, 0)
+		// - otherwise, if the encoding is invalid, it returns (RuneError, 1)
+		if (n == 0 || n == 1) && r == utf8.RuneError {
 			decodeErr := newDecodeError(UTF8, i, src)
 			if e.errorHandler == nil {
 				return j, i, decodeErr
