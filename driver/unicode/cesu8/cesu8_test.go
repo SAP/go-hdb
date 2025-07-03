@@ -88,27 +88,27 @@ func testString(t *testing.T) {
 }
 
 func testReplacementChar(t *testing.T) {
+	// https://github.com/SAP/go-hdb/issues/145
+	// https://github.com/SAP/go-hdb/issues/147
+
 	if !utf8.ValidRune(utf8.RuneError) {
 		t.Fatalf("%c is not a valid utf8 rune", utf8.RuneError)
 	}
-}
-
-func testValidUTF8(t *testing.T) {
-	// https://github.com/SAP/go-hdb/issues/145
-	const sqlStmt = `UPSERT "DH_TEST"."INVALID" VALUES('6', '� لوحات واستمارات') with primary key`
-
-	if !utf8.ValidString(sqlStmt) {
-		t.Fatalf("invalid string %s", sqlStmt)
-	}
+	p := make([]byte, utf8.RuneLen(utf8.RuneError))
+	utf8.EncodeRune(p, utf8.RuneError)
 
 	encoder := NewEncoder(nil)
-	source := []byte(sqlStmt)
-	dest := make([]byte, len(source)) // n == m
-	n, m, err := encoder.Transform(dest, source, true)
+	b := make([]byte, Size(p))
+	_, _, err := encoder.Transform(b, p, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("dest len %d source len %d", n, m)
+
+	decoder := NewDecoder(nil)
+	_, _, err = decoder.Transform(p, b, true)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCESU8(t *testing.T) {
@@ -120,7 +120,6 @@ func TestCESU8(t *testing.T) {
 		{"testCP", testCP},
 		{"testString", testString},
 		{"testReplacementChar", testReplacementChar},
-		{"testValidUTF8", testValidUTF8},
 	}
 
 	for _, test := range tests {

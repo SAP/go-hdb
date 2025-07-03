@@ -69,17 +69,21 @@ func FullRune(p []byte) bool {
 	return utf8.FullRune(p)
 }
 
-// DecodeRune unpacks the first CESU-8 encoding in p and returns the rune and its width in bytes.
-func DecodeRune(p []byte) (rune, int) {
-	if !isSurrogate(p) {
-		return utf8.DecodeRune(p)
-	}
+func decodeSurrogates(p []byte) (rune, int) {
 	high := decodeCheckedSurrogate(p)
 	low, ok := decodeSurrogate(p[3:])
 	if !ok {
 		return utf8.RuneError, 3
 	}
 	return utf16.DecodeRune(high, low), CESUMax
+}
+
+// DecodeRune unpacks the first CESU-8 encoding in p and returns the rune and its width in bytes.
+func DecodeRune(p []byte) (rune, int) {
+	if !isSurrogate(p) {
+		return utf8.DecodeRune(p)
+	}
+	return decodeSurrogates(p)
 }
 
 // RuneLen returns the number of bytes required to encode the rune.
