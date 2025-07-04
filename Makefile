@@ -16,6 +16,8 @@ all:
 	GOTOOLCHAIN=go1.23.10 go1.23.10 test ./...
 	GOTOOLCHAIN=go1.23.10 go1.23.10 test ./... -race
 #	@echo execute tests on future supported go versions
+	GOTOOLCHAIN=go1.25rc1 go1.25rc1 test ./...
+	GOTOOLCHAIN=go1.25rc1 go1.25rc1 test ./... -race
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 #on linux: if pipx uses outdated packages, delete ~/.local/pipx/cache entries
@@ -46,3 +48,5 @@ tools:
 go:
 	go install golang.org/dl/go1.23.10@latest
 	go1.23.10 download
+	go install golang.org/dl/go1.25rc1@latest
+	go1.25rc1 download

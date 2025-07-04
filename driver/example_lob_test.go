@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/internal/wgroup"
 )
 
 // ExampleLobRead reads data from a large data object database field into a bytes.Buffer.
@@ -118,17 +119,15 @@ func ExampleLob_pipe() {
 
 	// Use sync.WaitGroup to wait for go-routines to be ended.
 	wg := new(sync.WaitGroup)
-	wg.Add(1) // Select statement.
 
 	// Start sql insert in own go-routine.
 	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
-	go func() {
+	wgroup.Go(wg, func() {
 		if _, err := stmt.Exec(lob); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("exec finalized")
-		wg.Done()
-	}()
+	})
 
 	// Read file line by line and write data to pipe.
 	scanner := bufio.NewScanner(file)
@@ -157,17 +156,14 @@ func ExampleLob_pipe() {
 	pipeReader, pipeWriter = io.Pipe() // Create pipe for reading Lob.
 	lob.SetWriter(pipeWriter)          // Use PipeWriter as writer for Lob.
 
-	wg.Add(1) // Exec statement.
-
 	// Start sql select in own go-routine.
 	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
-	go func() {
+	wgroup.Go(wg, func() {
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("scan finalized")
-		wg.Done()
-	}()
+	})
 
 	// Read Lob line by line via bufio.Scanner.
 	scanner = bufio.NewScanner(pipeReader)

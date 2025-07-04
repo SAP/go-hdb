@@ -11,6 +11,7 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/wgroup"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
@@ -72,9 +73,12 @@ func (s *Sniffer) Run() error {
 	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 
-	wg.Add(4)
-	go pipeData(wg, s.conn, s.dbConn, clientWr)
-	go pipeData(wg, s.dbConn, s.conn, dbWr)
+	wgroup.Go(wg, func() {
+		pipeData(wg, s.conn, s.dbConn, clientWr)
+	})
+	wgroup.Go(wg, func() {
+		pipeData(wg, s.dbConn, s.conn, dbWr)
+	})
 
 	defaultDecoder := cesu8.DefaultDecoder()
 
@@ -84,8 +88,12 @@ func (s *Sniffer) Run() error {
 	pClientRd := p.NewClientReader(clientDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 	pDBRd := p.NewDBReader(dbDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 
-	go logData(ctx, wg, pClientRd)
-	go logData(ctx, wg, pDBRd)
+	wgroup.Go(wg, func() {
+		logData(ctx, wg, pClientRd)
+	})
+	wgroup.Go(wg, func() {
+		logData(ctx, wg, pDBRd)
+	})
 
 	wg.Wait()
 	log.Println("end run")

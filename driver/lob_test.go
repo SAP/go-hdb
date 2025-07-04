@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
+	"github.com/SAP/go-hdb/driver/internal/wgroup"
 )
 
 type stringLob string
@@ -137,16 +138,13 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 	lob.SetReader(rd)
 
 	wg := new(sync.WaitGroup)
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
+	wgroup.Go(wg, func() {
 		if _, err := stmt.Exec(lob); err != nil {
 			t.Error(err)
 			return
 		}
 		t.Log("exec finalized")
-	}()
+	})
 
 	mwr := io.MultiWriter(wr, cmpBuf)
 

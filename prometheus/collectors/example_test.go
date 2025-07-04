@@ -82,12 +82,10 @@ func Example() {
 	}
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
 	done := make(chan struct{})
 
 	// do some database stuff...
-	go func() {
-		defer wg.Done()
+	wgroup.Go(wg, func() {
 		for {
 			select {
 			case <-done:
@@ -98,7 +96,7 @@ func Example() {
 				}
 			}
 		}
-	}()
+	})
 
 	// register prometheus HTTP handler and start HTTP server.
 	http.Handle("/metrics", promhttp.Handler())

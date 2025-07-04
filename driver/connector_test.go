@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/SAP/go-hdb/driver/internal/wgroup"
 )
 
 func TestConnector(t *testing.T) {
@@ -139,14 +141,12 @@ func TestConnector(t *testing.T) {
 		ctr.SetRefreshClientCert(func() ([]byte, []byte, bool) { return nil, nil, true })
 
 		wg := new(sync.WaitGroup)
-		wg.Add(numConcurrent)
 		start := make(chan struct{})
 		for range numConcurrent {
-			go func(start <-chan struct{}, wg *sync.WaitGroup) {
-				defer wg.Done()
+			wgroup.Go(wg, func() {
 				<-start
 				ctr.refresh() //nolint:errcheck
-			}(start, wg)
+			})
 		}
 		// start refresh concurrently
 		close(start)
@@ -180,13 +180,11 @@ func TestConnector(t *testing.T) {
 		defer db.Close()
 
 		wg := new(sync.WaitGroup)
-		wg.Add(numConcurrent)
 		start := make(chan struct{})
 		connCh := make(chan *sql.Conn, numConcurrent)
 		errCh := make(chan error, numConcurrent)
 		for range numConcurrent {
-			go func(start <-chan struct{}, connCh chan *sql.Conn, errCh chan error, wg *sync.WaitGroup) {
-				defer wg.Done()
+			wgroup.Go(wg, func() {
 				<-start
 				conn, err := db.Conn(context.Background())
 				if err != nil {
@@ -194,7 +192,7 @@ func TestConnector(t *testing.T) {
 				} else {
 					connCh <- conn
 				}
-			}(start, connCh, errCh, wg)
+			})
 		}
 		// start connections concurrently
 		close(start)

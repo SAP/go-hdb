@@ -4,6 +4,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/wgroup"
 )
 
 const (
@@ -142,12 +144,13 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 	return rv
 }
 
-func (m *metrics) collect(wg *sync.WaitGroup, msgCh <-chan any) {
-	defer wg.Done()
+/*
+func (m *metrics) collect(msgCh <-chan any) {
 	for msg := range msgCh {
 		m.handleMsg(msg)
 	}
 }
+*/
 
 func (m *metrics) lazyInit() {
 	/*
@@ -156,8 +159,12 @@ func (m *metrics) lazyInit() {
 	   imported by any other package.
 	*/
 	m.once.Do(func() {
-		m.wg.Add(1)
-		go m.collect(m.wg, m.msgCh)
+		wgroup.Go(m.wg, func() {
+			// collect
+			for msg := range m.msgCh {
+				m.handleMsg(msg)
+			}
+		})
 	})
 }
 
