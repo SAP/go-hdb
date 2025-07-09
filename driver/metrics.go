@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 const (

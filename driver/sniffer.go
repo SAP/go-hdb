@@ -11,8 +11,8 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.

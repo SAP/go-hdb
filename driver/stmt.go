@@ -10,7 +10,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // check if statements implements all required interfaces.

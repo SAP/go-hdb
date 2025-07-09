@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // ExampleLobRead reads data from a large data object database field into a bytes.Buffer.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver"
+	"github.com/SAP/go-hdb/driver/wgroup"
 	drivercollectors "github.com/SAP/go-hdb/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -81,7 +82,7 @@ func Example() {
 		log.Fatal(err)
 	}
 
-	wg := sync.WaitGroup{}
+	wg := new(sync.WaitGroup)
 	done := make(chan struct{})
 
 	// do some database stuff...

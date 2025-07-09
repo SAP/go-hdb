@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 func TestConnector(t *testing.T) {

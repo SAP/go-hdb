@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
-	"github.com/SAP/go-hdb/driver/internal/wgroup"
+	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 type stringLob string
