@@ -116,6 +116,14 @@ func NewDecoder(errorHandler func(err *DecodeError) (rune, error)) *Decoder {
 	return &Decoder{errorHandler: errorHandler}
 }
 
+func (d *Decoder) handleDecodeError(r rune, i int, src []byte) (rune, error) {
+	decodeErr := newDecodeError(CESU8, i, src)
+	if d.errorHandler == nil {
+		return r, decodeErr
+	}
+	return d.errorHandler(decodeErr)
+}
+
 // Transform implements the transform.Transformer interface.
 func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
 	i, j := 0, 0
@@ -129,11 +137,12 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			j++
 			continue
 		}
+		p := src[i:]
 		// check if additional bytes needed (ErrShortSrc) only
 		// - if further bytes are potentially available (!atEOF) and
 		// - remaining buffer smaller than max size for an encoded CESU-8 rune
-		if !atEOF && len(src[i:]) < CESUMax {
-			if !FullRune(src[i:]) {
+		if !atEOF && len(p) < CESUMax {
+			if !FullRune(p) {
 				return j, i, transform.ErrShortSrc
 			}
 		}
@@ -143,27 +152,19 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			.invalid surrogate
 			r, n := DecodeRune(src[i:])
 		*/
-		var (
-			r         rune
-			n         int
-			isInvalid bool
-		)
-		p := src[i:]
+		var r rune
+		var n int
 		if !isSurrogate(p) {
-			r, n = utf8.DecodeRune(p)
-			isInvalid = r == utf8.RuneError && (n == 0 || n == 1)
-		} else {
-			r, n = decodeSurrogates(p)
-			isInvalid = r == utf8.RuneError
-		}
-		if isInvalid {
-			decodeErr := newDecodeError(CESU8, i, src)
-			if d.errorHandler == nil {
-				return j, i, decodeErr
+			if r, n = utf8.DecodeRune(p); r == utf8.RuneError && (n == 0 || n == 1) {
+				if r, err = d.handleDecodeError(r, i, src); err != nil {
+					return j, i, err
+				}
 			}
-			r, err = d.errorHandler(decodeErr)
-			if err != nil {
-				return j, i, err
+		} else {
+			if r, n = decodeSurrogates(p); r == utf8.RuneError {
+				if r, err = d.handleDecodeError(r, i, src); err != nil {
+					return j, i, err
+				}
 			}
 		}
 		m := utf8.RuneLen(r)
