@@ -17,7 +17,7 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 	defer stmt.Close()
 
 	// create cancel context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// callback function to cancel context
 	cancelCtx := func(op int) {

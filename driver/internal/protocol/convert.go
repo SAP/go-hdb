@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -643,6 +644,6 @@ func convertField(tc typeCode, v any, cesu8Encoder transform.Transformer) (any, 
 	case tcBintext: // ?? lobCESU8Type
 		return convertLob(v, nil)
 	default:
-		panic("invalid type code")
+		panic(fmt.Errorf("invalid type code %[1]d %[1]s", tc)) // should never happen
 	}
 }

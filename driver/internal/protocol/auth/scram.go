@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
 )
@@ -25,6 +26,13 @@ func checkServerChallenge(serverChallenge []byte) error {
 		return fmt.Errorf("invalid server challenge size %d - expected %d", len(serverChallenge), serverChallengeSize)
 	}
 	return nil
+}
+
+func clientChallenge() []byte {
+	r := make([]byte, clientChallengeSize)
+	// does not return err starting with go1.24
+	rand.Read(r) //nolint: errcheck
+	return r
 }
 
 func clientProof(key, salt, serverChallenge, clientChallenge []byte) ([]byte, error) {

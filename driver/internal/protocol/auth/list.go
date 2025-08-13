@@ -1,17 +1,14 @@
-// Package cache provides generic cache types.
-package cache
+package auth
 
 import (
 	"sync"
 )
 
-// Comparer is an interface defining a generic compare function.
-type Comparer[E any] interface {
+type comparer[E any] interface {
 	Compare(e E) bool
 }
 
-// List is a generic cache list.
-type List[K Comparer[K], V any] struct {
+type list[K comparer[K], V any] struct {
 	valueFn func(k K) (V, error)
 	mu      sync.RWMutex
 	idx     int
@@ -19,16 +16,15 @@ type List[K Comparer[K], V any] struct {
 	values  []V
 }
 
-// NewList returns a new cache list.
-func NewList[K Comparer[K], V any](maxEntry int, valueFn func(k K) (V, error)) *List[K, V] {
-	return &List[K, V]{
+func newList[K comparer[K], V any](maxEntry int, valueFn func(k K) (V, error)) *list[K, V] {
+	return &list[K, V]{
 		valueFn: valueFn,
 		keys:    make([]K, 0, maxEntry),
 		values:  make([]V, 0, maxEntry),
 	}
 }
 
-func (l *List[K, V]) find(k K) (v V, ok bool) {
+func (l *list[K, V]) find(k K) (v V, ok bool) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	for i, k1 := range l.keys {
@@ -39,8 +35,7 @@ func (l *List[K, V]) find(k K) (v V, ok bool) {
 	return
 }
 
-// Get returns the value for the given key.
-func (l *List[K, V]) Get(k K) (V, error) {
+func (l *list[K, V]) Get(k K) (V, error) {
 	if v, ok := l.find(k); ok {
 		return v, nil
 	}

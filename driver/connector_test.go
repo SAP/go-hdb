@@ -3,7 +3,6 @@
 package driver
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"sync"
@@ -186,7 +185,7 @@ func TestConnector(t *testing.T) {
 		for range numConcurrent {
 			wgroup.Go(wg, func() {
 				<-start
-				conn, err := db.Conn(context.Background())
+				conn, err := db.Conn(t.Context())
 				if err != nil {
 					errCh <- err
 				} else {

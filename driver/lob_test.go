@@ -4,7 +4,6 @@ package driver
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"errors"
@@ -68,7 +67,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.QueryContext(context.Background(), fmt.Sprintf("select * from %s", table))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,17 +222,15 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	wr := &bytes.Buffer{}
 	lob.SetWriter(wr)
 
-	ctx := context.Background()
-
-	conn, err := db.Conn(ctx) // guarantee that same connection is used
+	conn, err := db.Conn(t.Context()) // guarantee that same connection is used
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
 
-	row := conn.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table))
+	row := conn.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table))
 
-	if err = conn.PingContext(ctx); err != nil {
+	if err = conn.PingContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	err = row.Scan(lob)

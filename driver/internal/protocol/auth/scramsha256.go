@@ -5,8 +5,6 @@ package auth
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/SAP/go-hdb/driver/internal/protocol/cache"
 )
 
 func scramsha256Key(password, salt []byte) ([]byte, error) {
@@ -14,7 +12,7 @@ func scramsha256Key(password, salt []byte) ([]byte, error) {
 }
 
 // use cache as key calculation is expensive.
-var scramKeyCache = cache.NewList(3, func(k *SCRAMSHA256) ([]byte, error) {
+var scramKeyCache = newList(3, func(k *SCRAMSHA256) ([]byte, error) {
 	return scramsha256Key([]byte(k.password), k.salt)
 })
 

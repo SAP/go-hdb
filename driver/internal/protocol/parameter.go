@@ -225,7 +225,7 @@ func (f *ParameterField) prmSize(v any) int {
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
 		return encoding.LobInputParametersSize
 	default:
-		panic("invalid type code")
+		panic(fmt.Errorf("invalid type code %[1]d %[1]s", f.tc)) // should never happen
 	}
 }
 
@@ -289,7 +289,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 		enc.Int32(int32(descr.pos))    //nolint: gosec
 		return nil
 	default:
-		panic("invalid type code") // should never happen
+		panic(fmt.Errorf("invalid type code %[1]d %[1]s", f.tc)) // should never happen
 	}
 }
 

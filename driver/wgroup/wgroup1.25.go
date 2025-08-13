@@ -1,5 +1,6 @@
 //go:build go1.25
 
+// Package wgroup provides compatibility on go1.24 and go1.25.
 package wgroup
 
 import "sync"

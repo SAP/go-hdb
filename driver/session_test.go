@@ -3,7 +3,6 @@
 package driver_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"testing"
@@ -18,10 +17,10 @@ func TestUserSwitch(t *testing.T) {
 	tableName := driver.RandomIdentifier("table_")
 
 	sessionUser := &driver.SessionUser{Username: ctr.Username(), Password: ctr.Password()}
-	ctx := driver.WithUserSwitch(context.Background(), sessionUser)
+	ctx := driver.WithUserSwitch(t.Context(), sessionUser)
 
 	secondSessionUser := &driver.SessionUser{Username: "secondUser", Password: "secondPassword"}
-	secondCtx := driver.WithUserSwitch(context.Background(), secondSessionUser)
+	secondCtx := driver.WithUserSwitch(t.Context(), secondSessionUser)
 
 	createTable := func() {
 		db := sql.OpenDB(ctr)
@@ -58,7 +57,7 @@ func TestUserSwitch(t *testing.T) {
 		defer db.Close()
 
 		i := 0
-		conn, err := db.Conn(context.Background())
+		conn, err := db.Conn(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +72,7 @@ func TestUserSwitch(t *testing.T) {
 		db := sql.OpenDB(ctr)
 		defer db.Close()
 
-		conn, err := db.Conn(context.Background())
+		conn, err := db.Conn(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +99,7 @@ func TestUserSwitch(t *testing.T) {
 		db := sql.OpenDB(ctr)
 		defer db.Close()
 
-		conn, err := db.Conn(context.Background())
+		conn, err := db.Conn(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}

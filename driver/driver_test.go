@@ -3,7 +3,6 @@
 package driver_test
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -31,7 +30,7 @@ func testPing(t *testing.T, db *sql.DB) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }

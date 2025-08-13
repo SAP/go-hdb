@@ -3,7 +3,6 @@
 package driver
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,15 +12,13 @@ import (
 
 // TestBulkInsertDuplicates.
 func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
-	ctx := context.Background()
-
 	table := RandomIdentifier("bulkInsertDuplicates")
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?,?)", table))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -76,16 +73,15 @@ func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 
 // TestBulkInsertStmtNo.
 func testBulkInsertStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
-	ctx := context.Background()
 	bulkSize := ctr.BulkSize()
 
 	table := RandomIdentifier("bulkInsertDuplicates")
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (k integer primary key, v integer)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?,?)", table))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -153,7 +149,7 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 	tmpTableName := RandomIdentifier("#tmpTable")
 
 	// keep connection / hdb session for using local temporary tables
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,11 +227,9 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 			- only some of the blob content did exceed lob chunk size
 	*/
 
-	ctx := context.Background()
-
 	tableName := RandomIdentifier("bulkBlob106")
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (i integer, b nclob)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, b nclob)", tableName)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
@@ -257,12 +251,12 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 		}
 	}
 
-	tx, err := db.BeginTx(context.Background(), nil)
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +279,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	// check
 	i := 0
-	err = db.QueryRowContext(ctx, fmt.Sprintf("select count(*) from %s", tableName)).Scan(&i)
+	err = db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %s", tableName)).Scan(&i)
 	if err != nil {
 		t.Fatalf("select count failed: %s", err)
 	}
@@ -294,7 +288,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 		t.Fatalf("invalid number of records %d - %d expected", i, numRecs)
 	}
 
-	rows, err := db.QueryContext(ctx, fmt.Sprintf("select * from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,13 +325,12 @@ func testBulkGeo(t *testing.T, ctr *Connector, db *sql.DB) {
 	)
 
 	tableName := RandomIdentifier("bulkGeo")
-	ctx := context.Background()
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (id int, geo st_geometry(3857))", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (id int, geo st_geometry(3857))", tableName)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?, st_geomfromewkb(?))", tableName)) // Prepare bulk query.
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, st_geomfromewkb(?))", tableName)) // Prepare bulk query.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +352,7 @@ func testBulkGeo(t *testing.T, ctr *Connector, db *sql.DB) {
 		- read rows to double check that geometry field attributes can be read
 		- protocol return type is tcStGeometry (not tcLocator)
 	*/
-	rows, err := db.QueryContext(ctx, fmt.Sprintf("select * from %s order by id", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by id", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +389,7 @@ func testBulkInsertInvalidUTF8(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 
 	// Prepare statement.
-	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?)", tableName))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}

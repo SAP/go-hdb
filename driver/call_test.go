@@ -171,33 +171,32 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		proc := driver.RandomIdentifier("procTableOut_")
 
 		// use same connection
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
+		conn, err := db.Conn(t.Context())
 		if err != nil {
 			t.Fatal()
 		}
 		defer conn.Close()
 
 		// create table type
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
 			t.Fatal(err)
 		}
 		// create procedure
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf(procTableOut, proc, tableType)); err != nil {
 			t.Fatal(err)
 		}
 
 		var resultRows1, resultRows2, resultRows3 sql.Rows
 
 		// need to prepare to keep statement open
-		stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
+		stmt, err := conn.PrepareContext(t.Context(), fmt.Sprintf("call %s(?, ?, ?, ?)", proc))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer stmt.Close()
 
 		if _, err := stmt.ExecContext(
-			ctx,
+			t.Context(),
 			1,
 			sql.Named("T1", sql.Out{Dest: &resultRows1}),
 			sql.Named("T2", sql.Out{Dest: &resultRows2}),
@@ -229,8 +228,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		testData := []testDataType{{0, "A"}, {1, "B"}, {2, "C"}, {3, "D"}, {4, "E"}}
 
 		// use same connections
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
+		conn, err := db.Conn(t.Context())
 		if err != nil {
 			t.Fatal()
 		}
@@ -241,21 +239,21 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		proc := driver.RandomIdentifier("procTableIn_")
 
 		// create table type
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("create type %s as table (i integer, x varchar(10))", tableType)); err != nil {
 			t.Fatal(err)
 		}
 		// create procedure
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf(procTableIn, proc, tableType)); err != nil {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf(procTableIn, proc, tableType)); err != nil {
 			t.Fatal(err)
 		}
 		// create temporary table
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("create local temporary table %s like %s", tableName, tableType)); err != nil {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("create local temporary table %s like %s", tableName, tableType)); err != nil {
 			t.Fatal(err)
 		}
 
 		// insert test data into temp table
 		j := 0
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName), func(args []any) error {
+		if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?)", tableName), func(args []any) error {
 			if j >= len(testData) {
 				return driver.ErrEndOfRows
 			}
@@ -268,13 +266,13 @@ func testCallTable(t *testing.T, db *sql.DB) {
 
 		var resultRows2 sql.Rows
 
-		stmt, err := conn.PrepareContext(ctx, fmt.Sprintf("call %s(?, %s, ?)", proc, tableName))
+		stmt, err := conn.PrepareContext(t.Context(), fmt.Sprintf("call %s(?, %s, ?)", proc, tableName))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer stmt.Close()
 
-		if _, err := stmt.ExecContext(ctx, 1, sql.Named("T2", sql.Out{Dest: &resultRows2})); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), 1, sql.Named("T2", sql.Out{Dest: &resultRows2})); err != nil {
 			t.Fatal(err)
 		}
 
@@ -357,19 +355,18 @@ end
 	}
 
 	// use same connection
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
+	conn, err := db.Conn(t.Context())
 	if err != nil {
 		t.Fatal()
 	}
 	defer conn.Close()
 
-	proc, table := createDBObjects(conn, ctx)
+	proc, table := createDBObjects(conn, t.Context())
 
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?)", proc), txt); err != nil {
+	if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("call %s(?)", proc), txt); err != nil {
 		t.Fatal(err)
 	}
-	checkTable(conn, ctx, table)
+	checkTable(conn, t.Context(), table)
 }
 
 func testCallTableOutWithoutArg1(t *testing.T, db *sql.DB) {
@@ -380,8 +377,7 @@ begin
 end
 `
 	// use same connection
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
+	conn, err := db.Conn(t.Context())
 	if err != nil {
 		t.Fatal()
 	}
@@ -389,13 +385,13 @@ end
 
 	// create procedure
 	proc := driver.RandomIdentifier("procTableOutWithoutArg1_")
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procWithoutArg, proc)); err != nil {
+	if _, err := conn.ExecContext(t.Context(), fmt.Sprintf(procWithoutArg, proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	var i = 42
 
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?)", proc), i); err != nil {
+	if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("call %s(?)", proc), i); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -411,8 +407,7 @@ begin
 end
 `
 	// use same connection
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
+	conn, err := db.Conn(t.Context())
 	if err != nil {
 		t.Fatal()
 	}
@@ -420,7 +415,7 @@ end
 
 	// create procedure
 	proc := driver.RandomIdentifier("procTableOutWithoutArg2_")
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf(procWithoutArg, proc)); err != nil {
+	if _, err := conn.ExecContext(t.Context(), fmt.Sprintf(procWithoutArg, proc)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -428,7 +423,7 @@ end
 	var out1, out2 int
 	var out3 string
 
-	if _, err := conn.ExecContext(ctx, fmt.Sprintf("call %s(?,?,?,?,?)", proc),
+	if _, err := conn.ExecContext(t.Context(), fmt.Sprintf("call %s(?,?,?,?,?)", proc),
 		in1,
 		in2,
 		sql.Named("OUTPUT1", sql.Out{Dest: &out1}),

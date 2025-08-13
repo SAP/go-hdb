@@ -4,7 +4,6 @@ package driver
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"fmt"
 	"math/big"
@@ -102,7 +101,7 @@ func TestColumnType(t *testing.T) {
 
 		// retrieve statement metadata
 		var stmtMetadata StmtMetadata
-		ctx := WithStmtMetadata(context.Background(), &stmtMetadata)
+		ctx := WithStmtMetadata(t.Context(), &stmtMetadata)
 
 		stmt, err := db.PrepareContext(ctx, fmt.Sprintf("select * from %s", tableName))
 		if err != nil {

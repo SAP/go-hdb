@@ -1,5 +1,3 @@
-//go:build go1.24
-
 // Package alphanum implements functions for randomized alphanum content.
 package alphanum
 

@@ -1,4 +1,4 @@
-//go:build !unit && !go1.24
+//go:build !unit
 
 package driver_test
 
@@ -16,7 +16,7 @@ func benchmarkPing(b *testing.B) {
 }
 
 func benchmarkPingSeq(b *testing.B) {
-	for range b.N {
+	for b.Loop() {
 		benchmarkPing(b)
 	}
 }

@@ -49,8 +49,8 @@ func (_optTinyintType) String() string { return "tinyintType" }
 func (_optIntegerType) String() string { return "integerType" }
 func (_optBigintType) String() string  { return "bigintType" }
 func (_optDoubleType) String() string  { return "doubleType" }
-func (_optStringType) String() string  { return "dateType" }
-func (_optBstringType) String() string { return "timeType" }
+func (_optStringType) String() string  { return "stringType" }
+func (_optBstringType) String() string { return "bstringType" }
 
 func (_optBooleanType) typeCode() typeCode { return tcBoolean }
 func (_optTinyintType) typeCode() typeCode { return tcTinyint }
@@ -140,6 +140,6 @@ func optTypeViaTypeCode(tc typeCode) optType {
 	case tcBstring:
 		return optBstringType
 	default:
-		panic("missing optType for typeCode")
+		panic("missing optType for typeCode") // should never happen
 	}
 }
