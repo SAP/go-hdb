@@ -2,96 +2,53 @@ linters-settings:
   gocritic:
     disabled-checks:
       - exitAfterDefer
-  govet:
-    enable: [nilness]
   gosec:
     excludes:
       - G113
-  thelper:
-    test:
-      # Check *testing.T is first param (or after context.Context) of helper function.
-      # Default: true
-      first: true
-      # Check *testing.T param has name t.
-      # Default: true
-      name: true
-      # Check t.Helper() begins helper function.
-      # Default: true
-      begin: false
-    benchmark:
-      # Check *testing.B is first param (or after context.Context) of helper function.
-      # Default: true
-      first: true
-      # Check *testing.B param has name b.
-      # Default: true
-      name: true
-      # Check b.Helper() begins helper function.
-      # Default: true
-      begin: false
-    tb:
-      # Check *testing.TB is first param (or after context.Context) of helper function.
-      # Default: true
-      first: true
-      # Check *testing.TB param has name tb.
-      # Default: true
-      name: true
-      # Check tb.Helper() begins helper function.
-      # Default: true
-      begin: false
-    fuzz:
-      # Check *testing.F is first param (or after context.Context) of helper function.
-      # Default: true
-      first: true
-      # Check *testing.F param has name f.
-      # Default: true
-      name: true
-      # Check f.Helper() begins helper function.
-      # Default: true
-      begin: false
+  gomoddirectives:
+    # Allow local `replace` directives.
+    # Default: false
+    replace-local: true
 
 linters:
   enable-all: true
   disable:
-    #not used
+    - tenv
+    - wsl
     - varnamelen
+    - wrapcheck
+    - testpackage
+    - whitespace
+    - thelper
+    - testableexamples
+    - recvcheck
+    - paralleltest
     - nonamedreturns
     - nlreturn
-    - ireturn
-    - gochecknoglobals
-    - exhaustruct
-    - gochecknoinits
-    - funlen
-    - gocognit
-    - gofumpt
-    - err113
-    - depguard
-    - wrapcheck
-    - cyclop
-    - wsl
-    - dupl
-    - nestif
-    - contextcheck
-    - dupword
-    - errname
-    - paralleltest
-    - whitespace
-    - testpackage
     - nilnil
     - nilerr
-    - exhaustive
-    - testableexamples
-    - maintidx
-    - lll
-    - forcetypeassert
-    - revive
-    - godox
-    - errchkjson
-    - gci
-    - noctx
-    - rowserrcheck
+    - nestif
     - mnd
-    - recvcheck
-    - tenv
-  #enable-all: false
-  #enable:
-  #  - ...
+    - lll
+    - ireturn
+    - gofumpt
+    - godox
+    - gochecknoinits
+    - gochecknoglobals
+    - exhaustruct
+    - exhaustive
+    - forcetypeassert
+    - err113
+    - depguard
+    - errname
+    - funlen
+    - cyclop
+    - contextcheck
+    - gocognit
+    - maintidx
+    - revive
+    - dupl
+    - dupword
+    - rowserrcheck
+    - perfsprint
+    

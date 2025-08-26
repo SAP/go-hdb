@@ -158,7 +158,7 @@ func (tc typeCode) dataType() DataType {
 		return DtDecimal
 	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcStPoint, tcStGeometry:
 		return DtString
-	case tcBinary, tcVarbinary:
+	case tcBinary, tcVarbinary, tcBstring:
 		return DtBytes
 	case tcBlob, tcClob, tcNclob, tcText, tcBintext:
 		return DtLob

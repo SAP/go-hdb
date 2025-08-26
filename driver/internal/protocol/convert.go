@@ -635,7 +635,7 @@ func convertField(tc typeCode, v any, cesu8Encoder transform.Transformer) (any, 
 		return convertTime(v)
 	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
 		return convertDecimal(v)
-	case tcChar, tcVarchar, tcString, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
+	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
 		return convertBytes(v)
 	case tcBlob, tcClob, tcLocator:
 		return convertLob(v, nil)

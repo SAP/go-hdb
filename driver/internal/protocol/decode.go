@@ -55,7 +55,7 @@ func decodeResult(tc typeCode, d *encoding.Decoder, tr transform.Transformer, lo
 		return d.Fixed12Field(scale)
 	case tcFixed16:
 		return d.Fixed16Field(scale)
-	case tcChar, tcVarchar, tcString, tcBinary, tcVarbinary:
+	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return d.VarField()
 	case tcAlphanum:
 		return d.AlphanumField()
@@ -130,7 +130,7 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 		return d.Fixed12Field(scale)
 	case tcFixed16:
 		return d.Fixed16Field(scale)
-	case tcChar, tcVarchar, tcString, tcBinary, tcVarbinary:
+	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return d.VarField()
 	case tcAlphanum:
 		return d.AlphanumField()

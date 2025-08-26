@@ -216,7 +216,7 @@ func (f *ParameterField) prmSize(v any) int {
 		return encoding.Fixed12FieldSize
 	case tcFixed16:
 		return encoding.Fixed16FieldSize
-	case tcChar, tcVarchar, tcString, tcAlphanum, tcBinary, tcVarbinary:
+	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcBinary, tcVarbinary:
 		return encoding.VarFieldSize(v)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
 		return encoding.Cesu8FieldSize(v)
@@ -273,7 +273,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 		return enc.Fixed12Field(v, f.prec, f.scale)
 	case tcFixed16:
 		return enc.Fixed16Field(v, f.prec, f.scale)
-	case tcChar, tcVarchar, tcString, tcAlphanum, tcBinary, tcVarbinary:
+	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcBinary, tcVarbinary:
 		return enc.VarField(v)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
 		return enc.Cesu8Field(v)

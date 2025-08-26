@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -121,7 +122,34 @@ func testIncorrectDate(t *testing.T) {
 	t.Logf("number of NULL records %d\n", cnt)
 }
 
-// TestX has extended tests for specific systems.
+func testBstring(t *testing.T) {
+	db := driver.MT.DB()
+
+	hash := sha256.New()
+	if _, err := hash.Write([]byte("TEST")); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(`SELECT 'FOOBAR' FROM DUMMY WHERE HASH_SHA256('TEST') = $1`, hash.Sum(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var found bool
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			t.Error(err)
+		}
+		if result != "FOOBAR" {
+			t.Errorf("expected 'FOOBAR', got '%s'", result)
+		}
+	}
+	if !found {
+		t.Error("failed")
+	}
+}
+
+// TestX has extended tests for specific issues.
 func TestX(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -130,6 +158,7 @@ func TestX(t *testing.T) {
 	}{
 		{"invalid cesu-8", testInvalidCESU8, false},
 		{"test incorrect date", testIncorrectDate, false},
+		{"test bstring", testBstring, false},
 	}
 
 	anyTestEnabled := func() bool {
