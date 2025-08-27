@@ -238,7 +238,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	if c.session.inTx {
+	if c.session.inTx.Load() {
 		return nil, ErrNestedTransaction
 	}
 
@@ -278,7 +278,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			return
 		}
 		tx = newTx(c)
-		c.session.inTx = true
+		c.session.inTx.Store(true)
 	})
 
 	select {
@@ -408,7 +408,7 @@ func (t *tx) close(rollback bool) error {
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
 
 	defer func() {
-		c.session.inTx = false
+		c.session.inTx.Store(false)
 	}()
 
 	if c.session.isBad() {

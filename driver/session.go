@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
@@ -55,7 +56,8 @@ type session struct {
 
 	user *SessionUser // session user
 
-	inTx bool
+	// atomic as data race got reported on closeTx + exec in parallel
+	inTx atomic.Bool
 
 	sqlTracer *sqlTracer
 
@@ -240,7 +242,7 @@ func (s *session) switchUser(ctx context.Context) error {
 	if !ok || user.equal(s.user) {
 		return nil
 	}
-	if s.inTx {
+	if s.inTx.Load() {
 		return ErrSwitchUser
 	}
 	s.user = user.clone()
@@ -288,7 +290,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx, p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
 		return nil, err
 	}
 
@@ -334,7 +336,7 @@ func (s *session) execDirect(ctx context.Context, query string) (driver.Result, 
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeExec)
 
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx, p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
 		return nil, err
 	}
 
@@ -405,7 +407,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 	if err != nil {
 		return nil, err
 	}
-	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx.Load(), p.StatementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -448,7 +450,7 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 	if err != nil {
 		return nil, err
 	}
-	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx, p.StatementID(pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx.Load(), p.StatementID(pr.stmtID), inputParameters); err != nil {
 		return nil, err
 	}
 
@@ -509,7 +511,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 		return nil, nil, 0, err
 	}
 
-	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx, (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx.Load(), (*p.StatementID)(&pr.stmtID), inputParameters); err != nil {
 		return nil, nil, 0, err
 	}
 

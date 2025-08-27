@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.2
+- fixed race conditions
+
 #### v1.14.1
 - updated dependencies
 - extended docstore test

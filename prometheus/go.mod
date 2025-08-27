@@ -7,7 +7,7 @@ toolchain go1.25.0
 replace github.com/SAP/go-hdb => ..
 
 require (
-	github.com/SAP/go-hdb v1.14.0
+	github.com/SAP/go-hdb v1.14.2
 	github.com/prometheus/client_golang v1.23.0
 )
 
