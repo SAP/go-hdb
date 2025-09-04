@@ -59,6 +59,9 @@ func TestDocstore(t *testing.T) {
 	}
 
 	rows, err := db.Query(fmt.Sprintf("select * from %s", collectionName))
+	// TODO: follow up on error
+	// rows, err := db.Query(fmt.Sprintf("select * from %s where \"id\" = %d", collectionName, 1))
+	// rows, err := db.Query(fmt.Sprintf("select * from %s where \"id\" = ?", collectionName), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
