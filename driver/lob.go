@@ -6,24 +6,45 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 func scanLob(src any, wr io.Writer) error {
-	scanner, ok := src.(p.LobScanner)
-	if !ok {
-		return fmt.Errorf("lob: invalid scan type %T", src)
-	}
-	if err := scanner.Scan(wr); err != nil {
-		var dbErr Error
-		if errors.As(err, &dbErr) && dbErr.Code() == p.HdbErrWhileParsingProtocol {
-			return ErrNestedQuery
+	switch src := src.(type) {
+
+	// standard case with go-hdb connected to HANA
+	case p.LobScanner:
+		if err := src.Scan(wr); err != nil {
+			var dbErr Error
+			if errors.As(err, &dbErr) && dbErr.Code() == p.HdbErrWhileParsingProtocol {
+				return ErrNestedQuery
+			}
+			return err
 		}
+		return nil
+
+	default:
+		return fmt.Errorf("lob: invalid scan type %T", src)
+
+	// the following cases do support types which might be used in
+	// db mock scenarios
+	case string:
+		rd := strings.NewReader(src)
+		_, err := io.Copy(wr, rd)
+		return err
+
+	case []byte:
+		rd := bytes.NewBuffer(src)
+		_, err := io.Copy(wr, rd)
+		return err
+
+	case io.Reader:
+		_, err := io.Copy(wr, src)
 		return err
 	}
-	return nil
 }
 
 // ScanLobBytes supports scanning Lob data into a byte slice.

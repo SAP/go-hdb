@@ -3,7 +3,7 @@ Release Notes
 
 ## v1.14.0
 
-#### v1.14.3
+#### v1.14.3 - v1.14.4
 - updated dependencies
 
 #### v1.14.2
