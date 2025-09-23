@@ -714,10 +714,10 @@ func (s *session) writeLobs(ctx context.Context, cr *callResult, ids []p.Locator
 	descrs := make([]*p.WriteLobDescr, 0, len(ids))
 	j := 0
 	for i, f := range inPrmFields {
-		if f.IsLob() {
+		if f.IsLob() && nvargs[i].Value != nil {
 			lobInDescr, ok := nvargs[i].Value.(*p.LobInDescr)
 			if !ok {
-				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - *lobInDescr expected", nvargs[i])
+				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - lobInDescr expected", nvargs[i])
 			}
 			if j > len(ids) {
 				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))

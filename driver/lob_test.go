@@ -104,7 +104,7 @@ func (randReader) Read(b []byte) (n int, err error) {
 func testLobPipe(t *testing.T, db *sql.DB) {
 	const lobSize = 10000
 
-	table := RandomIdentifier("lobPipe")
+	table := RandomIdentifier("lobPipe_")
 
 	lrd := io.LimitReader(randReader{}, lobSize)
 
@@ -187,7 +187,7 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	const lobSize = 10000
 
-	table := RandomIdentifier("lobPipe")
+	table := RandomIdentifier("lobDelayedScan_")
 
 	rd := io.LimitReader(randReader{}, lobSize)
 
@@ -242,6 +242,47 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	}
 }
 
+func testLobNilPlusBig(t *testing.T, db *sql.DB) {
+	// db table with two lobs
+	// .one is nil and
+	// .the second one big enough, so that it needs to be written in chunks
+	// wasn't handled in session writeLobs and was raising an error
+	testData := func() []byte {
+		b := make([]byte, 1e6) // random Lob size 1MB
+		if _, err := alphanum.Read(b); err != nil {
+			panic(err) // should never happen
+		}
+		return b
+	}()
+
+	table := RandomIdentifier("lobNilPlusBig_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob, b blob)", table)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	// use trancactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?,?)", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	if _, err := stmt.Exec(nil, testData); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLob(t *testing.T) {
 	tests := []struct {
 		name string
@@ -250,6 +291,7 @@ func TestLob(t *testing.T) {
 		{"insert", testLobInsert},
 		{"pipe", testLobPipe},
 		{"delayedScan", testLobDelayedScan},
+		{"nilPlusBigLob", testLobNilPlusBig},
 	}
 
 	db := MT.DB()
