@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.6 - v1.14.7
+- updated dependencies
+
 #### v1.14.5
 - fixed lob bug
 
