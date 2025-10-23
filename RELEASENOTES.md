@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.8
+- support X.509 authentication with ECDSA and EdDSA (https://github.com/SAP/go-hdb/pull/125)
+
 #### v1.14.6 - v1.14.7
 - updated dependencies
 

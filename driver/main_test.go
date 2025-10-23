@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"testing"
@@ -45,6 +46,22 @@ func (mt *MainTest) DB() *sql.DB { return mt.db }
 
 // Version returns the database version of the test database.
 func (mt *MainTest) Version() *Version { return mt.version }
+
+// TestdataDir returns the testdata directory.
+func (mt *MainTest) TestdataDir(t *testing.T, subDir string) string {
+	dir, err := filepath.Abs(filepath.Join("./../testdata", subDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stat.IsDir() {
+		t.Fatalf("%s is not a directory", dir)
+	}
+	return dir
+}
 
 type dropKind int
 

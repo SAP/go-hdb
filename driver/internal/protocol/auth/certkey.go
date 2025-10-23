@@ -3,8 +3,12 @@ package auth
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -108,14 +112,51 @@ func (ck *CertKey) signer() (crypto.Signer, error) {
 	}
 }
 
+func ecdsaDigest(publicKey *ecdsa.PublicKey, message *bytes.Buffer) ([]byte, crypto.Hash) {
+	switch {
+	case publicKey.Params().BitSize <= 256:
+		hashed := sha256.Sum256(message.Bytes())
+		return hashed[:], crypto.SHA256
+	case publicKey.Params().BitSize <= 384:
+		hashed := sha512.Sum384(message.Bytes())
+		return hashed[:], crypto.SHA384
+	default:
+		hashed := sha512.Sum512(message.Bytes())
+		return hashed[:], crypto.SHA512
+	}
+}
+
+func digest(pubkey crypto.PublicKey, message *bytes.Buffer) ([]byte, crypto.Hash, error) {
+	switch pubkey := pubkey.(type) {
+	case rsa.PublicKey, *rsa.PublicKey:
+		hashed := sha256.Sum256(message.Bytes())
+		return hashed[:], crypto.SHA256, nil
+	case ecdsa.PublicKey:
+		b, hash := ecdsaDigest(&pubkey, message)
+		return b, hash, nil
+	case *ecdsa.PublicKey:
+		b, hash := ecdsaDigest(pubkey, message)
+		return b, hash, nil
+	case ed25519.PublicKey, *ed25519.PublicKey:
+		// hashing is done by the signer
+		return message.Bytes(), 0, nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported key type for signing")
+	}
+}
+
 func (ck *CertKey) sign(message *bytes.Buffer) ([]byte, error) {
 	signer, err := ck.signer()
 	if err != nil {
 		return nil, err
 	}
 
-	hashed := sha256.Sum256(message.Bytes())
-	return signer.Sign(rand.Reader, hashed[:], crypto.SHA256)
+	digest, hash, err := digest(signer.Public(), message)
+	if err != nil {
+		return nil, err
+	}
+
+	return signer.Sign(rand.Reader, digest, hash)
 }
 
 func decodePEM(data []byte) []*pem.Block {
