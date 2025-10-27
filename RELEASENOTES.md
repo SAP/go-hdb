@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.9
+- updated dependencies
+- added licence file to prometheus module
+
 #### v1.14.8
 - support X.509 authentication with ECDSA and EdDSA (https://github.com/SAP/go-hdb/pull/125)
 
