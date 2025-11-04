@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.10
+- fixed runtime error integer divide by zero' (https://github.com/SAP/go-hdb/pull/153)
+- updated dependencies
+
 #### v1.14.9
 - updated dependencies
 - added licence file to prometheus module

@@ -206,6 +206,9 @@ func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (dri
 	if numNVArg == numField {
 		return s.exec(ctx, s.pr, nvargs, 0)
 	}
+	if numField == 0 {
+		return nil, fmt.Errorf("invalid number of arguments %d - expected 0", numNVArg)
+	}
 	if numNVArg%numField != 0 {
 		return nil, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", numNVArg, numField)
 	}

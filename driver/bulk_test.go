@@ -409,6 +409,32 @@ func testBulkInsertInvalidUTF8(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 }
 
+func testBulkInsertInvalidNumArg(t *testing.T, ctr *Connector, db *sql.DB) {
+	/*
+		see https://github.com/SAP/go-hdb/pull/153
+		provide an argument if prepare query does not have any placeholder
+	*/
+
+	tableName := RandomIdentifier("bulkInvalidNumArg")
+
+	// Create table.
+	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare statement.
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (5)", tableName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	args := []any{1}
+	if _, err := stmt.Exec(args...); err == nil { // error expected
+		t.Fatal(err)
+	}
+}
+
 func TestBulk(t *testing.T) {
 	t.Parallel()
 
@@ -422,6 +448,7 @@ func TestBulk(t *testing.T) {
 		{"testBulkBlob106", testBulkBlob106},
 		{"testBulkGeo", testBulkGeo},
 		{"testBulkInsertInvalidUTF8", testBulkInsertInvalidUTF8},
+		{"testBulkInsertInvalidNumArg", testBulkInsertInvalidNumArg},
 	}
 
 	ctr := MT.NewConnector()
