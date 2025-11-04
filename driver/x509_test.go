@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -19,6 +20,8 @@ func TestX509Authentication(t *testing.T) {
 		x509CertName       = "X509_TEST_CERT"
 		x509PSEName        = "X509_TEST_PSE"
 	)
+
+	t.Parallel()
 
 	createX509Provider := func(t *testing.T, db *sql.DB, name string, issuer string) {
 		if _, err := db.Exec(fmt.Sprintf("CREATE X509 PROVIDER %s WITH ISSUER '%s'", name, issuer)); err != nil {
@@ -100,21 +103,13 @@ func TestX509Authentication(t *testing.T) {
 	// open admin connection
 	connector := MT.NewConnector()
 	db := sql.OpenDB(connector)
-	defer db.Close()
-
 	// create the provider
 	createX509Provider(t, db, x509ProviderName, x509ProviderIssuer)
-	defer dropX509Provider(t, db, x509ProviderName)
-
 	// create the certificate
 	testdataDir := MT.TestdataDir(t, "x509")
-
 	createCertificate(t, db, x509CertName, filepath.Join(testdataDir, "rootCA.crt"))
-	defer dropCertificate(t, db, x509CertName)
-
 	// create the PSE
 	createPSE(t, db, x509PSEName)
-	defer dropPSE(t, db, x509PSEName)
 
 	// setup the PSE
 	if _, err := db.Exec(fmt.Sprintf("ALTER PSE %s ADD CERTIFICATE %s", x509PSEName, x509CertName)); err != nil {
@@ -124,9 +119,22 @@ func TestX509Authentication(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Cleanup(func() {
+		dropPSE(t, db, x509PSEName)
+		dropCertificate(t, db, x509CertName)
+		dropX509Provider(t, db, x509ProviderName)
+		db.Close()
+	})
+
+	mu := &sync.Mutex{}
+
 	// test with different key types
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			mu.Lock()
+			defer mu.Unlock()
+
 			// create the user
 			userName := strings.ToUpper(test.name)
 			createUser(t, db, userName, test.subject)

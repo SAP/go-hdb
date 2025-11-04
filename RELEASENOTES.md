@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.11
+- parallelize X509 test
+
 #### v1.14.10
 - fixed runtime error integer divide by zero' (https://github.com/SAP/go-hdb/pull/153)
 - updated dependencies
