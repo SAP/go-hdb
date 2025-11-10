@@ -3,6 +3,9 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.12
+- updated dependencies
+
 #### v1.14.11
 - parallelize X509 test
 
