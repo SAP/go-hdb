@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.14.12"
+const DriverVersion = "1.14.13"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -24,7 +24,8 @@ var clientID = func() string {
 
 // clientType is the information provided to HDB identifying the driver.
 // Previously the driver.DriverName "hdb" was used but we should be more specific in providing a unique client type to HANA backend.
-const clientType = "go-hdb"
+// Define as var (not const) to enable ldflags var setting at build/link time.
+var clientType = "go-hdb"
 
 var defaultApplicationName, _ = os.Executable()
 
