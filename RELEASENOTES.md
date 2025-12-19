@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.15
+- added certificate to certs folder (for details please see  https://me.sap.com/notes/3397584)
+- updated dependencies
+
 #### v1.14.12 - v1.14.14
 - updated dependencies
 
