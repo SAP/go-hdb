@@ -294,7 +294,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 		return nil, err
 	}
 
-	qr := &queryResult{session: s}
+	var firstQr, currentQr *queryResult
 	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 
@@ -304,18 +304,39 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 			if err := s.prd.ReadPart(ctx, meta, nil); err != nil {
 				return err
 			}
-			qr.fields = meta.ResultFields
+			// Create new queryResult for this result set
+			newQr := &queryResult{session: s, fields: meta.ResultFields}
+			if firstQr == nil {
+				firstQr = newQr
+				currentQr = newQr
+			} else {
+				currentQr.next = newQr
+				currentQr = newQr
+			}
 			return nil
 		case p.PkResultsetID:
-			return s.prd.ReadPart(ctx, (*p.ResultsetID)(&qr.rsID), nil)
+			if currentQr != nil {
+				return s.prd.ReadPart(ctx, (*p.ResultsetID)(&currentQr.rsID), nil)
+			}
+			// Fallback for single result set without metadata
+			if firstQr == nil {
+				firstQr = &queryResult{session: s}
+				currentQr = firstQr
+			}
+			return s.prd.ReadPart(ctx, (*p.ResultsetID)(&currentQr.rsID), nil)
 		case p.PkResultset:
-			resSet.ResultFields = qr.fields
-			if err := s.prd.ReadPart(ctx, resSet, qr); err != nil {
+			if currentQr == nil {
+				// Fallback for single result set
+				firstQr = &queryResult{session: s}
+				currentQr = firstQr
+			}
+			resSet.ResultFields = currentQr.fields
+			if err := s.prd.ReadPart(ctx, resSet, currentQr); err != nil {
 				return err
 			}
-			qr.fieldValues = resSet.FieldValues
-			qr.decodeErrors = resSet.DecodeErrors
-			qr.attrs = attrs
+			currentQr.fieldValues = resSet.FieldValues
+			currentQr.decodeErrors = resSet.DecodeErrors
+			currentQr.attrs = attrs
 			return nil
 		default:
 			return p.ErrSkipped
@@ -326,10 +347,10 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	if s.sqlTracer != nil {
 		s.sqlTracer.log(ctx, t, traceKind, query)
 	}
-	if qr.rsID == 0 { // non select query
+	if firstQr == nil || firstQr.rsID == 0 { // non select query
 		return noResult, nil
 	}
-	return qr, nil
+	return firstQr, nil
 }
 
 func (s *session) execDirect(ctx context.Context, query string) (driver.Result, error) {
@@ -411,21 +432,34 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 		return nil, err
 	}
 
-	qr := &queryResult{session: s, fields: pr.resultFields}
+	// Initialize with prepared statement's result fields for first result set
+	firstQr := &queryResult{session: s, fields: pr.resultFields}
+	currentQr := firstQr
+	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 
 	if _, err := s.prd.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes) error {
 		switch kind {
-		case p.PkResultsetID:
-			return s.prd.ReadPart(ctx, (*p.ResultsetID)(&qr.rsID), nil)
-		case p.PkResultset:
-			resSet.ResultFields = qr.fields
-			if err := s.prd.ReadPart(ctx, resSet, qr); err != nil {
+		case p.PkResultMetadata:
+			// Additional result set metadata (for multiple result sets)
+			if err := s.prd.ReadPart(ctx, meta, nil); err != nil {
 				return err
 			}
-			qr.fieldValues = resSet.FieldValues
-			qr.decodeErrors = resSet.DecodeErrors
-			qr.attrs = attrs
+			// Create new queryResult for additional result sets
+			newQr := &queryResult{session: s, fields: meta.ResultFields}
+			currentQr.next = newQr
+			currentQr = newQr
+			return nil
+		case p.PkResultsetID:
+			return s.prd.ReadPart(ctx, (*p.ResultsetID)(&currentQr.rsID), nil)
+		case p.PkResultset:
+			resSet.ResultFields = currentQr.fields
+			if err := s.prd.ReadPart(ctx, resSet, currentQr); err != nil {
+				return err
+			}
+			currentQr.fieldValues = resSet.FieldValues
+			currentQr.decodeErrors = resSet.DecodeErrors
+			currentQr.attrs = attrs
 			return nil
 		default:
 			return p.ErrSkipped
@@ -436,10 +470,10 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 	if s.sqlTracer != nil {
 		s.sqlTracer.log(ctx, t, traceQuery, query, nvargs...)
 	}
-	if qr.rsID == 0 { // non select query
+	if firstQr.rsID == 0 { // non select query
 		return noResult, nil
 	}
-	return qr, nil
+	return firstQr, nil
 }
 
 func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nvargs []driver.NamedValue, offset int) (driver.Result, error) {
