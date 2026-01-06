@@ -19,9 +19,7 @@ var (
 	_ driver.RowsColumnTypeNullable         = (*queryResult)(nil)
 	_ driver.RowsColumnTypePrecisionScale   = (*queryResult)(nil)
 	_ driver.RowsColumnTypeScanType         = (*queryResult)(nil)
-	//	currently not used
-	//	could be implemented as pointer to next queryResult (advancing by copying data from next)
-	//	_ driver.RowsNextResultSet = (*queryResult)(nil)
+	_ driver.RowsNextResultSet              = (*queryResult)(nil)
 
 	// noResultType.
 	_ driver.Rows = (*noResultType)(nil)
@@ -101,6 +99,7 @@ type queryResult struct {
 	pos          int
 	attrs        p.PartAttributes
 	closed       bool
+	next         *queryResult // pointer to next result set (for multiple result sets)
 }
 
 // ErrScanOnClosedResultset is the error raised in case a scan is executed on a closed resultset.
@@ -180,6 +179,29 @@ func (qr *queryResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
 
 // ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
 func (qr *queryResult) ColumnTypeScanType(idx int) reflect.Type { return qr.fields[idx].ScanType() }
+
+// HasNextResultSet implements the driver.RowsNextResultSet interface.
+func (qr *queryResult) HasNextResultSet() bool {
+	return qr.next != nil
+}
+
+// NextResultSet implements the driver.RowsNextResultSet interface.
+func (qr *queryResult) NextResultSet() error {
+	if qr.next == nil {
+		return io.EOF
+	}
+	// Copy the next result set's data into this result set.
+	qr.fields = qr.next.fields
+	qr.fieldValues = qr.next.fieldValues
+	qr.decodeErrors = qr.next.decodeErrors
+	qr._columns = nil // reset columns cache
+	qr.rsID = qr.next.rsID
+	qr.pos = 0
+	qr.attrs = qr.next.attrs
+	qr.lastErr = qr.next.lastErr
+	qr.next = qr.next.next // advance to the next-next result set
+	return nil
+}
 
 // ReadLob used by protocol LobReader.
 func (qr *queryResult) ReadLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
