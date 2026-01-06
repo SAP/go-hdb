@@ -15,6 +15,9 @@ all:
 #	@echo execute tests on older supported go versions
 	GOTOOLCHAIN=go1.24.11 go1.24.11 test ./...
 	GOTOOLCHAIN=go1.24.11 go1.24.11 test ./... -race
+#	@echo execute tests on the new go version
+	GOTOOLCHAIN=go1.26rc1 go1.26rc1 test ./...
+	GOTOOLCHAIN=go1.26rc1 go1.26rc1 test ./... -race
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 #on linux: if pipx uses outdated packages, delete ~/.local/pipx/cache entries
@@ -45,3 +48,5 @@ tools:
 go:
 	go install golang.org/dl/go1.24.11@latest
 	go1.24.11 download
+	go install golang.org/dl/go1.26rc1@latest
+	go1.26rc1 download

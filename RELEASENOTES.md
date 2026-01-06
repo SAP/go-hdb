@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.16
+- prepare for go1.26
+- updated dependencies
+
 #### v1.14.15
 - added certificate to certs folder (for details please see  https://me.sap.com/notes/3397584)
 - updated dependencies

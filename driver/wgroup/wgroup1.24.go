@@ -1,6 +1,6 @@
 //go:build !go1.25
 
-// Package wgroup wraps WaitGroup Go until anly go versions >= 1.25 are going to be supported.
+// Package wgroup wraps WaitGroup Go until only go versions >= 1.25 are going to be supported.
 package wgroup
 
 import "sync"
