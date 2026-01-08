@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -294,13 +295,16 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 		return nil, err
 	}
 
-	qr := &queryResult{session: s}
+	qrs := []*queryResult{}
+	var qr *queryResult
 	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
 
 	if _, err := s.prd.IterateParts(ctx, 0, func(kind p.PartKind, attrs p.PartAttributes) error {
 		switch kind {
 		case p.PkResultMetadata:
+			qr = &queryResult{session: s}
+			qrs = append(qrs, qr)
 			if err := s.prd.ReadPart(ctx, meta, nil); err != nil {
 				return err
 			}
@@ -326,8 +330,13 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	if s.sqlTracer != nil {
 		s.sqlTracer.log(ctx, t, traceKind, query)
 	}
-	if qr.rsID == 0 { // non select query
+	if !slices.ContainsFunc(qrs, func(qr *queryResult) bool { // no select query
+		return qr.rsID != 0
+	}) {
 		return noResult, nil
+	}
+	if len(qrs) > 1 {
+		return &queryMultiResult{qrs: qrs}, nil
 	}
 	return qr, nil
 }

@@ -19,9 +19,15 @@ var (
 	_ driver.RowsColumnTypeNullable         = (*queryResult)(nil)
 	_ driver.RowsColumnTypePrecisionScale   = (*queryResult)(nil)
 	_ driver.RowsColumnTypeScanType         = (*queryResult)(nil)
-	//	currently not used
-	//	could be implemented as pointer to next queryResult (advancing by copying data from next)
-	//	_ driver.RowsNextResultSet = (*queryResult)(nil)
+
+	// queryMultiResult.
+	_ driver.Rows                           = (*queryMultiResult)(nil)
+	_ driver.RowsColumnTypeDatabaseTypeName = (*queryMultiResult)(nil)
+	_ driver.RowsColumnTypeLength           = (*queryMultiResult)(nil)
+	_ driver.RowsColumnTypeNullable         = (*queryMultiResult)(nil)
+	_ driver.RowsColumnTypePrecisionScale   = (*queryMultiResult)(nil)
+	_ driver.RowsColumnTypeScanType         = (*queryMultiResult)(nil)
+	_ driver.RowsNextResultSet              = (*queryMultiResult)(nil)
 
 	// noResultType.
 	_ driver.Rows = (*noResultType)(nil)
@@ -88,7 +94,7 @@ func (r *noResultType) Columns() []string              { return noColumns }
 func (r *noResultType) Close() error                   { return nil }
 func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
 
-// queryResult represents the resultset of a query.
+// queryResult represents a single resultset of a query.
 type queryResult struct {
 	// field alignment
 	fields       []*p.ResultField
@@ -187,6 +193,64 @@ func (qr *queryResult) ReadLob(request *p.ReadLobRequest, reply *p.ReadLobReply)
 		return ErrScanOnClosedResultset
 	}
 	return qr.session.readLob(context.Background(), request, reply)
+}
+
+// queryMultiResult represents multi resultsets of a query.
+type queryMultiResult struct {
+	idx int
+	qrs []*queryResult
+}
+
+// Columns implements the driver.Rows interface.
+func (qmr *queryMultiResult) Columns() []string { return qmr.qrs[qmr.idx].Columns() }
+
+// Close implements the driver.Rows interface.
+func (qmr *queryMultiResult) Close() error {
+	errs := []error{}
+	for _, qr := range qmr.qrs {
+		errs = append(errs, qr.Close())
+	}
+	return errors.Join(errs...)
+}
+
+// Next implements the driver.Rows interface.
+func (qmr *queryMultiResult) Next(dest []driver.Value) error { return qmr.qrs[qmr.idx].Next(dest) }
+
+// ColumnTypeDatabaseTypeName implements the driver.RowsColumnTypeDatabaseTypeName interface.
+func (qmr *queryMultiResult) ColumnTypeDatabaseTypeName(idx int) string {
+	return qmr.qrs[qmr.idx].ColumnTypeDatabaseTypeName(idx)
+}
+
+// ColumnTypeLength implements the driver.RowsColumnTypeLength interface.
+func (qmr *queryMultiResult) ColumnTypeLength(idx int) (int64, bool) {
+	return qmr.qrs[qmr.idx].ColumnTypeLength(idx)
+}
+
+// ColumnTypeNullable implements the driver.RowsColumnTypeNullable interface.
+func (qmr *queryMultiResult) ColumnTypeNullable(idx int) (bool, bool) {
+	return qmr.qrs[qmr.idx].ColumnTypeNullable(idx)
+}
+
+// ColumnTypePrecisionScale implements the driver.RowsColumnTypePrecisionScale interface.
+func (qmr *queryMultiResult) ColumnTypePrecisionScale(idx int) (int64, int64, bool) {
+	return qmr.qrs[qmr.idx].ColumnTypePrecisionScale(idx)
+}
+
+// ColumnTypeScanType implements the driver.RowsColumnTypeScanType interface.
+func (qmr *queryMultiResult) ColumnTypeScanType(idx int) reflect.Type {
+	return qmr.qrs[qmr.idx].ColumnTypeScanType(idx)
+}
+
+// HasNextResultSet implements the driver.RowsNextResultSet interface.
+func (qmr *queryMultiResult) HasNextResultSet() bool { return qmr.idx+1 < len(qmr.qrs) }
+
+// NextResultSet implements the driver.RowsNextResultSet interface.
+func (qmr *queryMultiResult) NextResultSet() error {
+	qmr.idx++
+	if qmr.idx >= len(qmr.qrs) {
+		return io.EOF
+	}
+	return nil
 }
 
 type callResult struct { // call output parameters

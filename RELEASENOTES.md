@@ -3,6 +3,10 @@ Release Notes
 
 ## v1.14.0
 
+#### v1.14.17
+- added support for simple anonymous blocks
+- updated dependencies
+
 #### v1.14.16
 - prepare for go1.26
 - updated dependencies
