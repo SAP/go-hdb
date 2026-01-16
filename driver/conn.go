@@ -23,12 +23,17 @@ var ErrUnsupportedIsolationLevel = errors.New("unsupported isolation level")
 // ErrNestedTransaction is the error raised if a transaction is created within a transaction as this is not supported by hdb.
 var ErrNestedTransaction = errors.New("nested transactions are not supported")
 
-// ErrNestedQuery is the error raised if a new sql statement is sent to the database server before the resultset
-// processing of a previous sql query statement is finalized.
-// Currently this only can happen if connections are used concurrently and if stream enabled fields (LOBs) are part
-// of the resultset.
-// This error can be avoided in whether using a transaction or a dedicated connection (sql.Tx or sql.Conn).
-var ErrNestedQuery = errors.New("nested sql queries are not supported")
+// ErrNestedQuery is deprecated, so currently not used (raised as an error) by the driver.
+var ErrNestedQuery = errors.New("nested sql queries are not supported") // deprecated
+
+// errInvalidLobLocatorID is the error raised if HANA DB returns error 1033 (invalid lob locator id).
+// Currently this only can happen if stream enabled fields (LOBs) are part of the resultset.
+// case 1:
+// - a new sql statement is sent to the database server before the resultset processing of a previous sql query statement is finalized.
+// case 2:
+// - procedure call with table result set (out parameter) and lob(s) part of resultset.
+// On cases 1 and 2 this error can be avoided in using a transaction (sql.Tx) on the query or exec statement.
+var errInvalidLobLocatorID = errors.New("invalid lob locator id - please use a transaction on the query or exec statement")
 
 // queries.
 const (

@@ -236,9 +236,9 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	err = row.Scan(lob)
 	switch {
 	case err == nil:
-		t.Fatalf("got error: <nil> - expected: %s", ErrNestedQuery)
-	case !errors.Is(err, ErrNestedQuery):
-		t.Fatalf("got error: %s - expected: %s", err, ErrNestedQuery)
+		t.Fatalf("got error: <nil> - expected: %s", errInvalidLobLocatorID)
+	case !errors.Is(err, errInvalidLobLocatorID):
+		t.Fatalf("got error: %s - expected: %s", err, errInvalidLobLocatorID)
 	}
 }
 

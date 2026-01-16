@@ -20,7 +20,7 @@ func scanLob(src any, wr io.Writer) error {
 		if err := src.Scan(wr); err != nil {
 			var dbErr Error
 			if errors.As(err, &dbErr) && dbErr.Code() == p.HdbErrWhileParsingProtocol {
-				return ErrNestedQuery
+				return errInvalidLobLocatorID
 			}
 			return err
 		}
