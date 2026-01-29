@@ -3,6 +3,14 @@ Release Notes
 
 ## v1.14.0
 
+### Minor revisions
+
+#### v1.14.19
+- changed default dialer preference to "tcp4" until HANA cloud would fully support IPv6 (see https://github.com/SAP/go-hdb/issues/157)
+
+#### v1.14.18
+- updated dependencies
+
 #### v1.14.17
 - added support for simple anonymous blocks
 - updated dependencies
