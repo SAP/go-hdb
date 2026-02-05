@@ -2,12 +2,12 @@ module github.com/SAP/go-hdb/prometheus
 
 go 1.24.0
 
-toolchain go1.25.6
+toolchain go1.25.7
 
 replace github.com/SAP/go-hdb => ..
 
 require (
-	github.com/SAP/go-hdb v1.14.18
+	github.com/SAP/go-hdb v1.14.20
 	github.com/prometheus/client_golang v1.23.2
 )
 
