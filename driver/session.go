@@ -30,7 +30,7 @@ func (u *SessionUser) equal(cmp *SessionUser) bool {
 }
 
 func (u *SessionUser) clone() *SessionUser {
-	return &SessionUser{Username: u.Username, Password: u.Password}
+	return &SessionUser{Username: u.Username, Password: u.Password, Schema: u.Schema}
 }
 
 // use unexported type to avoid key collisions.
@@ -247,7 +247,7 @@ func (s *session) switchUser(ctx context.Context) error {
 		return ErrSwitchUser
 	}
 	s.user = user.clone()
-	if _, err := s.execDirect(ctx, "connect "+user.Username+" password "+user.Password); err != nil {
+	if _, err := s.execDirect(ctx, "connect "+user.Username+" password \""+user.Password+"\""); err != nil {
 		return err
 	}
 	s.metrics.msgCh <- counterMsg{idx: counterSessionConnects, v: uint64(1)}
