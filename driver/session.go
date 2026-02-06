@@ -41,6 +41,9 @@ var switchUserCtxKey switchUserCtxKeyType
 // WithUserSwitch can be used to switch a user on a new or an existing connection
 // (see https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/connect-statement-session-management).
 func WithUserSwitch(ctx context.Context, u *SessionUser) context.Context {
+	if u == nil {
+		panic("cannot create context from nil SessionUser")
+	}
 	return context.WithValue(ctx, switchUserCtxKey, u)
 }
 

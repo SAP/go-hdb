@@ -5,7 +5,7 @@ Release Notes
 
 ### Minor revisions
 
-#### v1.14.21
+#### v1.14.21 - v1.14.22
 - fixed switchUser bug (https://github.com/SAP/go-hdb/pull/158)
 
 #### v1.14.20
