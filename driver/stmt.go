@@ -9,8 +9,6 @@ import (
 	"iter"
 	"slices"
 	"sync"
-
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // check if statements implements all required interfaces.
@@ -90,7 +88,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	var sqlErr error
 	var rows driver.Rows
 	done := make(chan struct{})
-	wgroup.Go(s.wg, func() {
+	s.wg.Go(func() {
 		defer close(done)
 		rows, sqlErr = s.session.query(ctx, s.query, s.pr, nvargs)
 	})
@@ -116,7 +114,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	var result driver.Result
 	var rows *sql.Rows // needed to avoid data race in case if context get cancelled.
 	done := make(chan struct{})
-	wgroup.Go(s.wg, func() {
+	s.wg.Go(func() {
 		defer close(done)
 		if s.pr.isProcedureCall() {
 			result, s.rows, sqlErr = s.execCall(ctx, s.pr, nvargs)

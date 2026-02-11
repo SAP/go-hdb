@@ -1,6 +1,13 @@
 Release Notes
 =============
 
+## v1.15.0
+
+### Changes
+
+- Added support of Go 1.26.
+- Dropped support of Go language versions < Go 1.25.
+
 ## v1.14.0
 
 ### Minor revisions

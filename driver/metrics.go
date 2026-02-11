@@ -4,8 +4,6 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 const (
@@ -159,7 +157,7 @@ func (m *metrics) lazyInit() {
 	   imported by any other package.
 	*/
 	m.once.Do(func() {
-		wgroup.Go(m.wg, func() {
+		m.wg.Go(func() {
 			// collect
 			for msg := range m.msgCh {
 				m.handleMsg(msg)

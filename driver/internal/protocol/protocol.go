@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
@@ -42,9 +43,22 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 	if part, ok := (*c)[kind]; ok {
 		return part, true
 	}
-	part := newGenPartReader(kind)
-	if part == nil { // part cannot be instantiated generically
+	if kind == PkAuthentication {
+		return nil, false // cannot instantiate generically
+	}
+	pt, ok := genPartTypeMap[kind]
+	if !ok {
+		// whether part cannot be instantiated generically or
+		// part is not (yet) known to the driver
 		return nil, false
+	}
+	// create instance
+	part, ok := reflect.TypeAssert[Part](reflect.New(pt))
+	if !ok {
+		panic("part kind does not implement part reader interface") // should never happen
+	}
+	if part, ok := part.(initer); ok {
+		part.init()
 	}
 	(*c)[kind] = part
 	return part, true

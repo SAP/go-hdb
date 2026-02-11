@@ -12,7 +12,6 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
@@ -73,10 +72,10 @@ func (s *Sniffer) Run() error {
 	ctx := context.Background()
 	wg := &sync.WaitGroup{}
 
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		pipeData(wg, s.conn, s.dbConn, clientWr)
 	})
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		pipeData(wg, s.dbConn, s.conn, dbWr)
 	})
 
@@ -88,10 +87,10 @@ func (s *Sniffer) Run() error {
 	pClientRd := p.NewClientReader(clientDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 	pDBRd := p.NewDBReader(dbDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		logData(ctx, wg, pClientRd)
 	})
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		logData(ctx, wg, pDBRd)
 	})
 

@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // ExampleLobRead reads data from a large data object database field into a bytes.Buffer.
@@ -122,7 +121,7 @@ func ExampleLob_pipe() {
 
 	// Start sql insert in own go-routine.
 	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		if _, err := stmt.Exec(lob); err != nil {
 			log.Fatal(err)
 		}
@@ -158,7 +157,7 @@ func ExampleLob_pipe() {
 
 	// Start sql select in own go-routine.
 	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			log.Fatal(err)
 		}

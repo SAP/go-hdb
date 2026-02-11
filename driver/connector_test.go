@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 func TestConnector(t *testing.T) {
@@ -142,7 +140,7 @@ func TestConnector(t *testing.T) {
 		wg := new(sync.WaitGroup)
 		start := make(chan struct{})
 		for range numConcurrent {
-			wgroup.Go(wg, func() {
+			wg.Go(func() {
 				<-start
 				ctr.refresh() //nolint:errcheck
 			})
@@ -183,7 +181,7 @@ func TestConnector(t *testing.T) {
 		connCh := make(chan *sql.Conn, numConcurrent)
 		errCh := make(chan error, numConcurrent)
 		for range numConcurrent {
-			wgroup.Go(wg, func() {
+			wg.Go(func() {
 				<-start
 				conn, err := db.Conn(t.Context())
 				if err != nil {

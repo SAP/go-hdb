@@ -14,7 +14,6 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
-	"github.com/SAP/go-hdb/driver/wgroup"
 )
 
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
@@ -198,7 +197,7 @@ func (c *conn) IsValid() bool { return !c.session.isBad() }
 func (c *conn) Ping(ctx context.Context) error {
 	var sqlErr error
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		_, sqlErr = c.session.queryDirect(ctx, pingQuery, tracePing)
 	})
@@ -217,7 +216,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	var sqlErr error
 	var stmt driver.Stmt
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
 			return
@@ -269,7 +268,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	var sqlErr error
 	var tx driver.Tx
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
 			return
@@ -306,7 +305,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 	var sqlErr error
 	var rows driver.Rows
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
 			return
@@ -332,7 +331,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 	var sqlErr error
 	var result driver.Result
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
 			return
@@ -373,7 +372,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 	var sqlErr error
 	var ci *DBConnectInfo
 	done := make(chan struct{})
-	wgroup.Go(c.wg, func() {
+	c.wg.Go(func() {
 		defer close(done)
 		ci, sqlErr = c.session.dbConnectInfo(ctx, databaseName)
 	})

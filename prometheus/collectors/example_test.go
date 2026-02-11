@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver"
-	"github.com/SAP/go-hdb/driver/wgroup"
 	drivercollectors "github.com/SAP/go-hdb/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -86,7 +85,7 @@ func Example() {
 	done := make(chan struct{})
 
 	// do some database stuff...
-	wgroup.Go(wg, func() {
+	wg.Go(func() {
 		for {
 			select {
 			case <-done:
