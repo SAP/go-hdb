@@ -809,6 +809,7 @@ func (c *Connector) authHnd() *p.AuthHnd {
 	}
 	if c._password != "" {
 		authHnd.AddBasic(c._username, c._password)
+		authHnd.AddLDAP(c._username, c._password)
 	}
 	return authHnd
 }

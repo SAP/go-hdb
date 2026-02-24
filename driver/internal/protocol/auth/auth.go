@@ -23,6 +23,7 @@ const (
 	MtX509              = "X509"              // client certificate
 	MtJWT               = "JWT"               // json web token
 	MtSessionCookie     = "SessionCookie"     // session cookie
+	MtLDAP              = "LDAP"              // LDAP authentication
 )
 
 // authentication method orders.
@@ -32,6 +33,7 @@ const (
 	MoJWT
 	MoSCRAMPBKDF2SHA256
 	MoSCRAMSHA256
+	MoLDAP
 )
 
 // A Method defines the interface for an authentication method.
@@ -69,18 +71,21 @@ var (
 	_ Method = (*JWT)(nil)
 	_ Method = (*X509)(nil)
 	_ Method = (*SessionCookie)(nil)
+	_ Method = (*LDAP)(nil)
 )
 
 // subPrmsSize is the type used to encode and decode the size of sub parameters.
 // The hana protocoll supports whether:
-//   - a size <= 245 encoded in one byte or
+//   - a size <= 250 encoded in one byte or
 //   - an unsigned 2 byte integer size encoded in three bytes
 //     . first byte equals 255
 //     . second and third byte is an big endian encoded uint16
+//
+// See also "SAP HANA SQL Command Network Protocol Reference" version 1.2 chapter 2.3.7.20
 type subPrmsSize int
 
 const (
-	maxSubPrmsSize1ByteLen    = 245
+	maxSubPrmsSize1ByteLen    = 250
 	subPrmsSize2ByteIndicator = 255
 )
 
@@ -138,7 +143,15 @@ func (d *Decoder) NumPrm(expected int) error {
 
 func (d *Decoder) String() string               { _, s := d.d.LIString(); return s }
 func (d *Decoder) cesu8String() (string, error) { _, s, err := d.d.CESU8LIString(); return s, err }
-func (d *Decoder) bytes() []byte                { _, b := d.d.LIBytes(); return b }
+func (d *Decoder) bytes() []byte {
+	size := d.subSize()
+	if size == 0 {
+		return nil
+	}
+	b := make([]byte, size)
+	d.d.Bytes(b)
+	return b
+}
 func (d *Decoder) bigUint32() (uint32, error) {
 	size := d.d.Byte()
 	if size != encoding.IntegerFieldSize { // 4 bytes
