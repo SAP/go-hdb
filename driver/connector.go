@@ -870,7 +870,7 @@ func (c *Connector) refresh() (bool, error) {
 			}
 		}
 	} else if c._certFile != "" && c._keyFile != "" {
-		if certHandle, keyHandle, err := readCertKeyFiles(c._certFile, c._keyFile); err != nil {
+		if certHandle, keyHandle, err := readCertKeyFiles(c._certFile, c._keyFile); err == nil {
 			if c._certKey == nil || !c._certKey.Equal(certHandle, keyHandle) {
 				certKey, err := auth.NewCertKey(certHandle, keyHandle)
 				if err != nil {
@@ -927,6 +927,9 @@ func (c *Connector) SetRefreshPassword(refreshPasswordFn func() (password string
 func (c *Connector) ClientCert() (clientCert, clientKey []byte) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c._certKey == nil {
+		return nil, nil
+	}
 	return c._certKey.Cert(), c._certKey.Key()
 }
 

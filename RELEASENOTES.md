@@ -3,6 +3,13 @@ Release Notes
 
 ## v1.15.0
 
+### Minor revisions
+
+#### v1.15.1
+- updated dependencies
+- extended docstore test
+- fixed some minor issues
+
 ### Changes
 
 - Added support of Go 1.26.

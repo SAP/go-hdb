@@ -731,10 +731,10 @@ func (s *session) writeLobs(ctx context.Context, cr *callResult, ids []p.Locator
 			if !ok {
 				return fmt.Errorf("protocol error: invalid lob parameter %[1]T %[1]v - lobInDescr expected", nvargs[i])
 			}
-			if j > len(ids) {
-				return fmt.Errorf("protocol error: invalid number of lob parameter ids %d", len(ids))
-			}
 			if !lobInDescr.IsLastData() {
+				if j >= len(ids) {
+					return fmt.Errorf("protocol error: id index %d out of range - number of ids %d", j, len(ids))
+				}
 				descrs = append(descrs, &p.WriteLobDescr{LobInDescr: lobInDescr, ID: ids[j]})
 				j++
 			}
