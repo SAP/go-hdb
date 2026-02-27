@@ -8,8 +8,8 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// "SAP HANA SQL Command Network Protocol Reference" v1.2, chapter 2.3.7.20
-// AUTHENTICATION Part Data Format
+// SAP HANA SQL Command Network Protocol Reference - SAP HANA Platform 2.0 SPS 03 - v1.1 - 2018-10-31
+// Chapter 3.7.20 AUTHENTICATION Part Data Format
 //
 // The specification defines two encodings, one for data <= 250 bytes and one for data > 250 bytes.
 func TestDecoderBytesSmallerOrEqual250(t *testing.T) {
