@@ -78,7 +78,8 @@ var (
 //     . first byte equals 255
 //     . second and third byte is an big endian encoded uint16
 //
-// See also "SAP HANA SQL Command Network Protocol Reference" version 1.2 chapter 2.3.7.20
+// SAP HANA SQL Command Network Protocol Reference - SAP HANA Platform 2.0 SPS 03 - v1.1 - 2018-10-31
+// Chapter 3.7.20 AUTHENTICATION Part Data Format
 type subPrmsSize int
 
 const (
