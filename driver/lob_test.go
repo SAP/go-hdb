@@ -24,6 +24,12 @@ type bytesLob []byte
 
 func (b *bytesLob) Scan(src any) error { return ScanLobBytes(src, (*[]byte)(b)) }
 
+func newRandomDataBytesLob(size int) bytesLob {
+	b := make([]byte, size)
+	rand.Read(b) //nolint: errcheck // never returns error
+	return b
+}
+
 func testLobInsert(t *testing.T, db *sql.DB) {
 
 	const (
@@ -94,18 +100,12 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 	}
 }
 
-type randReader struct{}
-
-func (randReader) Read(b []byte) (n int, err error) {
-	return rand.Read(b)
-}
-
 func testLobPipe(t *testing.T, db *sql.DB) {
 	const lobSize = 10000
 
 	table := RandomIdentifier("lobPipe_")
 
-	lrd := io.LimitReader(randReader{}, lobSize)
+	lrd := io.LimitReader(rand.Reader, lobSize)
 
 	wrBuf := &bytes.Buffer{}
 	if _, err := wrBuf.ReadFrom(lrd); err != nil {
@@ -188,7 +188,7 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 
 	table := RandomIdentifier("lobDelayedScan_")
 
-	rd := io.LimitReader(randReader{}, lobSize)
+	rd := io.LimitReader(rand.Reader, lobSize)
 
 	// use trancactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
@@ -282,6 +282,142 @@ func testLobNilPlusBig(t *testing.T, db *sql.DB) {
 	}
 }
 
+/*
+Summary: LOB rowsAffected Fix for HANA 2 vs HANA 4
+
+	The Issue
+
+	When executing UPDATE/INSERT statements with LOB parameters, rowsAffected was incorrectly returning 0 due to differences in the
+	HANA database protocol between versions 2 and 4.
+
+	HANA 2 Protocol:
+	- Initial UPDATE: rowsAffected = 1
+	- LOB chunk writes (including final): rowsAffected = 0
+
+	HANA 4 Protocol:
+	- Initial UPDATE: rowsAffected = -1 (error indicator)
+	- LOB chunk writes (intermediate): rowsAffected = 0
+	- Final LOB write: rowsAffected = 1
+
+	Previously, LOB write responses were ignored. In HANA 2 this worked (initial 1 was kept), but in HANA 4 the initial -1 was the
+	only value considered, and since only positive values are aggregated, the final result was 0.
+
+	The Fix
+
+	Modified session.go to accumulate rowsAffected from LOB write operations:
+
+	1. writeLobs() function: Changed return type from error to (int64, error) to return accumulated rows from all LOB chunk writes.
+	2. exec() and execCall() functions: Now capture and add the LOB rows to the initial operation's rows.
+
+	Result for both versions:
+	- HANA 2: Initial 1 + LOB writes 0 = 1 ✓
+	- HANA 4: Initial -1 (ignored as negative) + final LOB write 1 = 1 ✓
+
+	Test
+
+	The test testLobAffectedRows verifies the fix by:
+	- tests UPDATE with multiple LOB columns, each requiring chunks.
+	- Verifies that multiple LOBs with multiple chunks still return rowsAffected=1.
+	- Using a small LOB chunk size (1KB) to force chunking
+	- Updating 1 row with 2 LOB columns requiring multiple chunks (2 + 3 = 5 chunks total)
+	- Verifying rowsAffected = 1 (not 0 as it was before the fix in HANA 4)
+	- Confirming data was actually updated correctly
+*/
+func testLobAffectedRows(t *testing.T, db *sql.DB) {
+
+	checkRowsAffected := func(result sql.Result) {
+		// Check rowsAffected - MUST be 1, not 0 (HANA 4 fix)
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			t.Fatalf("RowsAffected() failed: %s", err)
+		}
+		if rowsAffected != 1 {
+			t.Fatalf("got rowsAffected %d - expected 1", rowsAffected)
+		}
+	}
+
+	const lobChunkSize = 1024 // 1KB chunks for testing
+
+	table := RandomIdentifier("lobAffectedRows_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (id integer primary key, b1 blob, b2 blob)", table)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a custom connector with small LOB chunk size
+	ctr := MT.NewConnector()
+	ctr.SetLobChunkSize(lobChunkSize)
+	testDB := sql.OpenDB(ctr)
+	defer testDB.Close()
+
+	// Insert initial data
+
+	insertData1 := newRandomDataBytesLob(lobChunkSize * 2)
+	insertData2 := newRandomDataBytesLob(lobChunkSize * 3)
+
+	tx, err := testDB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?, ?, ?)", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := stmt.Exec(1, insertData1, insertData2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	checkRowsAffected(result)
+
+	// Update
+	updateData1 := newRandomDataBytesLob(lobChunkSize * 2)
+	updateData2 := newRandomDataBytesLob(lobChunkSize * 3)
+
+	tx, err = testDB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err = tx.Prepare(fmt.Sprintf("update %s set b1 = ?, b2 = ? where id = ?", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	result, err = stmt.Exec(updateData1, updateData2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	checkRowsAffected(result)
+
+	// Verify
+	var readData1 bytesLob
+	var readData2 bytesLob
+	if err := db.QueryRow(fmt.Sprintf("select b1, b2 from %s where id = 1", table)).Scan(&readData1, &readData2); err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(updateData1, readData1) {
+		t.Fatalf("data1 mismatch")
+	}
+	if !bytes.Equal(updateData2, readData2) {
+		t.Fatalf("data2 mismatch")
+	}
+}
+
 func TestLob(t *testing.T) {
 	tests := []struct {
 		name string
@@ -291,6 +427,7 @@ func TestLob(t *testing.T) {
 		{"pipe", testLobPipe},
 		{"delayedScan", testLobDelayedScan},
 		{"nilPlusBigLob", testLobNilPlusBig},
+		{"affectedRows", testLobAffectedRows},
 	}
 
 	db := MT.DB()
