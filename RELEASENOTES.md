@@ -1,4 +1,4 @@
-Release Notes
+ Release Notes
 =============
 
 ## v1.15.0
