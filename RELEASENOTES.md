@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.15.4
+- bumped github actions
+
 #### v1.15.3
 - updated dependencies
 - added docstore enabled check to test
