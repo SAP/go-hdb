@@ -117,7 +117,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	s.wg.Go(func() {
 		defer close(done)
 		if s.pr.isProcedureCall() {
-			result, s.rows, sqlErr = s.execCall(ctx, s.pr, nvargs)
+			result, rows, sqlErr = s.execCall(ctx, s.pr, nvargs) //nolint: sqlclosecheck
 		} else {
 			result, sqlErr = s.execDefault(ctx, nvargs)
 		}
@@ -157,7 +157,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	for i := range numOutArgs {
 		scanArgs[i] = callArgs.outArgs[i].Value.(sql.Out).Dest
 	}
-	// acccount for table output fields without call arguments.
+	// account for table output fields without call arguments.
 	for i := numOutArgs; i < numOutputField; i++ {
 		scanArgs[i] = new(sql.Rows)
 	}
@@ -309,6 +309,7 @@ func (s *stmt) execSeq(ctx context.Context, nvargs []driver.NamedValue) (driver.
 				return driver.RowsAffected(totalRowsAffected), err
 			}
 			args = args[:0]
+			n = 0
 			batch++
 		}
 	}

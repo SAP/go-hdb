@@ -1,7 +1,18 @@
-Release Notes
+ Release Notes
 =============
 
 ## v1.15.0
+
+### Minor revisions
+
+#### v1.15.2
+- updated dependencies
+- fixed LOB rowsAffected for HANA 4
+
+#### v1.15.1
+- updated dependencies
+- extended docstore test
+- fixed some minor issues
 
 ### Changes
 

@@ -23,6 +23,7 @@ const (
 	MtX509              = "X509"              // client certificate
 	MtJWT               = "JWT"               // json web token
 	MtSessionCookie     = "SessionCookie"     // session cookie
+	MtLDAP              = "LDAP"              // LDAP authentication
 )
 
 // authentication method orders.
@@ -32,6 +33,7 @@ const (
 	MoJWT
 	MoSCRAMPBKDF2SHA256
 	MoSCRAMSHA256
+	MoLDAP
 )
 
 // A Method defines the interface for an authentication method.
@@ -69,6 +71,7 @@ var (
 	_ Method = (*JWT)(nil)
 	_ Method = (*X509)(nil)
 	_ Method = (*SessionCookie)(nil)
+	_ Method = (*LDAP)(nil)
 )
 
 // subPrmsSize is the type used to encode and decode the size of sub parameters.

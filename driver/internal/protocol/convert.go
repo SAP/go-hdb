@@ -490,11 +490,13 @@ func convertDecimal(v any) (any, error) { //nolint: gocyclo
 		if r == nil {
 			return nil, errConversionNotSupported
 		}
+		return r, nil
 	case float64:
 		r := new(big.Rat).SetFloat64(v)
 		if r == nil {
 			return nil, errConversionNotSupported
 		}
+		return r, nil
 	case string:
 		r, ok := new(big.Rat).SetString(v)
 		if !ok {

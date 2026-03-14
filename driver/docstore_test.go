@@ -4,97 +4,183 @@ package driver_test
 
 import (
 	"bytes"
-	"cmp"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"slices"
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
 )
 
-func TestDocstore(t *testing.T) {
-	t.Parallel()
+// https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-json-document-store-guide/json-document-store-statements
 
-	type testData struct {
-		ID    int    `json:"id"`
-		Attr1 string `json:"attr1"`
-		Attr2 bool   `json:"attr2"`
-	}
+type testDocstoreFlat struct {
+	ID   int    `json:"id"`
+	Addr string `json:"addr"`
+	Flag bool   `json:"flag"`
+}
 
-	testRecords := []testData{
-		{ID: 1, Attr1: "test text1", Attr2: true},
-		{ID: 2, Attr1: "test text2", Attr2: false},
-		{ID: 3, Attr1: "test text3", Attr2: true},
-	}
+type testDocstoreAddr struct {
+	Name   string `json:"name"`
+	Street string `json:"street"`
+	City   string `json:"city"`
+	State  string `json:"state"`
+}
 
-	collectionName := driver.RandomIdentifier("docstore_").String()
+type testDocstoreNested struct {
+	ID   int               `json:"id"`
+	Addr *testDocstoreAddr `json:"addr"`
+	Flag bool              `json:"flag"`
+}
 
-	db := sql.OpenDB(driver.MT.Connector())
-	defer db.Close()
+func testDocstoreCompare[T any](t *testing.T, db *sql.DB, collectionName string, id int, resultDoc *T) {
+	lob := driver.Lob{}
+	b := new(bytes.Buffer)
+	lob.SetWriter(b)
 
-	if _, err := db.Exec("create collection " + collectionName); err != nil {
+	if err := db.QueryRow(fmt.Sprintf("select * from %s where \"id\" = %d", collectionName, id)).Scan(&lob); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if _, err := db.Exec(fmt.Sprintf("drop collection %s cascade", collectionName)); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
-	// marshall test data
-	fields := make([]any, len(testRecords))
-	for i, record := range testRecords {
-		var err error
-		fields[i], err = json.Marshal(record)
+	var doc T
+	if err := json.Unmarshal(b.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(doc, *resultDoc) {
+		t.Fatalf("got %v - expected %v", doc, resultDoc)
+	}
+}
+
+func testDocstoreCreateCollection(t *testing.T, db *sql.DB) string {
+	name := driver.RandomIdentifier("docstore_").String()
+
+	if _, err := db.Exec("create collection " + name); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+func testDocstoreDestroyCollection(t *testing.T, db *sql.DB, name string) {
+	if _, err := db.Exec(fmt.Sprintf("drop collection %s cascade", name)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testDocstoreMarshal(t *testing.T, docs []any) []any {
+	marshalDocs := make([]any, 0, len(docs))
+	for _, doc := range docs {
+		marshalDoc, err := json.Marshal(doc)
 		if err != nil {
 			t.Fatal(err)
 		}
+		marshalDocs = append(marshalDocs, marshalDoc)
+	}
+	return marshalDocs
+}
+
+func testDocstoreDefault(t *testing.T, db *sql.DB) {
+
+	collectionName := testDocstoreCreateCollection(t, db)
+	defer testDocstoreDestroyCollection(t, db, collectionName)
+
+	testDocs := []any{
+		&testDocstoreFlat{ID: 1, Addr: "address 1", Flag: true},
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", collectionName), fields...); err != nil {
+	resultDoc1 := &testDocstoreFlat{ID: 1, Addr: "address 1 - update", Flag: true}
+
+	marshalDocs := testDocstoreMarshal(t, testDocs)
+
+	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s", collectionName))
-	// TODO: follow up on error
-	// rows, err := db.Query(fmt.Sprintf("select * from %s where \"id\" = %d", collectionName, 1))
-	// rows, err := db.Query(fmt.Sprintf("select * from %s where \"id\" = ?", collectionName), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	cmpRecords := []testData{}
-
-	lob := driver.Lob{}
-	for rows.Next() {
-		b := new(bytes.Buffer)
-		lob.SetWriter(b)
-
-		if err := rows.Scan(&lob); err != nil {
-			t.Fatal(err)
-		}
-
-		var field testData
-		if err := json.Unmarshal(b.Bytes(), &field); err != nil {
-			t.Fatal(err)
-		}
-		cmpRecords = append(cmpRecords, field)
-	}
-	if err := rows.Err(); err != nil {
+	// update attribute 'inline'
+	if _, err := db.Exec(fmt.Sprintf("update %s set \"addr\" = '%s' where \"id\" = %d", collectionName, "address 1 - update", 1)); err != nil {
 		t.Fatal(err)
 	}
 
 	// compare
-	cmpFn := func(a, b testData) int {
-		return cmp.Compare(a.ID, b.ID)
+	testDocstoreCompare(t, db, collectionName, 1, resultDoc1)
+}
+
+func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
+	// parse_json is only abailable in hdb cloud versions
+
+	collectionName := testDocstoreCreateCollection(t, db)
+	defer testDocstoreDestroyCollection(t, db, collectionName)
+
+	testDocs := []any{
+		&testDocstoreFlat{ID: 2, Addr: "address 2", Flag: false},
+		&testDocstoreFlat{ID: 3, Addr: "address 3", Flag: true},
 	}
-	slices.SortFunc(testRecords, cmpFn)
-	slices.SortFunc(cmpRecords, cmpFn)
-	if !reflect.DeepEqual(testRecords, cmpRecords) {
-		t.Fatalf("got %v - expected %v", cmpRecords, testRecords)
+
+	resultDoc2 := &testDocstoreFlat{ID: 2, Addr: "address 2 - update", Flag: true}
+	resultDoc3 := &testDocstoreNested{
+		ID: 3,
+		Addr: &testDocstoreAddr{
+			Name:   "Donald Duck",
+			Street: "1313 Webfoot Walk",
+			City:   "Duckburg",
+			State:  "Calisota",
+		},
+		Flag: true}
+
+	marshalDocs := testDocstoreMarshal(t, testDocs)
+
+	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
+		t.Fatal(err)
+	}
+
+	// update entire document
+	marshalDoc, err := json.Marshal(resultDoc2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("update %[1]s set %[1]s = parse_json(?) where \"id\" = %d", collectionName, 2), marshalDoc); err != nil {
+		t.Fatal(err)
+	}
+
+	// update with nested json
+	marshalDoc, err = json.Marshal(resultDoc3.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(fmt.Sprintf("update %s set \"addr\" = parse_json(?) where \"id\" = %d", collectionName, 3), marshalDoc); err != nil {
+		t.Fatal(err)
+	}
+
+	// compare
+	testDocstoreCompare(t, db, collectionName, 2, resultDoc2)
+	testDocstoreCompare(t, db, collectionName, 3, resultDoc3)
+}
+
+func TestDocstore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		fct          func(t *testing.T, db *sql.DB)
+		onlyHDBCloud bool
+	}{
+		{"default", testDocstoreDefault, false},
+		{"hdbCloud", testDocstoreHDBCloud, true},
+	}
+
+	db := driver.MT.DB()
+
+	isHDBCloud := driver.MT.Version().Major() > 3
+
+	for _, test := range tests {
+		if !isHDBCloud && test.onlyHDBCloud {
+			continue
+		}
+
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fct(t, db)
+		})
 	}
 }

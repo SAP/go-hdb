@@ -38,6 +38,9 @@ func (a *AuthHnd) AddJWT(token string) { a.methods[auth.MtJWT] = auth.NewJWT(tok
 // AddX509 adds X509 authentication method.
 func (a *AuthHnd) AddX509(certKey *auth.CertKey) { a.methods[auth.MtX509] = auth.NewX509(certKey) }
 
+// AddLDAP adds LDAP authentication method.
+func (a *AuthHnd) AddLDAP(username, password string) { a.methods[auth.MtLDAP] = auth.NewLDAP(username, password) }
+
 // Selected returns the selected authentication method.
 func (a *AuthHnd) Selected() auth.Method { return a.selected }
 
