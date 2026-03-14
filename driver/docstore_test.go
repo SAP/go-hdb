@@ -158,6 +158,14 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 }
 
 func TestDocstore(t *testing.T) {
+	isDocstoreEnabled := func(db *sql.DB) bool {
+		count := 0
+		if err := db.QueryRow("select count(*) from m_services where service_name = 'docstore' and active_status = 'YES'").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count > 0
+	}
+
 	t.Parallel()
 
 	tests := []struct {
@@ -170,6 +178,11 @@ func TestDocstore(t *testing.T) {
 	}
 
 	db := driver.MT.DB()
+
+	if !isDocstoreEnabled(db) {
+		t.Log("docstore is not enabled")
+		return
+	}
 
 	isHDBCloud := driver.MT.Version().Major() > 3
 
