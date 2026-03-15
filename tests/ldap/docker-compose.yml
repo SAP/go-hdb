@@ -1,0 +1,43 @@
+services:
+  ldap:
+    image: osixia/openldap:latest
+    networks:
+      ldap_network:
+        aliases:
+          - openldap
+    environment:
+      LDAP_ORGANISATION: "test"
+      LDAP_DOMAIN: "example.com"
+      LDAP_ADMIN_PASSWORD: "admin1234"
+      LDAP_TLS: "false"
+    ports:
+      - "389:389"
+    volumes:
+      - ./ldapConfig.sh:/ldapConfig.sh
+
+  hana:
+    image: saplabs/hanaexpress:latest
+    ports:
+      - "39017:39017"
+      - "39013:39013"
+    networks:
+      ldap_network:
+        aliases:
+          - hana
+    command:
+      - --master-password
+      - HanaSystem1234
+      - --agree-to-sap-license
+    ulimits:
+      nofile:
+        hard: 1048576
+        soft: 1048576
+    sysctls:
+      kernel.shmmax: "1073741824"
+      kernel.shmmni: "4096"
+      kernel.shmall: "8388608"
+    security_opt:
+      - seccomp=unconfined
+
+networks:
+  ldap_network:

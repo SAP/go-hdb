@@ -8,7 +8,7 @@ import (
 )
 
 func scramsha256Key(password, salt []byte) ([]byte, error) {
-	return _sha256(_hmac(password, salt)), nil
+	return scramSHA256(scramHMAC(password, salt)), nil
 }
 
 // use cache as key calculation is expensive.
@@ -26,7 +26,7 @@ type SCRAMSHA256 struct {
 
 // NewSCRAMSHA256 creates a new authSCRAMSHA256 instance.
 func NewSCRAMSHA256(username, password string) *SCRAMSHA256 {
-	return &SCRAMSHA256{username: username, password: password, clientChallenge: clientChallenge()}
+	return &SCRAMSHA256{username: username, password: password, clientChallenge: scramClientChallenge()}
 }
 
 func (a *SCRAMSHA256) String() string {
@@ -59,10 +59,10 @@ func (a *SCRAMSHA256) InitRepDecode(d *Decoder) error {
 	}
 	a.salt = d.bytes()
 	a.serverChallenge = d.bytes()
-	if err := checkSalt(a.salt); err != nil {
+	if err := scramCheckSalt(a.salt); err != nil {
 		return err
 	}
-	if err := checkServerChallenge(a.serverChallenge); err != nil {
+	if err := scramCheckServerChallenge(a.serverChallenge); err != nil {
 		return err
 	}
 	return nil
@@ -74,7 +74,7 @@ func (a *SCRAMSHA256) PrepareFinalReq(prms *Prms) error {
 	if err != nil {
 		return err
 	}
-	clientProof, err := clientProof(key, a.salt, a.serverChallenge, a.clientChallenge)
+	clientProof, err := scramClientProof(key, a.salt, a.serverChallenge, a.clientChallenge)
 	if err != nil {
 		return err
 	}

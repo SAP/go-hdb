@@ -1,5 +1,13 @@
-Release Notes
+ Release Notes
 =============
+
+## v1.16.0
+
+### Minor revisions
+
+### Changes
+
+- Added support of LDAP authentication (https://github.com/SAP/go-hdb/pull/159)
 
 ## v1.15.0
 

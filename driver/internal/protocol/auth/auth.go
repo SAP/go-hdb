@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 /*
@@ -23,6 +24,7 @@ const (
 	MtX509              = "X509"              // client certificate
 	MtJWT               = "JWT"               // json web token
 	MtSessionCookie     = "SessionCookie"     // session cookie
+	MtLDAP              = "LDAP"              // LDAP authentication
 )
 
 // authentication method orders.
@@ -32,6 +34,7 @@ const (
 	MoJWT
 	MoSCRAMPBKDF2SHA256
 	MoSCRAMSHA256
+	MoLDAP
 )
 
 // A Method defines the interface for an authentication method.
@@ -69,49 +72,57 @@ var (
 	_ Method = (*JWT)(nil)
 	_ Method = (*X509)(nil)
 	_ Method = (*SessionCookie)(nil)
+	_ Method = (*LDAP)(nil)
 )
 
-// subPrmsSize is the type used to encode and decode the size of sub parameters.
-// The hana protocoll supports whether:
-//   - a size <= 245 encoded in one byte or
-//   - an unsigned 2 byte integer size encoded in three bytes
-//     . first byte equals 255
-//     . second and third byte is an big endian encoded uint16
-type subPrmsSize int
+/*
+Field size methods (used for decoding) of
+- bytes, string, unicode string
+
+- a size <= 250 encoded in one byte or
+- an unsigned 2 byte integer size encoded in three bytes
+  . first byte equals 255
+  . second and third byte is an big endian encoded uint16
+
+See also "SAP HANA SQL Command Network Protocol Reference" version 1.2 chapter 2.3.7.20.
+
+Weirdly enough:
+- encoding follows the standard rules for length/size indicators
+- see prms on details
+*/
 
 const (
-	maxSubPrmsSize1ByteLen    = 245
-	subPrmsSize2ByteIndicator = 255
+	maxFieldSize1ByteLen    = 250
+	fieldSize2ByteIndicator = 255
 )
 
-func (s subPrmsSize) fieldSize() int {
-	if s > maxSubPrmsSize1ByteLen {
+func fieldSize(size int) int {
+	if size > maxFieldSize1ByteLen {
 		return 3
 	}
 	return 1
 }
 
-func (s subPrmsSize) encode(e *encoding.Encoder) error {
+func encodeFieldSize(e *encoding.Encoder, size int) error {
 	switch {
-	case s <= maxSubPrmsSize1ByteLen:
-		e.Byte(byte(s))
-	case s <= math.MaxUint16:
-		e.Byte(subPrmsSize2ByteIndicator)
-		// big endian
-		e.Uint16ByteOrder(uint16(s), binary.BigEndian) //nolint: gosec
+	case size <= maxFieldSize1ByteLen:
+		e.Byte(byte(size))
+	case size <= math.MaxUint16:
+		e.Byte(fieldSize2ByteIndicator)
+		e.Uint16ByteOrder(uint16(size), binary.BigEndian)
 	default:
-		return fmt.Errorf("invalid subparameter size %d - maximum %d", s, 42)
+		return fmt.Errorf("invalid field size %d - maximum %d", size, math.MaxUint16)
 	}
 	return nil
 }
 
-func (s *subPrmsSize) decode(d *encoding.Decoder) {
+func decodeFieldSize(d *encoding.Decoder) int {
 	b := d.Byte()
 	switch {
-	case b <= maxSubPrmsSize1ByteLen:
-		*s = subPrmsSize(b)
-	case b == subPrmsSize2ByteIndicator:
-		*s = subPrmsSize(d.Uint16ByteOrder(binary.BigEndian))
+	case b <= maxFieldSize1ByteLen:
+		return int(b)
+	case b == fieldSize2ByteIndicator:
+		return int(d.Uint16ByteOrder(binary.BigEndian))
 	default:
 		panic("invalid sub parameter size indicator")
 	}
@@ -136,9 +147,38 @@ func (d *Decoder) NumPrm(expected int) error {
 	return nil
 }
 
-func (d *Decoder) String() string               { _, s := d.d.LIString(); return s }
-func (d *Decoder) cesu8String() (string, error) { _, s, err := d.d.CESU8LIString(); return s, err }
-func (d *Decoder) bytes() []byte                { _, b := d.d.LIBytes(); return b }
+func (d *Decoder) String() string {
+	size := decodeFieldSize(d.d)
+	if size == 0 {
+		return ""
+	}
+	b := make([]byte, size)
+	d.d.Bytes(b)
+	return unsafe.ByteSlice2String(b)
+}
+
+func (d *Decoder) cesu8String() (string, error) {
+	size := decodeFieldSize(d.d)
+	if size == 0 {
+		return "", nil
+	}
+	b, err := d.d.CESU8Bytes(size)
+	if err != nil {
+		return "", err
+	}
+	return unsafe.ByteSlice2String(b), nil
+}
+
+func (d *Decoder) bytes() []byte {
+	size := decodeFieldSize(d.d)
+	if size == 0 {
+		return nil
+	}
+	b := make([]byte, size)
+	d.d.Bytes(b)
+	return b
+}
+
 func (d *Decoder) bigUint32() (uint32, error) {
 	size := d.d.Byte()
 	if size != encoding.IntegerFieldSize { // 4 bytes
@@ -146,10 +186,9 @@ func (d *Decoder) bigUint32() (uint32, error) {
 	}
 	return d.d.Uint32ByteOrder(binary.BigEndian), nil // big endian coded (e.g. rounds param)
 }
+
 func (d *Decoder) subSize() int {
-	var subSize subPrmsSize
-	(&subSize).decode(d.d)
-	return int(subSize)
+	return decodeFieldSize(d.d)
 }
 
 // Prms represents authentication parameters.
@@ -173,13 +212,13 @@ func (p *Prms) addPrms() *Prms {
 // Size returns the size in bytes of the parameters.
 func (p *Prms) Size() int {
 	size := encoding.SmallintFieldSize // no of parameters (2 bytes)
-	for _, e := range p.prms {
-		switch e := e.(type) {
+	for _, prm := range p.prms {
+		switch prm := prm.(type) {
 		case []byte, string:
-			size += encoding.VarFieldSize(e)
+			size += encoding.VarFieldSize(prm)
 		case *Prms:
-			subSize := subPrmsSize(e.Size())
-			size += (int(subSize) + subSize.fieldSize())
+			subSize := prm.Size()
+			size += (subSize + fieldSize(subSize))
 		default:
 			panic("invalid parameter") // should not happen
 		}
@@ -206,8 +245,8 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 				return err
 			}
 		case *Prms:
-			subSize := subPrmsSize(e.Size())
-			if err := subSize.encode(enc); err != nil {
+			subSize := e.Size()
+			if err := encodeFieldSize(enc, subSize); err != nil {
 				return err
 			}
 			if err := e.Encode(enc); err != nil {

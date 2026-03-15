@@ -9,11 +9,13 @@ import (
 	"fmt"
 )
 
-/*
-
-	return _sha256(pbkdf2.Key(password, salt, rounds, clientProofSize, sha256.New))
+func scrampbkdf2sha256Key(password string, salt []byte, rounds int) ([]byte, error) {
+	b, err := pbkdf2.Key(sha256.New, password, salt, rounds, scramClientProofSize)
+	if err != nil {
+		return nil, err
+	}
+	return scramSHA256(b), nil
 }
-*/
 
 // use cache as key calculation is expensive.
 var scrampbkdf2KeyCache = newList(3, func(k *SCRAMPBKDF2SHA256) ([]byte, error) {
@@ -31,7 +33,7 @@ type SCRAMPBKDF2SHA256 struct {
 
 // NewSCRAMPBKDF2SHA256 creates a new authSCRAMPBKDF2SHA256 instance.
 func NewSCRAMPBKDF2SHA256(username, password string) *SCRAMPBKDF2SHA256 {
-	return &SCRAMPBKDF2SHA256{username: username, password: password, clientChallenge: clientChallenge()}
+	return &SCRAMPBKDF2SHA256{username: username, password: password, clientChallenge: scramClientChallenge()}
 }
 
 func (a *SCRAMPBKDF2SHA256) String() string {
@@ -64,10 +66,10 @@ func (a *SCRAMPBKDF2SHA256) InitRepDecode(d *Decoder) error {
 	}
 	a.salt = d.bytes()
 	a.serverChallenge = d.bytes()
-	if err := checkSalt(a.salt); err != nil {
+	if err := scramCheckSalt(a.salt); err != nil {
 		return err
 	}
-	if err := checkServerChallenge(a.serverChallenge); err != nil {
+	if err := scramCheckServerChallenge(a.serverChallenge); err != nil {
 		return err
 	}
 	var err error
@@ -83,7 +85,7 @@ func (a *SCRAMPBKDF2SHA256) PrepareFinalReq(prms *Prms) error {
 	if err != nil {
 		return err
 	}
-	clientProof, err := clientProof(key, a.salt, a.serverChallenge, a.clientChallenge)
+	clientProof, err := scramClientProof(key, a.salt, a.serverChallenge, a.clientChallenge)
 	if err != nil {
 		return err
 	}
@@ -111,12 +113,4 @@ func (a *SCRAMPBKDF2SHA256) FinalRepDecode(d *Decoder) error {
 	}
 	a.serverProof = d.bytes()
 	return nil
-}
-
-func scrampbkdf2sha256Key(password string, salt []byte, rounds int) ([]byte, error) {
-	b, err := pbkdf2.Key(sha256.New, password, salt, rounds, clientProofSize)
-	if err != nil {
-		return nil, err
-	}
-	return _sha256(b), nil
 }

@@ -49,7 +49,7 @@ func TestSCRAM(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		clientProof, err := clientProof(key, r.salt, r.serverChallenge, r.clientChallenge)
+		clientProof, err := scramClientProof(key, r.salt, r.serverChallenge, r.clientChallenge)
 		if err != nil {
 			t.Fatal(err)
 		}
