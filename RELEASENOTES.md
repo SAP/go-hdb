@@ -1,9 +1,12 @@
- Release Notes
+Release Notes
 =============
 
 ## v1.16.0
 
 ### Minor revisions
+
+#### v1.16.1
+- fixed typo
 
 ### Changes
 
