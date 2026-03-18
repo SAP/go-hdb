@@ -292,13 +292,13 @@ func (d *Decoder) varFieldInd() (n, size int, null bool) {
 	switch {
 	default:
 		return 1, 0, false
-	case ind == bytesLenIndNullValue:
+	case ind == varFieldLenIndNullValue:
 		return 1, 0, true
-	case ind <= bytesLenIndSmall:
+	case ind <= varFieldLenIndSmall:
 		return 1, int(ind), false
-	case ind == bytesLenIndMedium:
+	case ind == varFieldLenIndMedium:
 		return 3, int(d.Int16()), false
-	case ind == bytesLenIndBig:
+	case ind == varFieldLenIndBig:
 		return 5, int(d.Int32()), false
 	}
 }

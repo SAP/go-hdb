@@ -49,18 +49,18 @@ const (
 
 // string / binary length indicators.
 const (
-	bytesLenIndNullValue byte = 255
-	bytesLenIndSmall     byte = 245
-	bytesLenIndMedium    byte = 246
-	bytesLenIndBig       byte = 247
+	varFieldLenIndNullValue byte = 255
+	varFieldLenIndSmall     byte = 245
+	varFieldLenIndMedium    byte = 246
+	varFieldLenIndBig       byte = 247
 )
 
-// VarFieldSize returns the size of a varible field variable ([]byte, string and unicode variants).
-func varSize(size int) int {
+// varFieldSize returns the size of a varible field variable ([]byte, string and unicode variants).
+func varFieldSize(size int) int {
 	switch {
 	default:
 		return -1
-	case size <= int(bytesLenIndSmall):
+	case size <= int(varFieldLenIndSmall):
 		return size + 1
 	case size <= math.MaxInt16:
 		return size + 3
@@ -73,9 +73,9 @@ func varSize(size int) int {
 func Cesu8FieldSize(v any) int {
 	switch v := v.(type) {
 	case []byte:
-		return varSize(cesu8.Size(v))
+		return varFieldSize(cesu8.Size(v))
 	case string:
-		return varSize(cesu8.StringSize(v))
+		return varFieldSize(cesu8.StringSize(v))
 	default:
 		panic("invalid type for cesu8 field") // should never happen
 	}
@@ -85,9 +85,9 @@ func Cesu8FieldSize(v any) int {
 func VarFieldSize(v any) int {
 	switch v := v.(type) {
 	case []byte:
-		return varSize(len(v))
+		return varFieldSize(len(v))
 	case string:
-		return varSize(len(v))
+		return varFieldSize(len(v))
 	default:
 		panic("invalid type for var field") // should never happen
 	}
@@ -101,13 +101,13 @@ func HexFieldSize(v any) int {
 		if l%2 != 0 {
 			panic("even hex field length required")
 		}
-		return varSize(l / 2)
+		return varFieldSize(l / 2)
 	case string:
 		l := len(v)
 		if l%2 != 0 {
 			panic("even hex field length required")
 		}
-		return varSize(l / 2)
+		return varFieldSize(l / 2)
 	default:
 		panic("invalid hex field type")
 	}

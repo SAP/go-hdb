@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.2
+- deleted test certificates
+- cleanups
+
 #### v1.16.1
 - fixed typo
 

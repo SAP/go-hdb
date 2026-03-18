@@ -242,13 +242,13 @@ func (e *Encoder) varFieldInd(size int) error {
 	switch {
 	default:
 		return fmt.Errorf("max argument length %d of string exceeded", size)
-	case size <= int(bytesLenIndSmall):
+	case size <= int(varFieldLenIndSmall):
 		e.Byte(byte(size))
 	case size <= math.MaxInt16:
-		e.Byte(bytesLenIndMedium)
+		e.Byte(varFieldLenIndMedium)
 		e.Int16(int16(size))
 	case size <= math.MaxInt32:
-		e.Byte(bytesLenIndBig)
+		e.Byte(varFieldLenIndBig)
 		e.Int32(int32(size))
 	}
 	return nil

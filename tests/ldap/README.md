@@ -1,40 +1,51 @@
-# LDAP and HANA Test Setup with Docker Compose
+# LDAP Authentication Tests
 
-This README outlines the setup of an LDAP server and HANA database using Docker Compose. It includes commands for managing the Docker containers and a script for configuring the LDAP server.
+This package tests LDAP authentication against a SAP HANA database. Both a HANA instance and an OpenLDAP server are required. The provided `docker-compose.yml` sets up both services automatically.
 
-## Docker Compose Commands
+## Prerequisites
 
-Use the following commands to manage the Docker containers:
+- Docker and Docker Compose installed
 
+## Services
 
-1. **Start Containers**
-   ```bash
-   docker compose up -d
-   ```
+The `docker-compose.yml` starts two containers on a shared `ldap_network`:
 
-2. **Execute LDAP Configuration Script**
-   ```bash
-   docker compose exec ldap /ldapConfig.sh
-   ```
-
-3. **Shut Down Containers**
-   ```bash
-   docker compose down
-   ```
-
-## Services Overview
-
-- OpenLDAP
-- Hana Express
+- OpenLDAP (osixia/openldap:latest)
+- HANA Express (saplabs/hanaexpress:latest)
 
 ## Network Configuration
 
 A network called `ldap_network` is defined in the Docker Compose file to allow communication between the services.
 
-## LDAP Setup Script
+## Step 1: Start the Containers
 
-The `ldapConfig.sh` script creates the necessary organizational units, users, and groups within the LDAP directory.
+Run from within the `tests/ldap/` directory:
 
-## Conclusion
+```bash
+cd tests/ldap
+docker compose up -d
+```
 
-This setup allows you to run an LDAP server and a HANA database seamlessly using Docker Compose to support LDAP testing.
+Wait until both containers are healthy before continuing. HANA Express can take several minutes to initialize.
+
+## Step 2: Configure the LDAP Server
+
+Once the containers are running, execute the LDAP configuration script inside the `ldap` container:
+
+```bash
+docker compose exec ldap /ldapConfig.sh
+```
+
+## Step 3: Run the Tests
+
+The tests use the `ldap` build tag. Run from the `tests/ldap/` directory:
+
+```bash
+go test --tags ldap
+```
+
+## Step 4: Shut Down the Containers
+
+```bash
+docker compose down
+```

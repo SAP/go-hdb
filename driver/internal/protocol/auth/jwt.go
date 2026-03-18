@@ -2,6 +2,8 @@ package auth
 
 import (
 	"fmt"
+
+	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
 // JWT implements JWT authentication.
@@ -33,8 +35,8 @@ func (a *JWT) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *JWT) InitRepDecode(d *Decoder) error {
-	a.logonname = d.String()
+func (a *JWT) InitRepDecode(d *encoding.Decoder) error {
+	a.logonname = d.AuthString()
 	return nil
 }
 
@@ -47,14 +49,14 @@ func (a *JWT) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *JWT) FinalRepDecode(d *Decoder) error {
-	if err := d.NumPrm(2); err != nil {
+func (a *JWT) FinalRepDecode(d *encoding.Decoder) error {
+	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
 		return err
 	}
-	mt := d.String()
+	mt := d.AuthString()
 	if err := checkAuthMethodType(mt, a.Typ()); err != nil {
 		return err
 	}
-	a._cookie = d.bytes()
+	a._cookie = d.AuthBytes()
 	return nil
 }

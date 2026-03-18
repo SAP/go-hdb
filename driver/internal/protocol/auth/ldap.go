@@ -17,6 +17,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+
+	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
 const (
@@ -73,28 +75,28 @@ func (a *LDAP) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *LDAP) InitRepDecode(d *Decoder) error {
-	d.subSize()
-	if err := d.NumPrm(4); err != nil {
+func (a *LDAP) InitRepDecode(d *encoding.Decoder) error {
+	d.AuthVarFieldInd()
+	if err := DecodeAndCheckNumPrm(d, 4); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
 	}
 
-	clientChallenge := d.bytes()
+	clientChallenge := d.AuthBytes()
 	if len(clientChallenge) != ldapClientChallengeSize {
 		return fmt.Errorf("invalid client challenge size %d - expected %d", len(clientChallenge), ldapClientChallengeSize)
 	}
 
-	a.serverChallenge = d.bytes()
+	a.serverChallenge = d.AuthBytes()
 	if len(a.serverChallenge) != ldapServerChallengeSize {
 		return fmt.Errorf("invalid server challenge size %d - expected %d", len(a.serverChallenge), ldapServerChallengeSize)
 	}
 
-	serverPublicKeyPEM := d.bytes()
+	serverPublicKeyPEM := d.AuthBytes()
 	if len(serverPublicKeyPEM) == 0 {
 		return fmt.Errorf("server did not provide RSA public key")
 	}
 
-	capabilities := d.bytes()
+	capabilities := d.AuthBytes()
 	if len(capabilities) == 0 {
 		return fmt.Errorf("empty server capabilities")
 	}
@@ -141,16 +143,16 @@ func (a *LDAP) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *LDAP) FinalRepDecode(d *Decoder) error {
-	if err := d.NumPrm(2); err != nil {
+func (a *LDAP) FinalRepDecode(d *encoding.Decoder) error {
+	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
 	}
 
-	methodName := d.String()
+	methodName := d.AuthString()
 	if err := checkAuthMethodType(methodName, a.Typ()); err != nil {
 		return err
 	}
-	serverProof := d.bytes()
+	serverProof := d.AuthBytes()
 	if len(serverProof) > 0 {
 		return fmt.Errorf("server proof failed: %v", serverProof)
 	}
@@ -176,8 +178,6 @@ func ldapParseRSAPublicKey(data []byte) (*rsa.PublicKey, error) {
 	return rsaPub, nil
 }
 
-// Implementation details are based on
-// https://github.com/SAP/node-hdb/blob/master/lib/protocol/auth/LDAP.js
 func ldapEncryptSessionKey(sessionKey []byte, challenge []byte, publicKey *rsa.PublicKey) ([]byte, error) {
 	plaintext := make([]byte, len(sessionKey)+len(challenge))
 	copy(plaintext[:len(sessionKey)], sessionKey)
@@ -197,8 +197,6 @@ func ldapEncryptSessionKey(sessionKey []byte, challenge []byte, publicKey *rsa.P
 	return ciphertext, nil
 }
 
-// Implementation details are based on
-// https://github.com/SAP/node-hdb/blob/master/lib/protocol/auth/LDAP.js
 func ldapEncryptPassword(password string, sessionKey []byte, challenge []byte) ([]byte, error) {
 	passwordBytes := []byte(password)
 

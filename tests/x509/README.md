@@ -1,32 +1,38 @@
-# Test keys and certificates to test X.509 authentication
+# X.509 Authentication Tests
 
-## Commands used to create the keys and certs
+This package tests X.509 client certificate authentication against a SAP HANA database. It covers multiple key types and formats.
+
+## Prerequisites
+
+- A running SAP HANA database instance
+- A HANA user with privileges to:
+  - Create/drop X509 providers, certificates, and PSEs
+  - Create/drop database users
+- `openssl` installed
+
+## Step 1: Generate Certificates
+
+Certificate and key files are not included in the repository and must be generated before running the tests. Run the provided script from within the `tests/x509/` directory:
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out rootCA.key
-openssl req -x509 -new -nodes -key rootCA.key -sha256 -days 3650 -out rootCA.crt -subj "/CN=Go-HDB X.509 Tests RootCA"
+cd tests/x509
+bash x509Config.sh
+```
 
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out rsa.pkcs8.key
-openssl rsa -in rsa.pkcs8.key -out rsa.pkcs1.key -traditional
-openssl req -new -key rsa.pkcs8.key -out rsa.csr -subj "/CN=GoHDBTestUser_rsa"
-openssl x509 -req -in rsa.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out rsa.crt -days 3649 -sha256
+This generates a self-signed root CA (`rootCA.crt` / `rootCA.key`) and signs client certificates for all supported key types.
 
-openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ec_p256.pkcs8.key
-openssl ec -in ec_p256.pkcs8.key -out ec_p256.ec.key
-openssl req -new -key ec_p256.pkcs8.key -out ec_p256.csr -subj "/CN=GoHDBTestUser_ec_p256"
-openssl x509 -req -in ec_p256.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out ec_p256.crt -days 3649 -sha256
+## Step 2: Set the DSN Environment Variable
 
-openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-384 -out ec_p384.pkcs8.key
-openssl ec -in ec_p384.pkcs8.key -out ec_p384.ec.key
-openssl req -new -key ec_p384.pkcs8.key -out ec_p384.csr -subj "/CN=GoHDBTestUser_ec_p384"
-openssl x509 -req -in ec_p384.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out ec_p384.crt -days 3649 -sha256
+The test requires the `GOHDBDSN` environment variable pointing to a HANA instance with an admin user that can configure X.509 authentication:
 
-openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-521 -out ec_p521.pkcs8.key
-openssl ec -in ec_p521.pkcs8.key -out ec_p521.ec.key
-openssl req -new -key ec_p521.pkcs8.key -out ec_p521.csr -subj "/CN=GoHDBTestUser_ec_p521"
-openssl x509 -req -in ec_p521.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out ec_p521.crt -days 3649 -sha256
+```bash
+export GOHDBDSN="hdb://user:password@host:port"
+```
 
-openssl genpkey -algorithm ED25519 -out ed25519.key
-openssl req -new -key ed25519.key -out ed25519.csr -subj "/CN=GoHDBTestUser_ed25519"
-openssl x509 -req -in ed25519.csr -CA rootCA.crt -CAkey rootCA.key -CAcreateserial -out ed25519.crt -days 3649 -sha256
+## Step 3: Run the Tests
+
+The tests use the `x509` build tag.
+
+```bash
+go test --tags x509
 ```
