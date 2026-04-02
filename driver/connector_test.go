@@ -41,7 +41,7 @@ func TestConnector(t *testing.T) {
 			key          string
 			value        string
 			section      string
-			// ddlEnabled   sql.NullInt64 // not always popuated (see HANA docu for m_session_context for reference).
+			// ddlEnabled   sql.NullInt64 // not always populated (see HANA docu for m_session_context for reference).
 		}
 
 		sessionContext := func(db *sql.DB) ([]mSessionContext, error) {
@@ -151,7 +151,7 @@ func TestConnector(t *testing.T) {
 		wg.Wait()
 	}
 
-	// test if auth refresh would work for getting connections cuncurrently.
+	// test if auth refresh would work for getting connections concurrently.
 	testAuthRefresh := func(t *testing.T) {
 		const numConcurrent = 5 // limit to 5 as after 5 invalid attempts user is locked
 

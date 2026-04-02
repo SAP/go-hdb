@@ -27,12 +27,12 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 	}
 	// set hook context.
 	hookCtx := withConnHook(ctx, cancelCtx)
-	// exec - should return with error context.Cancelled.
+	// exec - should return with error context.Canceled.
 	if _, err := stmt.ExecContext(hookCtx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 
-	// use statement again - should work even first stmt.Exec got cancelled.
+	// use statement again - should work even first stmt.Exec got canceled.
 	for range 5 {
 		if _, err := stmt.Exec(); err != nil {
 			t.Fatal(err)

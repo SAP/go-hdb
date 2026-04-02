@@ -65,13 +65,13 @@ const (
 	coSelfetchOff            commandOptions = 0x01
 	coScrollableCursorOn     commandOptions = 0x02
 	coNoResultsetCloseNeeded commandOptions = 0x04
-	coHoldCursorOverCommtit  commandOptions = 0x08
+	coHoldCursorOverCommit   commandOptions = 0x08
 	coExecuteLocally         commandOptions = 0x10
 )
 
 var (
-	coList     = []commandOptions{coNil, coSelfetchOff, coScrollableCursorOn, coNoResultsetCloseNeeded, coHoldCursorOverCommtit, coExecuteLocally}
-	coListText = []string{"", "selfetchOff", "scrollableCursorOn", "noResltsetCloseNeeded", "holdCursorOverCommit", "executLocally"}
+	coList     = []commandOptions{coNil, coSelfetchOff, coScrollableCursorOn, coNoResultsetCloseNeeded, coHoldCursorOverCommit, coExecuteLocally}
+	coListText = []string{"", "selfetchOff", "scrollableCursorOn", "noResultsetCloseNeeded", "holdCursorOverCommit", "executeLocally"}
 )
 
 func (k commandOptions) String() string {

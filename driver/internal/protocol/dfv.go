@@ -5,7 +5,7 @@ const (
 	DfvLevel0 int = 0 // base data format
 	DfvLevel1 int = 1 // eval types support all data types
 	DfvLevel2 int = 2 // reserved, broken, do not use
-	DfvLevel3 int = 3 // additional types Longdate, Secondate, Daydate, Secondtime supported for NGAP
+	DfvLevel3 int = 3 // additional types Longdate, Seconddate, Daydate, Secondtime supported for NGAP
 	DfvLevel4 int = 4 // generic support for new date/time types
 	DfvLevel5 int = 5 // spatial types in ODBC on request
 	DfvLevel6 int = 6 // BINTEXT

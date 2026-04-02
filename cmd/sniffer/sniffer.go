@@ -80,7 +80,7 @@ func (v *addrValue) Set(s string) error {
 
 func cli() (addr, dbAddr net.Addr) {
 	const usageText = `
-%[1]s is a Hana Network Protocol analyzer. It lets you see whats happening
+%[1]s is a Hana Network Protocol analyzer. It lets you see what's happening
 on protocol level connecting a client to the database server.
 %[1]s is an early alpha-version, supporting mainly go-hdb based clients.
 

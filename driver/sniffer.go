@@ -31,9 +31,7 @@ func NewSniffer(conn net.Conn, dbConn net.Conn) *Sniffer {
 	}
 }
 
-func pipeData(wg *sync.WaitGroup, conn net.Conn, dbConn net.Conn, wr io.Writer) {
-	defer wg.Done()
-
+func pipeData(conn net.Conn, dbConn net.Conn, wr io.Writer) {
 	mwr := io.MultiWriter(dbConn, wr)
 	trd := io.TeeReader(conn, mwr)
 	buf := make([]byte, 1000)
@@ -51,9 +49,7 @@ func readMsg(ctx context.Context, prd *p.Reader) error {
 	return err
 }
 
-func logData(ctx context.Context, wg *sync.WaitGroup, prd *p.Reader) {
-	defer wg.Done()
-
+func logData(ctx context.Context, prd *p.Reader) {
 	if err := prd.ReadProlog(ctx); err != nil {
 		panic(err)
 	}
@@ -73,10 +69,10 @@ func (s *Sniffer) Run() error {
 	wg := &sync.WaitGroup{}
 
 	wg.Go(func() {
-		pipeData(wg, s.conn, s.dbConn, clientWr)
+		pipeData(s.conn, s.dbConn, clientWr)
 	})
 	wg.Go(func() {
-		pipeData(wg, s.dbConn, s.conn, dbWr)
+		pipeData(s.dbConn, s.conn, dbWr)
 	})
 
 	defaultDecoder := cesu8.DefaultDecoder()
@@ -88,10 +84,10 @@ func (s *Sniffer) Run() error {
 	pDBRd := p.NewDBReader(dbDec, defaultDecoder, true, s.logger, defaultLobChunkSize)
 
 	wg.Go(func() {
-		logData(ctx, wg, pClientRd)
+		logData(ctx, pClientRd)
 	})
 	wg.Go(func() {
-		logData(ctx, wg, pDBRd)
+		logData(ctx, pDBRd)
 	})
 
 	wg.Wait()

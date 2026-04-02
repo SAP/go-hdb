@@ -55,7 +55,7 @@ const (
 	varFieldLenIndBig       byte = 247
 )
 
-// varFieldSize returns the size of a varible field variable ([]byte, string and unicode variants).
+// varFieldSize returns the size of a variable field variable ([]byte, string and unicode variants).
 func varFieldSize(size int) int {
 	switch {
 	default:

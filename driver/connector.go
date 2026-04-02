@@ -184,7 +184,7 @@ func NewBasicAuthConnector(host, username, password string) *Connector {
 }
 
 // NewX509AuthConnector creates a connector for X509 (client certificate) authentication.
-// Parameters clientCert and clientKey in PEM format, clientKey not password encryped.
+// Parameters clientCert and clientKey in PEM format, clientKey not password encrypted.
 func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector, error) {
 	c := NewConnector()
 	c._host = host
@@ -197,7 +197,7 @@ func NewX509AuthConnector(host string, clientCert, clientKey []byte) (*Connector
 
 // NewX509AuthConnectorByFiles creates a connector for X509 (client certificate) authentication
 // based on client certificate and client key files.
-// Parameters clientCertFile and clientKeyFile in PEM format, clientKeyFile not password encryped.
+// Parameters clientCertFile and clientKeyFile in PEM format, clientKeyFile not password encrypted.
 func NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile string) (*Connector, error) {
 	c := NewConnector()
 	c._host = host
@@ -538,7 +538,7 @@ SetPingInterval sets the connection ping interval value of the connector.
 
 Using a ping interval supports detecting broken connections. In case the ping
 is not successful a new or another connection out of the connection pool would
-be used automatically instead of retuning an error.
+be used automatically instead of returning an error.
 
 Parameter d defines the time between the pings as duration.
 If d is zero no ping is executed. If d is not zero a database ping is executed if
@@ -657,7 +657,7 @@ func (c *Connector) SessionVariables() SessionVariables {
 	return maps.Clone(c._sessionVariables)
 }
 
-// SetSessionVariables sets the session varibles of the connector.
+// SetSessionVariables sets the session variables of the connector.
 func (c *Connector) SetSessionVariables(sessionVariables SessionVariables) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

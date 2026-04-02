@@ -41,7 +41,7 @@ func testTransactionCommit(t *testing.T, db *sql.DB) {
 		t.Fatal(fmt.Errorf("tx1: invalid number of records %d - 1 expected", i))
 	}
 
-	// count records in transaction 2 - isolation level 'read committed'' (default) expected, so no record should be there
+	// count records in transaction 2 - isolation level 'read committed' (default) expected, so no record should be there
 	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s", table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func testTransactionCommit(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 
-	// in isolation level 'read commited' (default) record should be visible now
+	// in isolation level 'read committed' (default) record should be visible now
 	if err := tx2.QueryRow(fmt.Sprintf("select count(*) from %s", table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}

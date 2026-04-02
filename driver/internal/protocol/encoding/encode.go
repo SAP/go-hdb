@@ -340,7 +340,7 @@ func (e *Encoder) SmallintField(v any) error {
 	return nil
 }
 
-// IntegerField encodes a integer field.
+// IntegerField encodes an integer field.
 func (e *Encoder) IntegerField(v any) error {
 	e.Int32(asInt[int32](v))
 	return nil
@@ -381,7 +381,7 @@ func (e *Encoder) encodeDate(t time.Time) {
 	e.Int8(int8(day))               //nolint: gosec
 }
 
-// DateField encodes a dayte field.
+// DateField encodes a date field.
 func (e *Encoder) DateField(v any) error {
 	e.encodeDate(asTime(v))
 	return nil
@@ -408,7 +408,7 @@ func (e *Encoder) TimestampField(v any) error {
 	return nil
 }
 
-// LongdateField encodea a longdate field.
+// LongdateField encodes a longdate field.
 func (e *Encoder) LongdateField(v any) error {
 	e.Int64(convertTimeToLongdate(asTime(v)))
 	return nil

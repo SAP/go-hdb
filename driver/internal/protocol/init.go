@@ -6,11 +6,11 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-type endianess int8
+type endianness int8
 
 const (
-	bigEndian    endianess = 0
-	littleEndian endianess = 1
+	bigEndian    endianness = 0
+	littleEndian endianness = 1
 )
 
 const (
@@ -32,7 +32,7 @@ type initRequest struct {
 	product    version
 	protocol   version
 	numOptions int8
-	endianess  endianess
+	endianness endianness
 }
 
 func (r *initRequest) String() string {
@@ -40,7 +40,7 @@ func (r *initRequest) String() string {
 	default:
 		return fmt.Sprintf("productVersion %s protocolVersion %s", r.product, r.protocol)
 	case 1:
-		return fmt.Sprintf("productVersion %s protocolVersion %s endianess %s", r.product, r.protocol, r.endianess)
+		return fmt.Sprintf("productVersion %s protocolVersion %s endianness %s", r.product, r.protocol, r.endianness)
 	}
 }
 
@@ -65,7 +65,7 @@ func (r *initRequest) decode(dec *encoding.Decoder) error {
 		if cnt != 1 {
 			panic("invalid number of options - 1 expected")
 		}
-		r.endianess = endianess(dec.Int8())
+		r.endianness = endianness(dec.Int8())
 	}
 	return dec.Error()
 }
@@ -89,7 +89,7 @@ func (r *initRequest) encode(enc *encoding.Encoder) error {
 		enc.Zeroes(1)
 		enc.Int8(r.numOptions)
 		enc.Int8(int8(littleEndian))
-		enc.Int8(int8(r.endianess))
+		enc.Int8(int8(r.endianness))
 	}
 	return nil
 }

@@ -4,8 +4,8 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
-		<script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css" integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU" crossorigin="anonymous">
+		<script src="https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
 		<title>bulkbench</title>
 		<script>
 			htmx.on("htmx:sendError", function(evt) {
@@ -20,10 +20,10 @@
 				<table role="grid">
 					<tbody>
 						<tr><td>GOMAXPROCS</td><td>{{gomaxprocs}}</td></tr>
-						<tr><td>NumCPU</td><td>{{numcpu}}</ld></tr>
-						<tr><td>Driver Version</td><td>{{driverversion}}</ld></tr>
-						<tr><td>HANA Version</td><td>{{hdbversion}}</ld></tr>
-						<tr><td>goos/goarch</td><td>{{goos}}/{{goarch}}</ld></tr>
+						<tr><td>NumCPU</td><td>{{numcpu}}</td></tr>
+						<tr><td>Driver Version</td><td>{{driverversion}}</td></tr>
+						<tr><td>HANA Version</td><td>{{hdbversion}}</td></tr>
+						<tr><td>goos/goarch</td><td>{{goos}}/{{goarch}}</td></tr>
 					</tbody>
 				</table>
 			</details>
@@ -32,9 +32,9 @@
 				<table role="grid">
 					<thead>
 						<tr>
-							<th>Flag</td>
-							<th>Value</td>
-							<th>Usage</td>
+							<th>Flag</th>
+							<th>Value</th>
+							<th>Usage</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -71,12 +71,12 @@
 				<table role="grid">
 					<thead>
 						<tr>
-							<th>Sequential</td>
-							<th>BatchCount</td>
-							<th>BatchSize</td>
-							<th>BulkSize</td>
-							<th>Duration</td>
-							<th>Error</td>
+							<th>Sequential</th>
+							<th>BatchCount</th>
+							<th>BatchSize</th>
+							<th>BulkSize</th>
+							<th>Duration</th>
+							<th>Error</th>
 						</tr>
 					</thead>
 					<tbody id="testresult"></tbody>
@@ -103,9 +103,9 @@
 				<table role="grid">
 					<thead>
 						<tr>
-							<th>Command</td>
-							<th>Rows</td>
-							<th>Error</td>
+							<th>Command</th>
+							<th>Rows</th>
+							<th>Error</th>
 						</tr>
 					</thead>
 					<tbody id="dbresult"></tbody>
@@ -118,7 +118,7 @@
 				"Rule 2. Measure. Don't tune for speed until you've measured, 
 				and even then don't unless one part of the code overwhelms the rest."
 				<footer>
-					<cite><a href=https://users.ece.utexas.edu/~adnan/pike.html>- Rob Pike's 5 Rules of Programming</a></cite>
+					<cite><a href="https://www.lysator.liu.se/c/pikestyle.html">Rob Pike — Notes on Programming in C</a></cite>
 				</footer>
 		  </blockquote>
 		</main>

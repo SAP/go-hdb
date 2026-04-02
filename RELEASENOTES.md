@@ -5,6 +5,11 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.3
+- fixed typos
+- fixed some minor bugs
+- updated bulkbench UI dependencies (Pico CSS 2.1.1, htmx 2.0.8)
+
 #### v1.16.2
 - deleted test certificates
 - cleanups
@@ -76,12 +81,12 @@ Release Notes
 - parallelize X509 test
 
 #### v1.14.10
-- fixed runtime error integer divide by zero' (https://github.com/SAP/go-hdb/pull/153)
+- fixed runtime error 'integer divide by zero' (https://github.com/SAP/go-hdb/pull/153)
 - updated dependencies
 
 #### v1.14.9
 - updated dependencies
-- added licence file to prometheus module
+- added license file to prometheus module
 
 #### v1.14.8
 - support X.509 authentication with ECDSA and EdDSA (https://github.com/SAP/go-hdb/pull/125)
@@ -236,7 +241,7 @@ Release Notes
 ### Minor revisions
 
 #### v1.9.11
-- fixed race conditions on cancelled statement calls
+- fixed race conditions on canceled statement calls
 
 #### v1.9.10
 - updated dependencies
@@ -470,7 +475,7 @@ Release Notes
 - performance improvements
 
 #### v1.5.2
-- fixed race condition in connection conn and stmt methods in case of context cancelling
+- fixed race condition in connection conn and stmt methods in case of context canceling
 
 #### v1.5.1
 - updated dependencies
@@ -697,8 +702,8 @@ Bulk operations:
   - via named arguments (Flush / NoFlush)
   - via 'many' supporting one and two dimensional slices, arrays
 - Please use the following bulk operations instead:
-  - via extended parameter list with (len(args)%'#of paramerters' == 0
-  - via function argument (func(args []any) error)
+  - via extended parameter list
+  - via function argument
 
 Stored procedures:
 - Calling stored procedures with sql.Query methods are no longer supported.

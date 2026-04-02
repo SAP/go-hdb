@@ -107,7 +107,7 @@ func testDocstoreDefault(t *testing.T, db *sql.DB) {
 }
 
 func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
-	// parse_json is only abailable in hdb cloud versions
+	// parse_json is only available in hdb cloud versions
 
 	collectionName := testDocstoreCreateCollection(t, db)
 	defer testDocstoreDestroyCollection(t, db, collectionName)

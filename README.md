@@ -4,9 +4,9 @@
 [![REUSE status](https://api.reuse.software/badge/github.com/SAP/go-hdb)](https://api.reuse.software/info/github.com/SAP/go-hdb)
 ![](https://github.com/SAP/go-hdb/workflows/build/badge.svg)
 
-Go-hdb is a native Go (golang) HANA database driver for Go's sql package. It implements the SAP HANA SQL command network protocol.
+Go-hdb is a native Go (Golang) HANA database driver for Go's SQL package. It implements the SAP HANA SQL command network protocol.
 
-For the official SAP HANA client Go support (not this database driver) please see [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
+For the official SAP HANA client Go support (not this database driver), please see [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
 
 ## Installation
 
@@ -16,37 +16,36 @@ go get -u github.com/SAP/go-hdb/driver
 
 ## Building
 
-To build go-hdb you need to have a working Go environment of the [latest or second latest Go version](https://golang.org/dl/).
+To build go-hdb, a working Go environment of the [latest or second latest Go version](https://golang.org/dl/) is required.
 
 ## Documentation
 
 API documentation and documented examples can be found at <https://pkg.go.dev/github.com/SAP/go-hdb/driver>.
 
-## HANA cloud connection
+## HANA Cloud Connection
 
-HANA cloud connection proxy is using SNI which does require a TLS connection.
-As default one can rely on the root certificate set provided by the host, which already comes with the nessecary
+The HANA cloud connection proxy uses SNI, which requires a TLS connection.
+By default, one can rely on the root certificate set provided by the host, which already comes with the necessary
 DigiCert certificates (CA, G5).
-For more information on [Go](https://go.dev/) tls certificate handling, please see https://pkg.go.dev/crypto/tls#Config.
+For more information on [Go](https://go.dev/) TLS certificate handling, please see https://pkg.go.dev/crypto/tls#Config.
 
-Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443". Then the dsn should look as follows:
+Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443", the DSN should look as follows:
 
 ```
 "hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com"
 ```
 
-with:
-- TLSServerName same as 'host'
+where:
+- TLSServerName: same as 'host'
 
-## Specific root certificate
-In case a specific root certificate (e.g. self-signed) would be needed, the TLSRootCAFile DSN parameter needs to
-point to the location in the filesystem where a root certificate file in 'pem-format' is stored.
+## Specific Root Certificate
+If a specific root certificate (e.g. self-signed) is needed, the TLSRootCAFile DSN parameter must point to the location in the file system where the root certificate file in PEM format is stored.
 
 ## Tests
 
-To run the driver integration tests a HANA Database server is required. The test user must have privileges to create database schemas.
+To run the driver integration tests, a HANA Database server is required. The test user must have privileges to create database schemas.
 
-Set environment variable GOHDBDSN:
+Set the environment variable GOHDBDSN:
 
 ```
 #linux example
@@ -54,7 +53,7 @@ export GOHDBDSN="hdb://user:password@host:port"
 go test
 ```
 
-Using the Go build tag 'unit' only the driver unit tests will be executed (no HANA Database server required):
+Using the Go build tag 'unit', only the driver unit tests will be executed (no HANA Database server required):
 
 ```
 go test --tags unit
@@ -62,21 +61,21 @@ go test --tags unit
 
 ## Features
 
-* Native Go implementation (no C libraries, CGO).
-* Go <http://golang.org/pkg/database/sql> package compliant.
-* Support of database/sql/driver Execer and Queryer interface for parameter free statements and queries.
-* Support of 'bulk' query execution.
-* Support of UTF-8 to / from CESU-8 encodings for HANA Unicode types.
-* Built-in support of HANA decimals as Go rational numbers <http://golang.org/pkg/math/big>.
-* Support of Large Object streaming.
-* Support of Stored Procedures with table output parameters.
-* Support of TLS TCP connections.
-* Support of little-endian (e.g. amd64) and big-endian architectures (e.g. s390x).
-* Support of [driver connector](https://golang.org/pkg/database/sql/driver/#Connector).
-* Support of [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default and standard user / password as fallback.
-* Support of LDAP, client certificate (X509) and JWT (JSON Web Token) authentication.
+* Native Go implementation — no C libraries, no CGO.
+* Compliant with the Go [database/sql](http://golang.org/pkg/database/sql) package.
+* UTF-8 to/from CESU-8 encoding for HANA Unicode types.
+* HANA decimals as Go rational numbers via [math/big](http://golang.org/pkg/math/big).
+* Large Object streaming.
+* 'Bulk' query execution.
+* Stored Procedures with table output parameters.
+* Parameter free statements and queries via Execer and Queryer interfaces.
+* TLS TCP connections.
+* Little-endian (e.g. amd64) and big-endian (e.g. s390x) architecture support.
+* [Driver connector](https://golang.org/pkg/database/sql/driver/#Connector) interface.
+* [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default, standard user/password as fallback.
+* LDAP, client certificate (X509) and JWT (JSON Web Token) authentication.
 * [Prometheus](https://prometheus.io) collectors for driver and extended database statistics.
-* Support of [scanning database rows into go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
+* [Scanning database rows into Go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
 
 ## Dependencies
 
@@ -85,3 +84,7 @@ go test --tags unit
 ## Licensing
 
 SAP SE or an SAP affiliate company and go-hdb contributors. Please see our [LICENSE](LICENSE.md) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/SAP/go-hdb).
+
+## AI Assistance
+
+This project integrates AI into its development practices. Contributors are expected to review and take ownership of all AI-assisted changes.

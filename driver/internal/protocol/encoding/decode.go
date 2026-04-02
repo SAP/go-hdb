@@ -524,7 +524,7 @@ func (d *Decoder) VarField() (any, error) {
 	return b, nil
 }
 
-// AlphanumField decodes a alphanum field.
+// AlphanumField decodes an alphanum field.
 func (d *Decoder) AlphanumField() (any, error) {
 	if d.alphanumDfv1 { // like VarField
 		return d.VarField()

@@ -84,7 +84,7 @@ func (p *Prms) String() string { return fmt.Sprintf("%v", p.prms) }
 func (p *Prms) AddCESU8String(s string) { p.prms = append(p.prms, s) } // unicode string
 func (p *Prms) addEmpty()               { p.prms = append(p.prms, []byte{}) }
 func (p *Prms) addBytes(b []byte)       { p.prms = append(p.prms, b) }
-func (p *Prms) addString(s string)      { p.prms = append(p.prms, []byte(s)) } // treat like bytes to distinguisch from unicode string
+func (p *Prms) addString(s string)      { p.prms = append(p.prms, []byte(s)) } // treat like bytes to distinguish from unicode string
 func (p *Prms) addPrms() *Prms {
 	prms := &Prms{}
 	p.prms = append(p.prms, prms)
@@ -152,7 +152,7 @@ func (p *Prms) Decode(dec *encoding.Decoder) error {
 	return nil
 }
 
-// DecodeAndCheckNumPrm decodes and ckecks the number of parameters and returns an error if not equal expected, nil otherwise.
+// DecodeAndCheckNumPrm decodes and checks the number of parameters and returns an error if not equal expected, nil otherwise.
 func DecodeAndCheckNumPrm(dec *encoding.Decoder, expected int) error {
 	numPrm := int(dec.Int16())
 	if numPrm != expected {

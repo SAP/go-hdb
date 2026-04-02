@@ -10,9 +10,9 @@ import (
 const csAlphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" // alphanumeric character set.
 var numAlphanum = byte(len(csAlphanum))                                             // len character sets <= max(byte)
 
-// Read fills p with random alphanumeric characters and returns the number of read bytes. It never returns an error, and always fills b entirely.
+// Read fills p with random alphanumeric characters and returns the number of read bytes. It never returns an error, and always fills p entirely.
 func Read(p []byte) (n int, err error) {
-	// starting with go1.24 rand.Read is never returning a error.
+	// starting with go1.24 rand.Read is never returning an error.
 	rand.Read(p) //nolint: errcheck
 	for i, b := range p {
 		p[i] = csAlphanum[b%numAlphanum]

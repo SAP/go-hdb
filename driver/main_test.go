@@ -40,7 +40,7 @@ func (mt *MainTest) NewConnector() *Connector { return mt.ctr.clone() }
 // Connector returns the default Test Connector with the relevant test attributes set.
 func (mt *MainTest) Connector() *Connector { return mt.ctr }
 
-// DB return the default test database with the relevant test attributes set.
+// DB returns the default test database with the relevant test attributes set.
 func (mt *MainTest) DB() *sql.DB { return mt.db }
 
 // Version returns the database version of the test database.

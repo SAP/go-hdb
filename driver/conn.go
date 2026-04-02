@@ -45,7 +45,7 @@ const (
 )
 
 var (
-	// register as var to execute even before init() funcs are called.
+	// register as var to execute even before init functions are called.
 	_ = p.RegisterScanType(p.DtBytes, reflect.TypeFor[[]byte](), reflect.TypeFor[NullBytes]())
 	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeFor[Decimal](), reflect.TypeFor[NullDecimal]())
 	_ = p.RegisterScanType(p.DtLob, reflect.TypeFor[Lob](), reflect.TypeFor[NullLob]())
@@ -133,7 +133,7 @@ type conn struct {
 	wg      *sync.WaitGroup // wait for concurrent db calls when closing connections.
 }
 
-// isAuthError returns true in case of X509 certificate validation errrors or hdb authentication errors, else otherwise.
+// isAuthError returns true in case of X509 certificate validation errors or hdb authentication errors, else otherwise.
 func isAuthError(err error) bool {
 	var certValidationError *auth.CertValidationError
 	if errors.As(err, &certValidationError) {
@@ -169,7 +169,9 @@ func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttr
 func (c *conn) Close() error {
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	stdConnTracker.remove()
-	return c.session.close()
+	err := c.session.close()
+	c.wg.Wait()
+	return err
 }
 
 // ResetSession implements the driver.SessionResetter interface.

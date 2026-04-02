@@ -147,7 +147,7 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 			}
 		}
 		/*
-			cannot use DecodeRune as we cannot distinguish betweeen
+			cannot use DecodeRune as we cannot distinguish between
 			.unicode replacement character and
 			.invalid surrogate
 			r, n := DecodeRune(src[i:])

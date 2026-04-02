@@ -171,7 +171,7 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 }
 
 // to be implemented by parts needing initialization
-// in case the part is instatiated generically.
+// in case the part is instantiated generically.
 type initer interface {
 	init()
 }

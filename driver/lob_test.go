@@ -48,7 +48,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {
@@ -114,7 +114,7 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 
 	cmpBuf := &bytes.Buffer{}
 
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {
@@ -160,16 +160,13 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 	rd, wr = io.Pipe()
 	lob.SetWriter(wr)
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			t.Error(err)
 			return
 		}
 		t.Log("scan finalized")
-	}()
+	})
 
 	rdBuf := &bytes.Buffer{}
 	if _, err := rdBuf.ReadFrom(rd); err != nil {
@@ -190,7 +187,7 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 
 	rd := io.LimitReader(rand.Reader, lobSize)
 
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {
@@ -260,7 +257,7 @@ func testLobNilPlusBig(t *testing.T, db *sql.DB) {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {

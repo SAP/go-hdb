@@ -84,7 +84,7 @@ func TestColumnType(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// use trancactions:
+		// use transactions:
 		// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 		tx, err := db.Begin()
 		if err != nil {

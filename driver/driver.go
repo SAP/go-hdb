@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.16.2"
+const DriverVersion = "1.16.3"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -45,7 +45,7 @@ func register() {
 	sql.Register(DriverName, stdHdbDriver)
 }
 
-// Unregister unregisters the go-hdb driver and frees all allocated ressources.
+// Unregister unregisters the go-hdb driver and frees all allocated resources.
 // After calling any go-hdb access might panic.
 func Unregister() error {
 	return stdHdbDriver.shutdown()

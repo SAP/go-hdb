@@ -16,7 +16,7 @@ type StringLob string
 // Scan implements the database.sql.Scanner interface.
 func (s *StringLob) Scan(arg any) error { return driver.ScanLobString(arg, (*string)(s)) }
 
-// ExampleScanLobString demontrates how to read Lob data using a string based data type.
+// ExampleScanLobString demonstrates how to read Lob data using a string based data type.
 func ExampleScanLobString() {
 	// Open Test database.
 	db := sql.OpenDB(driver.MT.Connector())

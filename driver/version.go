@@ -123,7 +123,7 @@ type Version struct {
 
 func (v *Version) String() string { return v.vn.String() }
 
-// Major returns the major field of a hdbVersionNumber.
+// Major returns the major field of a HDBVersionNumber.
 func (v *Version) Major() uint64 { return v.vn[versionMajor] }
 
 // Minor returns the minor field of a HDBVersionNumber.

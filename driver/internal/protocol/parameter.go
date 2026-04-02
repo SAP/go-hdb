@@ -112,7 +112,7 @@ func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 func (f *ParameterField) Convert(v any, cesu8Encoder transform.Transformer) (any, error) {
 	cv, err := convertField(f.tc, v, cesu8Encoder)
 	if err != nil {
-		return nil, fmt.Errorf("field %[1]s type code %[2]s type %[3]T value %[3]v coversion error %[4]w", f.fieldName(), f.tc, v, err)
+		return nil, fmt.Errorf("field %[1]s type code %[2]s type %[3]T value %[3]v conversion error %[4]w", f.fieldName(), f.tc, v, err)
 	}
 	return cv, nil
 }
@@ -159,7 +159,7 @@ func (f *ParameterField) In() bool { return f.mode == pmInout || f.mode == pmIn 
 // It implements the go-hdb driver ParameterType interface.
 func (f *ParameterField) Out() bool { return f.mode == pmInout || f.mode == pmOut }
 
-// InOut returns true if the parameter field is an in,- output field.
+// InOut returns true if the parameter field is an input/output field.
 // It implements the go-hdb driver ParameterType interface.
 func (f *ParameterField) InOut() bool { return f.mode == pmInout }
 

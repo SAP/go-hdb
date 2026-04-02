@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: 2014-2024 SAP SE
-//
-// SPDX-License-Identifier: Apache-2.0
-
 // Implementation details are based on
 // https://github.com/SAP/node-hdb/blob/master/lib/protocol/auth/LDAP.js
 

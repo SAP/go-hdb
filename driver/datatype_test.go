@@ -141,7 +141,7 @@ type dttTX struct {
 }
 
 func (dtt *dttTX) insert(t *testing.T, db *sql.DB, tableName Identifier) int { // override insert
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {
@@ -184,7 +184,7 @@ type dttSpatial struct {
 func (dtt *dttSpatial) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn func(func(value any))) int {
-	// use trancactions:
+	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
 	tx, err := db.Begin()
 	if err != nil {
@@ -619,7 +619,7 @@ var stGeometryTestData = []spatial.Geometry{
 
 	spatial.Polygon{},
 	spatial.Polygon{{{X: 6.0, Y: 7.0}, {X: 10.0, Y: 3.0}, {X: 10.0, Y: 10.0}, {X: 6.0, Y: 7.0}}},
-	// hdb permutates ring points?
+	// hdb permutes ring points?
 	// same call with
 	// spatial.Polygon{{{6.0, 7.0}, {10.0, 3.0}, {10.0, 10.0}, {6.0, 7.0}}, {{6.0, 7.0}, {10.0, 3.0}, {10.0, 10.0}, {6.0, 7.0}}}
 	// would give errors as hdb changes 'middle' coordinates for included ring

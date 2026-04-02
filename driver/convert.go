@@ -26,7 +26,7 @@ func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 
 func valuerValue(v driver.Valuer) (driver.Value, error) {
 	// This is taken from the database/sql package.
-	// The Elem() test is not needed bacause the function is only
+	// The Elem() test is not needed because the function is only
 	// called for values implementing the driver.Valuer interface.
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		// && rv.Type().Elem().Implements(valuerReflectType) {

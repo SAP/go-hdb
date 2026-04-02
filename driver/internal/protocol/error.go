@@ -6,7 +6,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-// ErrorLevel send from database server.
+// ErrorLevel sent from database server.
 type errorLevel int8
 
 var errorLevelStrs = [...]string{"Warning", "Error", "FatalError"}
@@ -97,7 +97,7 @@ func (e *HdbError) IsError() bool { return e.errorLevel == errorLevelError }
 // IsFatal implements the driver.DBError interface.
 func (e *HdbError) IsFatal() bool { return e.errorLevel == errorLevelFatalError }
 
-// HdbErrors represent the collection of errors return by the server.
+// HdbErrors represent the collection of errors returned by the server.
 type HdbErrors struct {
 	onlyWarnings bool
 	errs         []*HdbError
@@ -176,7 +176,7 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 		dec.Bytes(err.sqlState[:])
 
 		// read error text as ASCII data as some errors return invalid CESU-8 characters
-		// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invaid CESU-8 characters>
+		// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invalid CESU-8 characters>
 		//	if e.errorText, err = rd.ReadCesu8(int(e.errorTextLength)); err != nil {
 		//		return err
 		//	}
@@ -190,7 +190,7 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 		if numArg == 1 {
 			// Error (protocol error?):
 			// if only one error (numArg == 1): s.ph.bufferLength is one byte greater than data to be read
-			// if more than one error: s.ph.bufferlength matches read bytes + padding
+			// if more than one error: s.ph.bufferLength matches read bytes + padding
 			//
 			// Examples:
 			// driver test TestHDBWarning

@@ -35,7 +35,7 @@ func (a *X509) Order() byte { return MoX509 }
 // PrepareInitReq implements the Method interface.
 func (a *X509) PrepareInitReq(prms *Prms) error {
 	// prevent auth call to hdb with invalid certificate
-	// as hbd only allows a limited number of unsuccessful authentications
+	// as hdb only allows a limited number of unsuccessful authentications
 	// - currently only validity period is checked
 	if err := a.certKey.validate(time.Now()); err != nil {
 		return err

@@ -101,7 +101,7 @@ const (
 	coOSUser                              connectOption = 32 //!< client OS user name
 	coRowSlotImageResultSet               connectOption = 33 //!< row-slot image result passing
 	coEndianness                          connectOption = 34 //!< endianness (@see EndiannessEnumType)
-	coUpdateTopologyAnwhere               connectOption = 35 //!< Allow update of topology from any reply
+	coUpdateTopologyAnywhere              connectOption = 35 //!< Allow update of topology from any reply
 	coEnableArrayType                     connectOption = 36 //!< Enable supporting Array data type
 	coImplicitLobStreaming                connectOption = 37 //!< implicit lob streaming
 	coCachedViewProperty                  connectOption = 38 //!< provide cached view timestamps to the client
@@ -240,15 +240,15 @@ func (k transactionFlagType) valueString(v any) string {
 }
 
 const (
-	tfRolledback                      transactionFlagType = 0
-	tfCommited                        transactionFlagType = 1
-	tfNewIsolationLevel               transactionFlagType = 2
-	tfDDLCommitmodeChanged            transactionFlagType = 3
-	tfWriteTransactionStarted         transactionFlagType = 4
-	tfNowriteTransactionStarted       transactionFlagType = 5
-	tfSessionClosingTransactionError  transactionFlagType = 6
-	tfSessionClosingTransactionErrror transactionFlagType = 7
-	tfReadOnlyMode                    transactionFlagType = 8
+	tfRolledback                     transactionFlagType = 0
+	tfCommitted                      transactionFlagType = 1
+	tfNewIsolationLevel              transactionFlagType = 2
+	tfDDLCommitmodeChanged           transactionFlagType = 3
+	tfWriteTransactionStarted        transactionFlagType = 4
+	tfNowriteTransactionStarted      transactionFlagType = 5
+	tfSessionClosingTransactionError transactionFlagType = 6
+	tfReadOnlyMode                   transactionFlagType = 7
+	tfLast                           transactionFlagType = 8
 )
 
 type transactionFlags struct {

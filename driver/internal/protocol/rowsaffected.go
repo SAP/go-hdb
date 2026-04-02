@@ -31,7 +31,7 @@ func (r *rowsAffected) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	return dec.Error()
 }
 
-// Total return the total number of all affected rows.
+// Total returns the total number of all affected rows.
 func (r rowsAffected) Total() int64 {
 	total := int64(0)
 	for _, rows := range r.rows {

@@ -458,122 +458,122 @@ var (
 	NullBoolean    = &basicColumn{dt: _boolean, nullable: true}
 )
 
-// NewChar return a new char column.
+// NewChar returns a new char column.
 func NewChar(length int64) Column {
 	return &varColumn{dt: _char, nullable: false, length: length}
 }
 
-// NewVarchar return a new varchar column.
+// NewVarchar returns a new varchar column.
 func NewVarchar(length int64) Column {
 	return &varColumn{dt: _varchar, nullable: false, length: length}
 }
 
-// NewNChar return a new nchar column.
+// NewNChar returns a new nchar column.
 func NewNChar(length int64) Column {
 	return &varColumn{dt: _nchar, nullable: false, length: length}
 }
 
-// NewNVarchar return a new nvarchar column.
+// NewNVarchar returns a new nvarchar column.
 func NewNVarchar(length int64) Column {
 	return &varColumn{dt: _nvarchar, nullable: false, length: length}
 }
 
-// NewShorttext return a new shortext column.
+// NewShorttext returns a new shortext column.
 func NewShorttext(length int64) Column {
 	return &varColumn{dt: _shorttext, nullable: false, length: length}
 }
 
-// NewAlphanum return a new alphanum column.
+// NewAlphanum returns a new alphanum column.
 func NewAlphanum(length int64) Column {
 	return &varColumn{dt: _alphanum, nullable: false, length: length}
 }
 
-// NewBinary return a new binary column.
+// NewBinary returns a new binary column.
 func NewBinary(length int64) Column {
 	return &varColumn{dt: _binary, nullable: false, length: length}
 }
 
-// NewVarbinary return a new varbinary column.
+// NewVarbinary returns a new varbinary column.
 func NewVarbinary(length int64) Column {
 	return &varColumn{dt: _varbinary, nullable: false, length: length}
 }
 
-// NewDecimal return a new decimal column.
+// NewDecimal returns a new decimal column.
 func NewDecimal(precision, scale int64) Column {
 	return &decimalColumn{dt: _decimal, nullable: false, precision: precision, scale: scale}
 }
 
-// NewSmalldecimal return a new smalldecimal column.
+// NewSmalldecimal returns a new smalldecimal column.
 func NewSmalldecimal(precision, scale int64) Column {
 	return &decimalColumn{dt: _smalldecimal, nullable: false, precision: precision, scale: scale}
 }
 
-// NewSTPoint return a new stpoint column.
+// NewSTPoint returns a new stpoint column.
 func NewSTPoint(srid int32) Column {
 	return &spatialColumn{dt: _stpoint, nullable: false, srid: srid}
 }
 
-// NewSTGeometry return a new stgeometry column.
+// NewSTGeometry returns a new stgeometry column.
 func NewSTGeometry(srid int32) Column {
 	return &spatialColumn{dt: _stgeometry, nullable: false, srid: srid}
 }
 
-// NewNullChar return a new nullable char column.
+// NewNullChar returns a new nullable char column.
 func NewNullChar(length int64) Column {
 	return &varColumn{dt: _char, nullable: true, length: length}
 }
 
-// NewNullVarchar return a new nullable varchar column.
+// NewNullVarchar returns a new nullable varchar column.
 func NewNullVarchar(length int64) Column {
 	return &varColumn{dt: _varchar, nullable: true, length: length}
 }
 
-// NewNullNChar return a new nullable nchar column.
+// NewNullNChar returns a new nullable nchar column.
 func NewNullNChar(length int64) Column {
 	return &varColumn{dt: _nchar, nullable: true, length: length}
 }
 
-// NewNullNVarchar return a new nullable nvarchar column.
+// NewNullNVarchar returns a new nullable nvarchar column.
 func NewNullNVarchar(length int64) Column {
 	return &varColumn{dt: _nvarchar, nullable: true, length: length}
 }
 
-// NewNullShorttext return a new nullable shorttext column.
+// NewNullShorttext returns a new nullable shorttext column.
 func NewNullShorttext(length int64) Column {
 	return &varColumn{dt: _shorttext, nullable: true, length: length}
 }
 
-// NewNullAlphanum return a new nullable alphanum column.
+// NewNullAlphanum returns a new nullable alphanum column.
 func NewNullAlphanum(length int64) Column {
 	return &varColumn{dt: _alphanum, nullable: true, length: length}
 }
 
-// NewNullBinary return a new nullable binary column.
+// NewNullBinary returns a new nullable binary column.
 func NewNullBinary(length int64) Column {
 	return &varColumn{dt: _binary, nullable: true, length: length}
 }
 
-// NewNullVarbinary return a new nullable varbinary column.
+// NewNullVarbinary returns a new nullable varbinary column.
 func NewNullVarbinary(length int64) Column {
 	return &varColumn{dt: _varbinary, nullable: true, length: length}
 }
 
-// NewNullDecimal return a new nullable decimal column.
+// NewNullDecimal returns a new nullable decimal column.
 func NewNullDecimal(precision, scale int64) Column {
 	return &decimalColumn{dt: _decimal, nullable: true, precision: precision, scale: scale}
 }
 
-// NewNullSmalldecimal return a new nullable smalldecimal column.
+// NewNullSmalldecimal returns a new nullable smalldecimal column.
 func NewNullSmalldecimal(precision, scale int64) Column {
 	return &decimalColumn{dt: _smalldecimal, nullable: true, precision: precision, scale: scale}
 }
 
-// NewNullSTPoint return a new nullable stpoint column.
+// NewNullSTPoint returns a new nullable stpoint column.
 func NewNullSTPoint(srid int32) Column {
 	return &spatialColumn{dt: _stpoint, nullable: true, srid: srid}
 }
 
-// NewNullSTGeometry return a new nullable stgeometry column.
+// NewNullSTGeometry returns a new nullable stgeometry column.
 func NewNullSTGeometry(srid int32) Column {
 	return &spatialColumn{dt: _stgeometry, nullable: true, srid: srid}
 }

@@ -47,7 +47,7 @@ func (o lobOptions) String() string {
 	return fmt.Sprintf("%v", s)
 }
 
-// IsLastData return true if the last data package was read, false otherwise.
+// IsLastData returns true if the last data package was read, false otherwise.
 func (o lobOptions) isLastData() bool { return (o & loLastdata) != 0 }
 func (o lobOptions) isNull() bool     { return (o & loNullindicator) != 0 }
 
@@ -121,7 +121,7 @@ func (d *LobInDescr) size() int { return d.buf.Len() }
 
 func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()) }
 
-// LocatorID represents a locotor id.
+// LocatorID represents a locator id.
 type LocatorID uint64 // byte[locatorIdSize]
 
 // LobReader is the interface for reading lob streams.
@@ -388,7 +388,7 @@ type ReadLobRequest struct {
 	     - readLobReply
 
 	   - read lob reply
-	     seems like readLobreply returns only a result for one lob - even if more then one is requested
+	     seems like readLobreply returns only a result for one lob - even if more than one is requested
 	     --> read single lobs
 	*/
 	id        LocatorID

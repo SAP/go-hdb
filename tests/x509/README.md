@@ -1,6 +1,6 @@
 # X.509 Authentication Tests
 
-This package tests X.509 client certificate authentication against a SAP HANA database. It covers multiple key types and formats.
+This package tests X.509 client certificate authentication against a SAP HANA database. It covers multiple key types and certificate formats.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ This generates a self-signed root CA (`rootCA.crt` / `rootCA.key`) and signs cli
 
 ## Step 2: Set the DSN Environment Variable
 
-The test requires the `GOHDBDSN` environment variable pointing to a HANA instance with an admin user that can configure X.509 authentication:
+The test requires the `GOHDBDSN` environment variable pointing to a HANA instance with an admin user who can configure X.509 authentication:
 
 ```bash
 export GOHDBDSN="hdb://user:password@host:port"

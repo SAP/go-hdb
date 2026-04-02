@@ -17,7 +17,7 @@ import (
 ExampleBulkInsert inserts 2000 rows into a database table:
 
 	1000 rows are inserted via an extended argument list and
-	1000 rows are inserted with the help of a argument function
+	1000 rows are inserted with the help of an argument function
 */
 func Example_bulkInsert() {
 	const numRow = 1000 // Number of rows to be inserted into table.
@@ -79,7 +79,7 @@ func Example_bulkInsert() {
 /*
 ExampleBulkInsert inserts 3000 rows into a database table:
 
-	1000 rows are inserted via a slices chunc iterator
+	1000 rows are inserted via a slices chunk iterator
 	1000 rows are inserted via a custom iterator
 */
 func Example_bulkInsertViaIterator() {
@@ -102,7 +102,7 @@ func Example_bulkInsertViaIterator() {
 	}
 	defer stmt.Close()
 
-	// Bulk insert via slices chunc iterator.
+	// Bulk insert via slices chunk iterator.
 	args := make([]any, numRow*2)
 	for i := range numRow {
 		args[i*2], args[i*2+1] = i, float64(i)

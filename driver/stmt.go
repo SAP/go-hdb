@@ -112,7 +112,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 	var sqlErr error
 	var result driver.Result
-	var rows *sql.Rows // needed to avoid data race in case if context get cancelled.
+	var rows *sql.Rows // needed to avoid data race in case if context get canceled.
 	done := make(chan struct{})
 	s.wg.Go(func() {
 		defer close(done)
@@ -364,7 +364,7 @@ Bulk insert containing LOBs:
     .Sending more than one row with partial LOB data.
   - Observations:
     .In hdb version 1 and 2 'piecewise' LOB writing does work.
-    .Same does not work in case of geo fields which are LOBs en,- decoded as well.
+    .Same does not work in case of geo fields which are LOBs encoded and decoded as well.
     .In hana version 4 'piecewise' LOB writing seems not to work anymore at all.
   - Server implementation (not documented):
     .'piecewise' LOB writing is only supported for the last row of a 'bulk insert'.

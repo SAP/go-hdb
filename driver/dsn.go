@@ -22,7 +22,7 @@ For more information please see https://golang.org/pkg/crypto/tls/#Config.
 For more flexibility in TLS configuration please see driver.Connector.
 */
 const (
-	DSNTLSRootCAFile         = "TLSRootCAFile"         // Path,- filename to root certificate(s).
+	DSNTLSRootCAFile         = "TLSRootCAFile"         // Path/filename to root certificate(s).
 	DSNTLSServerName         = "TLSServerName"         // ServerName to verify the hostname.
 	DSNTLSInsecureSkipVerify = "TLSInsecureSkipVerify" // Controls whether a client verifies the server's certificate chain and host name.
 )

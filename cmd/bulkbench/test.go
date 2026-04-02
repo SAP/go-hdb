@@ -218,24 +218,20 @@ func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait t
 
 	t := time.Now() // Start time.
 
-	for i, t := range tasks { // Start one worker per task.
-		wg.Add(1)
-
-		go func(worker int, t *task) {
-			defer wg.Done()
-
+	for worker, task := range tasks { // Start one worker per task.
+		wg.Go(func() {
 			j := 0
-			if _, err = t.stmt.Exec(func(args []any) error {
-				if j >= t.size {
+			if _, err = task.stmt.Exec(func(args []any) error {
+				if j >= task.size {
 					return driver.ErrEndOfRows
 				}
-				fillRow(worker*t.size+j, args)
+				fillRow(worker*task.size+j, args)
 				j++
 				return nil
 			}); err != nil {
-				t.err = err
+				task.err = err
 			}
-		}(i, t)
+		})
 	}
 	wg.Wait()
 

@@ -16,7 +16,7 @@ type BytesLob []byte
 // Scan implements the database.sql.Scanner interface.
 func (b *BytesLob) Scan(arg any) error { return driver.ScanLobBytes(arg, (*[]byte)(b)) }
 
-// ExampleScanLobBytes demontrates how to read Lob data using a []byte based data type.
+// ExampleScanLobBytes demonstrates how to read Lob data using a []byte based data type.
 func ExampleScanLobBytes() {
 	// Open Test database.
 	db := sql.OpenDB(driver.MT.Connector())

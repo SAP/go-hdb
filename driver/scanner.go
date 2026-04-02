@@ -12,7 +12,7 @@ import (
 
 const sqlTagKey = "sql"
 
-// parseSQLTag return name, type and options.
+// parseSQLTag returns name, type and options.
 func parseSQLTag(tag string) (string, string, sqlTagOptions) {
 	name, rest, _ := strings.Cut(tag, ",")
 	typ, opts, _ := strings.Cut(rest, ",")

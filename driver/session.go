@@ -70,7 +70,7 @@ type session struct {
 		we cannot work with nested errors containing driver.ErrBadConn
 		as go sql retries these statements.
 	*/
-	cancelled bool
+	canceled bool
 }
 
 func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (*session, error) {
@@ -127,8 +127,8 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 
 // we cannot work with nested errors containing driver.ErrBadConn
 // as go sql retries these statements.
-func (s *session) isBad() bool { return s.cancelled || s.pwr.HasError() }
-func (s *session) cancel()     { s.cancelled = true }
+func (s *session) isBad() bool { return s.canceled || s.pwr.HasError() }
+func (s *session) cancel()     { s.canceled = true }
 
 func (s *session) close() error {
 	// do not disconnect if isBad.
@@ -699,7 +699,7 @@ func (s *session) disconnect(ctx context.Context) error {
 readLob reads output lob or result lob parameters from db.
 
 read lob reply
-  - seems like readLobreply returns only a result for one lob - even if more then one is requested
+  - seems like readLobreply returns only a result for one lob - even if more than one is requested
     --> read single lobs
 */
 func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply *p.ReadLobReply) error {

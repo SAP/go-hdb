@@ -10,7 +10,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// WriterLob defines a io.Writer based data type for scanning Lobs.
+// WriterLob defines an io.Writer based data type for scanning Lobs.
 type WriterLob []byte
 
 // Write implements the io.Writer interface.
@@ -22,7 +22,7 @@ func (b *WriterLob) Write(p []byte) (n int, err error) {
 // Scan implements the database.sql.Scanner interface.
 func (b *WriterLob) Scan(arg any) error { return driver.ScanLobWriter(arg, b) }
 
-// ExampleScanLobWriter demontrates how to read Lob data using a io.Writer based data type.
+// ExampleScanLobWriter demonstrates how to read Lob data using an io.Writer based data type.
 func ExampleScanLobWriter() {
 	// Open Test database.
 	db := sql.OpenDB(driver.MT.Connector())

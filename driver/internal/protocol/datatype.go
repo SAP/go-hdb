@@ -54,7 +54,7 @@ var scanTypes = []struct {
 	DtRows:     {reflect.TypeFor[sql.Rows](), reflect.TypeFor[sql.Rows]()},
 }
 
-// ScanType return the scan type (reflect.Type) of the corresponding data type.
+// ScanType returns the scan type (reflect.Type) of the corresponding data type.
 func (dt DataType) ScanType(nullable bool) reflect.Type {
 	if nullable {
 		return scanTypes[dt].scanNullType

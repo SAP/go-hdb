@@ -1,4 +1,4 @@
-// Package collectors provides prometheus collectors for driver and extended database statistics.
+// Package collectors provides Prometheus collectors for driver and extended database statistics.
 package collectors
 
 import (

@@ -98,7 +98,7 @@ func Example() {
 		}
 	})
 
-	// register prometheus HTTP handler and start HTTP server.
+	// register Prometheus HTTP handler and start HTTP server.
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		server := &http.Server{Addr: addr, ReadHeaderTimeout: 30 * time.Second}

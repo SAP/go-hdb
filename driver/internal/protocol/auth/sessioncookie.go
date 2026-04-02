@@ -22,7 +22,7 @@ func (a *SessionCookie) String() string {
 	return fmt.Sprintf("method type %s cookie %v", a.Typ(), a.cookie)
 }
 
-// Typ implements the Mthod interface.
+// Typ implements the Method interface.
 func (a *SessionCookie) Typ() string { return MtSessionCookie }
 
 // Order implements the Method interface.

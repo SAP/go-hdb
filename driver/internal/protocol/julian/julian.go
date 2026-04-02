@@ -1,4 +1,4 @@
-// Package julian provided julian time conversion functions.
+// Package julian provides julian time conversion functions.
 package julian
 
 import (
@@ -26,7 +26,7 @@ func TimeToDay(t time.Time) int {
 	return t.Day() + (153*m+2)/5 + 365*y + y/4 - y/100 + y/400 - 32045
 }
 
-// DayToTime returns the correcponding UTC date for a Julian Day Number.
+// DayToTime returns the corresponding UTC date for a Julian Day Number.
 // The algorithm is taken from https://en.wikipedia.org/wiki/Julian_day.
 func DayToTime(jd int) time.Time {
 	var f int

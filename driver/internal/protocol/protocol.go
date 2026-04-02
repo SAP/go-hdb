@@ -206,7 +206,7 @@ func (r *Reader) ReadPart(ctx context.Context, part Part, lobReader LobReader) (
 }
 
 // ErrSkipped is used by the caller of the iterator to indicate that no read was executed.
-var ErrSkipped = errors.New("perts iterator: skipped read")
+var ErrSkipped = errors.New("parts iterator: skipped read")
 
 // IterateParts iterates through all protocol parts.
 func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind PartKind, attrs PartAttributes) error) (int64, error) {
@@ -383,7 +383,7 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	req.protocol.major = protocolVersionMajor
 	req.protocol.minor = protocolVersionMinor
 	req.numOptions = 1
-	req.endianess = littleEndian
+	req.endianness = littleEndian
 	if err := req.encode(w.enc); err != nil {
 		return err
 	}
@@ -405,7 +405,7 @@ func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool
 }
 
 func (w *Writer) _write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
-	// check on session variables to be send as ClientInfo
+	// check on session variables to be sent as ClientInfo
 	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
 		parts = append([]PartEncoder{(*clientInfo)(&w.sv)}, parts...)
 		w.svSent = true

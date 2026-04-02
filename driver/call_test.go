@@ -212,7 +212,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 
 	/*
 		Input table parameters can only be used referring to existent tables (inclusive temporary tables).
-		'Uploadiing' table content while executing a stored procedure is not possible.
+		'Uploading' table content while executing a stored procedure is not possible.
 		see:
 		https://stackoverflow.com/questions/45830478/call-stored-procedure-passing-table-type-argument
 		https://stackoverflow.com/questions/60657309/error-while-calling-hana-stored-procedure-from-python-sqlalchemy
@@ -313,7 +313,7 @@ end
 		t.Fatal(err)
 	}
 
-	// call by query (allow for calls witout parameters)
+	// call by query (allow for calls without parameters)
 	rows, err := db.Query(fmt.Sprintf("call %s", proc))
 	if err != nil {
 		t.Fatal(err)

@@ -1,6 +1,6 @@
 # bulkbench
 
-bulkbench was created in the context of a performance / throughput analysis of different hdb client implementations.
+bulkbench was created in the context of a performance/throughput analysis of different HDB client implementations.
 
 ## Test object
 
@@ -12,12 +12,12 @@ create column table <TableName> (id integer, field double)
 
 ## Test variants
 
-The basic idea is to insert data in chunks (batchCount) of a fixed amount of records (batchSize) whether sequentially or 'in parallel'.
-The actual 'grade of parallelization' is heavily depending on the test environment (CPU cores, TCP/IP stack). bulkbench 'enables' potential parallelism 'idiomatically' via Goroutines. Each Goroutine is using a database connection for the tests being dependent of the Go sql.DB connection pool handling and configuration.
+The basic idea is to insert data in chunks (batchCount) of a fixed amount of records (batchSize) either sequentially or 'in parallel'.
+The actual 'degree of parallelization' depends heavily on the test environment (CPU cores, TCP/IP stack). bulkbench enables potential parallelism idiomatically via goroutines. Each goroutine uses a database connection — the actual number of concurrent connections is governed by the Go sql.DB connection pool configuration.
 As the test performance results are heavily 'I/O bound' the implementation mainly tries to reduce client server round-trips. Therefore the go-hdb driver bulk insert capabilities are used (please refer to the [go-hdb driver documentation and examples](https://github.com/SAP/go-hdb)
 for details).
 
-## In a real world example...
+## In a real-world example...
 
 ... one might consider
 
@@ -32,23 +32,23 @@ for details).
 
 **Caution: please do NOT use a productive HANA instance for testing as bulkbench does create schemas and database tables.**
 
-Executing bulkbench starts a HTTP server on 'localhost:8080'.
+Executing bulkbench starts an HTTP server on 'localhost:8080'.
 
-After starting a browser pointing to the server address the following HTML page, powered by [htmx](https://htmx.org/) and [Pico.css](https://picocss.com/),
+After opening a browser at the server address the following HTML page, powered by [htmx](https://htmx.org/) and [Pico.css](https://picocss.com/),
 should be visible in the browser window:
 
 ![cannot display bulkbench.png](./bulkbench.png)
 
 * the first section displays some runtime information like GOMAXPROCS and the driver and database version
 * the second section lists all test relevant parameters which can be set as environment variables or commandline parameters
-* the third sections allows to execute tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
+* the third section allows to execute tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
 * the last section provides some database commands for the selected test database schema and table
 
-Clicking on one of the predefined test will execute it and display the result consisting of test parameters and the duration.
+Clicking on one of the predefined tests will execute it and display the result consisting of test parameters and the duration.
 
 ## Benchmark
 
-Parallel to the single execution using the browser or any other HTTP client (like wget, curl, ...), the tests can be executed automatically as Go benchmark. The benchmark can be executed whether by 
+The tests can be executed either interactively via a browser or HTTP client (e.g. wget, curl), or automatically as a Go benchmark. The benchmark can be executed either by 
 ```
 go test -bench .
 ```
@@ -65,11 +65,11 @@ In addition to the standard Go benchmarks four additional metrics are reported:
 * avgsec/op: the average time (*) 
 * maxsec/op: the maximum time (*)
 * medsec/op: the median  time (*)
-* minsec/op: the minimal time (*)
+* minsec/op: the minimum time (*)
 
 (*) inserting BatchCount x BatchSize records into the database table when executing one test several times.
 
-For details about Go benchmarks please see the [Golang testing documentation](https://golang.org/pkg/testing).
+For details about Go benchmarks please see the [Go testing documentation](https://golang.org/pkg/testing).
 
 ### Benchmark examples
 
@@ -80,8 +80,8 @@ export GOHDBDSN="hdb://MyUser:MyPassword@host:port"
 go test -c 
 ```
 
-* set the data source name (dsn) via environment variable
-* and compile the benchmark
+* set the data source name (DSN) via environment variable
+* compile the benchmark
 
 
 ```
@@ -96,14 +96,14 @@ go test -c
 ```
 ./bulkbench.test -test.bench . -test.benchtime 10x -parameters "10x10000"
 ```
-* same like before but
+* same as before, but
 * execute benchmarks only for 10x10000 as BatchCount / BatchSize combination
 
 ```
 ./bulkbench.test -test.bench . -test.benchtime 10x -wait 5 
 ```
 
-* same like first example and
+* same as the first example, and
 * -wait 5 (wait 5 seconds before starting a benchmark run to reduce database pressure)
 
 ### Benchmark example output

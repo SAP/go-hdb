@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// Distance returns the Lewenshtein distance.
+// Distance returns the Levenshtein distance.
 func Distance(a, b string, caseSensitive bool) int {
 	if caseSensitive {
 		return distance(a, b)
@@ -16,7 +16,7 @@ func Distance(a, b string, caseSensitive bool) int {
 	return distance(strings.ToLower(a), strings.ToLower(b))
 }
 
-// MinString returns the string attribute determined by fn out of x with the minimal Lewenshtein distance to s.
+// MinString returns the string attribute determined by fn out of x with the minimal Levenshtein distance to s.
 func MinString[S ~[]E, E any](x S, fn func(a E) string, s string, caseSensitive bool) (rv string) {
 	minInt := math.MaxInt
 	for _, e := range x {
