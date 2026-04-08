@@ -670,7 +670,7 @@ func (c *Connector) Locale() string { c.mu.RLock(); defer c.mu.RUnlock(); return
 /*
 SetLocale sets the locale of the connector.
 
-For more information please see http://help.sap.com/hana/SAP_HANA_SQL_Command_Network_Protocol_Reference_en.pdf.
+For more information please see "SAP HANA SQL Command Network Protocol".
 */
 func (c *Connector) SetLocale(locale string) { c.mu.Lock(); defer c.mu.Unlock(); c._locale = locale }
 
@@ -742,7 +742,7 @@ func (c *Connector) SetCESU8Encoder(cesu8EncoderFn func() transform.Transformer)
 EmptyDateAsNull returns NULL for empty dates ('0000-00-00') if true, otherwise:
 
 For data format version 1 the backend does return the NULL indicator for empty date fields.
-For data format version non equal 1 (field type daydate) the NULL indicator is not set and the return value is 0.
+For data format version other than 1 (field type daydate) the NULL indicator is not set and the return value is 0.
 As value 1 represents '0001-01-01' (the minimal valid date) without setting EmptyDateAsNull '0000-12-31' is returned,
 so that NULL, empty and valid dates can be distinguished.
 

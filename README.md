@@ -4,7 +4,7 @@
 [![REUSE status](https://api.reuse.software/badge/github.com/SAP/go-hdb)](https://api.reuse.software/info/github.com/SAP/go-hdb)
 ![](https://github.com/SAP/go-hdb/workflows/build/badge.svg)
 
-Go-hdb is a native Go (Golang) HANA database driver for Go's SQL package. It implements the SAP HANA SQL command network protocol.
+Go-hdb is a native Go (Golang) HANA database driver for Go's SQL package. It implements the "SAP HANA SQL Command Network Protocol".
 
 For the official SAP HANA client Go support (not this database driver), please see [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
 
@@ -62,7 +62,7 @@ go test --tags unit
 ## Features
 
 * Native Go implementation — no C libraries, no CGO.
-* Compliant with the Go [database/sql](http://golang.org/pkg/database/sql) package.
+* Compliant with the Go [database/sql](https://golang.org/pkg/database/sql) package.
 * UTF-8 to/from CESU-8 encoding for HANA Unicode types.
 * HANA decimals as Go rational numbers via [math/big](http://golang.org/pkg/math/big).
 * Large Object streaming.

@@ -32,7 +32,7 @@ type GeometryM interface {
 	typeM()
 }
 
-// GeometryZM is the interface representing an annotated three dimensional annotated spatial type.
+// GeometryZM is the interface representing an annotated three dimensional spatial type.
 type GeometryZM interface {
 	Geometry
 	typeZM()

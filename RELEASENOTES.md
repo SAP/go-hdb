@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.4
+- updated dependencies
+- fixed typos
+
 #### v1.16.3
 - fixed typos
 - fixed some minor bugs
@@ -71,7 +75,7 @@ Release Notes
 - updated dependencies
 
 #### v1.14.15
-- added certificate to certs folder (for details please see  https://me.sap.com/notes/3397584)
+- added certificate to certs folder (for details please see https://me.sap.com/notes/3397584)
 - updated dependencies
 
 #### v1.14.12 - v1.14.14
@@ -174,7 +178,7 @@ Release Notes
 
 #### v1.12.4
 - updated dependencies
-- fixed README.me HANA client link
+- fixed README.md HANA client link
 
 #### v1.12.3
 - updated dependencies
@@ -419,10 +423,10 @@ Release Notes
 
 ### Minor revisions
 
-### v1.6.11
+#### v1.6.11
 - fixed github actions
 
-### v1.6.10
+#### v1.6.10
 - source code cleanups
 - performance improvements
 
@@ -553,7 +557,7 @@ Release Notes
 - fixed bug: connection retry even in case refresh callback would not provide updates
 
 #### v1.3.7
-- fixed bug pinging the database to often on resetting a connection
+- fixed bug pinging the database too often on resetting a connection
 - updated dependencies
 
 #### v1.3.6
@@ -621,7 +625,7 @@ This version is mainly about performance improvements and source code cleanups.
 ### Incompatible changes
 
 - Package driver/sqltrace was removed. For enabling / disabling connection SQL trace please use driver method driver.SetSQLTrace instead.
-- Flag hdb.protocol.trace was renamed to hdb.protTrace. 
+- Flag hdb.protocol.trace was renamed to hdb.protTrace.
 
 Most go-hdb users shouldn't be affected by these incompatible changes.
 

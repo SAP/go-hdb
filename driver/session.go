@@ -238,7 +238,7 @@ func (s *session) setSchema(ctx context.Context) error {
 	}
 }
 
-// ErrSwitchUser is the error raised if a switch user is requested in a not allowed context.
+// ErrSwitchUser is the error raised if a switch user is requested in a disallowed context.
 var ErrSwitchUser = errors.New("switch user inside transaction or in statement scope (prepared query) is not allowed")
 
 func (s *session) switchUser(ctx context.Context) error {
