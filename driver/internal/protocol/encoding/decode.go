@@ -187,7 +187,7 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 	bs := d.b[:decSize]
 
 	if err := d.readFull(bs); err != nil {
-		return nil, 0, nil
+		return nil, 0, nil //nolint:nilerr
 	}
 
 	if (bs[15] & 0x70) == 0x70 { // null value (bit 4,5,6 set)
@@ -268,7 +268,7 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 // - error is only returned in case of conversion errors.
 func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 	if d.err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr
 	}
 
 	var p []byte
@@ -279,7 +279,7 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 	}
 
 	if err := d.readFull(p); err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr
 	}
 
 	b, _, err := transform.Bytes(d.tr, p)

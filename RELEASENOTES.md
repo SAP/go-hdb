@@ -5,6 +5,11 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.5
+- redacted password in SQL trace logs for switch user
+- updated dependencies
+- code cleanups
+
 #### v1.16.4
 - updated dependencies
 - fixed typos

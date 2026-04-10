@@ -61,7 +61,6 @@ const (
 type connectOption int8
 
 func (k connectOption) valueString(v any) string {
-	// TODO: sub options
 	return fmt.Sprintf("%s: %v", k, v)
 }
 

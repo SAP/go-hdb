@@ -32,19 +32,25 @@ func scanLob(src any, wr io.Writer) error {
 	// the following cases do support types which might be used in
 	// db mock scenarios
 	case string:
-		rd := strings.NewReader(src)
-		_, err := io.Copy(wr, rd)
+		_, err := io.Copy(wr, strings.NewReader(src))
 		return err
 
 	case []byte:
-		rd := bytes.NewBuffer(src)
-		_, err := io.Copy(wr, rd)
+		_, err := io.Copy(wr, bytes.NewReader(src))
 		return err
 
 	case io.Reader:
 		_, err := io.Copy(wr, src)
 		return err
 	}
+}
+
+// byteSliceWriter implements io.Writer by appending to a byte slice.
+type byteSliceWriter []byte
+
+func (w *byteSliceWriter) Write(p []byte) (int, error) {
+	*w = append(*w, p...)
+	return len(p), nil
 }
 
 // ScanLobBytes supports scanning Lob data into a byte slice.
@@ -54,12 +60,8 @@ func ScanLobBytes(src any, b *[]byte) error {
 	if b == nil {
 		return fmt.Errorf("lob scan error: parameter b %T is nil", b)
 	}
-	wr := new(bytes.Buffer) // cannot pool as we use the underlying buffer (*).
-	if err := scanLob(src, wr); err != nil {
-		return err
-	}
-	*b = wr.Bytes() // (*) use underlying buffer.
-	return nil
+	*b = (*b)[:0]
+	return scanLob(src, (*byteSliceWriter)(b))
 }
 
 // ScanLobString supports scanning Lob data into a string.
@@ -69,11 +71,12 @@ func ScanLobString(src any, s *string) error {
 	if s == nil {
 		return fmt.Errorf("lob scan error: parameter s %T is nil", s)
 	}
-	wr := new(bytes.Buffer) // cannot pool as we use the underlying buffer (*).
-	if err := scanLob(src, wr); err != nil {
+	b := unsafe.String2ByteSlice(*s)
+	b = b[:0]
+	if err := scanLob(src, (*byteSliceWriter)(&b)); err != nil {
 		return err
 	}
-	*s = unsafe.ByteSlice2String(wr.Bytes()) // (*) use underlying buffer.
+	*s = unsafe.ByteSlice2String(b)
 	return nil
 }
 

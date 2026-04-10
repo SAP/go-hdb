@@ -12,6 +12,7 @@ import (
 	"crypto/sha1" //nolint: gosec //
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
@@ -89,12 +90,12 @@ func (a *LDAP) InitRepDecode(d *encoding.Decoder) error {
 
 	serverPublicKeyPEM := d.AuthBytes()
 	if len(serverPublicKeyPEM) == 0 {
-		return fmt.Errorf("server did not provide RSA public key")
+		return errors.New("server did not provide RSA public key")
 	}
 
 	capabilities := d.AuthBytes()
 	if len(capabilities) == 0 {
-		return fmt.Errorf("empty server capabilities")
+		return errors.New("empty server capabilities")
 	}
 	if capabilities[0] != ldapDefaultCapabilities {
 		return fmt.Errorf("unknown server capabilities %x", capabilities)
@@ -107,7 +108,7 @@ func (a *LDAP) InitRepDecode(d *encoding.Decoder) error {
 	}
 
 	if !bytes.Equal(clientChallenge, a.clientChallenge) {
-		return fmt.Errorf("LDAP authentication: client challenge mismatch")
+		return errors.New("LDAP authentication: client challenge mismatch")
 	}
 	return nil
 }
@@ -158,7 +159,7 @@ func (a *LDAP) FinalRepDecode(d *encoding.Decoder) error {
 func ldapParseRSAPublicKey(data []byte) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("invalid PEM data")
+		return nil, errors.New("invalid PEM data")
 	}
 
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
@@ -168,7 +169,7 @@ func ldapParseRSAPublicKey(data []byte) (*rsa.PublicKey, error) {
 
 	rsaPub, ok := pub.(*rsa.PublicKey)
 	if !ok {
-		return nil, fmt.Errorf("not an RSA public key")
+		return nil, errors.New("not an RSA public key")
 	}
 
 	return rsaPub, nil

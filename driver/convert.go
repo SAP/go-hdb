@@ -11,7 +11,6 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// TODO: test.
 func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	for i := pos; i < len(nvargs); i++ {
 		if nvargs[i].Name != "" && nvargs[i].Name == name {

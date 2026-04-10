@@ -141,7 +141,7 @@ func digest(pubkey crypto.PublicKey, message *bytes.Buffer) ([]byte, crypto.Hash
 		// hashing is done by the signer
 		return message.Bytes(), 0, nil
 	default:
-		return nil, 0, fmt.Errorf("unsupported key type for signing")
+		return nil, 0, errors.New("unsupported key type for signing")
 	}
 }
 

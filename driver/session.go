@@ -220,8 +220,6 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd, attrs *c
 		return nil, fmt.Errorf("invalid session id %d", sessionID)
 	}
 	s.pwr.SetSessionID(sessionID)
-	// log.Printf("co: %s", co)
-	// log.Printf("ti: %s", ti)
 	return co, nil
 }
 
@@ -238,6 +236,8 @@ func (s *session) setSchema(ctx context.Context) error {
 	}
 }
 
+const passwordRedacted = "***"
+
 // ErrSwitchUser is the error raised if a switch user is requested in a disallowed context.
 var ErrSwitchUser = errors.New("switch user inside transaction or in statement scope (prepared query) is not allowed")
 
@@ -250,7 +250,10 @@ func (s *session) switchUser(ctx context.Context) error {
 		return ErrSwitchUser
 	}
 	s.user = user.clone()
-	if _, err := s.execDirect(ctx, "connect "+user.Username+" password \""+user.Password+"\""); err != nil {
+	connectQuery := func(password string) string {
+		return "connect " + user.Username + " password \"" + password + "\""
+	}
+	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), connectQuery(passwordRedacted)); err != nil {
 		return err
 	}
 	s.metrics.msgCh <- counterMsg{idx: counterSessionConnects, v: uint64(1)}
@@ -344,7 +347,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	return qr, nil
 }
 
-func (s *session) execDirect(ctx context.Context, query string) (driver.Result, error) {
+func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string) (driver.Result, error) {
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeExec)
 
@@ -357,12 +360,16 @@ func (s *session) execDirect(ctx context.Context, query string) (driver.Result, 
 		return nil, err
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceExec, query)
+		s.sqlTracer.log(ctx, t, traceExec, logQuery)
 	}
 	if s.prd.FunctionCode() == p.FcDDL {
 		return driver.ResultNoRows, nil
 	}
 	return driver.RowsAffected(numRow), nil
+}
+
+func (s *session) execDirect(ctx context.Context, query string) (driver.Result, error) {
+	return s.execDirectQueryLog(ctx, query, query)
 }
 
 func (s *session) prepare(ctx context.Context, query string) (*prepareResult, error) {
