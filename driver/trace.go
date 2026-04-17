@@ -29,6 +29,15 @@ func init() {
 	flag.BoolFunc("hdb.sqlTrace", "enabling hdb sql trace", func(s string) error { return setTrace(&sqlTrace, s) })
 }
 
+// ProtTrace returns true if protocol tracing output is active, false otherwise.
+func ProtTrace() bool { return protTrace.Load() }
+
+// SetProtTrace sets protocol tracing output active or inactive.
+// Warning: protocol tracing logs authentication credentials and other sensitive data.
+// If the application cannot fully control command-line flags (e.g. in shared or managed
+// environments), call SetProtTrace(false) at startup to override the -hdb.protTrace flag.
+func SetProtTrace(on bool) { protTrace.Store(on) }
+
 // SQLTrace returns true if sql tracing output is active, false otherwise.
 func SQLTrace() bool { return sqlTrace.Load() }
 

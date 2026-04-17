@@ -3,6 +3,7 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
+	"math/bits"
 	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
@@ -166,6 +167,12 @@ func (r *Resultset) String() string {
 
 func (r *Resultset) decodeResult(dec *encoding.Decoder, tr transform.Transformer, numArg int, lobReader LobReader, lobChunkSize int) error {
 	cols := len(r.ResultFields)
+	if numArg < 0 {
+		return fmt.Errorf("invalid number of arguments %d", numArg)
+	}
+	if hi, _ := bits.Mul(uint(numArg), uint(cols)); hi != 0 {
+		return fmt.Errorf("result set too large: %d rows x %d cols", numArg, cols)
+	}
 	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
 
 	for i := range numArg {

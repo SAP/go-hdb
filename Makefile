@@ -22,6 +22,13 @@ all:
 	@echo "reuse (license) check"
 	pipx run reuse lint
 
+#static code checks:
+checks:
+	go vet ./...
+	golint -set_exit_status=true ./...
+	staticcheck -checks all -fail none ./...
+	golangci-lint run ./...
+
 #go generate
 generate:
 	@echo "generate"

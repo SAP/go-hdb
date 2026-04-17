@@ -24,11 +24,11 @@ For more flexibility in TLS configuration please see driver.Connector.
 const (
 	DSNTLSRootCAFile         = "TLSRootCAFile"         // Path/filename to root certificate(s).
 	DSNTLSServerName         = "TLSServerName"         // ServerName to verify the hostname.
-	DSNTLSInsecureSkipVerify = "TLSInsecureSkipVerify" // Controls whether a client verifies the server's certificate chain and host name.
+	DSNTLSInsecureSkipVerify = "TLSInsecureSkipVerify" // Disables TLS certificate verification. Exposes the connection to man-in-the-middle attacks. Use only in development or testing environments, never in production.
 )
 
-// TLSPrms is holding the TLS parameters of a DSN structure.
-type TLSPrms struct {
+// tlsPrms is holding the TLS parameters of a DSN structure.
+type tlsPrms struct {
 	ServerName         string
 	InsecureSkipVerify bool
 	RootCAFiles        []string
@@ -61,7 +61,7 @@ type DSN struct {
 	defaultSchema      string
 	timeout            time.Duration
 	pingInterval       time.Duration
-	tls                *TLSPrms
+	tls                *tlsPrms
 }
 
 // ParseError is the error returned in case DSN is invalid.
@@ -160,7 +160,7 @@ func ParseDSN(s string) (*DSN, error) {
 				return nil, invalidNumberOfParametersError(k, len(v), 1)
 			}
 			if dsn.tls == nil {
-				dsn.tls = &TLSPrms{}
+				dsn.tls = &tlsPrms{}
 			}
 			dsn.tls.ServerName = v[0]
 
@@ -176,7 +176,7 @@ func ParseDSN(s string) (*DSN, error) {
 				}
 			}
 			if dsn.tls == nil {
-				dsn.tls = &TLSPrms{}
+				dsn.tls = &tlsPrms{}
 			}
 			dsn.tls.InsecureSkipVerify = b
 
@@ -185,7 +185,7 @@ func ParseDSN(s string) (*DSN, error) {
 				return nil, invalidNumberOfParametersMinError(k, len(v), 1)
 			}
 			if dsn.tls == nil {
-				dsn.tls = &TLSPrms{}
+				dsn.tls = &tlsPrms{}
 			}
 			dsn.tls.RootCAFiles = v
 		}

@@ -5,6 +5,11 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.6
+- security: exported `ProtTrace`/`SetProtTrace` to allow applications to disable protocol tracing regardless of command-line flags
+- security: `DSNTLSInsecureSkipVerify` godoc warning added; `TLSPrms` unexported
+- security: overflow guard added to result set and output parameter decoding (`math/bits.Mul`)
+
 #### v1.16.5
 - redacted password in SQL trace logs for switch user
 - updated dependencies
