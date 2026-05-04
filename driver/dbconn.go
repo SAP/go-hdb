@@ -79,22 +79,39 @@ func (c *stdDBConn) deadline() (deadline time.Time) {
 
 func (c *stdDBConn) Close() error { return c.conn.Close() }
 
+func (c *stdDBConn) errLogAttrs(err error, now time.Time) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.String("error", err.Error()),
+		slog.String("local address", c.conn.LocalAddr().String()),
+		slog.String("remote address", c.conn.RemoteAddr().String()),
+		slog.String("timeout", c.timeout.String()),
+	}
+	lastAccess := c._lastRead
+	if c._lastWrite.Compare(c._lastRead) == 1 {
+		lastAccess = c._lastWrite
+	}
+	if !lastAccess.IsZero() {
+		attrs = append(attrs, slog.String("since last access", now.Sub(lastAccess).String()))
+	}
+	return attrs
+}
+
 // Read implements the io.Reader interface.
 func (c *stdDBConn) Read(b []byte) (int, error) {
 	// set timeout
 	if err := c.conn.SetReadDeadline(c.deadline()); err != nil {
 		return 0, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
-	c._lastRead = time.Now()
+	now := time.Now()
 	n, err := c.conn.Read(b)
-	c.metrics.msgCh <- timeMsg{idx: timeRead, d: time.Since(c._lastRead)}
+	c.metrics.msgCh <- timeMsg{idx: timeRead, d: time.Since(now)}
 	c.metrics.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)} //nolint:gosec
 	if err != nil {
-		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
-		// wrap error in driver.ErrBadConn
-		return n, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
+		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", c.errLogAttrs(err, now)...)
+		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn
 	}
-	return n, nil
+	c._lastRead = now
+	return n, err
 }
 
 // Write implements the io.Writer interface.
@@ -103,14 +120,14 @@ func (c *stdDBConn) Write(b []byte) (int, error) {
 	if err := c.conn.SetWriteDeadline(c.deadline()); err != nil {
 		return 0, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
-	c._lastWrite = time.Now()
+	now := time.Now()
 	n, err := c.conn.Write(b)
-	c.metrics.msgCh <- timeMsg{idx: timeWrite, d: time.Since(c._lastWrite)}
+	c.metrics.msgCh <- timeMsg{idx: timeWrite, d: time.Since(now)}
 	c.metrics.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)} //nolint:gosec
 	if err != nil {
-		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", slog.String("error", err.Error()), slog.String("local address", c.conn.LocalAddr().String()), slog.String("remote address", c.conn.RemoteAddr().String()))
-		// wrap error in driver.ErrBadConn
-		return n, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
+		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", c.errLogAttrs(err, now)...)
+		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn
 	}
-	return n, nil
+	c._lastWrite = now
+	return n, err
 }

@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.7
+- enhanced DB connection error logging
+
 #### v1.16.6
 - security: exported `ProtTrace`/`SetProtTrace` to allow applications to disable protocol tracing regardless of command-line flags
 - security: `DSNTLSInsecureSkipVerify` godoc warning added; `TLSPrms` unexported
