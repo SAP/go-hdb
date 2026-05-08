@@ -33,9 +33,9 @@ jobs:
       matrix:
         goos: [linux]
         goarch: [amd64, arm, arm64, s390x]
-        go: ['1.26.2', '1.25.9']
-      fail-fast: false  
-    
+        go: ['1.26.3', '1.25.10']
+      fail-fast: false
+
     name: Go ${{ matrix.go }} ${{ matrix.goos }} ${{ matrix.goarch }} build
     
     env:
@@ -74,9 +74,9 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        go: ['1.26.2', '1.25.9']
-      fail-fast: false  
-    
+        go: ['1.26.3', '1.25.10']
+      fail-fast: false
+
     name: Go ${{ matrix.go }} macOS
 
     env:
@@ -107,9 +107,9 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        go: ['1.26.2', '1.25.9']
-      fail-fast: false  
-    
+        go: ['1.26.3', '1.25.10']
+      fail-fast: false
+
     name: Go ${{ matrix.go }} Windows
 
     env:

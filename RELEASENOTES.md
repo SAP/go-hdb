@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.8
+- updated Go toolchain to go1.26.3 / go1.25.10
+
 #### v1.16.7
 - enhanced DB connection error logging
 
