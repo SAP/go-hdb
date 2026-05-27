@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.10
+- updated GitHub Actions workflows
+
 #### v1.16.9
 - updated dependencies
 
