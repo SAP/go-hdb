@@ -1,27 +1,25 @@
 name: build
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
 on: [push, pull_request]
 jobs:
 
   vetlint:
     runs-on: ubuntu-latest
     name: Go vet lint
-    
+
     steps:
-    
-    - uses: actions/checkout@v6
-    
+
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
     - name: Setup go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
       with:
         go-version: '1.26'
-    
+
     - name: Vet
       run: |
         go vet ./...
-    
+
     - name: Lint
       run: |
         go install golang.org/x/lint/golint@latest
@@ -37,7 +35,7 @@ jobs:
       fail-fast: false
 
     name: Go ${{ matrix.go }} ${{ matrix.goos }} ${{ matrix.goarch }} build
-    
+
     env:
       GOOS: ${{ matrix.goos }}
       GOARCH: ${{ matrix.goarch }}
@@ -45,31 +43,31 @@ jobs:
       GOTOOLCHAIN: go${{ matrix.go }}
 
     steps:
-    
+
     - name: Install qemu-user
       run: |
         sudo apt-get update
         sudo apt-get -y install qemu-user
 
-    - uses: actions/checkout@v6
-    
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
     - name: Setup go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
       with:
         go-version: ${{ matrix.go }}
-    
+
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
-        
+
     - name: Build
       run: |
         go build -v ./...
 
     - name: Test
       run: |
-        go test -v --tags unit ./...    
-        
+        go test -v --tags unit ./...
+
   build-macos:
     runs-on: macos-latest
     strategy:
@@ -81,27 +79,27 @@ jobs:
 
     env:
       GOTOOLCHAIN: go${{ matrix.go }}
-    
+
     steps:
-    
-    - uses: actions/checkout@v6
-    
+
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
     - name: Setup go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
       with:
         go-version: ${{ matrix.go }}
-    
+
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
-        
+
     - name: Build
       run: |
         go build -v ./...
 
     - name: Test
       run: |
-        go test -v --tags unit ./...    
+        go test -v --tags unit ./...
 
   build-windows:
     runs-on: windows-latest
@@ -114,27 +112,27 @@ jobs:
 
     env:
       GOTOOLCHAIN: go${{ matrix.go }}
-    
+
     steps:
-    
-    - uses: actions/checkout@v6
-    
+
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
     - name: Setup go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
       with:
         go-version: ${{ matrix.go }}
-    
+
     - name: Get dependencies
       run: |
         go get -v -t -d ./...
-        
+
     - name: Build
       run: |
         go build -v ./...
 
     - name: Test
       run: |
-        go test -v --tags unit ./...    
+        go test -v --tags unit ./...
 
   all-builds:
     name: All builds passed
