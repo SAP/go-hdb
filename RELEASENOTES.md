@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.11
+- fixed REUSE Compliance Check job name
+
 #### v1.16.10
 - updated GitHub Actions workflows
 
