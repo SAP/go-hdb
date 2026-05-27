@@ -2,7 +2,7 @@ name: build
 permissions:
   contents: read
   pull-requests: write
-on: [push]
+on: [push, pull_request]
 jobs:
 
   vetlint:
@@ -135,3 +135,10 @@ jobs:
     - name: Test
       run: |
         go test -v --tags unit ./...    
+
+  all-builds:
+    name: All builds passed
+    runs-on: ubuntu-latest
+    needs: [vetlint, build-linux, build-macos, build-windows]
+    steps:
+      - run: echo "All builds passed"
