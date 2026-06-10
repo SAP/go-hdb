@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.16.12
+- updated Go toolchain to go1.26.4 / go1.25.11
+- updated dependencies
+
 #### v1.16.11
 - fixed REUSE Compliance Check job name
 
