@@ -28,6 +28,8 @@ func (v version) String() string {
 	return fmt.Sprintf("%d.%d", v.major, v.minor)
 }
 
+const initRequestSize = 14
+
 type initRequest struct {
 	product    version
 	protocol   version
@@ -67,7 +69,7 @@ func (r *initRequest) decode(dec *encoding.Decoder) error {
 		}
 		r.endianness = endianness(dec.Int8())
 	}
-	return dec.Error()
+	return nil
 }
 
 func (r *initRequest) encode(enc *encoding.Encoder) error {
@@ -94,6 +96,8 @@ func (r *initRequest) encode(enc *encoding.Encoder) error {
 	return nil
 }
 
+const initReplySize = 8
+
 type initReply struct {
 	product  version
 	protocol version
@@ -109,5 +113,5 @@ func (r *initReply) decode(dec *encoding.Decoder) error {
 	r.protocol.major = dec.Int8()
 	r.protocol.minor = dec.Int16()
 	dec.Skip(2) // commitInitReplySize
-	return dec.Error()
+	return nil
 }

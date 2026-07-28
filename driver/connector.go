@@ -19,6 +19,7 @@ import (
 	"time"
 	"unique"
 
+	"github.com/SAP/go-hdb/driver/compress"
 	"github.com/SAP/go-hdb/driver/dial"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
@@ -87,6 +88,7 @@ type connAttrs struct {
 	cesu8Decoder       transform.Transformer
 	cesu8Encoder       transform.Transformer
 	emptyDateAsNull    bool
+	compressor         compress.Compressor
 	logger             *slog.Logger
 }
 
@@ -137,6 +139,7 @@ type Connector struct {
 	_cesu8DecoderFn     func() transform.Transformer
 	_cesu8EncoderFn     func() transform.Transformer
 	_emptyDateAsNull    bool
+	_compressor         compress.Compressor
 	_logger             *slog.Logger
 
 	hasCookie            atomic.Bool
@@ -169,6 +172,7 @@ func NewConnector() *Connector {
 		_dfv:                defaultDfv,
 		_cesu8DecoderFn:     cesu8.DefaultDecoder,
 		_cesu8EncoderFn:     cesu8.DefaultEncoder,
+		_compressor:         compress.DefaultCompressor,
 		_logger:             slog.Default(),
 		metrics:             stdHdbDriver.metrics, // use default stdHdbDriver metrics
 	}
@@ -377,6 +381,7 @@ func (c *Connector) clone() *Connector {
 		_cesu8DecoderFn:     c._cesu8DecoderFn,
 		_cesu8EncoderFn:     c._cesu8EncoderFn,
 		_emptyDateAsNull:    c._emptyDateAsNull,
+		_compressor:         c._compressor,
 		_logger:             c._logger,
 
 		_username:            c._username,
@@ -424,6 +429,7 @@ func (c *Connector) connAttrs() *connAttrs {
 		cesu8Decoder:       c._cesu8DecoderFn(),
 		cesu8Encoder:       c._cesu8EncoderFn(),
 		emptyDateAsNull:    c._emptyDateAsNull,
+		compressor:         c._compressor,
 		logger:             c._logger,
 	}
 }
@@ -452,15 +458,6 @@ func (c *Connector) setTimeout(timeout time.Duration) {
 	}
 	c._timeout = timeout
 }
-func (c *Connector) setBulkSize(bulkSize int) {
-	switch {
-	case bulkSize < minBulkSize:
-		bulkSize = minBulkSize
-	case bulkSize > maxBulkSize:
-		bulkSize = maxBulkSize
-	}
-	c._bulkSize = bulkSize
-}
 func (c *Connector) setTLS(serverName string, insecureSkipVerify bool, rootCAFiles []string) error {
 	c._tlsConfig = &tls.Config{
 		ServerName:         serverName,
@@ -483,33 +480,6 @@ func (c *Connector) setTLS(serverName string, insecureSkipVerify bool, rootCAFil
 		c._tlsConfig.RootCAs = certPool
 	}
 	return nil
-}
-func (c *Connector) setDialer(dialer dial.Dialer) {
-	if dialer == nil {
-		dialer = dial.DefaultDialer
-	}
-	c._dialer = dialer
-}
-func (c *Connector) setFetchSize(fetchSize int) {
-	if fetchSize < minFetchSize {
-		fetchSize = minFetchSize
-	}
-	c._fetchSize = fetchSize
-}
-func (c *Connector) setLobChunkSize(lobChunkSize int) {
-	switch {
-	case lobChunkSize < minLobChunkSize:
-		lobChunkSize = minLobChunkSize
-	case lobChunkSize > maxLobChunkSize:
-		lobChunkSize = maxLobChunkSize
-	}
-	c._lobChunkSize = lobChunkSize
-}
-func (c *Connector) setDfv(dfv int) {
-	if !p.IsSupportedDfv(dfv) {
-		dfv = defaultDfv
-	}
-	c._dfv = dfv
 }
 
 // Timeout returns the timeout of the connector.
@@ -570,7 +540,13 @@ func (c *Connector) BulkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); return 
 func (c *Connector) SetBulkSize(bulkSize int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setBulkSize(bulkSize)
+	switch {
+	case bulkSize < minBulkSize:
+		bulkSize = minBulkSize
+	case bulkSize > maxBulkSize:
+		bulkSize = maxBulkSize
+	}
+	c._bulkSize = bulkSize
 }
 
 // TCPKeepAlive returns the tcp keep-alive value of the connector.
@@ -633,7 +609,10 @@ func (c *Connector) Dialer() dial.Dialer { c.mu.RLock(); defer c.mu.RUnlock(); r
 func (c *Connector) SetDialer(dialer dial.Dialer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setDialer(dialer)
+	if dialer == nil {
+		dialer = dial.DefaultDialer
+	}
+	c._dialer = dialer
 }
 
 // ApplicationName returns the application name of the connector.
@@ -685,7 +664,10 @@ For more information please see DSNFetchSize.
 func (c *Connector) SetFetchSize(fetchSize int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setFetchSize(fetchSize)
+	if fetchSize < minFetchSize {
+		fetchSize = minFetchSize
+	}
+	c._fetchSize = fetchSize
 }
 
 // LobChunkSize returns the lobChunkSize of the connector.
@@ -695,14 +677,27 @@ func (c *Connector) LobChunkSize() int { c.mu.RLock(); defer c.mu.RUnlock(); ret
 func (c *Connector) SetLobChunkSize(lobChunkSize int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.setLobChunkSize(lobChunkSize)
+	switch {
+	case lobChunkSize < minLobChunkSize:
+		lobChunkSize = minLobChunkSize
+	case lobChunkSize > maxLobChunkSize:
+		lobChunkSize = maxLobChunkSize
+	}
+	c._lobChunkSize = lobChunkSize
 }
 
 // Dfv returns the client data format version of the connector.
 func (c *Connector) Dfv() int { c.mu.RLock(); defer c.mu.RUnlock(); return c._dfv }
 
 // SetDfv sets the client data format version of the connector.
-func (c *Connector) SetDfv(dfv int) { c.mu.Lock(); defer c.mu.Unlock(); c.setDfv(dfv) }
+func (c *Connector) SetDfv(dfv int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !p.IsSupportedDfv(dfv) {
+		dfv = defaultDfv
+	}
+	c._dfv = dfv
+}
 
 // CESU8Decoder returns the CESU-8 decoder of the connector.
 func (c *Connector) CESU8Decoder() func() transform.Transformer {
@@ -759,6 +754,23 @@ func (c *Connector) SetEmptyDateAsNull(emptyDateAsNull bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c._emptyDateAsNull = emptyDateAsNull
+}
+
+// Compressor returns the lz4 compressor of the connector.
+func (c *Connector) Compressor() compress.Compressor {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c._compressor
+}
+
+// SetCompressor sets the lz4 compressor of the connector.
+func (c *Connector) SetCompressor(compressor compress.Compressor) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if compressor == nil {
+		compressor = compress.DefaultCompressor
+	}
+	c._compressor = compressor
 }
 
 // Logger returns the Logger instance of the connector.

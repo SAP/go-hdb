@@ -7,15 +7,10 @@ import (
 	"io"
 	"slices"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"github.com/SAP/go-hdb/driver/internal/unsafe"
+	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
-)
-
-const (
-	writeLobRequestSize = 21
 )
 
 // lobOptions represents a lob option set.
@@ -115,8 +110,6 @@ func (d *LobInDescr) FetchNext(chunkSize int) error {
 	return nil
 }
 
-func (d *LobInDescr) setPos(pos int) { d.pos = pos }
-
 func (d *LobInDescr) size() int { return d.buf.Len() }
 
 func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()) }
@@ -181,8 +174,7 @@ func (d *lobOutDescr) decode(dec *encoding.Decoder) bool {
 	d.numByte = dec.Int64()
 	d.id = LocatorID(dec.Uint64())
 	size := int(dec.Int32())
-	d.b = slices.Grow(d.b, size)[:size]
-	dec.Bytes(d.b)
+	d.b = dec.Bytes(size)
 	return false
 }
 
@@ -193,20 +185,18 @@ func (d *lobOutDescr) write(b []byte) (int, error) {
 		}
 		return len(b), nil
 	}
+
+	var nDst, numChar int
+	var err error
 	d.tr.Reset()
-	// cesu8 -> utf8 (always enough space)
-	nDst, _, err := d.tr.Transform(b, b, false)
+	if tr, ok := d.tr.(cesu8.NumCharTransformer); ok { // fasttrack
+		nDst, _, numChar, err = tr.TransformNumChar(b, b, false) // cesu8 -> utf8 (always enough space)
+	} else { // slow
+		nDst, _, err = d.tr.Transform(b, b, false) // cesu8 -> utf8 (always enough space)
+		numChar = cesu8.NumChar(b[:nDst])
+	}
 	if err != nil && err != transform.ErrShortSrc { //nolint: errorlint
 		return nDst, err
-	}
-
-	// inline count runes
-	numChar := 0
-	for _, r := range unsafe.ByteSlice2String(b[:nDst]) {
-		numChar++
-		if utf8.RuneLen(r) == 4 {
-			numChar++ // caution: hdb counts 2 chars in case of surrogate pair
-		}
 	}
 
 	if _, err := d.wr.Write(b[:nDst]); err != nil {
@@ -306,9 +296,8 @@ func (d *WriteLobDescr) decode(dec *encoding.Decoder) error {
 	d.ID = LocatorID(dec.Uint64())
 	d.opt = lobOptions(dec.Int8())
 	d.ofs = dec.Int64()
-	size := dec.Int32()
-	d.b = make([]byte, size)
-	dec.Bytes(d.b)
+	size := int(dec.Int32())
+	d.b = dec.Bytes(size)
 	return nil
 }
 
@@ -329,18 +318,12 @@ type WriteLobRequest struct {
 
 func (r *WriteLobRequest) String() string { return fmt.Sprintf("descriptors %v", r.Descrs) }
 
-func (r *WriteLobRequest) size() int {
-	size := 0
-	for _, descr := range r.Descrs {
-		size += (writeLobRequestSize + len(descr.b))
-	}
-	return size
-}
-
 func (r *WriteLobRequest) numArg() int { return len(r.Descrs) }
 
 // sniffer.
-func (r *WriteLobRequest) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (r *WriteLobRequest) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	numArg := header.numArg()
+
 	r.Descrs = make([]*WriteLobDescr, numArg)
 	for i := range numArg {
 		r.Descrs[i] = &WriteLobDescr{}
@@ -351,7 +334,7 @@ func (r *WriteLobRequest) decodeNumArg(dec *encoding.Decoder, numArg int) error 
 	return nil
 }
 
-func (r *WriteLobRequest) encode(enc *encoding.Encoder) error {
+func (r *WriteLobRequest) encode(enc *encoding.Encoder, _ transform.Transformer) error {
 	for _, descr := range r.Descrs {
 		if err := descr.encode(enc); err != nil {
 			return err
@@ -369,13 +352,15 @@ type WriteLobReply struct {
 
 func (r *WriteLobReply) String() string { return fmt.Sprintf("ids %v", r.IDs) }
 
-func (r *WriteLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	r.IDs = resizeSlice(r.IDs, numArg)
+func (r *WriteLobReply) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	numArg := header.numArg()
+
+	r.IDs = slices.Grow(r.IDs, numArg)[:numArg]
 
 	for i := range numArg {
 		r.IDs[i] = LocatorID(dec.Uint64())
 	}
-	return dec.Error()
+	return nil
 }
 
 // ReadLobRequest represents a lob read request part.
@@ -401,7 +386,7 @@ func (r *ReadLobRequest) String() string {
 }
 
 // sniffer.
-func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
+func (r *ReadLobRequest) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
 	r.id = LocatorID(dec.Uint64())
 	r.ofs = dec.Int64()
 	r.chunkSize = int(dec.Int32())
@@ -409,7 +394,7 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder) error {
 	return nil
 }
 
-func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
+func (r *ReadLobRequest) encode(enc *encoding.Encoder, _ transform.Transformer) error {
 	enc.Uint64(uint64(r.id))
 	enc.Int64(r.ofs + 1)          // 1-based
 	enc.Int32(int32(r.chunkSize)) //nolint: gosec
@@ -431,8 +416,8 @@ func (r *ReadLobReply) init() {
 	r.lobOutDescr = new(lobOutDescr)
 }
 
-func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	if numArg != 1 {
+func (r *ReadLobReply) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	if header.numArg() != 1 {
 		panic("numArg == 1 expected")
 	}
 	id := LocatorID(dec.Uint64())
@@ -442,7 +427,6 @@ func (r *ReadLobReply) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	r.opt = lobOptions(dec.Int8())
 	size := int(dec.Int32())
 	dec.Skip(3)
-	r.b = slices.Grow(r.b, size)[:size]
-	dec.Bytes(r.b)
+	r.b = dec.Bytes(size)
 	return nil
 }

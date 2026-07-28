@@ -10,10 +10,8 @@ import (
 	"net"
 	"runtime/pprof"
 	"time"
-)
 
-var (
-	cpuProfile = false
+	"github.com/SAP/go-hdb/driver/internal/profile"
 )
 
 type dbConn interface {
@@ -61,7 +59,7 @@ func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *m
 	}
 
 	dbConn := &stdDBConn{metrics: metrics, conn: conn, timeout: attrs.timeout, logger: logger}
-	if cpuProfile {
+	if profile.Active {
 		return &profileDBConn{dbConn: dbConn}, nil
 	}
 	return dbConn, nil

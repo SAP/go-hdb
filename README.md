@@ -59,12 +59,35 @@ Using the Go build tag 'unit', only the driver unit tests will be executed (no H
 go test --tags unit
 ```
 
+### CPU Profiling
+
+Integration tests include network I/O which dominates wall time and obscures driver CPU cost. To profile only the driver code, collect a CPU profile and then filter out database-tagged samples with `tagignore=db`:
+
+```
+go test -v -test.cpuprofile cpu.out
+go tool pprof cpu.out
+```
+
+```
+(pprof) tagignore=db
+(pprof) top 10
+```
+
+The `tagignore=db` filter excludes samples tagged with database activity (network, syscalls waiting on the server), leaving only driver-side CPU work visible. To further exclude CESU-8 encoding/decoding overhead, add `tagignore=cesu8`:
+
+```
+(pprof) tagignore=db,cesu8
+(pprof) top 10
+```
+
 ## Features
 
 * Native Go implementation — no C libraries, no CGO.
 * Compliant with the Go [database/sql](https://golang.org/pkg/database/sql) package.
 * UTF-8 to/from CESU-8 encoding for HANA Unicode types.
-* HANA decimals as Go rational numbers via [math/big](http://golang.org/pkg/math/big).
+* HANA decimals as:
+  * Go rational numbers via [math/big](http://golang.org/pkg/math/big) ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-Decimal)).
+  * custom decimal types via the [database/sql](https://golang.org/pkg/database/sql) decimal decompose / compose interfaces ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-package-customDecimal)).
 * Large Object streaming.
 * 'Bulk' query execution.
 * Stored Procedures with table output parameters.
@@ -76,6 +99,7 @@ go test --tags unit
 * LDAP, client certificate (X509) and JWT (JSON Web Token) authentication.
 * [Prometheus](https://prometheus.io) collectors for driver and extended database statistics.
 * [Scanning database rows into Go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
+* [LZ4 compression](driver/compress/README.md) support.
 
 ## Dependencies
 

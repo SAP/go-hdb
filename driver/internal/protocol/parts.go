@@ -13,32 +13,26 @@ type Part interface {
 	kind() PartKind
 }
 
-type partDecoder interface {
+// PartDecoder represents a protocol part decoder.
+type PartDecoder interface {
 	Part
-	decode(dec *encoding.Decoder) error
+	decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error
 }
-type numArgPartDecoder interface {
+
+// ResultPartDecoder represents a protocol result part decoder.
+type ResultPartDecoder interface {
 	Part
-	decodeNumArg(dec *encoding.Decoder, numArg int) error
-}
-type bufLenPartDecoder interface {
-	Part
-	decodeBufLen(dec *encoding.Decoder, bufLen int) error
-}
-type resultPartDecoder interface {
-	Part
-	decodeResult(dec *encoding.Decoder, tr transform.Transformer, numArg int, lobReader LobReader, lobChunkSize int) error
+	decodeResult(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs, lobReader LobReader) error
 }
 
 // PartEncoder represents a protocol part the driver is able to encode.
 type PartEncoder interface {
 	Part
 	numArg() int
-	size() int
-	encode(enc *encoding.Encoder) error
+	encode(enc *encoding.Encoder, tr transform.Transformer) error
 }
 
-func (*HdbErrors) kind() PartKind           { return pkError }
+func (*HdbErrors) kind() PartKind           { return PkError }
 func (*AuthInitRequest) kind() PartKind     { return PkAuthentication }
 func (*AuthInitReply) kind() PartKind       { return PkAuthentication }
 func (*AuthFinalRequest) kind() PartKind    { return PkAuthentication }
@@ -47,7 +41,7 @@ func (ClientID) kind() PartKind             { return PkClientID }
 func (clientInfo) kind() PartKind           { return PkClientInfo }
 func (*TopologyInformation) kind() PartKind { return PkTopologyInformation }
 func (Command) kind() PartKind              { return PkCommand }
-func (*rowsAffected) kind() PartKind        { return pkRowsAffected }
+func (*RowsAffected) kind() PartKind        { return PkRowsAffected }
 func (StatementID) kind() PartKind          { return PkStatementID }
 func (*ParameterMetadata) kind() PartKind   { return PkParameterMetadata }
 func (*InputParameters) kind() PartKind     { return PkParameters }
@@ -76,21 +70,6 @@ func (ResultsetID) numArg() int       { return 1 }
 func (Fetchsize) numArg() int         { return 1 }
 func (*ReadLobRequest) numArg() int   { return 1 }
 
-// size methods (fixed size).
-const (
-	statementIDSize    = 8
-	resultsetIDSize    = 8
-	fetchsizeSize      = 4
-	readLobRequestSize = 24
-)
-
-func (StatementID) size() int    { return statementIDSize }
-func (ResultsetID) size() int    { return resultsetIDSize }
-func (Fetchsize) size() int      { return fetchsizeSize }
-func (ReadLobRequest) size() int { return readLobRequestSize }
-
-// func (lobFlags) size() int       { return tinyintFieldSize }
-
 // check if part types implement the part encoder interface.
 var (
 	_ PartEncoder = (*AuthInitRequest)(nil)
@@ -111,42 +90,42 @@ var (
 
 // check if part types implement the right part decoder interface.
 var (
-	_ numArgPartDecoder = (*HdbErrors)(nil)
-	_ partDecoder       = (*AuthInitRequest)(nil)
-	_ partDecoder       = (*AuthInitReply)(nil)
-	_ partDecoder       = (*AuthFinalRequest)(nil)
-	_ partDecoder       = (*AuthFinalReply)(nil)
-	_ bufLenPartDecoder = (*ClientID)(nil)
-	_ numArgPartDecoder = (*clientInfo)(nil)
-	_ numArgPartDecoder = (*TopologyInformation)(nil)
-	_ bufLenPartDecoder = (*Command)(nil)
-	_ numArgPartDecoder = (*rowsAffected)(nil)
-	_ partDecoder       = (*StatementID)(nil)
-	_ numArgPartDecoder = (*ParameterMetadata)(nil)
-	_ numArgPartDecoder = (*InputParameters)(nil)
-	_ resultPartDecoder = (*OutputParameters)(nil)
-	_ numArgPartDecoder = (*ResultMetadata)(nil)
-	_ partDecoder       = (*ResultsetID)(nil)
-	_ resultPartDecoder = (*Resultset)(nil)
-	_ partDecoder       = (*Fetchsize)(nil)
-	_ partDecoder       = (*ReadLobRequest)(nil)
-	_ numArgPartDecoder = (*WriteLobRequest)(nil)
-	_ numArgPartDecoder = (*ReadLobReply)(nil)
-	_ numArgPartDecoder = (*WriteLobReply)(nil)
-	_ numArgPartDecoder = (*ClientContext)(nil)
-	_ numArgPartDecoder = (*ConnectOptions)(nil)
-	_ numArgPartDecoder = (*DBConnectInfo)(nil)
-	_ numArgPartDecoder = (*statementContext)(nil)
-	_ numArgPartDecoder = (*transactionFlags)(nil)
+	_ PartDecoder       = (*HdbErrors)(nil)
+	_ PartDecoder       = (*AuthInitRequest)(nil)
+	_ PartDecoder       = (*AuthInitReply)(nil)
+	_ PartDecoder       = (*AuthFinalRequest)(nil)
+	_ PartDecoder       = (*AuthFinalReply)(nil)
+	_ PartDecoder       = (*ClientID)(nil)
+	_ PartDecoder       = (*clientInfo)(nil)
+	_ PartDecoder       = (*TopologyInformation)(nil)
+	_ PartDecoder       = (*Command)(nil)
+	_ PartDecoder       = (*RowsAffected)(nil)
+	_ PartDecoder       = (*StatementID)(nil)
+	_ PartDecoder       = (*ParameterMetadata)(nil)
+	_ PartDecoder       = (*InputParameters)(nil)
+	_ ResultPartDecoder = (*OutputParameters)(nil)
+	_ PartDecoder       = (*ResultMetadata)(nil)
+	_ PartDecoder       = (*ResultsetID)(nil)
+	_ ResultPartDecoder = (*Resultset)(nil)
+	_ PartDecoder       = (*Fetchsize)(nil)
+	_ PartDecoder       = (*ReadLobRequest)(nil)
+	_ PartDecoder       = (*WriteLobRequest)(nil)
+	_ PartDecoder       = (*ReadLobReply)(nil)
+	_ PartDecoder       = (*WriteLobReply)(nil)
+	_ PartDecoder       = (*ClientContext)(nil)
+	_ PartDecoder       = (*ConnectOptions)(nil)
+	_ PartDecoder       = (*DBConnectInfo)(nil)
+	_ PartDecoder       = (*statementContext)(nil)
+	_ PartDecoder       = (*transactionFlags)(nil)
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{
-	pkError:               reflect.TypeFor[HdbErrors](),
+	PkError:               reflect.TypeFor[HdbErrors](),
 	PkClientID:            reflect.TypeFor[ClientID](),
 	PkClientInfo:          reflect.TypeFor[clientInfo](),
 	PkTopologyInformation: reflect.TypeFor[TopologyInformation](),
 	PkCommand:             reflect.TypeFor[Command](),
-	pkRowsAffected:        reflect.TypeFor[rowsAffected](),
+	PkRowsAffected:        reflect.TypeFor[RowsAffected](),
 	PkStatementID:         reflect.TypeFor[StatementID](),
 	PkResultsetID:         reflect.TypeFor[ResultsetID](),
 	PkFetchSize:           reflect.TypeFor[Fetchsize](),

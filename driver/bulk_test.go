@@ -452,7 +452,7 @@ func TestBulk(t *testing.T) {
 	}
 
 	ctr := MT.NewConnector()
-	ctr.setBulkSize(1000) // limit bulk size for test performance reasons
+	ctr.SetBulkSize(1000) // limit bulk size for test performance reasons
 	db := sql.OpenDB(ctr)
 	t.Cleanup(func() { db.Close() })
 

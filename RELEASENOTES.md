@@ -1,9 +1,45 @@
 Release Notes
 =============
 
+## v1.17.0
+
+### Minor revisions
+
+#### v1.17.1
+- updated Go toolchain to go1.26.5 / go1.25.12
+- updated dependencies
+- prep for for go1.27.0
+
+### New features
+
+- Added (HANA lz6) [compression](driver/compress/README.md) support.
+- Added support for custom decimal types implementing the database/sql decimal
+  Decompose / Compose interfaces for decimal and fixed columns (both parameter
+  binding and scanning).
+
+### Minor new features
+
+- Extended CESU-8 transformer with [NumCharTransformer](driver/unicode/cesu8) interface for efficient LOB character counting (performance).
+- Added `cesu8` pprof label to transformer for targeted CPU profiling.
+
+### Incompatible changes
+
+- The value provided by the driver for decimal and fixed columns is no longer a
+  *big.Rat. Custom sql.Scanner implementations that type-assert the scanned
+  value to *big.Rat need to be adapted (e.g. to use the database/sql decimal
+  Compose interface). Code scanning into driver.Decimal / driver.NullDecimal is
+  not affected.
+
+Most go-hdb users shouldn't be affected by these incompatible change.
+
 ## v1.16.0
 
 ### Minor revisions
+
+#### v1.16.13
+- updated Go toolchain to go1.26.5 / go1.25.12
+- updated dependencies
+- prep for for go1.27.0
 
 #### v1.16.12
 - updated Go toolchain to go1.26.4 / go1.25.11
@@ -52,7 +88,7 @@ Release Notes
 
 ### Changes
 
-- Added support of LDAP authentication (https://github.com/SAP/go-hdb/pull/159)
+- Added support of LDAP authentication (https://github.com/SAP/go-hdb/pull/159).
 
 ## v1.15.0
 

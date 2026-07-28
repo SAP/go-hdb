@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"reflect"
+	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
@@ -37,11 +38,14 @@ func (k columnOptions) String() string {
 type ResultsetID uint64
 
 func (id ResultsetID) String() string { return fmt.Sprintf("%d", id) }
-func (id *ResultsetID) decode(dec *encoding.Decoder) error {
+func (id *ResultsetID) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
 	*id = ResultsetID(dec.Uint64())
-	return dec.Error()
+	return nil
 }
-func (id ResultsetID) encode(enc *encoding.Encoder) error { enc.Uint64(uint64(id)); return nil }
+func (id ResultsetID) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+	enc.Uint64(uint64(id))
+	return nil
+}
 
 func newResultFields(size int) []*ResultField {
 	return make([]*ResultField, size)
@@ -127,8 +131,8 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.names.insertOfs(f.columnDisplayNameOfs)
 }
 
-func (f *ResultField) decodeResult(dec *encoding.Decoder, tr transform.Transformer, lobReader LobReader, lobChunkSize int) (any, error) {
-	return decodeResult(f.tc, dec, tr, lobReader, lobChunkSize, f.scale)
+func (f *ResultField) decodeResult(dec *encoding.Decoder, attrs *ReaderAttrs, lobReader LobReader) (any, error) {
+	return decodeResult(f.tc, dec, attrs, lobReader, f.scale)
 }
 
 // ResultMetadata represents the metadata of a set of database result fields.
@@ -140,18 +144,18 @@ func (r *ResultMetadata) String() string {
 	return fmt.Sprintf("result fields %v", r.ResultFields)
 }
 
-func (r *ResultMetadata) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	r.ResultFields = newResultFields(numArg)
+func (r *ResultMetadata) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	r.ResultFields = newResultFields(header.numArg())
 	names := &fieldNames{}
 	for i := range len(r.ResultFields) {
 		f := &ResultField{names: names}
 		f.decode(dec)
 		r.ResultFields[i] = f
 	}
-	if err := names.decode(dec); err != nil {
+	if err := names.decode(dec, attrs); err != nil {
 		return err
 	}
-	return dec.Error()
+	return nil
 }
 
 // Resultset represents a database result set.
@@ -165,7 +169,9 @@ func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
 }
 
-func (r *Resultset) decodeResult(dec *encoding.Decoder, tr transform.Transformer, numArg int, lobReader LobReader, lobChunkSize int) error {
+func (r *Resultset) decodeResult(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs, lobReader LobReader) error {
+	numArg := header.numArg()
+
 	cols := len(r.ResultFields)
 	if numArg < 0 {
 		return fmt.Errorf("invalid number of arguments %d", numArg)
@@ -173,15 +179,16 @@ func (r *Resultset) decodeResult(dec *encoding.Decoder, tr transform.Transformer
 	if hi, _ := bits.Mul(uint(numArg), uint(cols)); hi != 0 {
 		return fmt.Errorf("result set too large: %d rows x %d cols", numArg, cols)
 	}
-	r.FieldValues = resizeSlice(r.FieldValues, numArg*cols)
+	n := numArg * cols
+	r.FieldValues = slices.Grow(r.FieldValues, n)[:n]
 
 	for i := range numArg {
 		for j, f := range r.ResultFields {
 			var err error
-			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, tr, lobReader, lobChunkSize); err != nil {
+			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, attrs, lobReader); err != nil {
 				r.DecodeErrors = append(r.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
 			}
 		}
 	}
-	return dec.Error()
+	return nil
 }

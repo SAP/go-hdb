@@ -9,7 +9,6 @@ import (
 type optType interface {
 	fmt.Stringer
 	typeCode() typeCode
-	size(v any) int
 	encode(e *encoding.Encoder, v any)
 	decode(d *encoding.Decoder) any
 }
@@ -60,14 +59,6 @@ func (_optDoubleType) typeCode() typeCode  { return tcDouble }
 func (_optStringType) typeCode() typeCode  { return tcString }
 func (_optBstringType) typeCode() typeCode { return tcBstring }
 
-func (_optBooleanType) size(any) int   { return encoding.BooleanFieldSize }
-func (_optTinyintType) size(any) int   { return encoding.TinyintFieldSize }
-func (_optIntegerType) size(any) int   { return encoding.IntegerFieldSize }
-func (_optBigintType) size(any) int    { return encoding.BigintFieldSize }
-func (_optDoubleType) size(any) int    { return encoding.DoubleFieldSize }
-func (_optStringType) size(v any) int  { return 2 + len(v.(string)) } // length int16 + string length
-func (_optBstringType) size(v any) int { return 2 + len(v.([]byte)) } // length int16 + bytes length
-
 func (_optBooleanType) encode(e *encoding.Encoder, v any) { e.Bool(v.(bool)) }
 func (_optTinyintType) encode(e *encoding.Encoder, v any) { e.Int8(v.(int8)) }
 func (_optIntegerType) encode(e *encoding.Encoder, v any) { e.Int32(v.(int32)) }
@@ -91,15 +82,11 @@ func (_optBigintType) decode(d *encoding.Decoder) any  { return d.Int64() }
 func (_optDoubleType) decode(d *encoding.Decoder) any  { return d.Float64() }
 func (_optStringType) decode(d *encoding.Decoder) any {
 	l := d.Int16()
-	b := make([]byte, l)
-	d.Bytes(b)
-	return string(b)
+	return d.Str(int(l))
 }
 func (_optBstringType) decode(d *encoding.Decoder) any {
-	l := d.Int16()
-	b := make([]byte, l)
-	d.Bytes(b)
-	return b
+	size := int(d.Int16())
+	return d.Bytes(size)
 }
 
 func optTypeViaType(v any) optType {

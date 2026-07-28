@@ -16,6 +16,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -72,28 +73,28 @@ func (a *LDAP) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *LDAP) InitRepDecode(d *encoding.Decoder) error {
-	d.AuthVarFieldInd()
-	if err := DecodeAndCheckNumPrm(d, 4); err != nil {
+func (a *LDAP) InitRepDecode(dec *encoding.Decoder) error {
+	dec.AuthVarFieldInd()
+	if err := DecodeAndCheckNumPrm(dec, 4); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
 	}
 
-	clientChallenge := d.AuthBytes()
+	clientChallenge := dec.AuthBytes()
 	if len(clientChallenge) != ldapClientChallengeSize {
 		return fmt.Errorf("invalid client challenge size %d - expected %d", len(clientChallenge), ldapClientChallengeSize)
 	}
 
-	a.serverChallenge = d.AuthBytes()
+	a.serverChallenge = dec.AuthBytes()
 	if len(a.serverChallenge) != ldapServerChallengeSize {
 		return fmt.Errorf("invalid server challenge size %d - expected %d", len(a.serverChallenge), ldapServerChallengeSize)
 	}
 
-	serverPublicKeyPEM := d.AuthBytes()
+	serverPublicKeyPEM := dec.AuthBytes()
 	if len(serverPublicKeyPEM) == 0 {
 		return errors.New("server did not provide RSA public key")
 	}
 
-	capabilities := d.AuthBytes()
+	capabilities := dec.AuthBytes()
 	if len(capabilities) == 0 {
 		return errors.New("empty server capabilities")
 	}
@@ -140,16 +141,16 @@ func (a *LDAP) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *LDAP) FinalRepDecode(d *encoding.Decoder) error {
-	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
+func (a *LDAP) FinalRepDecode(dec *encoding.Decoder, _ transform.Transformer) error {
+	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
 	}
 
-	methodName := d.AuthString()
+	methodName := dec.AuthString()
 	if err := checkAuthMethodType(methodName, a.Typ()); err != nil {
 		return err
 	}
-	serverProof := d.AuthBytes()
+	serverProof := dec.AuthBytes()
 	if len(serverProof) > 0 {
 		return fmt.Errorf("server proof failed: %v", serverProof)
 	}

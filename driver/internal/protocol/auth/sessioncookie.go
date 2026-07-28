@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 // SessionCookie implements session cookie authentication.
@@ -36,7 +37,7 @@ func (a *SessionCookie) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *SessionCookie) InitRepDecode(d *encoding.Decoder) error {
+func (a *SessionCookie) InitRepDecode(_ *encoding.Decoder) error {
 	return nil
 }
 
@@ -49,14 +50,14 @@ func (a *SessionCookie) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *SessionCookie) FinalRepDecode(d *encoding.Decoder) error {
-	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
+func (a *SessionCookie) FinalRepDecode(dec *encoding.Decoder, _ transform.Transformer) error {
+	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}
-	mt := d.AuthString()
+	mt := dec.AuthString()
 	if err := checkAuthMethodType(mt, a.Typ()); err != nil {
 		return err
 	}
-	d.AuthBytes() // second parameter seems to be empty
+	dec.AuthBytes() // second parameter seems to be empty
 	return nil
 }

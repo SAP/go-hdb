@@ -2,6 +2,7 @@ package encoding
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"math/bits"
@@ -9,6 +10,110 @@ import (
 
 // ErrDecimalOutOfRange means that a big.Rat exceeds the size of hdb decimal fields.
 var ErrDecimalOutOfRange = errors.New("decimal out of range error")
+
+// Decimal is the internal representation of a decimal value as mantissa and exponent.
+type Decimal struct {
+	m   *big.Int
+	exp int
+}
+
+// NewDecimalFromRat creates a Decimal (dec128) from a *big.Rat.
+func NewDecimalFromRat(r *big.Rat) (Decimal, error) {
+	m := new(big.Int)
+	exp, df := convertRatToDecimal(r, m, dec128Digits, dec128MinExp, dec128MaxExp)
+	if df&dfOverflow != 0 {
+		return Decimal{}, ErrDecimalOutOfRange
+	}
+	if df&dfUnderflow != 0 { // set to zero
+		return Decimal{m: m.Set(natZero), exp: 0}, nil
+	}
+	return Decimal{m: m, exp: exp}, nil
+}
+
+// NewFixedFromRat creates a Decimal (fixed) from a *big.Rat.
+func NewFixedFromRat(r *big.Rat, prec, scale int) (Decimal, error) {
+	m := new(big.Int)
+	df := convertRatToFixed(r, m, prec, scale)
+	if df&dfOverflow != 0 {
+		return Decimal{}, ErrDecimalOutOfRange
+	}
+	return Decimal{m: m, exp: -scale}, nil
+}
+
+// decomposeToRat converts database/sql decimalDecompose parts into a *big.Rat.
+func decomposeToRat(form byte, negative bool, coefficient []byte, exponent int32) (*big.Rat, error) {
+	if form != 0 { // 0 finite, 1 infinite, 2 NaN
+		return nil, ErrDecimalOutOfRange
+	}
+	m := new(big.Int).SetBytes(coefficient) // big-endian magnitude
+	if negative {
+		m.Neg(m)
+	}
+	r := new(big.Rat)
+	if exponent >= 0 {
+		r.SetInt(m.Mul(m, exp10(int(exponent))))
+	} else {
+		r.SetFrac(m, exp10(int(-exponent)))
+	}
+	return r, nil
+}
+
+// NewDecimalFromDecompose creates a Decimal (dec128) from decimalDecompose parts.
+func NewDecimalFromDecompose(form byte, negative bool, coefficient []byte, exponent int32) (Decimal, error) {
+	r, err := decomposeToRat(form, negative, coefficient, exponent)
+	if err != nil {
+		return Decimal{}, err
+	}
+	return NewDecimalFromRat(r)
+}
+
+// NewFixedFromDecompose creates a Decimal (fixed) from decimalDecompose parts.
+func NewFixedFromDecompose(form byte, negative bool, coefficient []byte, exponent int32, prec, scale int) (Decimal, error) {
+	r, err := decomposeToRat(form, negative, coefficient, exponent)
+	if err != nil {
+		return Decimal{}, err
+	}
+	return NewFixedFromRat(r, prec, scale)
+}
+
+// AsRat returns the decimal value as a *big.Rat.
+func (d Decimal) AsRat(v *big.Rat) {
+	v.SetInt(d.m)
+	p := v.Num()
+	q := v.Denom()
+
+	switch {
+	case d.exp < 0:
+		q.Set(exp10(d.exp * -1))
+	case d.exp == 0:
+		q.Set(natOne)
+	case d.exp > 0:
+		p.Mul(p, exp10(d.exp))
+		q.Set(natOne)
+	}
+}
+
+// Decompose implements the database/sql decimalDecompose interface.
+func (d Decimal) Decompose(buf []byte) (form byte, negative bool, coefficient []byte, exponent int32) {
+	negative = d.m.Sign() < 0
+	if d.exp > math.MaxInt32 {
+		panic(fmt.Sprintf("exp %d too big - expected <= %d", d.exp, math.MaxInt32))
+	}
+	exponent = int32(d.exp) //nolint: gosec
+
+	abs := d.m
+	if negative {
+		abs = new(big.Int).Abs(d.m)
+	}
+	sizeInBytes := (abs.BitLen() + 7) / 8
+	if cap(buf) >= sizeInBytes {
+		buf = buf[:sizeInBytes]
+		coefficient = abs.FillBytes(buf)
+	} else {
+		coefficient = abs.Bytes()
+	}
+	return form, negative, coefficient, exponent
+}
 
 const _S = bits.UintSize / 8 // word size in bytes
 // http://en.wikipedia.org/wiki/Decimal128_floating-point_format
@@ -41,10 +146,6 @@ func init() {
 	}
 }
 
-/*
-performance: tested with reference work variable
-  - but int.Set is expensive, so let's live with big.Int creation for n >= len(nat)
-*/
 func exp10(n int) *big.Int {
 	if n < len(natExp10) {
 		return natExp10[n]
@@ -161,27 +262,6 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 	return exp, df
 }
 
-func convertDecimalToRat(m *big.Int, exp int) *big.Rat {
-	if m == nil {
-		return nil
-	}
-
-	v := new(big.Rat).SetInt(m)
-	p := v.Num()
-	q := v.Denom()
-
-	switch {
-	case exp < 0:
-		q.Set(exp10(exp * -1))
-	case exp == 0:
-		q.Set(natOne)
-	case exp > 0:
-		p.Mul(p, exp10(exp))
-		q.Set(natOne)
-	}
-	return v
-}
-
 func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 	if scale < 0 {
 		panic("fixed: invalid scale")
@@ -219,15 +299,4 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 		df |= dfOverflow
 	}
 	return df
-}
-
-func convertFixedToRat(m *big.Int, scale int) *big.Rat {
-	if m == nil {
-		return nil
-	}
-	if scale < 0 {
-		panic("fixed: invalid scale")
-	}
-	q := exp10(scale)
-	return new(big.Rat).SetFrac(m, q)
 }

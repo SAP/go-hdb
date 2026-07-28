@@ -16,6 +16,8 @@ import (
 	"testing"
 	"text/template"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/profile"
 )
 
 //go:embed stats.tmpl
@@ -225,6 +227,7 @@ func (mt *MainTest) querySchemasPrefix(db *sql.DB, prefix string) ([]string, err
 
 const (
 	cpuProfileName = "test.cpuprofile"
+	memProfileName = "test.memprofile"
 )
 
 // copied from runtime/debug.
@@ -261,8 +264,8 @@ func TestMain(m *testing.M) {
 	}
 
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == cpuProfileName {
-			cpuProfile = true
+		if f.Name == cpuProfileName || f.Name == memProfileName {
+			profile.Active = true
 		}
 	})
 

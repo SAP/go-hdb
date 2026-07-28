@@ -3,10 +3,13 @@
 package cesu8
 
 import (
+	"context"
 	"fmt"
+	"runtime/pprof"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/internal/profile"
 	"golang.org/x/text/transform"
 )
 
@@ -15,6 +18,29 @@ const (
 	UTF8  = "UTF-8"
 	CESU8 = "CESU-8"
 )
+
+// NumChar functions:
+// CESU-8 surrogate pairs count as 2 characters in the HANA server's rune count.
+
+// NumCharTransformer implementors support providing HANA protocol numchar count.
+type NumCharTransformer interface {
+	TransformNumChar(dst, src []byte, atEOF bool) (nDst, nSrc, numChar int, err error)
+}
+
+// NumChar returns the HANA protocol numchar count for transformers not implementing NumCharTransformer.
+func NumChar(b []byte) int {
+	n := 0
+	for len(b) > 0 {
+		_, size := utf8.DecodeRune(b)
+		b = b[size:]
+		if size == 4 {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
 
 // DecodeError is raised when a transformer detects invalid encoded data.
 type DecodeError struct {
@@ -45,8 +71,23 @@ func (e *DecodeError) Value() []byte { return e.v }
 
 // Encoder supports encoding of UTF-8 encoded data into CESU-8.
 type Encoder struct {
-	transform.NopResetter
-	errorHandler func(err *DecodeError) (rune, error)
+	transform.NopResetter // stateless
+	errorHandler          func(err *DecodeError) (rune, error)
+}
+
+type profileEncoder struct {
+	*Encoder
+}
+
+func newProfileEncoder(encoder *Encoder) transform.Transformer {
+	return &profileEncoder{Encoder: encoder}
+}
+
+func (d *profileEncoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
+	pprof.Do(context.Background(), pprof.Labels("cesu8", "encode"), func(ctx context.Context) {
+		nDst, nSrc, err = d.Encoder.Transform(dst, src, atEOF)
+	})
+	return
 }
 
 // NewEncoder creates a new encoder instance. With parameter errorHandler a custom error handling function could be used in case
@@ -106,8 +147,30 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 
 // Decoder supports decoding of CESU-8 encoded data into UTF-8.
 type Decoder struct {
-	transform.NopResetter
-	errorHandler func(err *DecodeError) (rune, error)
+	transform.NopResetter // stateless
+	errorHandler          func(err *DecodeError) (rune, error)
+}
+
+type profileDecoder struct {
+	*Decoder
+}
+
+func newProfileDecoder(decoder *Decoder) transform.Transformer {
+	return &profileDecoder{Decoder: decoder}
+}
+
+func (d *profileDecoder) TransformNumChar(dst, src []byte, atEOF bool) (nDst, nSrc, numChar int, err error) {
+	pprof.Do(context.Background(), pprof.Labels("cesu8", "decode"), func(ctx context.Context) {
+		nDst, nSrc, numChar, err = d.Decoder.TransformNumChar(dst, src, atEOF)
+	})
+	return
+}
+
+func (d *profileDecoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
+	pprof.Do(context.Background(), pprof.Labels("cesu8", "decode"), func(ctx context.Context) {
+		nDst, nSrc, err = d.Decoder.Transform(dst, src, atEOF)
+	})
+	return
 }
 
 // NewDecoder creates a new decoder instance. With parameter errorHandler a custom error handling function could be used in case
@@ -124,17 +187,18 @@ func (d *Decoder) handleDecodeError(r rune, i int, src []byte) (rune, error) {
 	return d.errorHandler(decodeErr)
 }
 
-// Transform implements the transform.Transformer interface.
-func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
+// TransformNumChar implements the extended NumCharTransformer interface.
+func (d *Decoder) TransformNumChar(dst, src []byte, atEOF bool) (nDst, nSrc, numChar int, err error) {
 	i, j := 0, 0
 	for i < len(src) {
 		if src[i] < utf8.RuneSelf {
 			if j >= len(dst) {
-				return j, i, transform.ErrShortDst
+				return j, i, numChar, transform.ErrShortDst
 			}
 			dst[j] = src[i]
 			i++
 			j++
+			numChar++
 			continue
 		}
 		p := src[i:]
@@ -143,7 +207,7 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		// - remaining buffer smaller than max size for an encoded CESU-8 rune
 		if !atEOF && len(p) < CESUMax {
 			if !FullRune(p) {
-				return j, i, transform.ErrShortSrc
+				return j, i, numChar, transform.ErrShortSrc
 			}
 		}
 		/*
@@ -157,13 +221,13 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		if !isSurrogate(p) {
 			if r, n = utf8.DecodeRune(p); r == utf8.RuneError && (n == 0 || n == 1) {
 				if r, err = d.handleDecodeError(r, i, src); err != nil {
-					return j, i, err
+					return j, i, numChar, err
 				}
 			}
 		} else {
 			if r, n = decodeSurrogates(p); r == utf8.RuneError {
 				if r, err = d.handleDecodeError(r, i, src); err != nil {
-					return j, i, err
+					return j, i, numChar, err
 				}
 			}
 		}
@@ -172,25 +236,51 @@ func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 		case m == -1:
 			panic("internal CESU-8 to UTF-8 transformation error")
 		case j+m > len(dst):
-			return j, i, transform.ErrShortDst
+			return j, i, numChar, transform.ErrShortDst
 		}
 		utf8.EncodeRune(dst[j:], r)
 		i += n
 		j += m
+		// numChar count
+		if m == 4 {
+			numChar += 2
+		} else {
+			numChar++
+		}
 	}
-	return j, i, nil
+	return j, i, numChar, nil
+}
+
+// Transform implements the transform.Transformer interface.
+func (d *Decoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err error) {
+	nDst, nSrc, _, err = d.TransformNumChar(dst, src, atEOF)
+	return nDst, nSrc, err
 }
 
 var (
-	defaultDecoder = NewDecoder(nil)
-	defaultEncoder = NewEncoder(nil)
+	defaultDecoder        = NewDecoder(nil)
+	defaultEncoder        = NewEncoder(nil)
+	defaultProfileDecoder = newProfileDecoder(defaultDecoder)
+	defaultProfileEncoder = newProfileEncoder(defaultEncoder)
 )
 
 // DefaultDecoder returns the default CESU-8 to UTF-8 decoder.
-func DefaultDecoder() transform.Transformer { return defaultDecoder }
+// Profile decision must be made here as profile.Active is set after package init.
+func DefaultDecoder() transform.Transformer {
+	if profile.Active {
+		return defaultProfileDecoder
+	}
+	return defaultDecoder
+}
 
 // DefaultEncoder returns the default UTF-8 to CESU-8 encoder.
-func DefaultEncoder() transform.Transformer { return defaultEncoder }
+// Profile decision must be made here as profile.Active is set after package init.
+func DefaultEncoder() transform.Transformer {
+	if profile.Active {
+		return defaultProfileEncoder
+	}
+	return defaultEncoder
+}
 
 // ReplaceErrorHandler is a decoding error handling function replacing invalid CESU-8 data with the
 // unicode replacement character '\uFFFD'.

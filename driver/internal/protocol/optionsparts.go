@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 // ClientContextOption represents a client context option.
@@ -34,6 +35,10 @@ func (cc *ClientContext) SetType(v string) { cc.options.set(ccoType, v) }
 
 // SetApplicationProgram sets the client application program option.
 func (cc *ClientContext) SetApplicationProgram(v string) { cc.options.set(ccoApplicationProgram, v) }
+
+func (cc *ClientContext) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+	return cc.options.decode(dec, header.numArg())
+}
 
 // Cdm represents a ConnectOption ClientDistributionMode.
 type Cdm byte
@@ -157,6 +162,26 @@ func (co *ConnectOptions) SetSelectForUpdateSupported(v bool) {
 	co.options.set(coSelectForUpdateSupported, v)
 }
 
+// Compression flag bits in the int32 value of coCompressionLevelAndFlags.
+// See the negotiation doc in session.go for how these are used.
+const (
+	CoCompressionLZ4Supported int32 = 0x00000100 // sender can decompress LZ4
+	CoCompressionLZ4Enabled   int32 = 0x00000200 // sender wants compression on
+)
+
+// CompressionLevelAndFlagsOrZero gets the compression level/flags option if available,
+// the zero value otherise.
+func (co *ConnectOptions) CompressionLevelAndFlagsOrZero() int32 {
+	var v int32
+	co.options.get(coCompressionLevelAndFlags, &v)
+	return v
+}
+
+// SetCompressionLevelAndFlags sets the compression level/flags option.
+func (co *ConnectOptions) SetCompressionLevelAndFlags(v int32) {
+	co.options.set(coCompressionLevelAndFlags, v)
+}
+
 // DatabaseNameOrZero returns the database name option if available, the zero value otherwise.
 func (co *ConnectOptions) DatabaseNameOrZero() string {
 	var v string
@@ -173,6 +198,10 @@ func (co *ConnectOptions) FullVersionOrZero() string {
 
 // SetClientLocale sets the client locale option.
 func (co *ConnectOptions) SetClientLocale(v string) { co.options.set(coClientLocale, v) }
+
+func (co *ConnectOptions) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+	return co.options.decode(dec, header.numArg())
+}
 
 // DBConnectInfoType represents a database connect info type.
 type dbConnectInfoType int8
@@ -210,6 +239,10 @@ func (ci *DBConnectInfo) IsConnectedOrZero() bool {
 	return v
 }
 
+func (ci *DBConnectInfo) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+	return ci.options.decode(dec, header.numArg())
+}
+
 type statementContextType int8
 
 func (k statementContextType) valueString(v any) string {
@@ -229,6 +262,10 @@ const (
 
 type statementContext struct {
 	options[statementContextType]
+}
+
+func (sc *statementContext) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+	return sc.options.decode(dec, header.numArg())
 }
 
 // transaction flags.
@@ -252,6 +289,10 @@ const (
 
 type transactionFlags struct {
 	options[transactionFlagType]
+}
+
+func (tf *transactionFlags) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+	return tf.options.decode(dec, header.numArg())
 }
 
 type topologyOption int8
@@ -308,17 +349,19 @@ type TopologyInformation struct {
 
 func (ti TopologyInformation) String() string { return fmt.Sprintf("%v", ti.hosts) }
 
-func (ti *TopologyInformation) decodeNumArg(dec *encoding.Decoder, numArg int) error {
-	ti.hosts = resizeSlice(ti.hosts, numArg)
+func (ti *TopologyInformation) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	numArg := header.numArg()
+
+	ti.hosts = slices.Grow(ti.hosts, numArg)[:numArg]
 	for i := range numArg {
 		host := &options[topologyOption]{}
 		ti.hosts[i] = host
 		hostNumArg := int(dec.Int16())
-		if err := host.decodeNumArg(dec, hostNumArg); err != nil {
+		if err := host.decode(dec, hostNumArg); err != nil {
 			return err
 		}
 	}
-	return dec.Error()
+	return nil
 }
 
 type optionsType interface {
@@ -366,18 +409,9 @@ func (ops *options[K]) set(k K, v any) {
 	(*ops)[k] = v
 }
 
-func (ops options[K]) size() int {
-	size := 2 * len(ops) // option + type
-	for _, v := range ops {
-		ot := optTypeViaType(v)
-		size += ot.size(v)
-	}
-	return size
-}
-
 func (ops options[K]) numArg() int { return len(ops) }
 
-func (ops *options[K]) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (ops *options[K]) decode(dec *encoding.Decoder, numArg int) error {
 	*ops = options[K]{} // no reuse of maps - create new one
 	for range numArg {
 		k := K(dec.Int8())
@@ -385,10 +419,10 @@ func (ops *options[K]) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 		ot := optTypeViaTypeCode(tc)
 		(*ops)[k] = ot.decode(dec)
 	}
-	return dec.Error()
+	return nil
 }
 
-func (ops options[K]) encode(enc *encoding.Encoder) error {
+func (ops options[K]) encode(enc *encoding.Encoder, _ transform.Transformer) error {
 	for k, v := range ops {
 		enc.Int8(int8(k))
 		ot := optTypeViaType(v)

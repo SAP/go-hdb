@@ -1,11 +1,5 @@
 package encoding
 
-import (
-	"math"
-
-	"github.com/SAP/go-hdb/driver/unicode/cesu8"
-)
-
 const (
 	booleanFalseValue byte = 0
 	booleanNullValue  byte = 1
@@ -24,28 +18,8 @@ const (
 	secondtimeNullValue int32 = 86402
 )
 
-// Field size constants.
-const (
-	BooleanFieldSize       = 1
-	TinyintFieldSize       = 1
-	SmallintFieldSize      = 2
-	IntegerFieldSize       = 4
-	BigintFieldSize        = 8
-	RealFieldSize          = 4
-	DoubleFieldSize        = 8
-	DateFieldSize          = 4
-	TimeFieldSize          = 4
-	TimestampFieldSize     = DateFieldSize + TimeFieldSize
-	LongdateFieldSize      = 8
-	SeconddateFieldSize    = 8
-	DaydateFieldSize       = 4
-	SecondtimeFieldSize    = 4
-	DecimalFieldSize       = 16
-	Fixed8FieldSize        = 8
-	Fixed12FieldSize       = 12
-	Fixed16FieldSize       = 16
-	LobInputParametersSize = 9
-)
+// IntegerFieldSize constant.
+const IntegerFieldSize = 4
 
 // string / binary length indicators.
 const (
@@ -54,61 +28,3 @@ const (
 	varFieldLenIndMedium    byte = 246
 	varFieldLenIndBig       byte = 247
 )
-
-// varFieldSize returns the size of a variable field variable ([]byte, string and unicode variants).
-func varFieldSize(size int) int {
-	switch {
-	default:
-		return -1
-	case size <= int(varFieldLenIndSmall):
-		return size + 1
-	case size <= math.MaxInt16:
-		return size + 3
-	case size <= math.MaxInt32:
-		return size + 5
-	}
-}
-
-// Cesu8FieldSize returns the size of a cesu8 field.
-func Cesu8FieldSize(v any) int {
-	switch v := v.(type) {
-	case []byte:
-		return varFieldSize(cesu8.Size(v))
-	case string:
-		return varFieldSize(cesu8.StringSize(v))
-	default:
-		panic("invalid type for cesu8 field") // should never happen
-	}
-}
-
-// VarFieldSize returns the size of a var field.
-func VarFieldSize(v any) int {
-	switch v := v.(type) {
-	case []byte:
-		return varFieldSize(len(v))
-	case string:
-		return varFieldSize(len(v))
-	default:
-		panic("invalid type for var field") // should never happen
-	}
-}
-
-// HexFieldSize returns the size of a hex field.
-func HexFieldSize(v any) int {
-	switch v := v.(type) {
-	case []byte:
-		l := len(v)
-		if l%2 != 0 {
-			panic("even hex field length required")
-		}
-		return varFieldSize(l / 2)
-	case string:
-		l := len(v)
-		if l%2 != 0 {
-			panic("even hex field length required")
-		}
-		return varFieldSize(l / 2)
-	default:
-		panic("invalid hex field type")
-	}
-}
