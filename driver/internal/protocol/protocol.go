@@ -3,12 +3,15 @@ package protocol
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
+	"io"
+	"iter"
 	"log/slog"
 	"math"
 	"reflect"
+	"slices"
 
+	"github.com/SAP/go-hdb/driver/compress"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
@@ -37,6 +40,24 @@ func padBytes(size int) int {
 	return 0
 }
 
+// Compression thresholds for outbound packets. Mirror the SAP HANA C++
+// client (hdbcli, SocketCommunication.cpp).
+const (
+	// minCompressBlockSize: packets with a varpart smaller than this are
+	// sent uncompressed. Mirrors MIN_COMPRESS_PKT_LEN
+	// (SocketCommunication.cpp:56, = 10 KiB) — avoids the cost of
+	// compressing tiny payloads where the savings would be negligible.
+	minCompressBlockSize = 10 * 1024
+
+	// minCompressionSizePercent: maximum allowed compressed size as a
+	// percentage of the input. Mirrors MIN_COMPRESSION_SIZE_PCT
+	// (SocketCommunication.cpp:376, = 95). The destination buffer is
+	// sized to 95% of input; if LZ4 cannot fit the output into that
+	// bound, CompressBlock returns lz4.ErrShortBuffer and we send
+	// uncompressed. Compression must save at least 5% to be used.
+	minCompressionSizePercent = 95
+)
+
 type partCache map[PartKind]Part
 
 func (c *partCache) get(kind PartKind) (Part, bool) {
@@ -64,62 +85,86 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 	return part, true
 }
 
+// ReaderAttrs holds reader attributes.
+type ReaderAttrs struct {
+	ProtTrace       bool
+	Logger          *slog.Logger
+	Tr              transform.Transformer
+	LobChunkSize    int
+	EmptyDateAsNull bool
+	AlphanumDfv1    bool
+	Compressor      compress.Compressor
+}
+
+// PartInfo holds attributes needed on iterating parts.
+type PartInfo struct {
+	Header         *PartHeader
+	Dec            *encoding.Decoder
+	ReadHDBErrors  func(context.Context) error
+	ReadPart       func(context.Context, PartDecoder) error
+	ReadResultPart func(context.Context, ResultPartDecoder, LobReader) error
+	SkipPart       func(context.Context) error
+}
+
 // Reader represents a protocol reader.
 type Reader struct {
-	dec *encoding.Decoder
-	tr  transform.Transformer
+	rd io.Reader
 
-	protTrace bool
-	logger    *slog.Logger
+	attrs *ReaderAttrs
 
-	lobChunkSize int
-
-	readFromDB bool
-	prefix     string
+	readPrologFn func(ctx context.Context) error
+	protTraceFn  func(ctx context.Context, text string, part fmt.Stringer)
 
 	mh *messageHeader
 	sh *segmentHeader
-	ph *partHeader
+
+	buf     []byte
+	tmpBuf  []byte
+	scratch []byte
 
 	partCache partCache
-
-	hdbErrors    *HdbErrors
-	rowsAffected *rowsAffected
+	partInfo  *PartInfo
 }
 
-func newReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int, readFromDB bool, prefix string) *Reader {
-	return &Reader{
-		dec:          dec,
-		tr:           tr,
-		protTrace:    protTrace,
-		logger:       logger,
-		lobChunkSize: lobChunkSize,
-		readFromDB:   readFromDB,
-		prefix:       prefix,
-		partCache:    partCache{},
-		mh:           &messageHeader{},
-		sh:           &segmentHeader{},
-		ph:           &partHeader{},
-		hdbErrors:    &HdbErrors{},
-		rowsAffected: &rowsAffected{},
+func newReader(rd io.Reader, attrs *ReaderAttrs, readFromDB bool) *Reader {
+	partInfo := &PartInfo{Header: &PartHeader{}}
+
+	r := &Reader{
+		rd:        rd,
+		attrs:     attrs,
+		mh:        &messageHeader{},
+		sh:        &segmentHeader{},
+		buf:       make([]byte, 1024),
+		scratch:   make([]byte, 32),
+		partCache: partCache{},
+		partInfo:  partInfo,
 	}
+
+	if readFromDB {
+		r.readPrologFn = r.readPrologDB
+		if attrs.ProtTrace {
+			r.protTraceFn = r.protTraceDB
+		}
+	} else {
+		r.readPrologFn = r.readPrologClient
+		if attrs.ProtTrace {
+			r.protTraceFn = r.protTraceClient
+		}
+	}
+
+	partInfo.ReadHDBErrors = r.readHDBErrors
+	partInfo.ReadPart = r.readPart
+	partInfo.ReadResultPart = r.readResultPart
+	partInfo.SkipPart = r.skipPart
+
+	return r
 }
 
 // NewDBReader returns an instance of a database protocol reader.
-func NewDBReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
-	return newReader(dec, tr, protTrace, logger, lobChunkSize, true, prefixDB)
-}
+func NewDBReader(rd io.Reader, attrs *ReaderAttrs) *Reader { return newReader(rd, attrs, true) }
 
 // NewClientReader returns an instance of a client protocol reader.
-func NewClientReader(dec *encoding.Decoder, tr transform.Transformer, protTrace bool, logger *slog.Logger, lobChunkSize int) *Reader {
-	return newReader(dec, tr, protTrace, logger, lobChunkSize, false, prefixClient)
-}
-
-// SkipParts reads and discards all protocol parts.
-func (r *Reader) SkipParts(ctx context.Context) error {
-	_, err := r.IterateParts(ctx, 0, nil)
-	return err
-}
+func NewClientReader(rd io.Reader, attrs *ReaderAttrs) *Reader { return newReader(rd, attrs, false) }
 
 // SessionID returns the session ID.
 func (r *Reader) SessionID() int64 { return r.mh.sessionID }
@@ -129,215 +174,249 @@ func (r *Reader) FunctionCode() FunctionCode { return r.sh.functionCode }
 
 // ReadProlog reads the protocol prolog.
 func (r *Reader) ReadProlog(ctx context.Context) error {
-	if r.readFromDB {
-		rep := &initReply{}
-		if err := rep.decode(r.dec); err != nil {
+	return r.readPrologFn(ctx)
+}
+
+// SkipParts reads and discards all protocol parts.
+func (r *Reader) SkipParts(ctx context.Context) error {
+	for pi, err := range r.Parts(ctx) {
+		if err != nil {
 			return err
 		}
-		if r.protTrace {
-			r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textIni, rep.String()))
+		switch pi.Header.Kind() {
+		case PkError:
+			err = r.readHDBErrors(ctx)
+		default:
+			err = r.skipPart(ctx)
 		}
-		return nil
-	}
-	req := &initRequest{}
-	if err := req.decode(r.dec); err != nil {
-		return err
-	}
-	if r.protTrace {
-		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textIni, req.String()))
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (r *Reader) skipPadding() int {
-	padBytes := padBytes(int(r.ph.bufferLength))
-	r.dec.Skip(padBytes)
-	return padBytes
-}
+// Parts iterates through all protocol parts.
+func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 
-func (r *Reader) skipPaddingLastPart(numReadByte int64) {
-	// last part:
-	// skip difference between real read bytes and message header var part length
-	padBytes := int64(r.mh.varPartLength) - numReadByte
-	switch {
-	case padBytes < 0:
-		panic(fmt.Sprintf("protocol error: bytes read %d > variable part length %d", numReadByte, r.mh.varPartLength))
-	case padBytes > 0:
-		r.dec.Skip(int(padBytes))
-	}
-}
+	readHeader := func(ctx context.Context) error {
 
-// ReadPart reads a one protocol part.
-func (r *Reader) ReadPart(ctx context.Context, part Part, lobReader LobReader) (err error) {
-	cntBefore := r.dec.Cnt()
-
-	switch part := part.(type) {
-	// do not return here in case of error -> read stream would be broken
-	case partDecoder:
-		err = part.decode(r.dec)
-	case bufLenPartDecoder:
-		err = part.decodeBufLen(r.dec, r.ph.bufLen())
-	case numArgPartDecoder:
-		err = part.decodeNumArg(r.dec, r.ph.numArg())
-	case resultPartDecoder:
-		if lobReader == nil {
-			panic("missing lob reader") // should never happen
+		dec := encoding.Decoder(r.scratch[:messageHeaderSize])
+		if _, err := io.ReadFull(r.rd, dec); err != nil {
+			return err
 		}
-		err = part.decodeResult(r.dec, r.tr, r.ph.numArg(), lobReader, r.lobChunkSize)
-	default:
-		panic("invalid part decoder") // should never happen
+		r.mh.decode(&dec)
+
+		if r.protTraceFn != nil {
+			r.protTraceFn(ctx, textMsgHdr, r.mh)
+		}
+
+		dec = encoding.Decoder(r.scratch[:segmentHeaderSize])
+		if _, err := io.ReadFull(r.rd, dec); err != nil {
+			return err
+		}
+		r.sh.decode(&dec)
+		return nil
 	}
-	// do not return here in case of error -> read stream would be broken
 
-	cnt := r.dec.Cnt() - cntBefore
+	fillBuffer := func() error {
+		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 
-	if r.protTrace {
-		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textPar, part.String()))
+		r.buf = slices.Grow(r.buf, numWireByte)
+		r.buf = r.buf[:numWireByte]
+		_, err := io.ReadFull(r.rd, r.buf)
+		return err
 	}
 
-	bufferLen := int(r.ph.bufferLength)
-	switch {
-	case cnt < bufferLen: // protocol buffer length > read bytes -> skip the unread bytes
-		r.dec.Skip(bufferLen - cnt)
-	case cnt > bufferLen: // read bytes > protocol buffer length -> should never happen
-		panic(fmt.Sprintf("protocol error: read bytes %d > buffer length %d", cnt, bufferLen))
+	fillBufferCompressed := func() error {
+		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
+		numDecompressByte := int(r.mh.compressionVarPartLength) - segmentHeaderSize
+
+		r.tmpBuf = slices.Grow(r.tmpBuf, numWireByte)
+		r.tmpBuf = r.tmpBuf[:numWireByte]
+
+		r.buf = slices.Grow(r.buf, numDecompressByte)
+		r.buf = r.buf[:numDecompressByte]
+
+		if _, err := io.ReadFull(r.rd, r.tmpBuf); err != nil {
+			return err
+		}
+
+		compressor := r.attrs.Compressor
+		if compressor == nil {
+			panic("compressor misssing") // should never happen
+		}
+
+		_, err := compressor.Decompress(r.tmpBuf, r.buf)
+		return err
+	}
+
+	return func(yield func(*PartInfo, error) bool) {
+		if err := readHeader(ctx); err != nil {
+			yield(nil, err)
+			return
+		}
+
+		var err error
+		if r.mh.packetOptions.isCompressed() {
+			err = fillBufferCompressed()
+		} else {
+			err = fillBuffer()
+		}
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+
+		for i := range int(r.mh.noOfSegm) {
+			if i != 0 {
+				dec := encoding.Decoder(r.buf[:segmentHeaderSize])
+				r.buf = r.buf[segmentHeaderSize:]
+				r.sh.decode(&dec)
+			}
+
+			if r.protTraceFn != nil {
+				r.protTraceFn(ctx, textSegHdr, r.sh)
+			}
+
+			numPart := int(r.sh.noOfParts)
+			lastPart := numPart - 1
+
+			for j := range numPart {
+				ph := r.partInfo.Header
+
+				dec := encoding.Decoder(r.buf[:partHeaderSize])
+				r.buf = r.buf[partHeaderSize:]
+				ph.decode(&dec)
+
+				if r.protTraceFn != nil {
+					r.protTraceFn(ctx, textParHdr, ph)
+				}
+
+				dec = encoding.Decoder(r.buf[:ph.bufferLength])
+				bufAdvance := int(ph.bufferLength)
+				if j != lastPart {
+					bufAdvance += padBytes(int(ph.bufferLength))
+				}
+				r.buf = r.buf[bufAdvance:]
+
+				r.partInfo.Dec = &dec
+
+				if !yield(r.partInfo, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (r *Reader) readPrologDB(ctx context.Context) error {
+	rep := &initReply{}
+	dec := encoding.Decoder(r.scratch[:initReplySize])
+	if _, err := io.ReadFull(r.rd, dec); err != nil {
+		return err
+	}
+	if err := rep.decode(&dec); err != nil {
+		return err
+	}
+	if r.protTraceFn != nil {
+		r.protTraceFn(ctx, textIni, rep)
+	}
+	return nil
+}
+
+func (r *Reader) readPrologClient(ctx context.Context) error {
+	req := &initRequest{}
+	dec := encoding.Decoder(r.scratch[:initRequestSize])
+	if _, err := io.ReadFull(r.rd, dec); err != nil {
+		return err
+	}
+	if err := req.decode(&dec); err != nil {
+		return err
+	}
+	if r.protTraceFn != nil {
+		r.protTraceFn(ctx, textIni, req)
+	}
+	return nil
+}
+
+func (r *Reader) protTraceDB(ctx context.Context, text string, p fmt.Stringer) {
+	r.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixDB+text, p.String()))
+}
+
+func (r *Reader) protTraceClient(ctx context.Context, text string, p fmt.Stringer) {
+	r.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
+}
+
+func (r *Reader) readHDBErrors(ctx context.Context) error {
+	hdbErrors := new(HdbErrors)
+
+	if err := r.readPart(ctx, hdbErrors); err != nil {
+		return err
+	}
+	if hdbErrors.onlyWarnings {
+		for _, err := range hdbErrors.errs {
+			r.attrs.Logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
+		}
+		return nil
+	}
+	return hdbErrors
+}
+
+func (r *Reader) readPart(ctx context.Context, part PartDecoder) error {
+	err := part.decode(r.partInfo.Dec, r.partInfo.Header, r.attrs)
+	if r.protTraceFn != nil {
+		r.protTraceFn(ctx, textPar, part)
 	}
 	return err
 }
 
-// ErrSkipped is used by the caller of the iterator to indicate that no read was executed.
-var ErrSkipped = errors.New("parts iterator: skipped read")
+func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder, lobReader LobReader) error {
+	if lobReader == nil {
+		panic("missing lob reader") // should never happen
+	}
+	err := part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs, lobReader)
+	if r.protTraceFn != nil {
+		r.protTraceFn(ctx, textPar, part)
+	}
+	return err
+}
 
-// IterateParts iterates through all protocol parts.
-func (r *Reader) IterateParts(ctx context.Context, offset int, fn func(kind PartKind, attrs PartAttributes) error) (int64, error) {
-	var hdbErrors *HdbErrors
-	var rowsAffected *rowsAffected
-
-	if err := r.mh.decode(r.dec); err != nil {
-		return 0, err
+func (r *Reader) skipPart(ctx context.Context) error {
+	// if trace is on or mandatory parts need to be read we cannot skip
+	if r.protTraceFn == nil {
+		return nil
 	}
 
-	var numReadByte int64 = 0 // header bytes are not calculated in header varPartBytes: start with zero
-	if r.protTrace {
-		r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textMsgHdr, r.mh.String()))
-	}
-
-	for range int(r.mh.noOfSegm) {
-		if err := r.sh.decode(r.dec); err != nil {
-			return 0, err
-		}
-
-		numReadByte += segmentHeaderSize
-
-		if r.protTrace {
-			r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textSegHdr, r.sh.String()))
-		}
-
-		lastPart := int(r.sh.noOfParts) - 1
-		for j := range lastPart + 1 { // <=
-			if err := r.ph.decode(r.dec); err != nil {
-				return 0, err
-			}
-			kind := r.ph.partKind
-
-			numReadByte += partHeaderSize
-
-			if r.protTrace {
-				r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textParHdr, r.ph.String()))
-			}
-
-			cntBefore := r.dec.Cnt()
-
-			switch kind {
-			case pkRowsAffected:
-				if err := r.ReadPart(ctx, r.rowsAffected, nil); err != nil {
-					return 0, err
-				}
-				rowsAffected = r.rowsAffected
-			case pkError:
-				if err := r.ReadPart(ctx, r.hdbErrors, nil); err != nil {
-					return 0, err
-				}
-				hdbErrors = r.hdbErrors
-			default:
-				err := ErrSkipped
-				// caller must not handle hdb errors and rows affected.
-				if fn != nil {
-					if err = fn(kind, r.ph.partAttributes); err != nil && err != ErrSkipped { //nolint:errorlint
-						return 0, err
-					}
-				}
-				if err == ErrSkipped { //nolint:errorlint
-					// if trace is on or mandatory parts need to be read we cannot skip
-					if r.protTrace {
-						if part, ok := r.partCache.get(kind); ok {
-							if err := r.ReadPart(ctx, part, nil); err != nil {
-								return 0, err
-							}
-						} else {
-							r.dec.Skip(int(r.ph.bufferLength))
-							r.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(r.prefix+textSkip, kind.String()))
-						}
-					} else {
-						r.dec.Skip(int(r.ph.bufferLength))
-					}
-				}
-			}
-
-			numReadByte += int64(r.dec.Cnt()) - int64(cntBefore)
-
-			if j != lastPart { // not last part
-				numReadByte += int64(r.skipPadding())
-			}
-
+	kind := r.partInfo.Header.Kind()
+	if part, ok := r.partCache.get(kind); ok {
+		if part, ok := part.(PartDecoder); ok {
+			return r.readPart(ctx, part)
 		}
 	}
-
-	r.skipPaddingLastPart(numReadByte)
-
-	if err := r.dec.Error(); err != nil {
-		r.dec.ResetError()
-		return 0, err
-	}
-
-	var numRow int64
-	if rowsAffected != nil {
-		numRow = rowsAffected.Total()
-	}
-
-	if hdbErrors == nil {
-		return numRow, nil
-	}
-
-	if rowsAffected != nil { // link statement to error
-		j := 0
-		for i, rows := range rowsAffected.rows {
-			if rows == raExecutionFailed {
-				hdbErrors.setStmtNo(j, offset+i)
-				j++
-			}
-		}
-	}
-	if hdbErrors.onlyWarnings {
-		for _, err := range hdbErrors.errs {
-			r.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
-		}
-		return numRow, nil
-	}
-	return numRow, hdbErrors
+	// generic trace.
+	r.protTraceFn(ctx, textSkip, kind)
+	return nil
 }
 
 const defaultSessionID = -1
 
+// WriterAttrs holds writer attributes.
+type WriterAttrs struct {
+	ProtTrace           bool
+	Logger              *slog.Logger
+	Tr                  transform.Transformer
+	SV                  map[string]string
+	CompressEnableWrite bool
+	Compressor          compress.Compressor
+}
+
 // Writer represents a protocol writer.
 type Writer struct {
-	wr  *bufio.Writer
-	enc *encoding.Encoder
+	wr *bufio.Writer
 
-	protTrace bool
-	logger    *slog.Logger
+	attrs *WriterAttrs
 
-	sv     map[string]string
 	svSent bool
 
 	sessionID int64
@@ -345,23 +424,26 @@ type Writer struct {
 	// reuse header
 	mh *messageHeader
 	sh *segmentHeader
-	ph *partHeader
+	ph *PartHeader
+
+	buf     []byte
+	tmpBuf  []byte
+	scratch []byte
 
 	hasError bool
 }
 
 // NewWriter returns an instance of a protocol writer.
-func NewWriter(wr *bufio.Writer, enc *encoding.Encoder, protTrace bool, logger *slog.Logger, sv map[string]string) *Writer {
+func NewWriter(wr *bufio.Writer, attrs *WriterAttrs) *Writer {
 	return &Writer{
 		wr:        wr,
-		enc:       enc,
-		protTrace: protTrace,
-		logger:    logger,
-		sv:        sv,
+		attrs:     attrs,
 		sessionID: defaultSessionID,
 		mh:        new(messageHeader),
 		sh:        new(segmentHeader),
-		ph:        new(partHeader),
+		ph:        new(PartHeader),
+		buf:       make([]byte, 0, 1024),
+		scratch:   make([]byte, 0, 32),
 	}
 }
 
@@ -377,6 +459,8 @@ func (w *Writer) HasError() bool { return w.hasError }
 
 // WriteProlog writes the protocol prolog.
 func (w *Writer) WriteProlog(ctx context.Context) error {
+	enc := encoding.Encoder(w.scratch[:0])
+
 	req := &initRequest{}
 	req.product.major = productVersionMajor
 	req.product.minor = productVersionMinor
@@ -384,11 +468,14 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	req.protocol.minor = protocolVersionMinor
 	req.numOptions = 1
 	req.endianness = littleEndian
-	if err := req.encode(w.enc); err != nil {
+	if err := req.encode(&enc); err != nil {
 		return err
 	}
-	if w.protTrace {
-		w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+textIni, req.String()))
+	if w.attrs.ProtTrace {
+		w.protTrace(ctx, textIni, req)
+	}
+	if _, err := w.wr.Write(enc); err != nil {
+		return err
 	}
 	return w.wr.Flush()
 }
@@ -404,63 +491,77 @@ func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool
 	return err
 }
 
+func compressBuffer(compressor compress.Compressor, buf, tmpBuf []byte) (bool, []byte, error) {
+	uncompressedSize := len(buf)
+	if uncompressedSize < minCompressBlockSize {
+		return false, buf, nil
+	}
+
+	compressBound := compressor.CompressBound(uncompressedSize)
+	// A valid LZ4 bound is always >= the input (incompressible data expands).
+	// A smaller value means the compressor is misbehaving: either a custom
+	// implementation computing the bound wrong, or the reference C
+	// LZ4_compressBound returning 0 for input above LZ4_MAX_INPUT_SIZE
+	// (0x7E000000, ~2.11 GB). A packet varpart is a uint32 (max ~4 GiB) so it
+	// could in theory exceed that, but real HANA packets are orders of
+	// magnitude smaller, so this is unreachable in practice. Either way, treat
+	// the bound as invalid and send the packet uncompressed.
+	if compressBound < uncompressedSize {
+		return false, buf, nil
+	}
+	tmpBuf = slices.Grow(tmpBuf, compressBound)
+	tmpBuf = tmpBuf[:compressBound]
+	compressedSize, err := compressor.Compress(buf, tmpBuf)
+	if err != nil {
+		return false, buf, err
+	}
+	// uncompressedSize always > 0
+	if (100 - float64(compressedSize)*100/float64(uncompressedSize)) < minCompressionSizePercent {
+		return false, buf, nil
+	}
+	return true, tmpBuf[:compressedSize], nil
+}
+
 func (w *Writer) _write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
 	// check on session variables to be sent as ClientInfo
-	if w.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
-		parts = append([]PartEncoder{(*clientInfo)(&w.sv)}, parts...)
+	if w.attrs.SV != nil && !w.svSent && messageType.ClientInfoSupported() {
+		parts = append([]PartEncoder{(*clientInfo)(&w.attrs.SV)}, parts...)
 		w.svSent = true
 	}
 
 	numPart := len(parts)
 	partSize := make([]int, numPart)
-	size := int64(segmentHeaderSize + numPart*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
+	totalSize := int64(segmentHeaderSize + numPart*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
 
+	partEnc := encoding.Encoder(w.buf[:0])
+
+	// encode parts and calculate total size
 	for i, part := range parts {
-		s := part.size()
-		size += int64(s + padBytes(s))
-		partSize[i] = s // buffer size (expensive calculation)
+
+		partEnc.Zeroes(partHeaderSize)
+
+		pos := len(partEnc)
+		if err := part.encode(&partEnc, w.attrs.Tr); err != nil {
+			return err
+		}
+		size := len(partEnc) - pos
+		pad := padBytes(size)
+		partEnc.Zeroes(pad)
+
+		totalSize += int64(size + pad)
+		partSize[i] = size
 	}
 
-	if size > math.MaxUint32 {
-		return fmt.Errorf("message size %d exceeds maximum message header value %d", size, int64(math.MaxUint32)) // int64: without cast overflow error in 32bit OS
+	if totalSize > math.MaxUint32 {
+		return fmt.Errorf("message size %d exceeds maximum message header value %d", totalSize, int64(math.MaxUint32)) // int64: without cast overflow error in 32bit OS
 	}
 
-	bufferSize := size
+	// patch part headers
+	bufferSize := totalSize - segmentHeaderSize
 
-	w.mh.sessionID = w.sessionID
-	w.mh.varPartLength = uint32(size)     //nolint: gosec
-	w.mh.varPartSize = uint32(bufferSize) //nolint: gosec
-	w.mh.noOfSegm = 1
-
-	if err := w.mh.encode(w.enc); err != nil {
-		return err
-	}
-	if w.protTrace {
-		w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+textMsgHdr, w.mh.String()))
-	}
-
-	if size > math.MaxInt32 {
-		return fmt.Errorf("message size %d exceeds maximum part header value %d", size, math.MaxInt32)
-	}
-
-	w.sh.messageType = messageType
-	w.sh.commit = commit
-	w.sh.segmentKind = skRequest
-	w.sh.segmentLength = int32(size) //nolint: gosec
-	w.sh.segmentOfs = 0
-	w.sh.noOfParts = int16(numPart) //nolint: gosec
-	w.sh.segmentNo = 1
-
-	if err := w.sh.encode(w.enc); err != nil {
-		return err
-	}
-	if w.protTrace {
-		w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+textSegHdr, w.sh.String()))
-	}
-
-	bufferSize -= segmentHeaderSize
-
+	pos := 0
 	for i, part := range parts {
+
 		size := partSize[i]
 		pad := padBytes(size)
 
@@ -471,23 +572,86 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		w.ph.bufferLength = int32(size)     //nolint: gosec
 		w.ph.bufferSize = int32(bufferSize) //nolint: gosec
 
-		if err := w.ph.encode(w.enc); err != nil {
+		enc := encoding.Encoder(w.scratch[:0])
+		if err := w.ph.encode(&enc); err != nil {
 			return err
 		}
-		if w.protTrace {
-			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+textParHdr, w.ph.String()))
+		if w.attrs.ProtTrace {
+			w.protTrace(ctx, textParHdr, w.ph)
 		}
 
-		if err := part.encode(w.enc); err != nil {
-			return err
-		}
-		if w.protTrace {
-			w.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+textPar, part.String()))
-		}
+		// patch
+		copy(partEnc[pos:], enc[:partHeaderSize])
+		pos += partHeaderSize + size + pad
 
-		w.enc.Zeroes(pad)
+		// part prot trace
+		if w.attrs.ProtTrace {
+			w.protTrace(ctx, textPar, part)
+		}
 
 		bufferSize -= int64(partHeaderSize + size + pad)
 	}
+
+	compress, partBuf := false, partEnc
+	if w.attrs.CompressEnableWrite {
+		var err error
+		if compress, partBuf, err = compressBuffer(w.attrs.Compressor, partEnc, w.tmpBuf); err != nil {
+			return err
+		}
+	}
+
+	// start writing
+	if compress {
+		w.mh.packetOptions = poIsCompressed
+		w.mh.compressionVarPartLength = uint32(totalSize)             //nolint: gosec
+		w.mh.varPartLength = uint32(segmentHeaderSize + len(partBuf)) //nolint: gosec
+	} else {
+		w.mh.packetOptions = 0
+		w.mh.compressionVarPartLength = 0
+		w.mh.varPartLength = uint32(totalSize) //nolint: gosec
+	}
+
+	w.mh.sessionID = w.sessionID
+	w.mh.varPartSize = uint32(totalSize) //nolint: gosec
+	w.mh.noOfSegm = 1
+
+	enc := encoding.Encoder(w.scratch[:0])
+	if err := w.mh.encode(&enc); err != nil {
+		return err
+	}
+	if _, err := w.wr.Write(enc); err != nil {
+		return err
+	}
+
+	if w.attrs.ProtTrace {
+		w.protTrace(ctx, textMsgHdr, w.mh)
+	}
+
+	w.sh.messageType = messageType
+	w.sh.commit = commit
+	w.sh.segmentKind = skRequest
+	w.sh.segmentLength = int32(totalSize) //nolint: gosec
+	w.sh.segmentOfs = 0
+	w.sh.noOfParts = int16(numPart) //nolint: gosec
+	w.sh.segmentNo = 1
+
+	enc = encoding.Encoder(w.scratch[:0])
+	if err := w.sh.encode(&enc); err != nil {
+		return err
+	}
+	if _, err := w.wr.Write(enc); err != nil {
+		return err
+	}
+	if w.attrs.ProtTrace {
+		w.protTrace(ctx, textSegHdr, w.sh)
+	}
+
+	if _, err := w.wr.Write(partBuf); err != nil {
+		return err
+	}
 	return w.wr.Flush()
+}
+
+func (w *Writer) protTrace(ctx context.Context, text string, p fmt.Stringer) {
+	w.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
 }

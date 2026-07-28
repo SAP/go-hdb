@@ -9,95 +9,83 @@ import (
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 )
 
-func authEncodeStep(t *testing.T, part PartEncoder) []byte {
-	buf := bytes.Buffer{}
-	enc := encoding.NewEncoder(&buf, cesu8.DefaultEncoder())
-
-	if err := part.encode(enc); err != nil {
-		t.Fatal(err)
-	}
-
-	return buf.Bytes()
-}
-
-func authDecodeStep(t *testing.T, part partDecoder, data []byte) {
-	dec := encoding.NewDecoder(bytes.NewBuffer(data), cesu8.DefaultDecoder(), false)
-
-	if err := part.decode(dec); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func testJWTAuth(t *testing.T) {
-	a := NewAuthHnd("")
-	a.AddJWT("dummy token")
 
-	successful := t.Run("init request", func(t *testing.T) {
-		initRequest, err := a.InitRequest()
-		if err != nil {
+	authEncodeStep := func(part PartEncoder) []byte {
+		enc := encoding.Encoder(make([]byte, 0))
+
+		if err := part.encode(&enc, cesu8.DefaultEncoder()); err != nil {
 			t.Fatal(err)
 		}
 
-		actual := authEncodeStep(t, initRequest)
-		expected := []byte("\x03\x00\x00\x03JWT\x0Bdummy token")
+		return enc
+	}
 
-		if !bytes.Equal(expected, actual) {
-			t.Fatalf("expected %q, got %q", string(expected), string(actual))
+	authDecodeStep := func(part PartDecoder, data []byte) {
+		dec := encoding.Decoder(data)
+		attrs := &ReaderAttrs{Tr: cesu8.DefaultDecoder()}
+
+		if err := part.decode(&dec, nil, attrs); err != nil {
+			t.Fatal(err)
 		}
-	})
-
-	if successful {
-		successful = t.Run("init reply", func(t *testing.T) {
-			initReply, err := a.InitReply()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			authDecodeStep(t, initReply, []byte("\x02\x00\x03JWT\x07USER123"))
-
-			authJWT := a.Selected().(*auth.JWT)
-
-			logonname, _ := authJWT.Cookie()
-			if logonname != "USER123" {
-				t.Fatalf("expected USER123, got %s", logonname)
-			}
-		})
 	}
 
-	if successful {
-		successful = t.Run("final request", func(t *testing.T) {
-			finalRequest, err := a.FinalRequest()
-			if err != nil {
-				t.Fatal(err)
-			}
+	a := NewAuthHnd("")
+	a.AddJWT("dummy token")
 
-			actual := authEncodeStep(t, finalRequest)
-			expected := []byte("\x03\x00\x07USER123\x03JWT\x00")
-
-			if !bytes.Equal(expected, actual) {
-				t.Fatalf("expected %q, got %q", string(expected), string(actual))
-			}
-		})
+	initRequest, err := a.InitRequest()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	if successful {
-		t.Run("final reply", func(t *testing.T) {
-			finalReply, err := a.FinalReply()
-			if err != nil {
-				t.Fatal(err)
-			}
+	actual := authEncodeStep(initRequest)
+	expected := []byte("\x03\x00\x00\x03JWT\x0Bdummy token")
 
-			authDecodeStep(t, finalReply, []byte("\x02\x00\x03JWT\x205be8f43e064e0589ce07ba9de6fce107"))
-
-			const expectedCookie = "5be8f43e064e0589ce07ba9de6fce107"
-
-			authJWT := a.Selected().(*auth.JWT)
-			_, cookie := authJWT.Cookie()
-			if string(cookie) != expectedCookie {
-				t.Fatalf("expected %q, got %q", expectedCookie, string(cookie))
-			}
-		})
+	if !bytes.Equal(expected, actual) {
+		t.Fatalf("expected %q, got %q", string(expected), string(actual))
 	}
+
+	initReply, err := a.InitReply()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authDecodeStep(initReply, []byte("\x02\x00\x03JWT\x07USER123"))
+
+	authJWT := a.Selected().(*auth.JWT)
+
+	logonname, _ := authJWT.Cookie()
+	if logonname != "USER123" {
+		t.Fatalf("expected USER123, got %s", logonname)
+	}
+
+	finalRequest, err := a.FinalRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	actual = authEncodeStep(finalRequest)
+	expected = []byte("\x03\x00\x07USER123\x03JWT\x00")
+
+	if !bytes.Equal(expected, actual) {
+		t.Fatalf("expected %q, got %q", string(expected), string(actual))
+	}
+
+	finalReply, err := a.FinalReply()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authDecodeStep(finalReply, []byte("\x02\x00\x03JWT\x205be8f43e064e0589ce07ba9de6fce107"))
+
+	const expectedCookie = "5be8f43e064e0589ce07ba9de6fce107"
+
+	authJWT = a.Selected().(*auth.JWT)
+	_, cookie := authJWT.Cookie()
+	if string(cookie) != expectedCookie {
+		t.Fatalf("expected %q, got %q", expectedCookie, string(cookie))
+	}
+
 }
 
 func TestAuth(t *testing.T) {

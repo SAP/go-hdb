@@ -5,6 +5,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 // AuthHnd holds the client authentication methods dependent on the driver.Connector attributes and handles the authentication hdb protocol.
@@ -88,10 +89,13 @@ type AuthInitRequest struct {
 	prms *auth.Prms
 }
 
-func (r *AuthInitRequest) String() string                     { return r.prms.String() }
-func (r *AuthInitRequest) size() int                          { return r.prms.Size() }
-func (r *AuthInitRequest) decode(dec *encoding.Decoder) error { return r.prms.Decode(dec) }
-func (r *AuthInitRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
+func (r *AuthInitRequest) String() string { return r.prms.String() }
+func (r *AuthInitRequest) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
+	return r.prms.Decode(dec)
+}
+func (r *AuthInitRequest) encode(enc *encoding.Encoder, tr transform.Transformer) error {
+	return r.prms.Encode(enc, tr)
+}
 
 // AuthInitReply represents an authentication initial reply.
 type AuthInitReply struct {
@@ -99,7 +103,7 @@ type AuthInitReply struct {
 }
 
 func (r *AuthInitReply) String() string { return r.authHnd.String() }
-func (r *AuthInitReply) decode(dec *encoding.Decoder) error {
+func (r *AuthInitReply) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
 	if r.authHnd == nil {
 		return nil
 	}
@@ -115,7 +119,7 @@ func (r *AuthInitReply) decode(dec *encoding.Decoder) error {
 	if err := r.authHnd.selected.InitRepDecode(dec); err != nil {
 		return err
 	}
-	return dec.Error()
+	return nil
 }
 
 // AuthFinalRequest represents an authentication final request.
@@ -124,12 +128,13 @@ type AuthFinalRequest struct {
 }
 
 func (r *AuthFinalRequest) String() string { return r.prms.String() }
-func (r *AuthFinalRequest) size() int      { return r.prms.Size() }
-func (r *AuthFinalRequest) decode(dec *encoding.Decoder) error {
+func (r *AuthFinalRequest) decode(_ *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
 	return nil
 	// panic("not implemented yet")
 }
-func (r *AuthFinalRequest) encode(enc *encoding.Encoder) error { return r.prms.Encode(enc) }
+func (r *AuthFinalRequest) encode(enc *encoding.Encoder, tr transform.Transformer) error {
+	return r.prms.Encode(enc, tr)
+}
 
 // AuthFinalReply represents an authentication final reply.
 type AuthFinalReply struct {
@@ -137,13 +142,10 @@ type AuthFinalReply struct {
 }
 
 func (r *AuthFinalReply) String() string { return r.method.String() }
-func (r *AuthFinalReply) decode(dec *encoding.Decoder) error {
+func (r *AuthFinalReply) decode(dec *encoding.Decoder, _ *PartHeader, attrs *ReaderAttrs) error {
 	if r.method == nil {
 		return nil
 	}
 
-	if err := r.method.FinalRepDecode(dec); err != nil {
-		return err
-	}
-	return dec.Error()
+	return r.method.FinalRepDecode(dec, attrs.Tr)
 }

@@ -41,15 +41,13 @@ const (
 	HdbErrWhileParsingProtocol = 1033
 )
 
-type sqlState [sqlStateSize]byte
-
 // HdbError represents a single error returned by the server.
 type HdbError struct {
 	errorCode       int32
 	errorPosition   int32
 	errorTextLength int32
 	errorLevel      errorLevel
-	sqlState        sqlState
+	sqlState        []byte
 	stmtNo          int
 	errorText       []byte
 }
@@ -152,7 +150,9 @@ func (e *HdbErrors) setStmtNo(idx, no int) {
 	}
 }
 
-func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
+func (e *HdbErrors) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	numArg := header.numArg()
+
 	e.onlyWarnings = true
 	e.errs = nil
 
@@ -173,15 +173,14 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 		err.errorPosition = dec.Int32()
 		err.errorTextLength = dec.Int32()
 		err.errorLevel = errorLevel(dec.Int8())
-		dec.Bytes(err.sqlState[:])
+		err.sqlState = dec.Bytes(sqlStateSize)
 
 		// read error text as ASCII data as some errors return invalid CESU-8 characters
 		// e.g: SQL HdbError 7 - feature not supported: invalid character encoding: <invalid CESU-8 characters>
 		//	if e.errorText, err = rd.ReadCesu8(int(e.errorTextLength)); err != nil {
 		//		return err
 		//	}
-		err.errorText = make([]byte, int(err.errorTextLength))
-		dec.Bytes(err.errorText)
+		err.errorText = dec.Bytes(int(err.errorTextLength))
 
 		if e.onlyWarnings && !err.IsWarning() {
 			e.onlyWarnings = false
@@ -210,6 +209,5 @@ func (e *HdbErrors) decodeNumArg(dec *encoding.Decoder, numArg int) error {
 	if len(e.errs) > 0 {
 		e.HdbError = e.errs[0] // set default to first error
 	}
-
-	return dec.Error()
+	return nil
 }

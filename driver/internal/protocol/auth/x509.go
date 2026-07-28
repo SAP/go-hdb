@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 const (
@@ -46,8 +47,8 @@ func (a *X509) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *X509) InitRepDecode(d *encoding.Decoder) error {
-	a.serverNonce = d.AuthBytes()
+func (a *X509) InitRepDecode(dec *encoding.Decoder) error {
+	a.serverNonce = dec.AuthBytes()
 	if len(a.serverNonce) != x509ServerNonceSize {
 		return fmt.Errorf("invalid server nonce size %d - expected %d", len(a.serverNonce), x509ServerNonceSize)
 	}
@@ -90,19 +91,19 @@ func (a *X509) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *X509) FinalRepDecode(d *encoding.Decoder) error {
-	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
+func (a *X509) FinalRepDecode(dec *encoding.Decoder, tr transform.Transformer) error {
+	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}
-	mt := d.AuthString()
+	mt := dec.AuthString()
 	if err := checkAuthMethodType(mt, a.Typ()); err != nil {
 		return err
 	}
-	d.AuthVarFieldInd()
-	if err := DecodeAndCheckNumPrm(d, 1); err != nil {
+	dec.AuthVarFieldInd()
+	if err := DecodeAndCheckNumPrm(dec, 1); err != nil {
 		return err
 	}
 	var err error
-	a.logonName, err = d.AuthCesu8String()
+	a.logonName, err = dec.AuthCesu8String(tr)
 	return err
 }

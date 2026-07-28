@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 func scramsha256Key(password, salt []byte) ([]byte, error) {
@@ -54,13 +55,13 @@ func (a *SCRAMSHA256) PrepareInitReq(prms *Prms) error {
 }
 
 // InitRepDecode implements the Method interface.
-func (a *SCRAMSHA256) InitRepDecode(d *encoding.Decoder) error {
-	d.AuthVarFieldInd() // sub parameters
-	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
+func (a *SCRAMSHA256) InitRepDecode(dec *encoding.Decoder) error {
+	dec.AuthVarFieldInd() // sub parameters
+	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}
-	a.salt = d.AuthBytes()
-	a.serverChallenge = d.AuthBytes()
+	a.salt = dec.AuthBytes()
+	a.serverChallenge = dec.AuthBytes()
 	if err := scramCheckSalt(a.salt); err != nil {
 		return err
 	}
@@ -90,20 +91,20 @@ func (a *SCRAMSHA256) PrepareFinalReq(prms *Prms) error {
 }
 
 // FinalRepDecode implements the Method interface.
-func (a *SCRAMSHA256) FinalRepDecode(d *encoding.Decoder) error {
-	if err := DecodeAndCheckNumPrm(d, 2); err != nil {
+func (a *SCRAMSHA256) FinalRepDecode(dec *encoding.Decoder, _ transform.Transformer) error {
+	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}
-	mt := d.AuthString()
+	mt := dec.AuthString()
 	if err := checkAuthMethodType(mt, a.Typ()); err != nil {
 		return err
 	}
-	if d.AuthVarFieldInd() == 0 { // mnSCRAMSHA256: server does not return server proof parameter
+	if dec.AuthVarFieldInd() == 0 { // mnSCRAMSHA256: server does not return server proof parameter
 		return nil
 	}
-	if err := DecodeAndCheckNumPrm(d, 1); err != nil {
+	if err := DecodeAndCheckNumPrm(dec, 1); err != nil {
 		return err
 	}
-	a.serverProof = d.AuthBytes()
+	a.serverProof = dec.AuthBytes()
 	return nil
 }

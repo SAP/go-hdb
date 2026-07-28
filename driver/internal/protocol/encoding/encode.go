@@ -3,11 +3,10 @@ package encoding
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"io"
 	"math"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
@@ -15,132 +14,114 @@ import (
 	"golang.org/x/text/transform"
 )
 
-const writeScratchSize = 4096
+// Fields.
+func asInt[E byte | int16 | int32 | int64](v any) E {
+	i64, ok := v.(int64)
+	if !ok {
+		panic("invalid integer") // should never happen
+	}
+	return E(i64)
+}
+
+func asTime(v any) time.Time {
+	t, ok := v.(time.Time)
+	if !ok {
+		panic("invalid time") // should never happen
+	}
+	// store in utc
+	return t.UTC()
+}
 
 // Encoder encodes hdb protocol datatypes on basis of an io.Writer.
-type Encoder struct {
-	wr io.Writer
-	b  []byte // scratch buffer (min 15 Bytes - Decimal)
-	tr transform.Transformer
-}
-
-// NewEncoder creates a new Encoder instance.
-func NewEncoder(wr io.Writer, tr transform.Transformer) *Encoder {
-	return &Encoder{
-		wr: wr,
-		b:  make([]byte, writeScratchSize),
-		tr: tr,
-	}
-}
+type Encoder []byte
 
 // Zeroes encodes cnt zero byte values.
-func (e *Encoder) Zeroes(cnt int) {
-	// zero out scratch area
-	l := cnt
-	if l > len(e.b) {
-		l = len(e.b)
-	}
-	for i := range l {
-		e.b[i] = 0
-	}
-
-	for i := 0; i < cnt; {
-		j := cnt - i
-		if j > len(e.b) {
-			j = len(e.b)
-		}
-		n, _ := e.wr.Write(e.b[:j])
-		if n != j {
-			return
-		}
-		i += n
+func (e *Encoder) Zeroes(n int) {
+	l := len(*e)
+	*e = slices.Grow(*e, n)
+	*e = (*e)[:l+n]
+	for i := l; i < l+n; i++ {
+		(*e)[i] = 0
 	}
 }
 
 // Bytes encodes bytes.
 func (e *Encoder) Bytes(p []byte) {
-	e.wr.Write(p) //nolint:errcheck
+	*e = append(*e, p...)
 }
 
 // Byte encodes a byte.
-func (e *Encoder) Byte(b byte) { // WriteB as sig differs from WriteByte (vet issues)
-	e.b[0] = b
-	e.Bytes(e.b[:1])
+func (e *Encoder) Byte(b byte) {
+	*e = append(*e, b)
 }
 
 // Bool encodes a boolean.
 func (e *Encoder) Bool(v bool) {
 	if v {
-		e.Byte(1)
+		*e = append(*e, 1)
 	} else {
-		e.Byte(0)
+		*e = append(*e, 0)
 	}
 }
 
 // Int8 encodes an int8.
-func (e *Encoder) Int8(i int8) {
-	e.Byte(byte(i))
+func (e *Encoder) Int8(i8 int8) {
+	*e = append(*e, byte(i8))
 }
 
 // Int16 encodes an int16.
-func (e *Encoder) Int16(i int16) {
-	binary.LittleEndian.PutUint16(e.b[:2], uint16(i)) //nolint: gosec
-	e.wr.Write(e.b[:2])                               //nolint:errcheck
+func (e *Encoder) Int16(i16 int16) {
+	*e = binary.LittleEndian.AppendUint16(*e, uint16(i16)) //nolint: gosec
 }
 
 // Uint16 encodes an uint16.
-func (e *Encoder) Uint16(i uint16) {
-	binary.LittleEndian.PutUint16(e.b[:2], i)
-	e.wr.Write(e.b[:2]) //nolint:errcheck
+func (e *Encoder) Uint16(u16 uint16) {
+	*e = binary.LittleEndian.AppendUint16(*e, u16)
 }
 
 // Uint16ByteOrder encodes an uint16 in given byte order.
-func (e *Encoder) Uint16ByteOrder(i uint16, byteOrder binary.ByteOrder) {
-	byteOrder.PutUint16(e.b[:2], i)
-	e.wr.Write(e.b[:2]) //nolint:errcheck
+func (e *Encoder) Uint16ByteOrder(u16 uint16, byteOrder binary.ByteOrder) {
+	*e = byteOrder.(binary.AppendByteOrder).AppendUint16(*e, u16)
 }
 
 // Int32 encodes an int32.
-func (e *Encoder) Int32(i int32) {
-	binary.LittleEndian.PutUint32(e.b[:4], uint32(i)) //nolint:gosec
-	e.wr.Write(e.b[:4])                               //nolint:errcheck
+func (e *Encoder) Int32(i32 int32) {
+	*e = binary.LittleEndian.AppendUint32(*e, uint32(i32)) //nolint:gosec
 }
 
 // Uint32 encodes an uint32.
-func (e *Encoder) Uint32(i uint32) {
-	binary.LittleEndian.PutUint32(e.b[:4], i)
-	e.wr.Write(e.b[:4]) //nolint:errcheck
+func (e *Encoder) Uint32(u32 uint32) {
+	*e = binary.LittleEndian.AppendUint32(*e, u32)
 }
 
 // Int64 encodes an int64.
-func (e *Encoder) Int64(i int64) {
-	binary.LittleEndian.PutUint64(e.b[:8], uint64(i)) //nolint:gosec
-	e.wr.Write(e.b[:8])                               //nolint:errcheck
+func (e *Encoder) Int64(i64 int64) {
+	*e = binary.LittleEndian.AppendUint64(*e, uint64(i64)) //nolint:gosec
 }
 
 // Uint64 encodes an uint64.
-func (e *Encoder) Uint64(i uint64) {
-	binary.LittleEndian.PutUint64(e.b[:8], i)
-	e.wr.Write(e.b[:8]) //nolint:errcheck
+func (e *Encoder) Uint64(u64 uint64) {
+	*e = binary.LittleEndian.AppendUint64(*e, u64)
 }
 
 // Float32 encodes a float32.
 func (e *Encoder) Float32(f float32) {
 	bits := math.Float32bits(f)
-	binary.LittleEndian.PutUint32(e.b[:4], bits)
-	e.wr.Write(e.b[:4]) //nolint:errcheck
+	*e = binary.LittleEndian.AppendUint32(*e, bits)
 }
 
 // Float64 encodes a float64.
 func (e *Encoder) Float64(f float64) {
 	bits := math.Float64bits(f)
-	binary.LittleEndian.PutUint64(e.b[:8], bits)
-	e.wr.Write(e.b[:8]) //nolint:errcheck
+	*e = binary.LittleEndian.AppendUint64(*e, bits)
 }
 
 // Decimal encodes a decimal value.
 func (e *Encoder) Decimal(m *big.Int, exp int) {
-	b := e.b[:decSize]
+	l := len(*e)
+	*e = slices.Grow(*e, decSize)
+	*e = (*e)[:l+decSize]
+	b := (*e)[l:]
 
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
@@ -164,13 +145,14 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 	if m.Sign() == -1 {
 		b[15] |= 0x80
 	}
-
-	e.wr.Write(b) //nolint:errcheck
 }
 
 // Fixed encodes a fixed decimal value.
 func (e *Encoder) Fixed(m *big.Int, size int) {
-	b := e.b[:size]
+	l := len(*e)
+	*e = slices.Grow(*e, size)
+	*e = (*e)[:l+size]
+	b := (*e)[l:]
 
 	neg := m.Sign() == -1
 	fill := byte(0)
@@ -192,12 +174,10 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
 	for _, d := range m.Bits() {
-		/*
-			check j < size as number of bytes in m.Bits words can exceed number of fixed size bytes
-			e.g. 64 bit architecture:
-			- two words equals 16 bytes but fixed size might be 12 bytes
-			- invariant: all 'skipped' bytes in most significant word are zero
-		*/
+		//	check j < size as number of bytes in m.Bits words can exceed number of fixed size bytes
+		//	e.g. 64 bit architecture:
+		//	- two words equals 16 bytes but fixed size might be 12 bytes
+		//	- invariant: all 'skipped' bytes in most significant word are zero
 		for i := 0; i < _S && j < size; i++ {
 			b[j] = byte(d)
 			d >>= 8
@@ -209,33 +189,24 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 	for i := j; i < size; i++ {
 		b[i] = fill
 	}
-
-	e.wr.Write(b) //nolint:errcheck
 }
 
 // String encodes a string.
 func (e *Encoder) String(s string) { e.Bytes(unsafe.String2ByteSlice(s)) }
 
 // CESU8Bytes encodes UTF-8 bytes into CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
-	e.tr.Reset()
-	cnt := 0
-	for i := 0; i < len(p); {
-		nDst, nSrc, err := e.tr.Transform(e.b, p[i:], true)
-		if nDst != 0 {
-			n, _ := e.wr.Write(e.b[:nDst])
-			cnt += n
-		}
-		if err != nil && !errors.Is(err, transform.ErrShortDst) {
-			return cnt, err
-		}
-		i += nSrc
-	}
-	return cnt, nil
+func (e *Encoder) CESU8Bytes(tr transform.Transformer, p []byte) (int, error) {
+	var err error
+	var n int
+
+	*e, n, err = transform.Append(tr, *e, p)
+	return n, err
 }
 
 // CESU8String encodes an UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8String(s string) (int, error) { return e.CESU8Bytes(unsafe.String2ByteSlice(s)) }
+func (e *Encoder) CESU8String(tr transform.Transformer, s string) (int, error) {
+	return e.CESU8Bytes(tr, unsafe.String2ByteSlice(s))
+}
 
 // varFieldInd encodes a variable field indicator.
 func (e *Encoder) varFieldInd(size int) error {
@@ -259,7 +230,7 @@ func (e *Encoder) LIBytes(p []byte) error {
 	if err := e.varFieldInd(len(p)); err != nil {
 		return err
 	}
-	e.Bytes(p)
+	*e = append(*e, p...)
 	return nil
 }
 
@@ -273,41 +244,23 @@ func (e *Encoder) LIString(s string) error {
 }
 
 // CESU8LIBytes encodes UTF-8 into CESU-8 bytes with length indicator.
-func (e *Encoder) CESU8LIBytes(p []byte) error {
+func (e *Encoder) CESU8LIBytes(tr transform.Transformer, p []byte) error {
 	size := cesu8.Size(p)
 	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
-	_, err := e.CESU8Bytes(p)
+	_, err := e.CESU8Bytes(tr, p)
 	return err
 }
 
 // CESU8LIString encodes an UTF-8 into a CESU-8 string with length indicator.
-func (e *Encoder) CESU8LIString(s string) error {
+func (e *Encoder) CESU8LIString(tr transform.Transformer, s string) error {
 	size := cesu8.StringSize(s)
 	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
-	_, err := e.CESU8String(s)
+	_, err := e.CESU8String(tr, s)
 	return err
-}
-
-// Fields.
-func asInt[E byte | int16 | int32 | int64](v any) E {
-	i64, ok := v.(int64)
-	if !ok {
-		panic("invalid integer") // should never happen
-	}
-	return E(i64)
-}
-
-func asTime(v any) time.Time {
-	t, ok := v.(time.Time)
-	if !ok {
-		panic("invalid time") // should never happen
-	}
-	// store in utc
-	return t.UTC()
 }
 
 // BooleanField encodes a boolean field.
@@ -436,58 +389,24 @@ func (e *Encoder) SecondtimeField(v any) error {
 	return nil
 }
 
-func (e *Encoder) encodeFixed(v any, size, prec, scale int) error {
-	r, ok := v.(*big.Rat)
-	if !ok {
-		panic("invalid fixed") // should never happen
-	}
-
-	var m big.Int
-	df := convertRatToFixed(r, &m, prec, scale)
-
-	if df&dfOverflow != 0 {
-		return ErrDecimalOutOfRange
-	}
-
-	e.Fixed(&m, size)
-	return nil
-}
-
 // DecimalField encodes a decimal field.
 func (e *Encoder) DecimalField(v any) error {
-	r, ok := v.(*big.Rat)
+	d, ok := v.(Decimal)
 	if !ok {
 		panic("invalid decimal") // should never happen
 	}
-
-	var m big.Int
-	exp, df := convertRatToDecimal(r, &m, dec128Digits, dec128MinExp, dec128MaxExp)
-
-	if df&dfOverflow != 0 {
-		return ErrDecimalOutOfRange
-	}
-
-	if df&dfUnderflow != 0 { // set to zero
-		e.Decimal(natZero, 0)
-	} else {
-		e.Decimal(&m, exp)
-	}
+	e.Decimal(d.m, d.exp)
 	return nil
 }
 
-// Fixed8Field encodes a fixed8 field.
-func (e *Encoder) Fixed8Field(v any, prec, scale int) error {
-	return e.encodeFixed(v, Fixed8FieldSize, prec, scale)
-}
-
-// Fixed12Field encodes a fixed12 field.
-func (e *Encoder) Fixed12Field(v any, prec, scale int) error {
-	return e.encodeFixed(v, Fixed12FieldSize, prec, scale)
-}
-
-// Fixed16Field encodes a fixed16 field.
-func (e *Encoder) Fixed16Field(v any, prec, scale int) error {
-	return e.encodeFixed(v, Fixed16FieldSize, prec, scale)
+// FixedField encodes a fixed field.
+func (e *Encoder) FixedField(v any, size int) error {
+	d, ok := v.(Decimal)
+	if !ok {
+		panic("invalid fixed") // should never happen
+	}
+	e.Fixed(d.m, size)
+	return nil
 }
 
 // VarField encodes a var field.
@@ -503,12 +422,12 @@ func (e *Encoder) VarField(v any) error {
 }
 
 // Cesu8Field encodes a cesu8 field.
-func (e *Encoder) Cesu8Field(v any) error {
+func (e *Encoder) Cesu8Field(tr transform.Transformer, v any) error {
 	switch v := v.(type) {
 	case []byte:
-		return e.CESU8LIBytes(v)
+		return e.CESU8LIBytes(tr, v)
 	case string:
-		return e.CESU8LIString(v)
+		return e.CESU8LIString(tr, v)
 	default:
 		panic("invalid cesu8 value") // should never happen
 	}

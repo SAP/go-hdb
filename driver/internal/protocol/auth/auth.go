@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"golang.org/x/text/transform"
 )
 
 /*
@@ -41,9 +42,9 @@ type Method interface {
 	Typ() string
 	Order() byte
 	PrepareInitReq(prms *Prms) error
-	InitRepDecode(d *encoding.Decoder) error
+	InitRepDecode(dec *encoding.Decoder) error
 	PrepareFinalReq(prms *Prms) error
-	FinalRepDecode(d *encoding.Decoder) error
+	FinalRepDecode(dec *encoding.Decoder, tr transform.Transformer) error
 }
 
 // Methods defines a collection of methods.
@@ -91,27 +92,8 @@ func (p *Prms) addPrms() *Prms {
 	return prms
 }
 
-// Size returns the size in bytes of the parameters.
-func (p *Prms) Size() int {
-	size := encoding.SmallintFieldSize // no of parameters (2 bytes)
-	for _, prm := range p.prms {
-		switch prm := prm.(type) {
-		case []byte:
-			size += encoding.VarFieldSize(prm)
-		case string:
-			size += encoding.Cesu8FieldSize(prm)
-		case *Prms:
-			subSize := prm.Size()
-			size += (subSize + encoding.AuthVarFieldSize(subSize))
-		default:
-			panic("invalid parameter") // should not happen
-		}
-	}
-	return size
-}
-
 // Encode encodes the parameters.
-func (p *Prms) Encode(enc *encoding.Encoder) error {
+func (p *Prms) Encode(enc *encoding.Encoder, tr transform.Transformer) error {
 	numPrms := len(p.prms)
 	if numPrms > math.MaxInt16 {
 		return fmt.Errorf("invalid number of parameters %d - maximum %d", numPrms, math.MaxInt16)
@@ -125,17 +107,18 @@ func (p *Prms) Encode(enc *encoding.Encoder) error {
 				return err
 			}
 		case string:
-			if err := enc.CESU8LIString(e); err != nil {
+			if err := enc.CESU8LIString(tr, e); err != nil {
 				return err
 			}
 		case *Prms:
-			subSize := e.Size()
-			if err := enc.AuthVarFieldInd(subSize); err != nil {
+			subEnc := encoding.Encoder(make([]byte, 0))
+			if err := e.Encode(&subEnc, tr); err != nil {
 				return err
 			}
-			if err := e.Encode(enc); err != nil {
+			if err := enc.AuthVarFieldInd(len(subEnc)); err != nil {
 				return err
 			}
+			enc.Bytes(subEnc)
 		default:
 			panic("invalid parameter") // should not happen
 		}

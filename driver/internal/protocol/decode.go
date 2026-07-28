@@ -2,76 +2,75 @@ package protocol
 
 import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
-func decodeResult(tc typeCode, d *encoding.Decoder, tr transform.Transformer, lobReader LobReader, lobChunkSize, scale int) (any, error) { //nolint: gocyclo
+func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, lobReader LobReader, scale int) (any, error) { //nolint: gocyclo
 	switch tc {
 	case tcBoolean:
-		return d.BooleanField()
+		return dec.BooleanField()
 	case tcTinyint:
-		if !d.Bool() { // null value
+		if !dec.Bool() { // null value
 			return nil, nil
 		}
-		return int64(d.Byte()), nil
+		return int64(dec.Byte()), nil
 	case tcSmallint:
-		if !d.Bool() { // null value
+		if !dec.Bool() { // null value
 			return nil, nil
 		}
-		return int64(d.Int16()), nil
+		return int64(dec.Int16()), nil
 	case tcInteger:
-		if !d.Bool() { // null value
+		if !dec.Bool() { // null value
 			return nil, nil
 		}
-		return int64(d.Int32()), nil
+		return int64(dec.Int32()), nil
 	case tcBigint:
-		if !d.Bool() { // null value
+		if !dec.Bool() { // null value
 			return nil, nil
 		}
-		return d.Int64(), nil
+		return dec.Int64(), nil
 	case tcReal:
-		return d.RealField()
+		return dec.RealField()
 	case tcDouble:
-		return d.DoubleField()
+		return dec.DoubleField()
 	case tcDate:
-		return d.DateField()
+		return dec.DateField()
 	case tcTime:
-		return d.TimeField()
+		return dec.TimeField()
 	case tcTimestamp:
-		return d.TimestampField()
+		return dec.TimestampField()
 	case tcLongdate:
-		return d.LongdateField()
+		return dec.LongdateField()
 	case tcSeconddate:
-		return d.SeconddateField()
+		return dec.SeconddateField()
 	case tcDaydate:
-		return d.DaydateField()
+		return dec.DaydateField(attrs.EmptyDateAsNull)
 	case tcSecondtime:
-		return d.SecondtimeField()
+		return dec.SecondtimeField()
 	case tcDecimal:
-		return d.DecimalField()
+		return dec.DecimalField()
 	case tcFixed8:
-		return d.Fixed8Field(scale)
+		return dec.Fixed8Field(scale)
 	case tcFixed12:
-		return d.Fixed12Field(scale)
+		return dec.Fixed12Field(scale)
 	case tcFixed16:
-		return d.Fixed16Field(scale)
+		return dec.Fixed16Field(scale)
 	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
-		return d.VarField()
+		return dec.VarField()
 	case tcAlphanum:
-		return d.AlphanumField()
+		return dec.AlphanumField(attrs.AlphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return d.Cesu8Field()
+		return dec.Cesu8Field(attrs.Tr)
 	case tcStPoint, tcStGeometry:
-		return d.HexField()
+		return dec.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
-		descr := newLobOutDescr(nil, lobReader, lobChunkSize)
-		if descr.decode(d) {
+		descr := newLobOutDescr(nil, lobReader, attrs.LobChunkSize)
+		if descr.decode(dec) {
 			return nil, nil
 		}
 		return descr, nil
 	case tcText, tcNclob, tcNlocator:
-		descr := newLobOutDescr(tr, lobReader, lobChunkSize)
-		if descr.decode(d) {
+		descr := newLobOutDescr(attrs.Tr, lobReader, attrs.LobChunkSize)
+		if descr.decode(dec) {
 			return nil, nil
 		}
 		return descr, nil
@@ -92,7 +91,7 @@ func decodeLobParameter(d *encoding.Decoder) (any, error) {
 	return nil, nil
 }
 
-func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
+func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs, scale int) (any, error) {
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -119,7 +118,7 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 	case tcSeconddate:
 		return d.SeconddateField()
 	case tcDaydate:
-		return d.DaydateField()
+		return d.DaydateField(attrs.EmptyDateAsNull)
 	case tcSecondtime:
 		return d.SecondtimeField()
 	case tcDecimal:
@@ -133,9 +132,9 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, scale int) (any, error) {
 	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return d.VarField()
 	case tcAlphanum:
-		return d.AlphanumField()
+		return d.AlphanumField(attrs.AlphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return d.Cesu8Field()
+		return d.Cesu8Field(attrs.Tr)
 	case tcStPoint, tcStGeometry:
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:

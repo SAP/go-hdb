@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
 
@@ -442,92 +443,98 @@ var (
 	ratOne  = big.NewRat(1, 1)
 )
 
-/*
-Currently the min, max check is done during encoding, as the check is expensive and
-we want to avoid doing the conversion twice (convert + encode).
-These checks could be done in convert only, but then we would need a
-struct{m *big.Int, exp int} for decimals as intermediate format.
+// decimalDecompose is the database/sql decimal decompose interface (input side).
+type decimalDecompose interface {
+	Decompose(buf []byte) (form byte, negative bool, coefficient []byte, exponent int32)
+}
 
-The conversion does support other types as well (int, *big.Int, string, ...)
-even though the user needs to use Decimal for scanning.
-*/
+// convertDecimal and convertFixed are intentional copy&paste of each other,
+// differing only in the target constructor (decimal vs fixed). They sit on the
+// parameter hot path - a single bulk insert calls them once per decimal/fixed
+// cell (numRow * numCols times). Deduplicating would add per-call cost we want
+// to avoid here, so the duplication is deliberate.
+// NOTE: keep both functions in sync - a change in one (added input type, changed
+// routing) almost always needs the same change in the other.
 func convertDecimal(v any) (any, error) { //nolint: gocyclo
 	switch v := v.(type) {
-	case *big.Rat:
-		return v, nil
+	case decimalDecompose:
+		form, negative, coefficient, exponent := v.Decompose(nil)
+		return encoding.NewDecimalFromDecompose(form, negative, coefficient, exponent)
 	case *big.Int:
-		return new(big.Rat).SetInt(v), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt(v))
+	case *big.Rat:
+		return encoding.NewDecimalFromRat(v)
 	case *big.Float:
 		r, _ := v.Rat(nil) // ignore accuracy
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	case bool:
 		if v {
-			return ratOne, nil
+			return encoding.NewDecimalFromRat(ratOne)
 		}
-		return ratZero, nil
+		return encoding.NewDecimalFromRat(ratZero)
 	case int:
-		return new(big.Rat).SetInt64(int64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(int64(v)))
 	case int8:
-		return new(big.Rat).SetInt64(int64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(int64(v)))
 	case int16:
-		return new(big.Rat).SetInt64(int64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(int64(v)))
 	case int32:
-		return new(big.Rat).SetInt64(int64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(int64(v)))
 	case int64:
-		return new(big.Rat).SetInt64(v), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(v))
 	case uint:
-		return new(big.Rat).SetUint64(uint64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(uint64(v)))
 	case uint8:
-		return new(big.Rat).SetUint64(uint64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(uint64(v)))
 	case uint16:
-		return new(big.Rat).SetUint64(uint64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(uint64(v)))
 	case uint32:
-		return new(big.Rat).SetUint64(uint64(v)), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(uint64(v)))
 	case uint64:
-		return new(big.Rat).SetUint64(v), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(v))
 	case float32:
 		r := new(big.Rat).SetFloat64(float64(v))
 		if r == nil {
 			return nil, errConversionNotSupported
 		}
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	case float64:
 		r := new(big.Rat).SetFloat64(v)
 		if r == nil {
 			return nil, errConversionNotSupported
 		}
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	case string:
 		r, ok := new(big.Rat).SetString(v)
 		if !ok {
 			return nil, errConversionNotSupported
 		}
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	}
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Bool:
 		if rv.Bool() {
-			return ratOne, nil
+			return encoding.NewDecimalFromRat(ratOne)
 		}
-		return ratZero, nil
+		return encoding.NewDecimalFromRat(ratZero)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return new(big.Rat).SetInt64(rv.Int()), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetInt64(rv.Int()))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return new(big.Rat).SetUint64(rv.Uint()), nil
+		return encoding.NewDecimalFromRat(new(big.Rat).SetUint64(rv.Uint()))
 	case reflect.Float32, reflect.Float64:
 		r := new(big.Rat).SetFloat64(rv.Float())
 		if r == nil {
 			return nil, errConversionNotSupported
 		}
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	case reflect.String:
 		r, ok := new(big.Rat).SetString(rv.String())
 		if !ok {
 			return nil, errConversionNotSupported
 		}
-		return r, nil
+		return encoding.NewDecimalFromRat(r)
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return nil, nil
@@ -536,7 +543,103 @@ func convertDecimal(v any) (any, error) { //nolint: gocyclo
 	default:
 		if rv.Type().ConvertibleTo(ratReflectType) {
 			tv := rv.Convert(ratReflectType)
-			return tv.Interface().(big.Rat), nil
+			r := tv.Interface().(big.Rat)
+			return encoding.NewDecimalFromRat(&r)
+		}
+		return nil, errConversionNotSupported
+	}
+}
+
+func convertFixed(v any, prec, scale int) (any, error) { //nolint: gocyclo
+	switch v := v.(type) {
+	case decimalDecompose:
+		form, negative, coefficient, exponent := v.Decompose(nil)
+		return encoding.NewFixedFromDecompose(form, negative, coefficient, exponent, prec, scale)
+	case *big.Int:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt(v), prec, scale)
+	case *big.Rat:
+		return encoding.NewFixedFromRat(v, prec, scale)
+	case *big.Float:
+		r, _ := v.Rat(nil) // ignore accuracy
+		return encoding.NewFixedFromRat(r, prec, scale)
+	case bool:
+		if v {
+			return encoding.NewFixedFromRat(ratOne, prec, scale)
+		}
+		return encoding.NewFixedFromRat(ratZero, prec, scale)
+	case int:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(int64(v)), prec, scale)
+	case int8:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(int64(v)), prec, scale)
+	case int16:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(int64(v)), prec, scale)
+	case int32:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(int64(v)), prec, scale)
+	case int64:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(v), prec, scale)
+	case uint:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(uint64(v)), prec, scale)
+	case uint8:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(uint64(v)), prec, scale)
+	case uint16:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(uint64(v)), prec, scale)
+	case uint32:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(uint64(v)), prec, scale)
+	case uint64:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(v), prec, scale)
+	case float32:
+		r := new(big.Rat).SetFloat64(float64(v))
+		if r == nil {
+			return nil, errConversionNotSupported
+		}
+		return encoding.NewFixedFromRat(r, prec, scale)
+	case float64:
+		r := new(big.Rat).SetFloat64(v)
+		if r == nil {
+			return nil, errConversionNotSupported
+		}
+		return encoding.NewFixedFromRat(r, prec, scale)
+	case string:
+		r, ok := new(big.Rat).SetString(v)
+		if !ok {
+			return nil, errConversionNotSupported
+		}
+		return encoding.NewFixedFromRat(r, prec, scale)
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Bool:
+		if rv.Bool() {
+			return encoding.NewFixedFromRat(ratOne, prec, scale)
+		}
+		return encoding.NewFixedFromRat(ratZero, prec, scale)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return encoding.NewFixedFromRat(new(big.Rat).SetInt64(rv.Int()), prec, scale)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return encoding.NewFixedFromRat(new(big.Rat).SetUint64(rv.Uint()), prec, scale)
+	case reflect.Float32, reflect.Float64:
+		r := new(big.Rat).SetFloat64(rv.Float())
+		if r == nil {
+			return nil, errConversionNotSupported
+		}
+		return encoding.NewFixedFromRat(r, prec, scale)
+	case reflect.String:
+		r, ok := new(big.Rat).SetString(rv.String())
+		if !ok {
+			return nil, errConversionNotSupported
+		}
+		return encoding.NewFixedFromRat(r, prec, scale)
+	case reflect.Ptr:
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return convertFixed(rv.Elem().Interface(), prec, scale)
+	default:
+		if rv.Type().ConvertibleTo(ratReflectType) {
+			tv := rv.Convert(ratReflectType)
+			r := tv.Interface().(big.Rat)
+			return encoding.NewFixedFromRat(&r, prec, scale)
 		}
 		return nil, errConversionNotSupported
 	}
@@ -613,7 +716,7 @@ func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
 	}
 }
 
-func convertField(tc typeCode, v any, cesu8Encoder transform.Transformer) (any, error) {
+func convertField(tc typeCode, v any, prec, scale int, cesu8Encoder transform.Transformer) (any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -635,8 +738,10 @@ func convertField(tc typeCode, v any, cesu8Encoder transform.Transformer) (any, 
 		return convertFloat(v, maxDouble)
 	case tcDate, tcTime, tcTimestamp, tcLongdate, tcSeconddate, tcDaydate, tcSecondtime:
 		return convertTime(v)
-	case tcDecimal, tcFixed8, tcFixed12, tcFixed16:
+	case tcDecimal:
 		return convertDecimal(v)
+	case tcFixed8, tcFixed12, tcFixed16:
+		return convertFixed(v, prec, scale)
 	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
 		return convertBytes(v)
 	case tcBlob, tcClob, tcLocator:
