@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.17.2
+- fixed s390x cross-compilation failure (MOVWBR illegal combination on package-level variable)
+
 #### v1.17.1
 - updated Go toolchain to go1.26.5 / go1.25.12
 - updated dependencies

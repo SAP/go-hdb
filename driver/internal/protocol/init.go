@@ -17,7 +17,9 @@ const (
 	initRequestFillerSize = 4
 )
 
-var initRequestFiller uint32 = 0xffffffff
+// const (not var) required: s390x cross-compilation fails with MOVWBR illegal combination
+// when binary.LittleEndian.AppendUint32 is applied to a package-level variable address.
+const initRequestFiller uint32 = 0xffffffff
 
 type version struct {
 	major int8
