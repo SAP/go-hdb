@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.17.3
+- fixed typos in release notes and code comments
+
 #### v1.17.2
 - fixed s390x cross-compilation failure (MOVWBR illegal combination on package-level variable)
 
@@ -15,7 +18,7 @@ Release Notes
 
 ### New features
 
-- Added (HANA lz6) [compression](driver/compress/README.md) support.
+- Added (HANA lz4) [compression](driver/compress/README.md) support.
 - Added support for custom decimal types implementing the database/sql decimal
   Decompose / Compose interfaces for decimal and fixed columns (both parameter
   binding and scanning).
@@ -33,7 +36,7 @@ Release Notes
   Compose interface). Code scanning into driver.Decimal / driver.NullDecimal is
   not affected.
 
-Most go-hdb users shouldn't be affected by these incompatible change.
+Most go-hdb users shouldn't be affected by this incompatible change.
 
 ## v1.16.0
 

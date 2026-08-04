@@ -47,9 +47,13 @@ func WithUserSwitch(ctx context.Context, u *SessionUser) context.Context {
 }
 
 type session struct {
-	dbConn  dbConn
-	metrics *metrics
-	attrs   *connAttrs
+	metrics        *metrics
+	routing        *routing
+	routingVersion int64
+	attrs          *connAttrs
+
+	readerAttrs *p.ReaderAttrs
+	writerAttrs *p.WriterAttrs
 
 	prd *p.Reader
 	pwr *p.Writer
@@ -72,44 +76,21 @@ type session struct {
 	canceled bool
 }
 
-func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (*session, error) {
-	dbConn, err := newDBConn(ctx, logger, host, metrics, attrs)
-	if err != nil {
-		return nil, err
-	}
-
-	rd := bufio.NewReaderSize(dbConn, attrs.bufferSize)
-	wr := bufio.NewWriterSize(dbConn, attrs.bufferSize)
-
+func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, metrics *metrics, routing *routing, attrs *connAttrs) (*session, error) {
 	protTrace := protTrace.Load()
 
-	readerAttrs := &p.ReaderAttrs{
-		ProtTrace:       protTrace,
-		Logger:          logger,
-		Tr:              attrs.cesu8Decoder,
-		LobChunkSize:    attrs.lobChunkSize,
-		EmptyDateAsNull: attrs.emptyDateAsNull,
-		Compressor:      attrs.compressor,
-	}
+	readerAttrs := p.NewReaderAttrs(protTrace, logger, attrs.cesu8Decoder, attrs.lobChunkSize, attrs.emptyDateAsNull, attrs.compressor)
+	writerAttrs := p.NewWriterAttrs(protTrace, logger, attrs.cesu8Encoder, attrs.sessionVariables, attrs.compressor)
 
-	writerAttrs := &p.WriterAttrs{
-		ProtTrace:  protTrace,
-		Logger:     logger,
-		Tr:         attrs.cesu8Encoder,
-		SV:         attrs.sessionVariables,
-		Compressor: attrs.compressor,
-	}
-
-	prd := p.NewDBReader(rd, readerAttrs)
-	pwr := p.NewWriter(wr, writerAttrs)
+	// buffer reader
+	prd := p.NewDBReader(bufio.NewReaderSize(conn, attrs.bufferSize), readerAttrs)
+	pwr := p.NewWriter(conn, writerAttrs)
 
 	// prolog
 	if err := pwr.WriteProlog(ctx); err != nil {
-		dbConn.Close()
 		return nil, err
 	}
 	if err := prd.ReadProlog(ctx); err != nil {
-		dbConn.Close()
 		return nil, err
 	}
 
@@ -118,103 +99,31 @@ func newSession(ctx context.Context, host string, logger *slog.Logger, metrics *
 		sqlTracer = newSQLTracer(logger, 0)
 	}
 
-	s := &session{dbConn: dbConn, metrics: metrics, attrs: attrs, prd: prd, pwr: pwr, sqlTracer: sqlTracer}
-
-	if authHnd != nil { // authenticate
-		serverOptions, err := s.authenticate(ctx, authHnd)
-		if err != nil {
-			dbConn.Close()
-			return nil, err
-		}
-		s.hdbVersion = parseVersion(serverOptions.FullVersionOrZero())
-		s.databaseName = serverOptions.DatabaseNameOrZero()
-
-		readerAttrs.AlphanumDfv1 = (serverOptions.DataFormatVersion2OrZero() == p.DfvLevel1)
-
-		compressLevelAndFlags := serverOptions.CompressionLevelAndFlagsOrZero()
-		if compressLevelAndFlags&p.CoCompressionLZ4Supported != 0 {
-			writerAttrs.CompressEnableWrite = attrs.compressor != nil && attrs.compressor.EnableWrite()
-		}
-
-		if err := s.setSchema(ctx); err != nil {
-			dbConn.Close()
-			return nil, err
-		}
-	}
-	return s, nil
+	return &session{
+		metrics:        metrics,
+		routing:        routing,
+		routingVersion: -1,
+		attrs:          attrs,
+		readerAttrs:    readerAttrs,
+		writerAttrs:    writerAttrs,
+		prd:            prd,
+		pwr:            pwr,
+		sqlTracer:      sqlTracer,
+	}, nil
 }
 
-// we cannot work with nested errors containing driver.ErrBadConn
-// as go sql retries these statements.
-func (s *session) isBad() bool { return s.canceled || s.pwr.HasError() }
-func (s *session) cancel()     { s.canceled = true }
-
-func (s *session) close() error {
-	// do not disconnect if isBad.
-	var disconnectErr error
-	if !s.isBad() {
-		disconnectErr = s.disconnect(context.Background())
+func (s *session) authenticate(ctx context.Context, host string, authHnd *p.AuthHnd) error {
+	cco := &p.ConnectOptions{} // client connect options
+	cco.SetDataFormatVersion2(s.attrs.dfv)
+	if s.attrs.connectionRouting {
+		cco.SetClientDistributionMode(p.CdmConnection)
+		cco.SetUpdateTopologyAnywhere(true)
+	} else {
+		cco.SetClientDistributionMode(p.CdmOff)
 	}
-	closeErr := s.dbConn.Close()
-	return errors.Join(disconnectErr, closeErr)
-}
-
-func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd) (*p.ConnectOptions, error) {
-	defer metricsAddTimeValue(s.metrics, time.Now(), timeAuth)
-
-	// client context
-	clientContext := &p.ClientContext{}
-	clientContext.SetVersion(DriverVersion)
-	clientContext.SetType(clientType)
-	clientContext.SetApplicationProgram(s.attrs.applicationName)
-
-	initRequest, err := authHnd.InitRequest()
-	if err != nil {
-		return nil, err
-	}
-	if err := s.pwr.Write(ctx, p.MtAuthenticate, false, clientContext, initRequest); err != nil {
-		return nil, err
-	}
-
-	initReply, err := authHnd.InitReply()
-	if err != nil {
-		return nil, err
-	}
-
-	for pi, err := range s.prd.Parts(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		switch pi.Header.Kind() {
-		case p.PkError:
-			err = pi.ReadHDBErrors(ctx)
-		case p.PkAuthentication:
-			err = pi.ReadPart(ctx, initReply)
-		default:
-			err = pi.SkipPart(ctx)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	finalRequest, err := authHnd.FinalRequest()
-	if err != nil {
-		return nil, err
-	}
-
-	co := &p.ConnectOptions{}
-	co.SetDataFormatVersion2(s.attrs.dfv)
-	co.SetClientDistributionMode(p.CdmOff)
-	// co.SetClientDistributionMode(p.CdmConnectionStatement)
-	// co.SetSelectForUpdateSupported(true) // doesn't seem to make a difference
-	/*
-		p.CoSplitBatchCommands:          true,
-		p.CoCompleteArrayExecution:      true,
-	*/
 
 	if s.attrs.locale != "" {
-		co.SetClientLocale(s.attrs.locale)
+		cco.SetClientLocale(s.attrs.locale)
 	}
 
 	// Compression negotiation.
@@ -251,27 +160,105 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd) (*p.Conn
 	// need arises.
 	if s.attrs.compressor != nil {
 		if s.attrs.compressor.EnableWrite() {
-			co.SetCompressionLevelAndFlags(p.CoCompressionLZ4Supported | p.CoCompressionLZ4Enabled)
+			cco.SetCompressionLevelAndFlags(p.CoCompressionLZ4Supported | p.CoCompressionLZ4Enabled)
 		} else {
-			co.SetCompressionLevelAndFlags(p.CoCompressionLZ4Supported)
+			cco.SetCompressionLevelAndFlags(p.CoCompressionLZ4Supported)
 		}
 	}
 	// else disable compression: option omitted entirely
 
+	sco, ti, err := s._authenticate(ctx, authHnd, cco)
+	if err != nil {
+		return err
+	}
+
+	enabled := sco.ClientDistributionModeOrZero() != p.CdmOff
+	s.routingVersion = s.routing.updateFromConnect(enabled, host, sco.DatabaseNameOrZero(), sco.SystemIDOrZero(), ti)
+
+	s.hdbVersion = parseVersion(sco.FullVersionOrZero())
+	s.databaseName = sco.DatabaseNameOrZero()
+
+	s.readerAttrs.SetAlphanumDfv1(sco.DataFormatVersion2OrZero() == p.DfvLevel1)
+
+	compressLevelAndFlags := sco.CompressionLevelAndFlagsOrZero()
+	if compressLevelAndFlags&p.CoCompressionLZ4Supported != 0 {
+		s.writerAttrs.SetCompressEnableWrite(s.attrs.compressor != nil && s.attrs.compressor.EnableWrite())
+	}
+
+	return s.setSchema(ctx)
+}
+
+// we cannot work with nested errors containing driver.ErrBadConn
+// as go sql retries these statements.
+func (s *session) isBad() bool { return s.canceled || s.pwr.HasError() }
+func (s *session) cancel()     { s.canceled = true }
+
+func (s *session) close() error {
+	// do not disconnect if isBad.
+	if !s.isBad() {
+		return s.disconnect(context.Background())
+	}
+	return nil
+}
+
+func (s *session) _authenticate(ctx context.Context, authHnd *p.AuthHnd, co *p.ConnectOptions) (*p.ConnectOptions, *p.TopologyInformation, error) {
+	defer metricsAddTimeValue(s.metrics, time.Now(), timeAuth)
+
+	// client context
+	clientContext := &p.ClientContext{}
+	clientContext.SetVersion(DriverVersion)
+	clientContext.SetType(clientType)
+	clientContext.SetApplicationProgram(s.attrs.applicationName)
+
+	initRequest, err := authHnd.InitRequest()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.pwr.Write(ctx, p.MtAuthenticate, false, clientContext, initRequest); err != nil {
+		return nil, nil, err
+	}
+
+	initReply, err := authHnd.InitReply()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for pi, err := range s.prd.Parts(ctx) {
+		if err != nil {
+			return nil, nil, err
+		}
+		switch pi.Header.Kind() {
+		case p.PkError:
+			err = pi.ReadHDBErrors(ctx)
+		case p.PkAuthentication:
+			err = pi.ReadPart(ctx, initReply)
+		default:
+			err = pi.SkipPart(ctx)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	finalRequest, err := authHnd.FinalRequest()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := s.pwr.Write(ctx, p.MtConnect, false, finalRequest, p.ClientID(clientID), co); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	finalReply, err := authHnd.FinalReply()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	ti := new(p.TopologyInformation)
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch pi.Header.Kind() {
 		case p.PkError:
@@ -286,16 +273,16 @@ func (s *session) authenticate(ctx context.Context, authHnd *p.AuthHnd) (*p.Conn
 			err = pi.SkipPart(ctx)
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	sessionID := s.prd.SessionID()
 	if sessionID <= 0 {
-		return nil, fmt.Errorf("invalid session id %d", sessionID)
+		return nil, nil, fmt.Errorf("invalid session id %d", sessionID)
 	}
 	s.pwr.SetSessionID(sessionID)
-	return co, nil
+	return co, ti, nil
 }
 
 func (s *session) setSchema(ctx context.Context) error {
@@ -375,6 +362,17 @@ func (s *session) dbConnectInfo(ctx context.Context, databaseName string) (*DBCo
 	}, nil
 }
 
+func (s *session) updateRouting(ctx context.Context, pi *p.PartInfo) {
+	if s.routingVersion == -1 {
+		return
+	}
+	ti := new(p.TopologyInformation)
+	if err := pi.ReadPart(ctx, ti); err != nil {
+		return // ignore error
+	}
+	s.routing.updateFromReply(s.routingVersion, ti)
+}
+
 func (s *session) queryDirect(ctx context.Context, query string, traceKind string) (driver.Rows, error) {
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
@@ -417,6 +415,8 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = pi.Header.Attrs()
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -456,6 +456,8 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 			err = pi.ReadHDBErrors(ctx)
 		case p.PkRowsAffected:
 			err = pi.ReadPart(ctx, rowsAffected)
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			err = pi.SkipPart(ctx)
 		}
@@ -564,6 +566,8 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = pi.Header.Attrs()
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -614,6 +618,8 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 			if err := pi.ReadPart(ctx, rowsAffected); err != nil {
 				return nil, err
 			}
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -729,6 +735,8 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 			if err := pi.ReadPart(ctx, rowsAffected); err != nil {
 				return nil, nil, 0, err
 			}
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, nil, 0, err
@@ -783,6 +791,8 @@ func (s *session) fetchNext(ctx context.Context, qr *queryResult) error {
 			qr.fieldValues = resSet.FieldValues
 			qr.decodeErrors = resSet.DecodeErrors
 			qr.attrs = pi.Header.Attrs()
+		case p.PkTopologyInformation:
+			s.updateRouting(ctx, pi)
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return err

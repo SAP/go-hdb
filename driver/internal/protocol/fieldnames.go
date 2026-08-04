@@ -62,7 +62,7 @@ func (fn *fieldNames) decode(dec *encoding.Decoder, attrs *ReaderAttrs) error {
 		if diff > 0 {
 			dec.Skip(diff)
 		}
-		n, s, err := dec.CESU8LIString(attrs.Tr)
+		n, s, err := dec.CESU8LIString(attrs.tr)
 		if err != nil {
 			errs = append(errs, err)
 		}

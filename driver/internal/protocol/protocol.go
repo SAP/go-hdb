@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -87,13 +86,30 @@ func (c *partCache) get(kind PartKind) (Part, bool) {
 
 // ReaderAttrs holds reader attributes.
 type ReaderAttrs struct {
-	ProtTrace       bool
-	Logger          *slog.Logger
-	Tr              transform.Transformer
-	LobChunkSize    int
-	EmptyDateAsNull bool
-	AlphanumDfv1    bool
-	Compressor      compress.Compressor
+	protTrace       bool
+	logger          *slog.Logger
+	tr              transform.Transformer
+	lobChunkSize    int
+	emptyDateAsNull bool
+	compressor      compress.Compressor
+	alphanumDfv1    bool
+}
+
+// NewReaderAttrs returns a new ReaderAttrs instance.
+func NewReaderAttrs(protTrace bool, logger *slog.Logger, tr transform.Transformer, lobChunkSize int, emptyDateAsNull bool, compressor compress.Compressor) *ReaderAttrs {
+	return &ReaderAttrs{
+		protTrace:       protTrace,
+		logger:          logger,
+		tr:              tr,
+		lobChunkSize:    lobChunkSize,
+		emptyDateAsNull: emptyDateAsNull,
+		compressor:      compressor,
+	}
+}
+
+// SetAlphanumDfv1 sets alphanumDfv1.
+func (a *ReaderAttrs) SetAlphanumDfv1(b bool) {
+	a.alphanumDfv1 = b
 }
 
 // PartInfo holds attributes needed on iterating parts.
@@ -142,12 +158,12 @@ func newReader(rd io.Reader, attrs *ReaderAttrs, readFromDB bool) *Reader {
 
 	if readFromDB {
 		r.readPrologFn = r.readPrologDB
-		if attrs.ProtTrace {
+		if attrs.protTrace {
 			r.protTraceFn = r.protTraceDB
 		}
 	} else {
 		r.readPrologFn = r.readPrologClient
-		if attrs.ProtTrace {
+		if attrs.protTrace {
 			r.protTraceFn = r.protTraceClient
 		}
 	}
@@ -242,7 +258,7 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			return err
 		}
 
-		compressor := r.attrs.Compressor
+		compressor := r.attrs.compressor
 		if compressor == nil {
 			panic("compressor misssing") // should never happen
 		}
@@ -341,11 +357,11 @@ func (r *Reader) readPrologClient(ctx context.Context) error {
 }
 
 func (r *Reader) protTraceDB(ctx context.Context, text string, p fmt.Stringer) {
-	r.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixDB+text, p.String()))
+	r.attrs.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixDB+text, p.String()))
 }
 
 func (r *Reader) protTraceClient(ctx context.Context, text string, p fmt.Stringer) {
-	r.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
+	r.attrs.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
 }
 
 func (r *Reader) readHDBErrors(ctx context.Context) error {
@@ -356,7 +372,7 @@ func (r *Reader) readHDBErrors(ctx context.Context) error {
 	}
 	if hdbErrors.onlyWarnings {
 		for _, err := range hdbErrors.errs {
-			r.attrs.Logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
+			r.attrs.logger.LogAttrs(ctx, slog.LevelWarn, err.Error())
 		}
 		return nil
 	}
@@ -403,17 +419,33 @@ const defaultSessionID = -1
 
 // WriterAttrs holds writer attributes.
 type WriterAttrs struct {
-	ProtTrace           bool
-	Logger              *slog.Logger
-	Tr                  transform.Transformer
-	SV                  map[string]string
-	CompressEnableWrite bool
-	Compressor          compress.Compressor
+	protTrace           bool
+	logger              *slog.Logger
+	tr                  transform.Transformer
+	sv                  map[string]string
+	compressor          compress.Compressor
+	compressEnableWrite bool
+}
+
+// NewWriterAttrs returns a WriterAttrs instance.
+func NewWriterAttrs(protTrace bool, logger *slog.Logger, tr transform.Transformer, sv map[string]string, compressor compress.Compressor) *WriterAttrs {
+	return &WriterAttrs{
+		protTrace:  protTrace,
+		logger:     logger,
+		tr:         tr,
+		sv:         sv,
+		compressor: compressor,
+	}
+}
+
+// SetCompressEnableWrite sets compressEnableWrite.
+func (a *WriterAttrs) SetCompressEnableWrite(b bool) {
+	a.compressEnableWrite = b
 }
 
 // Writer represents a protocol writer.
 type Writer struct {
-	wr *bufio.Writer
+	wr io.Writer
 
 	attrs *WriterAttrs
 
@@ -434,7 +466,7 @@ type Writer struct {
 }
 
 // NewWriter returns an instance of a protocol writer.
-func NewWriter(wr *bufio.Writer, attrs *WriterAttrs) *Writer {
+func NewWriter(wr io.Writer, attrs *WriterAttrs) *Writer {
 	return &Writer{
 		wr:        wr,
 		attrs:     attrs,
@@ -471,13 +503,11 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	if err := req.encode(&enc); err != nil {
 		return err
 	}
-	if w.attrs.ProtTrace {
+	if w.attrs.protTrace {
 		w.protTrace(ctx, textIni, req)
 	}
-	if _, err := w.wr.Write(enc); err != nil {
-		return err
-	}
-	return w.wr.Flush()
+	_, err := w.wr.Write(enc)
+	return err
 }
 
 // SetSessionID sets the session ID after a successful authentication.
@@ -524,8 +554,8 @@ func compressBuffer(compressor compress.Compressor, buf, tmpBuf []byte) (bool, [
 
 func (w *Writer) _write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
 	// check on session variables to be sent as ClientInfo
-	if w.attrs.SV != nil && !w.svSent && messageType.ClientInfoSupported() {
-		parts = append([]PartEncoder{(*clientInfo)(&w.attrs.SV)}, parts...)
+	if w.attrs.sv != nil && !w.svSent && messageType.ClientInfoSupported() {
+		parts = append([]PartEncoder{(*clientInfo)(&w.attrs.sv)}, parts...)
 		w.svSent = true
 	}
 
@@ -541,7 +571,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		partEnc.Zeroes(partHeaderSize)
 
 		pos := len(partEnc)
-		if err := part.encode(&partEnc, w.attrs.Tr); err != nil {
+		if err := part.encode(&partEnc, w.attrs.tr); err != nil {
 			return err
 		}
 		size := len(partEnc) - pos
@@ -576,7 +606,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		if err := w.ph.encode(&enc); err != nil {
 			return err
 		}
-		if w.attrs.ProtTrace {
+		if w.attrs.protTrace {
 			w.protTrace(ctx, textParHdr, w.ph)
 		}
 
@@ -585,7 +615,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		pos += partHeaderSize + size + pad
 
 		// part prot trace
-		if w.attrs.ProtTrace {
+		if w.attrs.protTrace {
 			w.protTrace(ctx, textPar, part)
 		}
 
@@ -593,9 +623,9 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	}
 
 	compress, partBuf := false, partEnc
-	if w.attrs.CompressEnableWrite {
+	if w.attrs.compressEnableWrite {
 		var err error
-		if compress, partBuf, err = compressBuffer(w.attrs.Compressor, partEnc, w.tmpBuf); err != nil {
+		if compress, partBuf, err = compressBuffer(w.attrs.compressor, partEnc, w.tmpBuf); err != nil {
 			return err
 		}
 	}
@@ -623,7 +653,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		return err
 	}
 
-	if w.attrs.ProtTrace {
+	if w.attrs.protTrace {
 		w.protTrace(ctx, textMsgHdr, w.mh)
 	}
 
@@ -642,16 +672,14 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	if _, err := w.wr.Write(enc); err != nil {
 		return err
 	}
-	if w.attrs.ProtTrace {
+	if w.attrs.protTrace {
 		w.protTrace(ctx, textSegHdr, w.sh)
 	}
 
-	if _, err := w.wr.Write(partBuf); err != nil {
-		return err
-	}
-	return w.wr.Flush()
+	_, err := w.wr.Write(partBuf)
+	return err
 }
 
 func (w *Writer) protTrace(ctx context.Context, text string, p fmt.Stringer) {
-	w.attrs.Logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
+	w.attrs.logger.LogAttrs(ctx, slog.LevelInfo, traceMsg, slog.String(prefixClient+text, p.String()))
 }

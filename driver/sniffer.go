@@ -74,13 +74,7 @@ func (s *Sniffer) Run() error {
 		pipeData(s.dbConn, s.conn, dbWr)
 	})
 
-	readerAttrs := &p.ReaderAttrs{
-		ProtTrace:    true,
-		Logger:       s.logger,
-		Tr:           cesu8.DefaultDecoder(),
-		LobChunkSize: defaultLobChunkSize,
-	}
-
+	readerAttrs := p.NewReaderAttrs(true, s.logger, cesu8.DefaultDecoder(), defaultLobChunkSize, false, nil)
 	pClientRd := p.NewClientReader(clientRd, readerAttrs)
 	pDBRd := p.NewDBReader(dbRd, readerAttrs)
 

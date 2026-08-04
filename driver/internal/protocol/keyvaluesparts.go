@@ -15,11 +15,11 @@ func (c *clientInfo) decode(dec *encoding.Decoder, header *PartHeader, attrs *Re
 	*c = clientInfo{} // no reuse of maps - create new one
 
 	for range header.numArg() {
-		k, err := dec.Cesu8Field(attrs.Tr)
+		k, err := dec.Cesu8Field(attrs.tr)
 		if err != nil {
 			return err
 		}
-		v, err := dec.Cesu8Field(attrs.Tr)
+		v, err := dec.Cesu8Field(attrs.tr)
 		if err != nil {
 			return err
 		}
