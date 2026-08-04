@@ -147,5 +147,5 @@ func (r *AuthFinalReply) decode(dec *encoding.Decoder, _ *PartHeader, attrs *Rea
 		return nil
 	}
 
-	return r.method.FinalRepDecode(dec, attrs.Tr)
+	return r.method.FinalRepDecode(dec, attrs.tr)
 }

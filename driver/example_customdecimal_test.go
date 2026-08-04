@@ -101,7 +101,7 @@ func Example_customDecimal() {
 }
 
 /*
-Example_customDecimalFixed is like Example_customDecimal but uses a fixed decimal
+Example_customFixed is like Example_customDecimal but uses a fixed decimal
 column (decimal(precision, scale)), exercising the fixed encode/decode path with a
 custom decimal type implementing the database/sql decimalDecompose and
 decimalCompose interfaces.

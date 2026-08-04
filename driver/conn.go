@@ -13,7 +13,6 @@ import (
 	"time"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 )
 
 // ErrUnsupportedIsolationLevel is the error raised if a transaction is started with a not supported isolation level.
@@ -129,49 +128,48 @@ type conn struct {
 	attrs   *connAttrs
 	metrics *metrics
 	logger  *slog.Logger
+	dbConn  dbConn
 	session *session
 	wg      *sync.WaitGroup // wait for concurrent db calls when closing connections.
-}
-
-// isAuthError returns true in case of X509 certificate validation errors or hdb authentication errors, else otherwise.
-func isAuthError(err error) bool {
-	var certValidationError *auth.CertValidationError
-	if errors.As(err, &certValidationError) {
-		return true
-	}
-	var hdbErrors *p.HdbErrors
-	if !errors.As(err, &hdbErrors) {
-		return false
-	}
-	return hdbErrors.Code() == p.HdbErrAuthenticationFailed
 }
 
 // unique connection number.
 var connNo atomic.Uint64
 
-func newConn(ctx context.Context, host string, metrics *metrics, attrs *connAttrs, authHnd *p.AuthHnd) (*conn, error) {
+func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs) (*conn, error) {
 	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
 	metrics.lazyInit()
 
-	session, err := newSession(ctx, host, logger, metrics, attrs, authHnd)
+	dbConn, err := newDBConn(ctx, logger, host, metrics, attrs)
 	if err != nil {
+		return nil, err
+	}
+
+	session, err := newSession(ctx, dbConn, logger, metrics, routing, attrs)
+	if err != nil {
+		dbConn.Close()
 		return nil, err
 	}
 
 	stdConnTracker.add()
 	metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
-	return &conn{attrs: attrs, metrics: metrics, logger: logger, session: session, wg: new(sync.WaitGroup)}, nil
+	return &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup)}, nil
+}
+
+func (c *conn) authenticate(ctx context.Context, host string, authHnd *p.AuthHnd) error {
+	return c.session.authenticate(ctx, host, authHnd)
 }
 
 // Close implements the driver.Conn interface.
 func (c *conn) Close() error {
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	stdConnTracker.remove()
-	err := c.session.close()
+	sessionErr := c.session.close()
+	dbConnErr := c.dbConn.Close()
 	c.wg.Wait()
-	return err
+	return errors.Join(sessionErr, dbConnErr)
 }
 
 // ResetSession implements the driver.SessionResetter interface.
@@ -180,7 +178,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 
-	lastRead := c.session.dbConn.lastRead()
+	lastRead := c.dbConn.lastRead()
 
 	if c.attrs.pingInterval == 0 || lastRead.IsZero() || time.Since(lastRead) < c.attrs.pingInterval {
 		return nil

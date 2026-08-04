@@ -43,7 +43,7 @@ func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, lobRea
 	case tcSeconddate:
 		return dec.SeconddateField()
 	case tcDaydate:
-		return dec.DaydateField(attrs.EmptyDateAsNull)
+		return dec.DaydateField(attrs.emptyDateAsNull)
 	case tcSecondtime:
 		return dec.SecondtimeField()
 	case tcDecimal:
@@ -57,19 +57,19 @@ func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, lobRea
 	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return dec.VarField()
 	case tcAlphanum:
-		return dec.AlphanumField(attrs.AlphanumDfv1)
+		return dec.AlphanumField(attrs.alphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return dec.Cesu8Field(attrs.Tr)
+		return dec.Cesu8Field(attrs.tr)
 	case tcStPoint, tcStGeometry:
 		return dec.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
-		descr := newLobOutDescr(nil, lobReader, attrs.LobChunkSize)
+		descr := newLobOutDescr(nil, lobReader, attrs.lobChunkSize)
 		if descr.decode(dec) {
 			return nil, nil
 		}
 		return descr, nil
 	case tcText, tcNclob, tcNlocator:
-		descr := newLobOutDescr(attrs.Tr, lobReader, attrs.LobChunkSize)
+		descr := newLobOutDescr(attrs.tr, lobReader, attrs.lobChunkSize)
 		if descr.decode(dec) {
 			return nil, nil
 		}
@@ -118,7 +118,7 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs, scale
 	case tcSeconddate:
 		return d.SeconddateField()
 	case tcDaydate:
-		return d.DaydateField(attrs.EmptyDateAsNull)
+		return d.DaydateField(attrs.emptyDateAsNull)
 	case tcSecondtime:
 		return d.SecondtimeField()
 	case tcDecimal:
@@ -132,9 +132,9 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs, scale
 	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return d.VarField()
 	case tcAlphanum:
-		return d.AlphanumField(attrs.AlphanumDfv1)
+		return d.AlphanumField(attrs.alphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return d.Cesu8Field(attrs.Tr)
+		return d.Cesu8Field(attrs.tr)
 	case tcStPoint, tcStGeometry:
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:

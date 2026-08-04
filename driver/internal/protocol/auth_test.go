@@ -23,7 +23,7 @@ func testJWTAuth(t *testing.T) {
 
 	authDecodeStep := func(part PartDecoder, data []byte) {
 		dec := encoding.Decoder(data)
-		attrs := &ReaderAttrs{Tr: cesu8.DefaultDecoder()}
+		attrs := &ReaderAttrs{tr: cesu8.DefaultDecoder()}
 
 		if err := part.decode(&dec, nil, attrs); err != nil {
 			t.Fatal(err)

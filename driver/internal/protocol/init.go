@@ -19,6 +19,9 @@ const (
 
 // const (not var) required: s390x cross-compilation fails with MOVWBR illegal combination
 // when binary.LittleEndian.AppendUint32 is applied to a package-level variable address.
+// test:
+// var initRequestFiller uint32 = 0xffffffff
+// GOOS=linux GOARCH=s390x go test -v.
 const initRequestFiller uint32 = 0xffffffff
 
 type version struct {

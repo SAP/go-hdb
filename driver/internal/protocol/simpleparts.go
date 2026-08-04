@@ -26,7 +26,7 @@ type Command []byte
 func (c Command) String() string { return string(c) }
 func (c *Command) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
 	var err error
-	*c, err = dec.CESU8Bytes(attrs.Tr, header.bufLen())
+	*c, err = dec.CESU8Bytes(attrs.tr, header.bufLen())
 	if err != nil {
 		return err
 	}
