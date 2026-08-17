@@ -5,10 +5,13 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.17.5
+- fixed issue in prometheus make
+
 #### v1.17.4
 - fixed a data corruption bug in the protocol reader
 - updated Go toolchain to go1.26.6
-- updated dependencies (golang.org/x/text v0.41.0)
+- updated dependencies
 
 #### v1.17.3
 - fixed typos in release notes and code comments
