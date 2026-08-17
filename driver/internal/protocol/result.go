@@ -3,9 +3,7 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
-	"math/bits"
 	"reflect"
-	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
@@ -131,9 +129,8 @@ func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.names.insertOfs(f.columnDisplayNameOfs)
 }
 
-func (f *ResultField) decodeResult(dec *encoding.Decoder, attrs *ReaderAttrs, lobReader LobReader) (any, error) {
-	return decodeResult(f.tc, dec, attrs, lobReader, f.scale)
-}
+// IsLob returns true if the ResultField is of type lob, false otherwise.
+func (f *ResultField) IsLob() bool { return f.tc.isLob() }
 
 // ResultMetadata represents the metadata of a set of database result fields.
 type ResultMetadata struct {
@@ -167,28 +164,4 @@ type Resultset struct {
 
 func (r *Resultset) String() string {
 	return fmt.Sprintf("result fields %v field values %v", r.ResultFields, r.FieldValues)
-}
-
-func (r *Resultset) decodeResult(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs, lobReader LobReader) error {
-	numArg := header.numArg()
-
-	cols := len(r.ResultFields)
-	if numArg < 0 {
-		return fmt.Errorf("invalid number of arguments %d", numArg)
-	}
-	if hi, _ := bits.Mul(uint(numArg), uint(cols)); hi != 0 {
-		return fmt.Errorf("result set too large: %d rows x %d cols", numArg, cols)
-	}
-	n := numArg * cols
-	r.FieldValues = slices.Grow(r.FieldValues, n)[:n]
-
-	for i := range numArg {
-		for j, f := range r.ResultFields {
-			var err error
-			if r.FieldValues[i*cols+j], err = f.decodeResult(dec, attrs, lobReader); err != nil {
-				r.DecodeErrors = append(r.DecodeErrors, &DecodeError{row: i, fieldName: f.Name(), err: err}) // collect decode / conversion errors
-			}
-		}
-	}
-	return nil
 }

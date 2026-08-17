@@ -19,12 +19,6 @@ type PartDecoder interface {
 	decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error
 }
 
-// ResultPartDecoder represents a protocol result part decoder.
-type ResultPartDecoder interface {
-	Part
-	decodeResult(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs, lobReader LobReader) error
-}
-
 // PartEncoder represents a protocol part the driver is able to encode.
 type PartEncoder interface {
 	Part
@@ -90,33 +84,31 @@ var (
 
 // check if part types implement the right part decoder interface.
 var (
-	_ PartDecoder       = (*HdbErrors)(nil)
-	_ PartDecoder       = (*AuthInitRequest)(nil)
-	_ PartDecoder       = (*AuthInitReply)(nil)
-	_ PartDecoder       = (*AuthFinalRequest)(nil)
-	_ PartDecoder       = (*AuthFinalReply)(nil)
-	_ PartDecoder       = (*ClientID)(nil)
-	_ PartDecoder       = (*clientInfo)(nil)
-	_ PartDecoder       = (*TopologyInformation)(nil)
-	_ PartDecoder       = (*Command)(nil)
-	_ PartDecoder       = (*RowsAffected)(nil)
-	_ PartDecoder       = (*StatementID)(nil)
-	_ PartDecoder       = (*ParameterMetadata)(nil)
-	_ PartDecoder       = (*InputParameters)(nil)
-	_ ResultPartDecoder = (*OutputParameters)(nil)
-	_ PartDecoder       = (*ResultMetadata)(nil)
-	_ PartDecoder       = (*ResultsetID)(nil)
-	_ ResultPartDecoder = (*Resultset)(nil)
-	_ PartDecoder       = (*Fetchsize)(nil)
-	_ PartDecoder       = (*ReadLobRequest)(nil)
-	_ PartDecoder       = (*WriteLobRequest)(nil)
-	_ PartDecoder       = (*ReadLobReply)(nil)
-	_ PartDecoder       = (*WriteLobReply)(nil)
-	_ PartDecoder       = (*ClientContext)(nil)
-	_ PartDecoder       = (*ConnectOptions)(nil)
-	_ PartDecoder       = (*DBConnectInfo)(nil)
-	_ PartDecoder       = (*statementContext)(nil)
-	_ PartDecoder       = (*transactionFlags)(nil)
+	_ PartDecoder = (*HdbErrors)(nil)
+	_ PartDecoder = (*AuthInitRequest)(nil)
+	_ PartDecoder = (*AuthInitReply)(nil)
+	_ PartDecoder = (*AuthFinalRequest)(nil)
+	_ PartDecoder = (*AuthFinalReply)(nil)
+	_ PartDecoder = (*ClientID)(nil)
+	_ PartDecoder = (*clientInfo)(nil)
+	_ PartDecoder = (*TopologyInformation)(nil)
+	_ PartDecoder = (*Command)(nil)
+	_ PartDecoder = (*RowsAffected)(nil)
+	_ PartDecoder = (*StatementID)(nil)
+	_ PartDecoder = (*ParameterMetadata)(nil)
+	_ PartDecoder = (*InputParameters)(nil)
+	_ PartDecoder = (*ResultMetadata)(nil)
+	_ PartDecoder = (*ResultsetID)(nil)
+	_ PartDecoder = (*Fetchsize)(nil)
+	_ PartDecoder = (*ReadLobRequest)(nil)
+	_ PartDecoder = (*WriteLobRequest)(nil)
+	_ PartDecoder = (*ReadLobReply)(nil)
+	_ PartDecoder = (*WriteLobReply)(nil)
+	_ PartDecoder = (*ClientContext)(nil)
+	_ PartDecoder = (*ConnectOptions)(nil)
+	_ PartDecoder = (*DBConnectInfo)(nil)
+	_ PartDecoder = (*statementContext)(nil)
+	_ PartDecoder = (*transactionFlags)(nil)
 )
 
 var genPartTypeMap = map[PartKind]reflect.Type{

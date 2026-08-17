@@ -1,0 +1,179 @@
+//go:build !unit && !go1.27
+
+package driver_test
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+
+	"github.com/SAP/go-hdb/driver"
+)
+
+// BytesLob defines a []byte based data type for scanning Lobs.
+type BytesLob []byte
+
+// Scan implements the database.sql.Scanner interface.
+func (b *BytesLob) Scan(arg any) error { return driver.ScanLobBytes(arg, (*[]byte)(b)) }
+
+// ExampleScanLobBytes demonstrates how to read Lob data using a []byte based data type.
+func ExampleScanLobBytes() {
+	// Open Test database.
+	db := sql.OpenDB(driver.MT.Connector())
+	defer db.Close()
+
+	table := driver.RandomIdentifier("lob_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (b1 blob, b2 blob)", table)); err != nil {
+		log.Fatalf("create table failed: %s", err)
+	}
+
+	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Lob content can be written using a byte slice.
+	content := []byte("scan lob bytes")
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+
+	// Scan into BytesLob and sql.Null[BytesLob].
+	var b BytesLob
+	var nb sql.Null[BytesLob]
+	if err := stmt.QueryRow().Scan(&b, &nb); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(b))
+	fmt.Println(string(nb.V))
+
+	// output: scan lob bytes
+	// scan lob bytes
+}
+
+// StringLob defines a string based data type for scanning Lobs.
+type StringLob string
+
+// Scan implements the database.sql.Scanner interface.
+func (s *StringLob) Scan(arg any) error { return driver.ScanLobString(arg, (*string)(s)) }
+
+// ExampleScanLobString demonstrates how to read Lob data using a string based data type.
+func ExampleScanLobString() {
+	// Open Test database.
+	db := sql.OpenDB(driver.MT.Connector())
+	defer db.Close()
+
+	table := driver.RandomIdentifier("lob_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n1 nclob, n2 nclob)", table)); err != nil {
+		log.Fatalf("create table failed: %s", err)
+	}
+
+	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Lob content can be written using a string.
+	content := "scan lob string"
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+
+	// Scan into StringLob and sql.Null[StringLob].
+	var s StringLob
+	var ns sql.Null[StringLob]
+	if err := stmt.QueryRow().Scan(&s, &ns); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(s)
+	fmt.Println(ns.V)
+
+	// output: scan lob string
+	// scan lob string
+}
+
+// WriterLob defines an io.Writer based data type for scanning Lobs.
+type WriterLob []byte
+
+// Write implements the io.Writer interface.
+func (b *WriterLob) Write(p []byte) (n int, err error) {
+	*b = append(*b, p...)
+	return len(p), nil
+}
+
+// Scan implements the database.sql.Scanner interface.
+func (b *WriterLob) Scan(arg any) error { return driver.ScanLobWriter(arg, b) }
+
+// ExampleScanLobWriter demonstrates how to read Lob data using an io.Writer based data type.
+func ExampleScanLobWriter() {
+	// Open Test database.
+	db := sql.OpenDB(driver.MT.Connector())
+	defer db.Close()
+
+	table := driver.RandomIdentifier("lob_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (n1 nclob, n2 nclob)", table)); err != nil {
+		log.Fatalf("create table failed: %s", err)
+	}
+
+	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Lob content can be written using a string.
+	content := "scan lob writer"
+	_, err = tx.Exec(fmt.Sprintf("insert into %s values (?, ?)", table), content, content)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Select.
+	stmt, err := db.Prepare(fmt.Sprintf("select * from %s", table))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+
+	// Scan into WriterLob and sql.Null[WriterLob].
+	var w WriterLob
+	var nw sql.Null[WriterLob]
+	if err := stmt.QueryRow().Scan(&w, &nw); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(w))
+	fmt.Println(string(nw.V))
+
+	// output: scan lob writer
+	// scan lob writer
+}

@@ -409,7 +409,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 			}
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			if err := pi.ReadResultPart(ctx, resSet, qr); err != nil {
+			if err := readResultPart(ctx, pi, resSet, qr); err != nil {
 				return nil, err
 			}
 			qr.fieldValues = resSet.FieldValues
@@ -560,7 +560,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 			}
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			if err := pi.ReadResultPart(ctx, resSet, qr); err != nil {
+			if err := readResultPart(ctx, pi, resSet, qr); err != nil {
 				return nil, err
 			}
 			qr.fieldValues = resSet.FieldValues
@@ -693,7 +693,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 			}
 		case p.PkOutputParameters:
 			outPrms.OutputFields = cr.outFields
-			if err := pi.ReadResultPart(ctx, outPrms, cr); err != nil {
+			if err := readResultPart(ctx, pi, outPrms, cr); err != nil {
 				return nil, nil, 0, err
 			}
 			cr.fieldValues = outPrms.FieldValues
@@ -716,7 +716,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 			qr.fields = meta.ResultFields
 		case p.PkResultset:
 			resSet.ResultFields = qr.fields
-			if err := pi.ReadResultPart(ctx, resSet, qr); err != nil {
+			if err := readResultPart(ctx, pi, resSet, qr); err != nil {
 				return nil, nil, 0, err
 			}
 			qr.fieldValues = resSet.FieldValues
@@ -785,7 +785,7 @@ func (s *session) fetchNext(ctx context.Context, qr *queryResult) error {
 				return err
 			}
 		case p.PkResultset:
-			if err := pi.ReadResultPart(ctx, resSet, qr); err != nil {
+			if err := readResultPart(ctx, pi, resSet, qr); err != nil {
 				return err
 			}
 			qr.fieldValues = resSet.FieldValues
@@ -853,47 +853,6 @@ func (s *session) disconnect(ctx context.Context) error {
 		// }
 
 	*/
-	return nil
-}
-
-/*
-readLob reads output lob or result lob parameters from db.
-
-read lob reply
-  - seems like readLobreply returns only a result for one lob - even if more than one is requested
-    --> read single lobs
-*/
-func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply *p.ReadLobReply) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetchLob)
-
-	var err error
-	for err != io.EOF { //nolint: errorlint
-		if err = s.pwr.Write(ctx, p.MtWriteLob, false, request); err != nil {
-			return err
-		}
-
-		for pi, err := range s.prd.Parts(ctx) {
-			if err != nil {
-				return err
-			}
-			switch pi.Header.Kind() {
-			case p.PkError:
-				err = pi.ReadHDBErrors(ctx)
-			case p.PkReadLobReply:
-				err = pi.ReadPart(ctx, reply)
-			default:
-				err = pi.SkipPart(ctx)
-			}
-			if err != nil {
-				return err
-			}
-		}
-
-		_, err = reply.Write()
-		if err != nil && err != io.EOF { //nolint: errorlint
-			return err
-		}
-	}
 	return nil
 }
 
