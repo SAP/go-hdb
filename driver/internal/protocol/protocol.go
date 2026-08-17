@@ -112,16 +112,6 @@ func (a *ReaderAttrs) SetAlphanumDfv1(b bool) {
 	a.alphanumDfv1 = b
 }
 
-// PartInfo holds attributes needed on iterating parts.
-type PartInfo struct {
-	Header         *PartHeader
-	Dec            *encoding.Decoder
-	ReadHDBErrors  func(context.Context) error
-	ReadPart       func(context.Context, PartDecoder) error
-	ReadResultPart func(context.Context, ResultPartDecoder, LobReader) error
-	SkipPart       func(context.Context) error
-}
-
 // Reader represents a protocol reader.
 type Reader struct {
 	rd io.Reader
@@ -134,7 +124,6 @@ type Reader struct {
 	mh *messageHeader
 	sh *segmentHeader
 
-	buf     []byte
 	tmpBuf  []byte
 	scratch []byte
 
@@ -150,7 +139,6 @@ func newReader(rd io.Reader, attrs *ReaderAttrs, readFromDB bool) *Reader {
 		attrs:     attrs,
 		mh:        &messageHeader{},
 		sh:        &segmentHeader{},
-		buf:       make([]byte, 1024),
 		scratch:   make([]byte, 32),
 		partCache: partCache{},
 		partInfo:  partInfo,
@@ -235,27 +223,32 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 		return nil
 	}
 
-	fillBuffer := func() error {
+	// fillBuffer allocates a fresh buffer per read. Decoded string and []byte
+	// values alias the buffer directly (no copy), and such values can be retained
+	// past this read (lazy column scan, lob chunk assembly, multiple stored
+	// procedure output tables). A reused buffer would overwrite data still
+	// referenced by the caller, so each read gets its own buffer whose lifetime
+	// the GC manages.
+	fillBuffer := func() ([]byte, error) {
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 
-		r.buf = slices.Grow(r.buf, numWireByte)
-		r.buf = r.buf[:numWireByte]
-		_, err := io.ReadFull(r.rd, r.buf)
-		return err
+		buf := make([]byte, numWireByte)
+		_, err := io.ReadFull(r.rd, buf)
+		return buf, err
 	}
 
-	fillBufferCompressed := func() error {
+	fillBufferCompressed := func() ([]byte, error) {
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 		numDecompressByte := int(r.mh.compressionVarPartLength) - segmentHeaderSize
 
 		r.tmpBuf = slices.Grow(r.tmpBuf, numWireByte)
 		r.tmpBuf = r.tmpBuf[:numWireByte]
 
-		r.buf = slices.Grow(r.buf, numDecompressByte)
-		r.buf = r.buf[:numDecompressByte]
+		// fresh buffer per read - see fillBuffer.
+		buf := make([]byte, numDecompressByte)
 
 		if _, err := io.ReadFull(r.rd, r.tmpBuf); err != nil {
-			return err
+			return nil, err
 		}
 
 		compressor := r.attrs.compressor
@@ -263,8 +256,8 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			panic("compressor misssing") // should never happen
 		}
 
-		_, err := compressor.Decompress(r.tmpBuf, r.buf)
-		return err
+		_, err := compressor.Decompress(r.tmpBuf, buf)
+		return buf, err
 	}
 
 	return func(yield func(*PartInfo, error) bool) {
@@ -273,11 +266,12 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			return
 		}
 
+		var buf []byte
 		var err error
 		if r.mh.packetOptions.isCompressed() {
-			err = fillBufferCompressed()
+			buf, err = fillBufferCompressed()
 		} else {
-			err = fillBuffer()
+			buf, err = fillBuffer()
 		}
 		if err != nil {
 			yield(nil, err)
@@ -286,8 +280,8 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 
 		for i := range int(r.mh.noOfSegm) {
 			if i != 0 {
-				dec := encoding.Decoder(r.buf[:segmentHeaderSize])
-				r.buf = r.buf[segmentHeaderSize:]
+				dec := encoding.Decoder(buf[:segmentHeaderSize])
+				buf = buf[segmentHeaderSize:]
 				r.sh.decode(&dec)
 			}
 
@@ -301,20 +295,20 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			for j := range numPart {
 				ph := r.partInfo.Header
 
-				dec := encoding.Decoder(r.buf[:partHeaderSize])
-				r.buf = r.buf[partHeaderSize:]
+				dec := encoding.Decoder(buf[:partHeaderSize])
+				buf = buf[partHeaderSize:]
 				ph.decode(&dec)
 
 				if r.protTraceFn != nil {
 					r.protTraceFn(ctx, textParHdr, ph)
 				}
 
-				dec = encoding.Decoder(r.buf[:ph.bufferLength])
+				dec = encoding.Decoder(buf[:ph.bufferLength])
 				bufAdvance := int(ph.bufferLength)
 				if j != lastPart {
 					bufAdvance += padBytes(int(ph.bufferLength))
 				}
-				r.buf = r.buf[bufAdvance:]
+				buf = buf[bufAdvance:]
 
 				r.partInfo.Dec = &dec
 
@@ -381,17 +375,6 @@ func (r *Reader) readHDBErrors(ctx context.Context) error {
 
 func (r *Reader) readPart(ctx context.Context, part PartDecoder) error {
 	err := part.decode(r.partInfo.Dec, r.partInfo.Header, r.attrs)
-	if r.protTraceFn != nil {
-		r.protTraceFn(ctx, textPar, part)
-	}
-	return err
-}
-
-func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder, lobReader LobReader) error {
-	if lobReader == nil {
-		panic("missing lob reader") // should never happen
-	}
-	err := part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs, lobReader)
 	if r.protTraceFn != nil {
 		r.protTraceFn(ctx, textPar, part)
 	}

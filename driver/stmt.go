@@ -162,9 +162,9 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		scanArgs[i] = new(sql.Rows)
 	}
 
-	// no table output parameters -> QueryRow
+	// no table output parameters -> convert scalar output parameters
 	if len(callArgs.outFields) == numOutArgs {
-		if err := stdConnTracker.callDB().QueryRow("", cr).Scan(scanArgs...); err != nil {
+		if err := convertCallResult(cr, scanArgs); err != nil {
 			return nil, nil, err
 		}
 		return driver.RowsAffected(numRow), nil, nil

@@ -283,14 +283,8 @@ func inferSQLDatatype(typ reflect.Type) (string, error) {
 		}
 	}
 
-	// generic Null[T].
-	if kind == reflect.Struct {
-		// see https://github.com/golang/go/issues/54393
-		if strings.HasPrefix(typ.String(), "sql.Null[") {
-			if f, ok := typ.FieldByName("V"); ok {
-				return inferSQLDatatype(f.Type)
-			}
-		}
+	if ok, vFieldType, _ := isGenericNull(typ); ok {
+		return inferSQLDatatype(vFieldType)
 	}
 
 	// basic datatypes.
