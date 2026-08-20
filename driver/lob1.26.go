@@ -90,30 +90,3 @@ func (l *Lob) Scan(src any) error {
 	}
 	return ScanLobWriter(src, l.wr)
 }
-
-// Scan implements the database/sql/Scanner interface.
-func (n *NullLob) Scan(value any) error {
-	/*
-		In contrast to the Null[T] Scan implementation we do not
-		create a new lob instance in case of value == nil to
-		enable reuse of n.Lob.
-
-		func (n *Null[T]) Scan(value any) error {
-			if value == nil {
-				n.V, n.Valid = *new(T), false
-				return nil
-			}
-			n.Valid = true
-			return convertAssign(&n.V, value)
-		}
-	*/
-	if value == nil {
-		n.Valid = false
-		return nil
-	}
-	if n.Lob == nil {
-		n.Lob = new(Lob)
-	}
-	n.Valid = true
-	return n.Lob.Scan(value)
-}

@@ -77,7 +77,7 @@ func Example_bulkInsert() {
 }
 
 /*
-ExampleBulkInsert inserts 3000 rows into a database table:
+ExampleBulkInsert inserts 2000 rows into a database table:
 
 	1000 rows are inserted via a slices chunk iterator
 	1000 rows are inserted via a custom iterator

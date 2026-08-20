@@ -60,6 +60,36 @@ type NullLob struct {
 	Valid bool // Valid is true if Lob is not NULL
 }
 
+// Scan implements the database/sql/Scanner interface.
+func (n *NullLob) Scan(value any) error {
+	/*
+		starting with go1.27 fallback method only
+	*/
+	/*
+		In contrast to the Null[T] Scan implementation we do not
+		create a new lob instance in case of value == nil to
+		enable reuse of n.Lob.
+
+		func (n *Null[T]) Scan(value any) error {
+			if value == nil {
+				n.V, n.Valid = *new(T), false
+				return nil
+			}
+			n.Valid = true
+			return convertAssign(&n.V, value)
+		}
+	*/
+	if value == nil {
+		n.Valid = false
+		return nil
+	}
+	if n.Lob == nil {
+		n.Lob = new(Lob)
+	}
+	n.Valid = true
+	return n.Lob.Scan(value)
+}
+
 // Value implements the database/sql/Valuer interface.
 func (n NullLob) Value() (driver.Value, error) {
 	if !n.Valid {

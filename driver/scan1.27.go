@@ -14,6 +14,13 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
+var (
+	lobReflectType        = reflect.TypeFor[Lob]()
+	nullLobReflectType    = reflect.TypeFor[NullLob]()
+	lobPtrReflectType     = reflect.TypeFor[*Lob]()
+	nullLobPtrReflectType = reflect.TypeFor[*NullLob]()
+)
+
 // scanColumn scans a single column value into the destination. Lob values are scanned
 // directly into the destination, all other values are converted via convertAssign
 // (no-copy for string and []byte values).
@@ -229,6 +236,29 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 		}
 		validField.SetBool(true)
 		return nil
+	}
+
+	// support structs embedding Lob or NullLob (by value or by pointer)
+	// stream directly into the embedded value, avoiding the buffering fallback below
+	// (vflow embedding pattern go < 1.27)
+	if dv.Kind() == reflect.Struct && dv.CanAddr() {
+		t := dv.Type()
+		for i := range t.NumField() {
+			f := t.Field(i)
+			if !f.Anonymous {
+				continue
+			}
+			switch f.Type {
+			case lobReflectType, nullLobReflectType:
+				return convertAssignLob(scanCtx, session, dv.Field(i).Addr().Interface(), src)
+			case lobPtrReflectType, nullLobPtrReflectType:
+				fv := dv.Field(i)
+				if fv.IsNil() {
+					fv.Set(reflect.New(fv.Type().Elem()))
+				}
+				return convertAssignLob(scanCtx, session, fv.Interface(), src)
+			}
+		}
 	}
 
 	if descr, ok := src.(*p.LobOutDescr); ok {

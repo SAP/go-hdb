@@ -18,7 +18,7 @@ will take effect once Go 1.27 is released.
 
   This is possible because Go 1.27 introduces the `driver.RowsColumnScanner`
   interface, which lets drivers scan directly into the user provided scan
-  destination instead of materializing values into `[]driver.Value`.
+  destination.
 
 ### Deprecations
 
