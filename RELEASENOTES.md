@@ -5,12 +5,16 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.17.6
+- updated Go toolchain
+- lob scan (go1.27): stream directly into embedded Lob / NullLob scan destinations
+
 #### v1.17.5
 - fixed issue in prometheus make
 
 #### v1.17.4
 - fixed a data corruption bug in the protocol reader
-- updated Go toolchain to go1.26.6
+- updated Go toolchain
 - updated dependencies
 
 #### v1.17.3

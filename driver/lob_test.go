@@ -194,7 +194,64 @@ func testLobNilPlusBig(t *testing.T, db *sql.DB) {
 	}
 }
 
+func testEmbeddedLob(t *testing.T, db *sql.DB) {
+	// (vflow pattern go < 1.27)
+	type embeddedLob struct {
+		Lob
+	}
+	type embeddedNullLob struct {
+		NullLob
+	}
+
+	const blobSize = 1000
+	testData := []byte(alphanum.ReadString(blobSize))
+
+	table := RandomIdentifier("lob_")
+
+	if _, err := db.Exec(fmt.Sprintf("create table %s (b blob, c blob)", table)); err != nil {
+		t.Fatalf("create table failed: %s", err)
+	}
+
+	// use transactions:
+	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?,?)", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt.Close()
+
+	if _, err := stmt.Exec(testData, testData); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var lob embeddedLob
+	var nullLob embeddedNullLob
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table)).Scan(&lob, &nullLob); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := lob.wr.(*bytes.Buffer).Bytes(); !bytes.Equal(got, testData) {
+		t.Fatalf("embedded lob: got %d bytes - expected %d bytes", len(got), len(testData))
+	}
+	if !nullLob.Valid {
+		t.Fatal("embedded null lob: got invalid - expected valid")
+	}
+	if got := nullLob.Lob.wr.(*bytes.Buffer).Bytes(); !bytes.Equal(got, testData) {
+		t.Fatalf("embedded null lob: got %d bytes - expected %d bytes", len(got), len(testData))
+	}
+}
+
 func TestLob(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		fct  func(t *testing.T, db *sql.DB)
@@ -204,11 +261,13 @@ func TestLob(t *testing.T) {
 		{"delayedScan", testLobDelayedScan},
 		{"nilPlusBigLob", testLobNilPlusBig},
 		{"affectedRows", testLobAffectedRows},
+		{"embeddedLob", testEmbeddedLob},
 	}
 
 	db := MT.DB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			test.fct(t, db)
 		})
 	}
