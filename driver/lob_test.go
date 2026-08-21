@@ -31,16 +31,16 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := tx.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+	if _, err := tx.ExecContext(t.Context(), fmt.Sprintf("create table %s (b blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 
 	wg := new(sync.WaitGroup)
 	wg.Go(func() {
-		if _, err := stmt.Exec(lob); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), lob); err != nil {
 			t.Error(err)
 			return
 		}
@@ -76,7 +76,7 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 	lob.SetWriter(wr)
 
 	wg.Go(func() {
-		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
+		if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			t.Error(err)
 			return
 		}
@@ -104,16 +104,16 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := tx.Exec(fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+	if _, err := tx.ExecContext(t.Context(), fmt.Sprintf("create table %s (b blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func testLobDelayedScan(t *testing.T, db *sql.DB) {
 	lob := &Lob{}
 	lob.SetReader(rd)
 
-	if _, err := stmt.Exec(lob); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), lob); err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
@@ -168,24 +168,24 @@ func testLobNilPlusBig(t *testing.T, db *sql.DB) {
 
 	table := RandomIdentifier("lobNilPlusBig_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (n nclob, b blob)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (n nclob, b blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?,?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
 
-	if _, err := stmt.Exec(nil, testData); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), nil, testData); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,24 +208,24 @@ func testEmbeddedLob(t *testing.T, db *sql.DB) {
 
 	table := RandomIdentifier("lob_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (b blob, c blob)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (b blob, c blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?,?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?,?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
 
-	if _, err := stmt.Exec(testData, testData); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), testData, testData); err != nil {
 		t.Fatal(err)
 	}
 

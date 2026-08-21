@@ -10,7 +10,7 @@ import (
 
 func benchmarkPing(b *testing.B) {
 	db := driver.MT.DB()
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(b.Context()); err != nil {
 		b.Fatal(err)
 	}
 }

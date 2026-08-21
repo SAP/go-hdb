@@ -5,6 +5,7 @@ package driver_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -31,7 +32,7 @@ func ExampleLob_read() {
 	lob := new(driver.Lob)
 	lob.SetWriter(b) // SetWriter sets the io.Writer object, to which the database content of the lob field is written.
 
-	if err := db.QueryRow("select * from test").Scan(lob); err != nil {
+	if err := db.QueryRowContext(context.Background(), "select * from test").Scan(lob); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -54,12 +55,13 @@ func ExampleLob_write() {
 	}
 	defer db.Close()
 
-	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil) // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare("insert into test values(?)")
+	stmt, err := tx.PrepareContext(ctx, "insert into test values(?)")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func ExampleLob_write() {
 	lob := new(driver.Lob)
 	lob.SetReader(file) // SetReader sets the io.Reader object, which content is written to the database lob field.
 
-	if _, err := stmt.Exec(lob); err != nil {
+	if _, err := stmt.ExecContext(ctx, lob); err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
@@ -95,18 +97,19 @@ func ExampleLob_pipe() {
 	db := sql.OpenDB(driver.MT.Connector())
 	defer db.Close()
 
-	tx, err := db.Begin() // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil) // Start Transaction to avoid database error: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Create table.
 	table := driver.RandomIdentifier("fileLob")
-	if _, err := tx.Exec(fmt.Sprintf("create table %s (file nclob)", table)); err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("create table %s (file nclob)", table)); err != nil {
 		log.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?)", table))
+	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?)", table)) //nolint: sqlclosecheck
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,7 +125,7 @@ func ExampleLob_pipe() {
 	// Start sql insert in own go-routine.
 	// The go-routine is going to be ended when the data write via the PipeWriter is finalized.
 	wg.Go(func() {
-		if _, err := stmt.Exec(lob); err != nil {
+		if _, err := stmt.ExecContext(ctx, lob); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("exec finalized")
@@ -158,7 +161,7 @@ func ExampleLob_pipe() {
 	// Start sql select in own go-routine.
 	// The go-routine is going to be ended when the data read via the PipeReader is finalized.
 	wg.Go(func() {
-		if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
+		if err := db.QueryRowContext(ctx, fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("scan finalized")

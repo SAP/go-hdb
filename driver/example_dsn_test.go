@@ -1,6 +1,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/url"
@@ -26,7 +27,7 @@ func ExampleDSN() {
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 }

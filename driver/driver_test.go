@@ -14,7 +14,7 @@ import (
 
 func testConnection(t *testing.T, db *sql.DB) {
 	var dummy string
-	err := db.QueryRow("select * from dummy").Scan(&dummy)
+	err := db.QueryRowContext(t.Context(), "select * from dummy").Scan(&dummy)
 	switch {
 	case err == sql.ErrNoRows:
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func testConnection(t *testing.T, db *sql.DB) {
 }
 
 func testPing(t *testing.T, db *sql.DB) {
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PingContext(t.Context()); err != nil {
@@ -37,18 +37,18 @@ func testPing(t *testing.T, db *sql.DB) {
 
 func testInsertByQuery(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("insertByQuery_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
 	// insert value via Query
-	if err := db.QueryRow(fmt.Sprintf("insert into %s values (?)", table), 42).Scan(); err != sql.ErrNoRows {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("insert into %s values (?)", table), 42).Scan(); err != sql.ErrNoRows {
 		t.Fatal(err)
 	}
 
 	// check value
 	var i int
-	if err := db.QueryRow(fmt.Sprintf("select * from %s", table)).Scan(&i); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table)).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 	if i != 42 {
@@ -60,7 +60,7 @@ func testHDBError(t *testing.T, db *sql.DB) {
 	// select from not existing table with different table name length
 	// to check if padding, etc works (see hint in protocol.error.Read(...))
 	for i := range 9 {
-		_, err := db.Query("select * from " + strings.Repeat("x", i+1)) //nolint:sqlclosecheck,gosec
+		_, err := db.QueryContext(t.Context(), "select * from "+strings.Repeat("x", i+1)) //nolint:sqlclosecheck,gosec
 		if err == nil {
 			t.Fatal("hdb error expected")
 		}
@@ -87,22 +87,22 @@ end
 	procedure := driver.RandomIdentifier("proc_")
 	tableName := driver.RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf(procOut, procedure, tableName)); err != nil { // Create stored procedure.
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(procOut, procedure, tableName)); err != nil { // Create stored procedure.
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("call %s", procedure)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s", procedure)); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func testQueryAttributeAlias(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("queryAttributeAlias_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select i as x, j from %s", table))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select i as x, j from %s", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,11 +136,11 @@ func testRowsAffected(t *testing.T, db *sql.DB) {
 	const maxRows = 10
 
 	table := driver.RandomIdentifier("rowsAffected_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?)", table))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func testRowsAffected(t *testing.T, db *sql.DB) {
 
 	// insert
 	for i := range maxRows {
-		result, err := stmt.Exec(i)
+		result, err := stmt.ExecContext(t.Context(), i)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func testRowsAffected(t *testing.T, db *sql.DB) {
 	}
 
 	// update
-	result, err := db.Exec(fmt.Sprintf("update %s set i = %d where i <> %d", table, maxRows, maxRows))
+	result, err := db.ExecContext(t.Context(), fmt.Sprintf("update %s set i = %d where i <> %d", table, maxRows, maxRows))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,35 +165,35 @@ func testRowsAffected(t *testing.T, db *sql.DB) {
 
 func testUpsert(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("upsert_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (key int primary key, val int)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (key int primary key, val int)", table)); err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := db.Exec(fmt.Sprintf("upsert %s values (1, 1)", table))
+	result, err := db.ExecContext(t.Context(), fmt.Sprintf("upsert %s values (1, 1)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s values (:1, :1) where key = :2", table), 2, 2)
+	result, err = db.ExecContext(t.Context(), fmt.Sprintf("upsert %s values (:1, :1) where key = :2", table), 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s values (?, ?) where key = ?", table), 1, 9, 1)
+	result, err = db.ExecContext(t.Context(), fmt.Sprintf("upsert %s values (?, ?) where key = ?", table), 1, 9, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %s values (?, ?) with primary key", table), 1, 8)
+	result, err = db.ExecContext(t.Context(), fmt.Sprintf("upsert %s values (?, ?) with primary key", table), 1, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkAffectedRows(t, result, 1)
 
-	result, err = db.Exec(fmt.Sprintf("upsert %[1]s select key + ?, val from %[1]s", table), 2)
+	result, err = db.ExecContext(t.Context(), fmt.Sprintf("upsert %[1]s select key + ?, val from %[1]s", table), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,18 +202,18 @@ func testUpsert(t *testing.T, db *sql.DB) {
 
 func testQueryArgs(t *testing.T, db *sql.DB) {
 	table := driver.RandomIdentifier("table_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, j integer)", table)); err != nil {
 		t.Fatal(err)
 	}
 
 	var i = 0
 	// positional args
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = :1 and j = :1", table), 1).Scan(&i); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %s where i = :1 and j = :1", table), 1).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 
 	// mixed args
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where i = ? and j = :3", table), 1, "arg not used", 2).Scan(&i); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %s where i = ? and j = :3", table), 1, "arg not used", 2).Scan(&i); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -229,7 +229,7 @@ func testComments(t *testing.T, db *sql.DB) {
 	}
 
 	for _, test := range tests {
-		rows, err := db.Query(test.query)
+		rows, err := db.QueryContext(t.Context(), test.query)
 		if err != nil {
 			if test.supported {
 				t.Fatal(err)
@@ -248,15 +248,15 @@ func testDecodeErrors(t *testing.T, db *sql.DB) {
 
 	tableName := driver.RandomIdentifier("testTemp")
 
-	if _, err := db.Exec(fmt.Sprintf("create column table %s (s nvarchar(20) not null)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create column table %s (s nvarchar(20) not null)", tableName)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(bintostr('2B301C39EDA2A81132306033'))", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values(bintostr('2B301C39EDA2A81132306033'))", tableName)); err != nil {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(fmt.Sprintf("select s from %s", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select s from %s", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func testDecodeErrors(t *testing.T, db *sql.DB) {
 func testDriverDB(t *testing.T) {
 	// test that db.Close() closes the metrics and db in the right order.
 	db := driver.OpenDB(driver.MT.Connector())
-	if _, err := db.Exec("select * from dummy"); err != nil {
+	if _, err := db.ExecContext(t.Context(), "select * from dummy"); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

@@ -228,7 +228,7 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	}
 
 	// support database/sql sql.Null[T] destinations
-	if isGenNull, _, _ := isGenericNull(dv.Type()); isGenNull {
+	if isGenNull, _ := isGenericNull(dv.Type()); isGenNull {
 		vField := dv.FieldByName("V")
 		validField := dv.FieldByName("Valid")
 		if err := convertAssignLob(scanCtx, session, vField, src); err != nil {
@@ -242,17 +242,14 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	// stream directly into the embedded value, avoiding the buffering fallback below
 	// (vflow embedding pattern go < 1.27)
 	if dv.Kind() == reflect.Struct && dv.CanAddr() {
-		t := dv.Type()
-		for i := range t.NumField() {
-			f := t.Field(i)
+		for f, fv := range dv.Fields() {
 			if !f.Anonymous {
 				continue
 			}
 			switch f.Type {
 			case lobReflectType, nullLobReflectType:
-				return convertAssignLob(scanCtx, session, dv.Field(i).Addr().Interface(), src)
+				return convertAssignLob(scanCtx, session, fv.Addr().Interface(), src)
 			case lobPtrReflectType, nullLobPtrReflectType:
-				fv := dv.Field(i)
 				if fv.IsNil() {
 					fv.Set(reflect.New(fv.Type().Elem()))
 				}

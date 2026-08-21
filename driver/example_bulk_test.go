@@ -28,12 +28,13 @@ func Example_bulkInsert() {
 	tableName := driver.RandomIdentifier("table_")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
 	// Prepare statement.
-	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?, ?)", tableName))
+	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,13 +45,13 @@ func Example_bulkInsert() {
 	for i := range numRow {
 		args[i*2], args[i*2+1] = i, float64(i)
 	}
-	if _, err := stmt.Exec(args...); err != nil {
+	if _, err := stmt.ExecContext(ctx, args...); err != nil {
 		log.Fatal(err)
 	}
 
 	// Bulk insert via function.
 	i := 0
-	if _, err := stmt.Exec(func(args []any) error {
+	if _, err := stmt.ExecContext(ctx, func(args []any) error {
 		if i >= numRow {
 			return driver.ErrEndOfRows
 		}
@@ -63,13 +64,13 @@ func Example_bulkInsert() {
 
 	// Select number of inserted rows.
 	var count int
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, fmt.Sprintf("select count(*) from %s", tableName)).Scan(&count); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Print(count)
 
 	// Drop table.
-	if _, err := db.Exec(fmt.Sprintf("drop table %s", tableName)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("drop table %s", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -91,12 +92,13 @@ func Example_bulkInsertViaIterator() {
 	tableName := driver.RandomIdentifier("table_")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (i integer, f double)", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
 	// Prepare statement.
-	stmt, err := db.PrepareContext(context.Background(), fmt.Sprintf("insert into %s values (?, ?)", tableName))
+	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("insert into %s values (?, ?)", tableName))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +110,7 @@ func Example_bulkInsertViaIterator() {
 		args[i*2], args[i*2+1] = i, float64(i)
 	}
 
-	if _, err := stmt.Exec(slices.Chunk(args, 2)); err != nil {
+	if _, err := stmt.ExecContext(ctx, slices.Chunk(args, 2)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -121,19 +123,19 @@ func Example_bulkInsertViaIterator() {
 		}
 	}
 
-	if _, err := stmt.Exec(myIter); err != nil {
+	if _, err := stmt.ExecContext(ctx, myIter); err != nil {
 		log.Fatal(err)
 	}
 
 	// Select number of inserted rows.
 	var count int
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s", tableName)).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, fmt.Sprintf("select count(*) from %s", tableName)).Scan(&count); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Print(count)
 
 	// Drop table.
-	if _, err := db.Exec(fmt.Sprintf("drop table %s", tableName)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("drop table %s", tableName)); err != nil {
 		log.Fatal(err)
 	}
 

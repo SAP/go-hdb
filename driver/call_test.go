@@ -25,12 +25,12 @@ end
 
 	// create procedure
 	proc := driver.RandomIdentifier("procEcho_")
-	if _, err := db.Exec(fmt.Sprintf(procEcho, proc)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(procEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	testExecInvNamedPrm := func() { // exec - invalid names (lower instead of upper case)
-		if _, err := db.Exec(fmt.Sprintf("call %s(?, ?)", proc), sql.Named("idata", txt), sql.Named("odata", sql.Out{Dest: &out})); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("idata", txt), sql.Named("odata", sql.Out{Dest: &out})); err != nil {
 			t.Log(err)
 		} else {
 			t.Fatal("should return invalid argument name error")
@@ -38,7 +38,7 @@ end
 	}
 
 	testExec := func() { // exec
-		if _, err := db.Exec(fmt.Sprintf("call %s(?, ?)", proc), sql.Named("IDATA", txt), sql.Named("ODATA", sql.Out{Dest: &out})); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("IDATA", txt), sql.Named("ODATA", sql.Out{Dest: &out})); err != nil {
 			t.Fatal(err)
 		}
 		if out != txt {
@@ -47,7 +47,7 @@ end
 	}
 
 	testExecRndPrms := func() { // exec random parameters - switch input / output argument (test named parameters)
-		if _, err := db.Exec(fmt.Sprintf("call %s(?, ?)", proc), sql.Named("ODATA", sql.Out{Dest: &out}), sql.Named("IDATA", txt)); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("ODATA", sql.Out{Dest: &out}), sql.Named("IDATA", txt)); err != nil {
 			t.Fatal(err)
 		}
 		if out != txt {
@@ -87,12 +87,12 @@ end
 	}
 
 	proc := driver.RandomIdentifier("procBlobEcho_")
-	if _, err := db.Exec(fmt.Sprintf(procBlobEcho, proc)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(procBlobEcho, proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	lob, b := newLob()
-	if _, err := db.Exec(fmt.Sprintf("call %s(?, ?)", proc), sql.Named("IDATA", lob), sql.Named("ODATA", sql.Out{Dest: lob})); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("IDATA", lob), sql.Named("ODATA", sql.Out{Dest: lob})); err != nil {
 		t.Fatal(err)
 	}
 	if b.String() != txt {
@@ -304,17 +304,17 @@ end
 `
 	// create procedure
 	proc := driver.RandomIdentifier("procNoPrm_")
-	if _, err := db.Exec(fmt.Sprintf(procNoPrm, proc)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(procNoPrm, proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	// call by execute
-	if _, err := db.Exec(fmt.Sprintf("call %s", proc)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s", proc)); err != nil {
 		t.Fatal(err)
 	}
 
 	// call by query (allow for calls without parameters)
-	rows, err := db.Query(fmt.Sprintf("call %s", proc))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("call %s", proc))
 	if err != nil {
 		t.Fatal(err)
 	}

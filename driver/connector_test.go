@@ -45,7 +45,7 @@ func TestConnector(t *testing.T) {
 		}
 
 		sessionContext := func(db *sql.DB) ([]mSessionContext, error) {
-			rows, err := db.Query("select host, port, connection_id, key, value, section from m_session_context where connection_id=current_connection")
+			rows, err := db.QueryContext(t.Context(), "select host, port, connection_id, key, value, section from m_session_context where connection_id=current_connection")
 			if err != nil {
 				return nil, err
 			}
@@ -103,7 +103,7 @@ func TestConnector(t *testing.T) {
 		db := MT.DB()
 		invalidConnectAttempts := int64(0)
 		// ignore error (entry not found)
-		db.QueryRow(fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts) //nolint:errcheck
+		db.QueryRowContext(t.Context(), fmt.Sprintf("select invalid_connect_attempts from sys.invalid_connect_attempts where user_name = '%s'", username)).Scan(&invalidConnectAttempts) //nolint:errcheck
 		t.Logf("number of invalid connect attempts: %d", invalidConnectAttempts)
 	}
 
@@ -122,7 +122,7 @@ func TestConnector(t *testing.T) {
 		db := sql.OpenDB(ctr)
 		defer db.Close()
 
-		if err := db.Ping(); err != nil {
+		if err := db.PingContext(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}

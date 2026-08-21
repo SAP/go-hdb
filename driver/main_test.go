@@ -178,18 +178,18 @@ func (mt *MainTest) detectVersion(db *sql.DB) (*Version, error) {
 }
 
 func (mt *MainTest) createSchema(db *sql.DB, schema string) error {
-	_, err := db.Exec("create schema " + strconv.Quote(schema))
+	_, err := db.ExecContext(context.Background(), "create schema "+strconv.Quote(schema))
 	return err
 }
 
 func (mt *MainTest) dropSchema(db *sql.DB, schema string) error {
-	_, err := db.Exec(fmt.Sprintf("drop schema %s cascade", strconv.Quote(schema)))
+	_, err := db.ExecContext(context.Background(), fmt.Sprintf("drop schema %s cascade", strconv.Quote(schema)))
 	return err
 }
 
 func (mt *MainTest) queryNumTablesInSchema(db *sql.DB, schema string) (int, error) {
 	numTables := 0
-	if err := db.QueryRow("select count(*) from sys.tables where schema_name = ?", schema).Scan(&numTables); err != nil {
+	if err := db.QueryRowContext(context.Background(), "select count(*) from sys.tables where schema_name = ?", schema).Scan(&numTables); err != nil {
 		return 0, err
 	}
 	return numTables, nil
@@ -197,7 +197,7 @@ func (mt *MainTest) queryNumTablesInSchema(db *sql.DB, schema string) (int, erro
 
 func (mt *MainTest) queryNumProcsInSchema(db *sql.DB, schema string) (int, error) {
 	numProcs := 0
-	if err := db.QueryRow("select count(*) from sys.procedures where schema_name = ?", schema).Scan(&numProcs); err != nil {
+	if err := db.QueryRowContext(context.Background(), "select count(*) from sys.procedures where schema_name = ?", schema).Scan(&numProcs); err != nil {
 		return 0, err
 	}
 	return numProcs, nil
@@ -206,7 +206,7 @@ func (mt *MainTest) queryNumProcsInSchema(db *sql.DB, schema string) (int, error
 func (mt *MainTest) querySchemasPrefix(db *sql.DB, prefix string) ([]string, error) {
 	names := make([]string, 0)
 
-	rows, err := db.Query("select schema_name from sys.schemas where schema_name like ?", prefix+"_%")
+	rows, err := db.QueryContext(context.Background(), "select schema_name from sys.schemas where schema_name like ?", prefix+"_%")
 	if err != nil {
 		return nil, err
 	}

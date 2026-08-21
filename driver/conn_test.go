@@ -10,7 +10,7 @@ import (
 )
 
 func testCancelContext(t *testing.T, db *sql.DB) {
-	stmt, err := db.Prepare("select * from dummy")
+	stmt, err := db.PrepareContext(t.Context(), "select * from dummy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func testCancelContext(t *testing.T, db *sql.DB) {
 
 	// use statement again - should work even first stmt.Exec got canceled.
 	for range 5 {
-		if _, err := stmt.Exec(); err != nil {
+		if _, err := stmt.ExecContext(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}

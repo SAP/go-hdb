@@ -27,7 +27,7 @@ func newTestAnonBlockTable1(t *testing.T, db *sql.DB) testAnonBlockTable {
 	numRow := 10
 	id := driver.RandomIdentifier("ab")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, j integer)", id)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, j integer)", id)); err != nil {
 		t.Fatal(err)
 	}
 	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?)", id))
@@ -41,7 +41,7 @@ func newTestAnonBlockTable1(t *testing.T, db *sql.DB) testAnonBlockTable {
 	for i := range numRow {
 		args1[i*2], args1[i*2+1] = i, i
 	}
-	if _, err := stmt.Exec(args1...); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), args1...); err != nil {
 		log.Fatal(err)
 	}
 
@@ -67,7 +67,7 @@ func newTestAnonBlockTable2(t *testing.T, db *sql.DB) testAnonBlockTable {
 	numRow := 20
 	id := driver.RandomIdentifier("ab")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, f float)", id)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, f float)", id)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,7 +82,7 @@ func newTestAnonBlockTable2(t *testing.T, db *sql.DB) testAnonBlockTable {
 	for i := range numRow {
 		args2[i*2], args2[i*2+1] = i, float64(i)
 	}
-	if _, err := stmt.Exec(args2...); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), args2...); err != nil {
 		log.Fatal(err)
 	}
 
@@ -106,7 +106,7 @@ func testAnonBlockSimple(t *testing.T, db *sql.DB, tables []testAnonBlockTable) 
 	b.WriteString("DO BEGIN")
 	b.WriteString("  BEGIN PARALLEL EXECUTION")
 	for _, table := range tables {
-		b.WriteString(fmt.Sprintf("    SELECT * FROM %s;", table.id().String()))
+		fmt.Fprintf(&b, "    SELECT * FROM %s;", table.id().String())
 	}
 	b.WriteString("  END;")
 	b.WriteString("END;")

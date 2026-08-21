@@ -4,6 +4,7 @@ package sqlscript_test
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -49,7 +50,7 @@ DROP TABLE #my_local_temp_table
 	scanner.Split(sqlscript.ScanFunc(sqlscript.DefaultSeparator, true))
 
 	for scanner.Scan() {
-		if _, err := db.Exec(scanner.Text()); err != nil {
+		if _, err := db.ExecContext(context.Background(), scanner.Text()); err != nil {
 			log.Fatal(err)
 		}
 	}

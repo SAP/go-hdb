@@ -14,7 +14,7 @@ import (
 
 func newRandomData(size int) []byte {
 	b := make([]byte, size)
-	rand.Read(b) //nolint: errcheck // never returns error
+	rand.Read(b)
 	return b
 }
 
@@ -32,18 +32,18 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 
 	table := RandomIdentifier("lob_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, n nclob, b blob)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, n nclob, b blob)", table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?,?,?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?,?,?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 
 	// insert as string and byte
 	for i, s := range testData {
-		if _, err := stmt.Exec(i, s, []byte(s)); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), i, s, []byte(s)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -83,7 +83,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 			t.Fatalf("idx %d got %s - expected %s", i, string(b), testData[i])
 		}
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -105,7 +105,7 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 
 	table := RandomIdentifier("lobAffectedRows_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (id integer primary key, b1 blob, b2 blob)", table)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (id integer primary key, b1 blob, b2 blob)", table)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,17 +120,17 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 	insertData1 := newRandomData(lobChunkSize * 2)
 	insertData2 := newRandomData(lobChunkSize * 3)
 
-	tx, err := testDB.Begin()
+	tx, err := testDB.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?, ?, ?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?, ?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := stmt.Exec(1, insertData1, insertData2)
+	result, err := stmt.ExecContext(t.Context(), 1, insertData1, insertData2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,18 +146,18 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 	updateData1 := newRandomData(lobChunkSize * 2)
 	updateData2 := newRandomData(lobChunkSize * 3)
 
-	tx, err = testDB.Begin()
+	tx, err = testDB.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err = tx.Prepare(fmt.Sprintf("update %s set b1 = ?, b2 = ? where id = ?", table))
+	stmt, err = tx.PrepareContext(t.Context(), fmt.Sprintf("update %s set b1 = ?, b2 = ? where id = ?", table))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
 
-	result, err = stmt.Exec(updateData1, updateData2, 1)
+	result, err = stmt.ExecContext(t.Context(), updateData1, updateData2, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 	// Verify
 	var readData1 []byte
 	var readData2 []byte
-	if err := db.QueryRow(fmt.Sprintf("select b1, b2 from %s where id = 1", table)).Scan(&readData1, &readData2); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select b1, b2 from %s where id = 1", table)).Scan(&readData1, &readData2); err != nil {
 		t.Fatal(err)
 	}
 

@@ -57,7 +57,7 @@ func (a *LDAP) Order() byte { return MoLDAP }
 // PrepareInitReq implements the Method interface.
 func (a *LDAP) PrepareInitReq(prms *Prms) error {
 	a.clientChallenge = make([]byte, ldapClientChallengeSize)
-	rand.Read(a.clientChallenge) //nolint: errcheck // never returns error
+	rand.Read(a.clientChallenge)
 
 	prms.addString(a.Typ())
 
@@ -118,7 +118,7 @@ func (a *LDAP) InitRepDecode(dec *encoding.Decoder) error {
 func (a *LDAP) PrepareFinalReq(prms *Prms) error {
 	// Generate random session key
 	sessionKey := make([]byte, ldapSessionKeySize)
-	rand.Read(sessionKey) //nolint:errcheck
+	rand.Read(sessionKey)
 
 	encryptedSessionKey, err := ldapEncryptSessionKey(sessionKey, a.serverChallenge, a.serverPublicKey)
 	if err != nil {
@@ -222,6 +222,6 @@ func ldapEncryptPassword(password string, sessionKey []byte, challenge []byte) (
 // ldapPKCS7Pad pads data to a multiple of blockSize using PKCS7 padding.
 func ldapPKCS7Pad(data []byte, blockSize int) []byte {
 	padding := blockSize - (len(data) % blockSize)
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding) //nolint: gosec
 	return append(data, padtext...)
 }

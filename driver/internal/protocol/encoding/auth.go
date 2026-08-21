@@ -42,7 +42,7 @@ func AuthVarFieldSize(size int) int {
 func (e *Encoder) AuthVarFieldInd(size int) error {
 	switch {
 	case size <= authMaxFieldSize1ByteLen:
-		e.Byte(byte(size))
+		e.Byte(byte(size)) //nolint: gosec
 	case size <= math.MaxUint16:
 		e.Byte(authFieldSize2ByteIndicator)
 		e.Uint16ByteOrder(uint16(size), binary.BigEndian)

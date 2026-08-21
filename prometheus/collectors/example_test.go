@@ -105,7 +105,7 @@ func Example() {
 		log.Fatal(server.ListenAndServe())
 	}()
 
-	log.Printf("access the metrics at http://%s/metrics", formatHTTPAddr(addr))
+	log.Printf("access the metrics at http://%s/metrics", formatHTTPAddr(addr)) //nolint: gosec
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt)

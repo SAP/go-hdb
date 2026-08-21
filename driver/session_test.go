@@ -27,11 +27,11 @@ func TestUserSwitch(t *testing.T) {
 		defer db.Close()
 
 		// Create table.
-		if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
 			t.Fatal(err)
 		}
 		// Insert record.
-		if _, err := db.Exec(fmt.Sprintf("insert into %s values (?)", tableName), 42); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values (?)", tableName), 42); err != nil {
 			t.Fatal(err)
 		}
 	}

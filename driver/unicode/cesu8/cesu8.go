@@ -51,13 +51,13 @@ func EncodeRune(p []byte, r rune) int {
 		return utf8.EncodeRune(p, r)
 	}
 	high, low := utf16.EncodeRune(r)
-	_ = p[5] // eliminate bounds checks
-	p[0] = t3 | byte(high>>12)
-	p[1] = tx | byte(high>>6)&maskx
-	p[2] = tx | byte(high)&maskx
-	p[3] = t3 | byte(low>>12)
-	p[4] = tx | byte(low>>6)&maskx
-	p[5] = tx | byte(low)&maskx
+	_ = p[5]                        // eliminate bounds checks
+	p[0] = t3 | byte(high>>12)      //nolint: gosec
+	p[1] = tx | byte(high>>6)&maskx //nolint: gosec
+	p[2] = tx | byte(high)&maskx    //nolint: gosec
+	p[3] = t3 | byte(low>>12)       //nolint: gosec
+	p[4] = tx | byte(low>>6)&maskx  //nolint: gosec
+	p[5] = tx | byte(low)&maskx     //nolint: gosec
 	return CESUMax
 }
 

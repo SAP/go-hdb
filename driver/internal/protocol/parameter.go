@@ -165,7 +165,7 @@ func (f *ParameterField) InOut() bool { return f.mode == pmInout }
 
 func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.parameterOptions = parameterOptions(dec.Int8())
-	f.tc = typeCode(dec.Int8())
+	f.tc = typeCode(dec.Byte())
 	f.mode = ParameterMode(dec.Int8())
 	dec.Skip(1) // filler
 	f.ofs = int(dec.Uint32())
@@ -230,7 +230,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, tr transform.Transform
 		if !ok {
 			panic("invalid lob value") // should never happen
 		}
-		enc.Byte(byte(descr.opt))
+		enc.Byte(byte(descr.opt))      //nolint: gosec
 		enc.Int32(int32(descr.size())) //nolint: gosec
 		enc.Int32(int32(descr.pos))    //nolint: gosec
 		return nil

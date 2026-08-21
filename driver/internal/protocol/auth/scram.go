@@ -30,8 +30,7 @@ func scramCheckServerChallenge(serverChallenge []byte) error {
 
 func scramClientChallenge() []byte {
 	r := make([]byte, scramClientChallengeSize)
-	// does not return err starting with go1.24
-	rand.Read(r) //nolint: errcheck
+	rand.Read(r) // does not return err starting with go1.24
 	return r
 }
 

@@ -80,18 +80,18 @@ func TestColumnType(t *testing.T) {
 
 		// some data types are only valid for column tables
 		// e.g. text
-		if _, err := db.Exec(fmt.Sprintf("create column table %s %s", tableName, columnDefs(types))); err != nil {
+		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create column table %s %s", tableName, columnDefs(types))); err != nil {
 			t.Fatal(err)
 		}
 
 		// use transactions:
 		// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-		tx, err := db.Begin()
+		tx, err := db.BeginTx(t.Context(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if _, err := tx.Exec(fmt.Sprintf("insert into %s values %s", tableName, placeholders(len(types))), values...); err != nil {
+		if _, err := tx.ExecContext(t.Context(), fmt.Sprintf("insert into %s values %s", tableName, placeholders(len(types))), values...); err != nil {
 			t.Fatal(err)
 		}
 
@@ -109,7 +109,7 @@ func TestColumnType(t *testing.T) {
 		}
 		defer stmt.Close()
 
-		rows, err := stmt.Query()
+		rows, err := stmt.QueryContext(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}

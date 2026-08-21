@@ -4,6 +4,7 @@ package driver
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -25,7 +26,7 @@ import (
 
 func dttCreateTable(db *sql.DB, column string) (Identifier, error) {
 	tableName := RandomIdentifier(column + "_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (x %s, i integer)", tableName, column)); err != nil {
+	if _, err := db.ExecContext(context.Background(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, column)); err != nil {
 		return tableName, err
 	}
 	return tableName, nil
@@ -40,7 +41,7 @@ type dttNeg struct { // negative test
 func (dtt *dttNeg) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?, ?)", tableName))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?, ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func (dtt *dttNeg) insert(t *testing.T, db *sql.DB, tableName Identifier) {
 
 	i := 0
 	for _, in := range dtt.testData {
-		if _, err := stmt.Exec(in, i); err == nil { // error expected
+		if _, err := stmt.ExecContext(t.Context(), in, i); err == nil { // error expected
 			t.Fatalf("type: %s - %d - error expected", dtt._columnType.TypeName(), i)
 		} else {
 			t.Logf("type: %[1]s - %[2]d - %[3]T - %[3]s", dtt._columnType.TypeName(), i, err)
@@ -73,7 +74,7 @@ type dttDef struct {
 func (dtt *dttDef) columnType() types.Column { return dtt._columnType }
 
 func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?, ?)", tableName))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?, ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
 
 	i := 0
 	for _, in := range dtt.testData {
-		if _, err := stmt.Exec(in, i); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), in, i); err != nil {
 			t.Fatalf("type: %s - %d - %v - %s", dtt._columnType.TypeName(), i, in, err)
 		}
 		i++
@@ -90,7 +91,7 @@ func (dtt *dttDef) insert(t *testing.T, db *sql.DB, tableName Identifier) int {
 }
 
 func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int, numRecs int) {
-	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,12 +144,12 @@ type dttTX struct {
 func (dtt *dttTX) insert(t *testing.T, db *sql.DB, tableName Identifier) int { // override insert
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(?, ?)", tableName))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?, ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +157,7 @@ func (dtt *dttTX) insert(t *testing.T, db *sql.DB, tableName Identifier) int { /
 
 	i := 0
 	for _, in := range dtt.testData {
-		if _, err := stmt.Exec(in, i); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), in, i); err != nil {
 			t.Fatalf("%d - %s", i, err)
 		}
 		i++
@@ -186,19 +187,19 @@ func (dtt *dttSpatial) columnType() types.Column { return dtt._columnType }
 func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn func(func(value any))) int {
 	// use transactions:
 	// SQL Error 596 - LOB streaming is not permitted in auto-commit mode
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values(st_geomfromewkb(?), ?)", tableName))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(st_geomfromewkb(?), ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	i := 0
 	fn(func(value any) {
-		if _, err := stmt.Exec(value, i); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), value, i); err != nil {
 			t.Fatalf("%d - %s", i, err)
 		}
 		i++
@@ -211,7 +212,7 @@ func (dtt *dttSpatial) withTx(t *testing.T, db *sql.DB, tableName Identifier, fn
 }
 
 func (dtt *dttSpatial) withRows(t *testing.T, db *sql.DB, tableName Identifier, numRecs int, fn func(i int), dest ...any) {
-	rows, err := db.Query(fmt.Sprintf("select x, i, x.st_aswkb(), x.st_asewkb(), x.st_aswkt(), x.st_asewkt(), x.st_asgeojson() from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select x, i, x.st_aswkb(), x.st_asewkb(), x.st_aswkt(), x.st_asewkt(), x.st_asgeojson() from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +561,7 @@ var unicodeData = func() []byte {
 
 var asciiData = func() []byte {
 	b := make([]byte, utf8.RuneSelf)
-	for r := rune(0); r < utf8.RuneSelf; r++ {
+	for r := range utf8.RuneSelf {
 		b[r] = byte(r)
 	}
 	return b

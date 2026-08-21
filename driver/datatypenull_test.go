@@ -180,19 +180,19 @@ func TestNullDataType(t *testing.T) { //nolint:gocyclo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
 		t.Fatal(err)
 	}
 
 	// insert test rows
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
 
 	for i, row := range testRows {
-		_, err := stmt.Exec(i, row.Int, row.Bytes, row.Decimal, row.Lob, row.IntRef, row.BytesRef, row.DecimalRef, row.LobRef)
+		_, err := stmt.ExecContext(t.Context(), i, row.Int, row.Bytes, row.Decimal, row.Lob, row.IntRef, row.BytesRef, row.DecimalRef, row.LobRef)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,7 +200,7 @@ func TestNullDataType(t *testing.T) { //nolint:gocyclo
 
 	row := new(nullRow)
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}

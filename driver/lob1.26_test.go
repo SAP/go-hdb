@@ -23,7 +23,7 @@ func (b *bytesLob) Scan(src any) error { return ScanLobBytes(src, (*[]byte)(b)) 
 
 func newRandomDataBytesLob(size int) bytesLob {
 	b := make([]byte, size)
-	rand.Read(b) //nolint: errcheck // never returns error
+	rand.Read(b)
 	return b
 }
 
@@ -92,7 +92,7 @@ func testLobInsert(t *testing.T, db *sql.DB) {
 			t.Fatalf("idx %d got %s - expected %s", i, string(b), testData[i])
 		}
 	}
-	if rows.Err() != nil {
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 }

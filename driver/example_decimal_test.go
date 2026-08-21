@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -21,20 +22,21 @@ func ExampleDecimal() {
 
 	tableName := driver.RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil { // Create table with decimal attribute.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil { // Create table with decimal attribute.
 		log.Fatal(err)
 	}
 
 	// Decimal values are represented in Go as big.Rat.
 	in := (*driver.Decimal)(big.NewRat(1, 1)) // Create *big.Rat and cast to Decimal.
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil { // Insert record.
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil { // Insert record.
 		log.Fatal(err)
 	}
 
 	var out driver.Decimal // Declare scan variable.
 
-	if err := db.QueryRow(fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
+	if err := db.QueryRowContext(ctx, fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
 		log.Fatal(err)
 	}
 

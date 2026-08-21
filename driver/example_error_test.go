@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -20,21 +21,18 @@ func ExampleError() {
 	defer db.Close()
 
 	invalidTableName := driver.RandomIdentifier("table_")
-	stmt, err := db.Query(fmt.Sprintf("select * from %s", invalidTableName))
+	stmt, err := db.QueryContext(context.Background(), fmt.Sprintf("select * from %s", invalidTableName))
 	if err == nil {
 		defer stmt.Close()
 	}
 
-	var dbError driver.Error
-	if err != nil {
-		// Check if error is driver.Error.
-		if errors.As(err, &dbError) {
-			switch dbError.Code() {
-			case errCodeInvalidTableName:
-				fmt.Print("invalid table name")
-			default:
-				log.Fatalf("code %d text %s", dbError.Code(), dbError.Text())
-			}
+	// Check if error is driver.Error.
+	if dbError, ok := errors.AsType[driver.Error](err); ok {
+		switch dbError.Code() {
+		case errCodeInvalidTableName:
+			fmt.Print("invalid table name")
+		default:
+			log.Fatalf("code %d text %s", dbError.Code(), dbError.Text())
 		}
 	}
 	// output: invalid table name

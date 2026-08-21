@@ -17,7 +17,7 @@ func main() {
 
 	log.Printf("listening on %s (database address %s)", addr.String(), dbAddr.String())
 
-	l, err := net.Listen(addr.Network(), addr.String())
+	l, err := net.Listen(addr.Network(), addr.String()) //nolint: noctx
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func main() {
 }
 
 func handler(conn net.Conn, dbAddr net.Addr) {
-	dbConn, err := net.Dial(dbAddr.Network(), dbAddr.String())
+	dbConn, err := net.Dial(dbAddr.Network(), dbAddr.String()) //nolint: noctx
 	if err != nil {
 		log.Printf("hdb connection error: %s", err)
 		return

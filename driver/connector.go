@@ -308,15 +308,13 @@ func (c *Connector) fetchRedirectHost(ctx context.Context, databaseName string) 
 func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool, error) {
 	// isRealAuthError returns true in case of X509 certificate validation errors or hdb authentication errors, else otherwise.
 	isRealAuthError := func(err error) bool {
-		var certValidationError *auth.CertValidationError
-		if errors.As(err, &certValidationError) {
+		if _, ok := errors.AsType[*auth.CertValidationError](err); ok {
 			return true
 		}
-		var hdbErrors *p.HdbErrors
-		if !errors.As(err, &hdbErrors) {
-			return false
+		if hdbErrors, ok := errors.AsType[*p.HdbErrors](err); ok {
+			return hdbErrors.Code() == p.HdbErrAuthenticationFailed
 		}
-		return hdbErrors.Code() == p.HdbErrAuthenticationFailed
+		return false
 	}
 
 	attrs := c.connAttrs()

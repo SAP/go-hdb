@@ -95,7 +95,7 @@ func (tc typeCode) isDecimalType() bool {
 
 func (tc typeCode) supportNullValue() bool {
 	// boolean values: false =:= 0; null =:= 1; true =:= 2
-	return !(tc == tcBoolean)
+	return tc != tcBoolean
 }
 
 func (tc typeCode) nullValue() typeCode {
