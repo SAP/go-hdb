@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -37,12 +38,13 @@ func ExampleStructScanner() {
 	table := driver.RandomIdentifier("structscanner_")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (a varchar(30), b integer, c boolean, d varchar(20))", table)); err != nil {
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (a varchar(30), b integer, c boolean, d varchar(20))", table)); err != nil {
 		log.Fatal(err)
 	}
 
 	// Insert test row data.
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values (?,?,?,?)", table), "test", 42, true, "I am D"); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("insert into %s values (?,?,?,?)", table), "test", 42, true, "I am D"); err != nil {
 		log.Fatal(err)
 	}
 
@@ -57,7 +59,7 @@ func ExampleStructScanner() {
 
 	// Scan rows with the help of the struct scanner.
 	if err = func() error {
-		rows, err := db.Query(fmt.Sprintf("select * from %s", table))
+		rows, err := db.QueryContext(ctx, fmt.Sprintf("select * from %s", table))
 		if err != nil {
 			return err
 		}
@@ -78,7 +80,7 @@ func ExampleStructScanner() {
 
 	// Scan a single row with the help of the struct scanner.
 	if err = func() error {
-		rows, err := db.Query(fmt.Sprintf("select * from %s", table))
+		rows, err := db.QueryContext(ctx, fmt.Sprintf("select * from %s", table))
 		if err != nil {
 			return err
 		}

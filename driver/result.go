@@ -209,7 +209,9 @@ func (qmr *queryMultiResult) Columns() []string { return qmr.qrs[qmr.idx].Column
 func (qmr *queryMultiResult) Close() error {
 	errs := []error{}
 	for _, qr := range qmr.qrs {
-		errs = append(errs, qr.Close())
+		if err := qr.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }

@@ -283,7 +283,7 @@ func inferSQLDatatype(typ reflect.Type) (string, error) {
 		}
 	}
 
-	if ok, vFieldType, _ := isGenericNull(typ); ok {
+	if ok, vFieldType := isGenericNull(typ); ok {
 		return inferSQLDatatype(vFieldType)
 	}
 

@@ -95,7 +95,7 @@ func convertBool(v any) (any, error) {
 		return rv.Float() != 0, nil
 	case reflect.String:
 		return strconv.ParseBool(rv.String())
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -263,7 +263,7 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -404,7 +404,7 @@ func convertFloat(v any, maxF64 float64) (any, error) { //nolint: gocyclo
 			return nil, errFloatOutOfRange
 		}
 		return f64, nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -424,7 +424,7 @@ func convertTime(v any) (any, error) {
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -535,7 +535,7 @@ func convertDecimal(v any) (any, error) { //nolint: gocyclo
 			return nil, errConversionNotSupported
 		}
 		return encoding.NewDecimalFromRat(r)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -630,7 +630,7 @@ func convertFixed(v any, prec, scale int) (any, error) { //nolint: gocyclo
 			return nil, errConversionNotSupported
 		}
 		return encoding.NewFixedFromRat(r, prec, scale)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -655,7 +655,7 @@ func convertBytes(v any) (any, error) {
 	switch rv.Kind() {
 	case reflect.String:
 		return rv.String(), nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}
@@ -706,7 +706,7 @@ func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
 
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil, nil
 		}

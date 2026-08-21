@@ -1,4 +1,4 @@
-//go:build !go1.26
+//go:build go1.26
 
 package driver
 
@@ -9,9 +9,9 @@ import (
 var boolReflectType = reflect.TypeFor[bool]()
 
 // see https://github.com/golang/go/issues/54393
-func isGenericNull(t reflect.Type) (ok bool, vField reflect.Type, validField reflect.Type) {
+func isGenericNull(t reflect.Type) (bool, reflect.Type) {
 	if t.Kind() != reflect.Struct {
-		return false, nil, nil
+		return false, nil
 	}
 
 	// quirky check - we don't do and let similar definitions pass as well.
@@ -21,23 +21,25 @@ func isGenericNull(t reflect.Type) (ok bool, vField reflect.Type, validField ref
 		}
 	*/
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	var vField reflect.Type
+	var validField reflect.Type
+
+	for field := range t.Fields() {
 		switch field.Name {
 		case "V":
 			vField = field.Type
 			if validField != nil {
-				return true, vField, validField
+				return true, vField
 			}
 		case "Valid":
 			if field.Type != boolReflectType { // valid needs to be a boolean
-				return false, nil, nil
+				return false, nil
 			}
 			validField = field.Type
 			if vField != nil {
-				return true, vField, validField
+				return true, vField
 			}
 		}
 	}
-	return false, nil, nil
+	return false, nil
 }

@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -78,20 +79,21 @@ func Example_customDecimal() {
 
 	tableName := driver.RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil {
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (x decimal)", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
 	// value 1 = 1 × 10^0
 	in := customDecimal{form: 0, negative: false, coeff: big.NewInt(1), exp: 0}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil {
 		log.Fatal(err)
 	}
 
 	var out customDecimal
 
-	if err := db.QueryRow(fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
+	if err := db.QueryRowContext(ctx, fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
 		log.Fatal(err)
 	}
 
@@ -112,20 +114,21 @@ func Example_customFixed() {
 
 	tableName := driver.RandomIdentifier("table_")
 
-	if _, err := db.Exec(fmt.Sprintf("create table %s (x decimal(18,2))", tableName)); err != nil {
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create table %s (x decimal(18,2))", tableName)); err != nil {
 		log.Fatal(err)
 	}
 
 	// value -12.34 = -1234 × 10^-2
 	in := customDecimal{form: 0, negative: true, coeff: big.NewInt(1234), exp: -2}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("insert into %s values(?)", tableName), in); err != nil {
 		log.Fatal(err)
 	}
 
 	var out customDecimal
 
-	if err := db.QueryRow(fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
+	if err := db.QueryRowContext(ctx, fmt.Sprintf("select * from %s", tableName)).Scan(&out); err != nil {
 		log.Fatal(err)
 	}
 

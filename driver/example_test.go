@@ -1,6 +1,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"log"
 
@@ -20,7 +21,7 @@ func Example() {
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 }

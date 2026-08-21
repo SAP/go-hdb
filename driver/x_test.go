@@ -30,7 +30,7 @@ func testInvalidCESU8(t *testing.T) {
 	defer db.Close()
 
 	numRow := 0
-	err := db.QueryRow(fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
+	err := db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		t.Logf("table %s.%s is empty", schemaName, tableName)
@@ -39,7 +39,7 @@ func testInvalidCESU8(t *testing.T) {
 	}
 	t.Logf("number of rows: %d", numRow)
 
-	rows, err := db.Query(fmt.Sprintf("select %[1]s from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select %[1]s from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,37 +86,40 @@ func testIncorrectDate(t *testing.T) {
 	tableName := driver.RandomIdentifier("table_")
 	// fmt.Println(tableName)
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (a date)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (a date)", tableName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('0000-00-00')", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s values('0000-00-00')", tableName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('0001-01-01')", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s values('0001-01-01')", tableName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values(NULL)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s values(NULL)", tableName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("INSERT INTO %s values('2020-10-10')", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("INSERT INTO %s values('2020-10-10')", tableName)); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 
-	var date interface{}
+	var date any
 	for rows.Next() {
 		if err := rows.Scan(&date); err != nil {
 			t.Fatal(err)
 		}
 		t.Log(date)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 
 	cnt := 0
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from %s where A is NULL", tableName)).Scan(&cnt); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %s where A is NULL", tableName)).Scan(&cnt); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("number of NULL records %d\n", cnt)
@@ -129,7 +132,7 @@ func testBstring(t *testing.T) {
 	if _, err := hash.Write([]byte("TEST")); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.Query(`SELECT 'FOOBAR' FROM DUMMY WHERE HASH_SHA256('TEST') = $1`, hash.Sum(nil))
+	rows, err := db.QueryContext(t.Context(), `SELECT 'FOOBAR' FROM DUMMY WHERE HASH_SHA256('TEST') = $1`, hash.Sum(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +146,9 @@ func testBstring(t *testing.T) {
 		if result != "FOOBAR" {
 			t.Errorf("expected 'FOOBAR', got '%s'", result)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	if !found {
 		t.Error("failed")

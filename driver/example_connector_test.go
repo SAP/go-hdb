@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -29,7 +30,7 @@ func ExampleNewDSNConnector() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	// output:
@@ -102,7 +103,7 @@ func ExampleNewBasicAuthConnector() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	// output:
@@ -142,7 +143,7 @@ func ExampleNewX509AuthConnectorByFiles() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	// output:
@@ -178,7 +179,7 @@ func ExampleNewJWTAuthConnector() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	// output:
@@ -219,7 +220,7 @@ func ExampleConnector_WithDatabase() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 	// output:

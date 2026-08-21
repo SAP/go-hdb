@@ -114,7 +114,7 @@ func (f *ResultField) ScanType() reflect.Type { return f.tc.dataType().ScanType(
 
 func (f *ResultField) decode(dec *encoding.Decoder) {
 	f.columnOptions = columnOptions(dec.Int8())
-	f.tc = typeCode(dec.Int8())
+	f.tc = typeCode(dec.Byte())
 	f.scale = int(dec.Int16())
 	f.prec = int(dec.Int16())
 	dec.Skip(2) // filler

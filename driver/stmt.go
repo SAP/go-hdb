@@ -171,7 +171,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	}
 
 	// table output parameters -> Query (needs to kept open)
-	rows, err := stdConnTracker.callDB().Query("", cr)
+	rows, err := stdConnTracker.callDB().QueryContext(context.Background(), "", cr)
 	if err != nil {
 		return nil, rows, err
 	}
@@ -343,10 +343,7 @@ func (s *stmt) execMany(ctx context.Context, nvargs []driver.NamedValue) (driver
 
 	for i := range numBatch {
 		from := i * numField * bulkSize
-		to := (i + 1) * numField * bulkSize
-		if to > numNVArg {
-			to = numNVArg
-		}
+		to := min((i+1)*numField*bulkSize, numNVArg)
 		r, err := s.exec(ctx, s.pr, nvargs[from:to], i*bulkSize)
 		totalRowsAffected.add(r)
 		if err != nil {

@@ -25,7 +25,7 @@ func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	// insert 3 rows (ids: 1,2,3)
 	i := 1
-	if _, err := stmt.Exec(func(args []any) error {
+	if _, err := stmt.ExecContext(t.Context(), func(args []any) error {
 		if i >= 4 {
 			return ErrEndOfRows
 		}
@@ -38,7 +38,7 @@ func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	// insert 5 rows (ids: 0,1,2,3,4) with 3 duplicates (ids: 1,2,3)
 	i = 0
-	_, err = stmt.Exec(func(args []any) error {
+	_, err = stmt.ExecContext(t.Context(), func(args []any) error {
 		if i >= 5 {
 			return ErrEndOfRows
 		}
@@ -89,13 +89,13 @@ func testBulkInsertStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
 	// insert -1 and defaultBulkSize+1 (duplicate)
 	duplID := bulkSize + 1
 	args := []any{-1, -1, duplID, duplID}
-	if _, err := stmt.Exec(args...); err != nil {
+	if _, err := stmt.ExecContext(t.Context(), args...); err != nil {
 		t.Fatal(err)
 	}
 
 	// insert one row with duplicate
 	args = []any{duplID, duplID}
-	_, err = stmt.Exec(args...)
+	_, err = stmt.ExecContext(t.Context(), args...)
 	if err == nil {
 		t.Fatal("driver.error expected")
 	}
@@ -116,7 +116,7 @@ func testBulkInsertStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
 	for i := range numRow {
 		args[i*2], args[i*2+1] = i, i
 	}
-	_, err = stmt.Exec(args...)
+	_, err = stmt.ExecContext(t.Context(), args...)
 	if err == nil {
 		t.Fatal("driver.error expected")
 	}
@@ -150,7 +150,7 @@ func testBulkGeo(t *testing.T, ctr *Connector, db *sql.DB) {
 	defer stmt.Close()
 
 	i := 0
-	if _, err := stmt.Exec(func(args []any) error {
+	if _, err := stmt.ExecContext(t.Context(), func(args []any) error {
 		if i >= numRows {
 			return ErrEndOfRows
 		}
@@ -197,7 +197,7 @@ func testBulkInsertInvalidUTF8(t *testing.T, ctr *Connector, db *sql.DB) {
 	tableName := RandomIdentifier("bulkInvalidUTF8")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (s nvarchar(123))", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (s nvarchar(123))", tableName)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -210,7 +210,7 @@ func testBulkInsertInvalidUTF8(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	// Bulk insert via function.
 	i := 0
-	if _, err = stmt.Exec(func(args []any) error {
+	if _, err = stmt.ExecContext(t.Context(), func(args []any) error {
 		if i >= 1 {
 			return ErrEndOfRows
 		}
@@ -231,7 +231,7 @@ func testBulkInsertInvalidNumArg(t *testing.T, ctr *Connector, db *sql.DB) {
 	tableName := RandomIdentifier("bulkInvalidNumArg")
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer)", tableName)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,7 +243,7 @@ func testBulkInsertInvalidNumArg(t *testing.T, ctr *Connector, db *sql.DB) {
 	defer stmt.Close()
 
 	args := []any{1}
-	if _, err := stmt.Exec(args...); err == nil { // error expected
+	if _, err := stmt.ExecContext(t.Context(), args...); err == nil { // error expected
 		t.Fatal(err)
 	}
 }

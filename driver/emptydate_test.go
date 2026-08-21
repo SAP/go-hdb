@@ -22,7 +22,7 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 	defer db.Close()
 
 	// Query db.
-	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,11 @@ func TestEmptyDate(t *testing.T) {
 	db := MT.DB()
 
 	// Create table.
-	if _, err := db.Exec(fmt.Sprintf("create table %s (d date)", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (d date)", tableName)); err != nil {
 		t.Fatal(err)
 	}
 	// Insert empty date value.
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values ('0000-00-00')", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values ('0000-00-00')", tableName)); err != nil {
 		t.Fatal(err)
 	}
 

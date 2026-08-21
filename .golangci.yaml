@@ -1,52 +1,79 @@
-linters-settings:
-  gocritic:
-    disabled-checks:
-      - exitAfterDefer
-  gosec:
-    excludes:
-      - G113
-  gomoddirectives:
-    # Allow local `replace` directives.
-    # Default: false
-    replace-local: true
-
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - tenv
-    - wsl
-    - varnamelen
-    - wrapcheck
-    - testpackage
-    - whitespace
-    - thelper
-    - testableexamples
-    - recvcheck
-    - paralleltest
-    - nonamedreturns
-    - nlreturn
-    - nilnil
-    - nestif
-    - mnd
-    - lll
-    - ireturn
-    - gofumpt
-    - godox
-    - gochecknoinits
-    - gochecknoglobals
-    - exhaustruct
-    - exhaustive
-    - forcetypeassert
-    - err113
-    - depguard
-    - errname
-    - funlen
-    - cyclop
     - contextcheck
-    - gocognit
-    - maintidx
-    - revive
+    - cyclop
+    - depguard
     - dupl
     - dupword
+    - err113
+    - errname
+    - exhaustive
+    - exhaustruct
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - godox
+    - ireturn
+    - lll
+    - maintidx
+    - mnd
+    - nestif
+    - nilnil
+    - nlreturn
+    - nonamedreturns
+    - paralleltest
+    - recvcheck
+    - revive
     - rowserrcheck
-    
+    - testableexamples
+    - testpackage
+    - thelper
+    - varnamelen
+    - whitespace
+    - wrapcheck
+    - wsl
+    - exhaustruct_v5
+    - wsl_v5
+    - noinlineerr
+    - unqueryvet
+    - embeddedstructfieldcheck
+    - funcorder
+    - gocyclo
+    - gosmopolitan
+    - goconst
+    - gomodguard
+  settings:
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+    gomoddirectives:
+      replace-local: true
+    gosec:
+      excludes:
+        - G113
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

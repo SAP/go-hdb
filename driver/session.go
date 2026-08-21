@@ -603,8 +603,7 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 		switch pi.Header.Kind() {
 		case p.PkError:
 			if err := pi.ReadHDBErrors(ctx); err != nil {
-				var hdbErrors *p.HdbErrors
-				if errors.As(err, &hdbErrors) {
+				if hdbErrors, ok := errors.AsType[*p.HdbErrors](err); ok {
 					rowsAffected.SetHDbErrorsStmtNo(hdbErrors, offset)
 				}
 				return nil, err

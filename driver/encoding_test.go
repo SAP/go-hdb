@@ -17,18 +17,18 @@ func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driv
 	db := driver.MT.DB()
 
 	tableName := driver.RandomIdentifier("cesuerror_")
-	if _, err := db.Exec(fmt.Sprintf("create table %s (i integer, s nvarchar(20))", tableName)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (i integer, s nvarchar(20))", tableName)); err != nil {
 		t.Fatal(err)
 	}
 
-	stmt, err := db.Prepare(fmt.Sprintf("insert into %s values(?, bintostr(?))", tableName))
+	stmt, err := db.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?, bintostr(?))", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stmt.Close()
 
 	for i, td := range testData {
-		if _, err := stmt.Exec(i, td.s); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), i, td.s); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -38,7 +38,7 @@ func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driv
 func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	db := driver.MT.DB()
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData 
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	rows, err := db.Query(fmt.Sprintf("select * from %s order by i", tableName))
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}

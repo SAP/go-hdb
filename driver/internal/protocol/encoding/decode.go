@@ -48,7 +48,7 @@ func (d *Decoder) Bool() bool {
 
 // Int8 decodes an int8.
 func (d *Decoder) Int8() int8 {
-	return int8(d.Byte())
+	return int8(d.Byte()) //nolint:gosec
 }
 
 // Int16 decodes an int16.

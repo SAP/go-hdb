@@ -3,6 +3,7 @@
 package driver_test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -26,12 +27,13 @@ end
 
 	procedureName := driver.RandomIdentifier("procOut_")
 
-	if _, err := db.Exec(fmt.Sprintf(procedureOut, procedureName)); err != nil { // Create stored procedure.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(procedureOut, procedureName)); err != nil { // Create stored procedure.
 		log.Fatal(err)
 	}
 
 	var out string
-	if _, err := db.Exec(fmt.Sprintf("call %s(?)", procedureName), sql.Named("MESSAGE", sql.Out{Dest: &out})); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("call %s(?)", procedureName), sql.Named("MESSAGE", sql.Out{Dest: &out})); err != nil {
 		log.Fatal(err)
 	}
 	return out
@@ -61,24 +63,25 @@ end
 	tableType := driver.RandomIdentifier("TableType_")
 	procedureName := driver.RandomIdentifier("ProcTable_")
 
-	if _, err := db.Exec(fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
 		log.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf(procedureTable, procedureName, tableType)); err != nil { // Create stored procedure.
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(procedureTable, procedureName, tableType)); err != nil { // Create stored procedure.
 		log.Fatal(err)
 	}
 
 	var tableRows sql.Rows // Scan variable of table output parameter.
 
 	// Call stored procedure via prepare.
-	stmt, err := db.Prepare(fmt.Sprintf("call %s(?)", procedureName))
+	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("call %s(?)", procedureName))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
 
-	if _, err := stmt.Exec(sql.Named("T", sql.Out{Dest: &tableRows})); err != nil {
+	if _, err := stmt.ExecContext(ctx, sql.Named("T", sql.Out{Dest: &tableRows})); err != nil {
 		log.Fatal(err)
 	}
 
@@ -116,32 +119,33 @@ end
 	tableName := driver.RandomIdentifier("#TableIn_") // local temp table needs to start with "#"
 	procedureName := driver.RandomIdentifier("ProcTable_")
 
-	if _, err := db.Exec(fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create type %s as table (x nvarchar(256))", tableType)); err != nil { // Create table type.
 		log.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf(procedureTable, procedureName, tableType)); err != nil { // Create stored procedure.
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(procedureTable, procedureName, tableType)); err != nil { // Create stored procedure.
 		log.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("create local temporary table %s like %s", tableName, tableType)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("create local temporary table %s like %s", tableName, tableType)); err != nil {
 		log.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values (?)", tableName), "Hello, 世界", "SAP HANA", "Go driver"); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("insert into %s values (?)", tableName), "Hello, 世界", "SAP HANA", "Go driver"); err != nil {
 		log.Fatal(err)
 	}
 
 	var tableRows sql.Rows // Scan variable of table output parameter.
 
 	// Call stored procedure via prepare.
-	stmt, err := db.Prepare(fmt.Sprintf("call %s(%s, ?)", procedureName, tableName))
+	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("call %s(%s, ?)", procedureName, tableName))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stmt.Close()
 
-	if _, err := stmt.Exec(sql.Named("T", sql.Out{Dest: &tableRows})); err != nil {
+	if _, err := stmt.ExecContext(ctx, sql.Named("T", sql.Out{Dest: &tableRows})); err != nil {
 		log.Fatal(err)
 	}
 

@@ -40,18 +40,18 @@ func TestScanStruct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s %s", tableName, columnDefs)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()), testRow.A, testRow.B, testRow.C, testRow.Y); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values %s", tableName, scanner.queryPlaceholders()), testRow.A, testRow.B, testRow.C, testRow.Y); err != nil {
 		t.Fatal(err)
 	}
 
 	testScanStructRows := func() error {
 		row := new(testScanRow)
 
-		rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+		rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
 			return err
 		}
@@ -71,7 +71,7 @@ func TestScanStruct(t *testing.T) {
 	testScanStructRow := func() error {
 		row := new(testScanRow)
 
-		rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
+		rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
 			return err
 		}

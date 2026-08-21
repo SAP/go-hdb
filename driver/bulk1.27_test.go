@@ -33,11 +33,11 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 	// cleanup
 	defer tx.Rollback() //nolint: errcheck
 
-	if _, err := tx.Exec(fmt.Sprintf("create local temporary table %s (i integer, b1 blob, b2 blob)", tmpTableName)); err != nil {
+	if _, err := tx.ExecContext(t.Context(), fmt.Sprintf("create local temporary table %s (i integer, b1 blob, b2 blob)", tmpTableName)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.Prepare(fmt.Sprintf("insert into %s values (?, ?, ?)", tmpTableName))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?, ?)", tmpTableName))
 	if err != nil {
 		t.Fatalf("prepare bulk insert failed: %s", err)
 	}
@@ -45,7 +45,7 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 
 	// call insert function
 	i := 0
-	if _, err := stmt.Exec(func(args []any) error {
+	if _, err := stmt.ExecContext(t.Context(), func(args []any) error {
 		if i >= numRows {
 			return ErrEndOfRows
 		}
@@ -57,7 +57,7 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 
 	// check
-	err = tx.QueryRow(fmt.Sprintf("select count(*) from %s", tmpTableName)).Scan(&i)
+	err = tx.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %s", tmpTableName)).Scan(&i)
 	if err != nil {
 		t.Fatalf("select count failed: %s", err)
 	}
@@ -66,7 +66,7 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 		t.Fatalf("invalid number of records %d - %d expected", i, numRows)
 	}
 
-	rows, err := tx.Query(fmt.Sprintf("select * from %s order by i", tmpTableName))
+	rows, err := tx.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tmpTableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 			args[j*2] = i*numRecsPerCall + j
 			args[j*2+1] = testData[j]
 		}
-		if _, err := stmt.Exec(args...); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), args...); err != nil {
 			t.Fatal(err)
 		}
 	}

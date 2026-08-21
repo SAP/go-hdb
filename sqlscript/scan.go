@@ -164,7 +164,7 @@ func (s *scanner) scanStatement() (bool, error) {
 		case s.separator:
 			return true, nil
 		default:
-			if !(r == nl || r == cr) { // skip line endings
+			if r != nl && r != cr { // skip line endings
 				s.appendRune(r)
 			}
 		}

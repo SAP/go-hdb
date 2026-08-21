@@ -616,16 +616,16 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	// start writing
 	if compress {
 		w.mh.packetOptions = poIsCompressed
-		w.mh.compressionVarPartLength = uint32(totalSize)             //nolint: gosec
+		w.mh.compressionVarPartLength = uint32(totalSize)
 		w.mh.varPartLength = uint32(segmentHeaderSize + len(partBuf)) //nolint: gosec
 	} else {
 		w.mh.packetOptions = 0
 		w.mh.compressionVarPartLength = 0
-		w.mh.varPartLength = uint32(totalSize) //nolint: gosec
+		w.mh.varPartLength = uint32(totalSize)
 	}
 
 	w.mh.sessionID = w.sessionID
-	w.mh.varPartSize = uint32(totalSize) //nolint: gosec
+	w.mh.varPartSize = uint32(totalSize)
 	w.mh.noOfSegm = 1
 
 	enc := encoding.Encoder(w.scratch[:0])

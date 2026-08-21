@@ -49,7 +49,7 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result := h.ts.execute(sequential, batchCount, batchSize, drop)
 
-	log.Printf("%s", result)
+	log.Printf("%s", result)  //nolint: gosec
 	h.tmpl.Execute(w, result) //nolint: errcheck
 }
 
@@ -145,12 +145,13 @@ func (ts *tests) executeSequential(db *sql.DB, batchCount, batchSize int, wait t
 		time.Sleep(wait)
 	}
 
-	conn, err := db.Conn(context.Background())
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	stmt, err := conn.PrepareContext(context.Background(), ts.prepareQuery)
+	stmt, err := conn.PrepareContext(ctx, ts.prepareQuery)
 	if err != nil {
 		return 0, err
 	}
@@ -160,7 +161,7 @@ func (ts *tests) executeSequential(db *sql.DB, batchCount, batchSize int, wait t
 
 	i := 0
 	t := time.Now()
-	_, err = stmt.Exec(func(args []any) error {
+	_, err = stmt.ExecContext(ctx, func(args []any) error {
 		if i >= numRow {
 			return driver.ErrEndOfRows
 		}
@@ -218,10 +219,11 @@ func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait t
 
 	t := time.Now() // Start time.
 
+	ctx := context.Background()
 	for worker, task := range tasks { // Start one worker per task.
 		wg.Go(func() {
 			j := 0
-			if _, err = task.stmt.Exec(func(args []any) error {
+			if _, err = task.stmt.ExecContext(ctx, func(args []any) error {
 				if j >= task.size {
 					return driver.ErrEndOfRows
 				}

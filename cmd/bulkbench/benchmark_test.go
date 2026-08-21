@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -43,7 +43,7 @@ func Benchmark(b *testing.B) {
 
 		// Median.
 		var medDuration time.Duration
-		sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
+		slices.Sort(ds)
 		l := len(ds)
 		switch {
 		case l == 0: // keep med == 0

@@ -66,7 +66,7 @@ func (e *Encoder) Bool(v bool) {
 
 // Int8 encodes an int8.
 func (e *Encoder) Int8(i8 int8) {
-	*e = append(*e, byte(i8))
+	*e = append(*e, byte(i8)) //nolint: gosec
 }
 
 // Int16 encodes an int16.
@@ -139,7 +139,7 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 	}
 
 	exp += dec128Bias
-	b[14] |= (byte(exp) << 1)
+	b[14] |= (byte(exp) << 1)      //nolint: gosec
 	b[15] = byte(uint16(exp) >> 7) //nolint: gosec
 
 	if m.Sign() == -1 {
@@ -163,7 +163,7 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 		// 2s complement
 		bits := m.Bits()
 		// - invert all bits
-		for i := 0; i < len(bits); i++ {
+		for i := range bits {
 			bits[i] = ^bits[i]
 		}
 		// - add 1
@@ -214,7 +214,7 @@ func (e *Encoder) varFieldInd(size int) error {
 	default:
 		return fmt.Errorf("max argument length %d of string exceeded", size)
 	case size <= int(varFieldLenIndSmall):
-		e.Byte(byte(size))
+		e.Byte(byte(size)) //nolint: gosec
 	case size <= math.MaxInt16:
 		e.Byte(varFieldLenIndMedium)
 		e.Int16(int16(size))
@@ -341,8 +341,8 @@ func (e *Encoder) DateField(v any) error {
 }
 
 func (e *Encoder) encodeTime(t time.Time) {
-	e.Byte(byte(t.Hour()) | 0x80)
-	e.Int8(int8(t.Minute())) //nolint: gosec
+	e.Byte(byte(t.Hour()) | 0x80) //nolint: gosec
+	e.Int8(int8(t.Minute()))      //nolint: gosec
 	msec := t.Second()*1000 + t.Nanosecond()/1000000
 	e.Uint16(uint16(msec)) //nolint: gosec
 }

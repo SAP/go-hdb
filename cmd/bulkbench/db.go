@@ -45,7 +45,7 @@ func (h *dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result := h.dba.executeCommand(command)
 
-	log.Printf("%s", result)
+	log.Printf("%s", result)  //nolint: gosec
 	h.tmpl.Execute(w, result) //nolint: errcheck
 }
 
@@ -150,7 +150,7 @@ func (dba *dba) executeCommand(command string) *dbResult {
 
 // createSchema creates a schema on the database.
 func createSchema(db *sql.DB, name driver.Identifier) error {
-	_, err := db.Exec(fmt.Sprintf("create schema %s", name))
+	_, err := db.ExecContext(context.Background(), fmt.Sprintf("create schema %s", name))
 	return err
 }
 
@@ -162,14 +162,14 @@ func dropSchema(db *sql.DB, name driver.Identifier, cascade bool) error {
 	} else {
 		stmt = fmt.Sprintf("drop schema %s", name)
 	}
-	_, err := db.Exec(stmt)
+	_, err := db.ExecContext(context.Background(), stmt)
 	return err
 }
 
 // existSchema returns true if the schema exists.
 func existSchema(db *sql.DB, name driver.Identifier) (bool, error) {
 	numSchemas := 0
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.schemas where schema_name = '%s'", string(name))).Scan(&numSchemas); err != nil {
+	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select count(*) from sys.schemas where schema_name = '%s'", string(name))).Scan(&numSchemas); err != nil {
 		return false, err
 	}
 	return numSchemas != 0, nil
@@ -202,20 +202,20 @@ const columns = "id integer, field double"
 
 // createTable creates a table on the databases.
 func createTable(db *sql.DB, schemaName, tableName driver.Identifier) error {
-	_, err := db.Exec(fmt.Sprintf("create column table %s.%s (%s)", schemaName, tableName, columns))
+	_, err := db.ExecContext(context.Background(), fmt.Sprintf("create column table %s.%s (%s)", schemaName, tableName, columns))
 	return err
 }
 
 // dropTable drops a table from the databases.
 func dropTable(db *sql.DB, schemaName, tableName driver.Identifier) error {
-	_, err := db.Exec(fmt.Sprintf("drop table %s.%s", schemaName, tableName))
+	_, err := db.ExecContext(context.Background(), fmt.Sprintf("drop table %s.%s", schemaName, tableName))
 	return err
 }
 
 // existTable returns true if the table exists in schema.
 func existTable(db *sql.DB, schemaName, tableName driver.Identifier) (bool, error) {
 	numTables := 0
-	if err := db.QueryRow(fmt.Sprintf("select count(*) from sys.tables where schema_name = '%s' and table_name = '%s'", string(schemaName), string(tableName))).Scan(&numTables); err != nil {
+	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select count(*) from sys.tables where schema_name = '%s' and table_name = '%s'", string(schemaName), string(tableName))).Scan(&numTables); err != nil {
 		return false, err
 	}
 	return numTables != 0, nil
@@ -246,7 +246,7 @@ func ensureTable(db *sql.DB, schemaName, tableName driver.Identifier, drop bool)
 
 // deleteRows deletes all records in the database table.
 func deleteRows(db *sql.DB, schemaName, tableName driver.Identifier) (int64, error) {
-	result, err := db.Exec(fmt.Sprintf("delete from %s.%s", schemaName, tableName))
+	result, err := db.ExecContext(context.Background(), fmt.Sprintf("delete from %s.%s", schemaName, tableName))
 	if err != nil {
 		return 0, err
 	}
@@ -261,7 +261,7 @@ func deleteRows(db *sql.DB, schemaName, tableName driver.Identifier) (int64, err
 func countRows(db *sql.DB, schemaName, tableName driver.Identifier) (int64, error) {
 	var numRow int64
 
-	err := db.QueryRow(fmt.Sprintf("select count(*) from %s.%s", schemaName, tableName)).Scan(&numRow)
+	err := db.QueryRowContext(context.Background(), fmt.Sprintf("select count(*) from %s.%s", schemaName, tableName)).Scan(&numRow)
 	if err != nil {
 		return 0, err
 	}

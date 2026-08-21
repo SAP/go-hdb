@@ -26,15 +26,16 @@ end
 
 	procedure := driver.RandomIdentifier("procOut_")
 
-	if _, err := db.Exec(fmt.Sprintf(procOut, procedure)); err != nil { // Create stored procedure.
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(procOut, procedure)); err != nil { // Create stored procedure.
 		log.Fatal(err)
 	}
 
 	// Call PrepareContext with statement metadata context value.
 	var stmtMetadata driver.StmtMetadata
-	ctx := driver.WithStmtMetadata(context.Background(), &stmtMetadata)
+	ctxMeta := driver.WithStmtMetadata(context.Background(), &stmtMetadata)
 
-	stmt, err := db.PrepareContext(ctx, fmt.Sprintf("call %s(?)", procedure))
+	stmt, err := db.PrepareContext(ctxMeta, fmt.Sprintf("call %s(?)", procedure))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,7 +52,7 @@ end
 	}
 
 	// .. and execute Exec.
-	if _, err := stmt.Exec(args...); err != nil {
+	if _, err := stmt.ExecContext(ctx, args...); err != nil {
 		log.Fatal(err)
 	}
 

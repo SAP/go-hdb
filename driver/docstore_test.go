@@ -39,7 +39,7 @@ func testDocstoreCompare[T any](t *testing.T, db *sql.DB, collectionName string,
 	b := new(bytes.Buffer)
 	lob.SetWriter(b)
 
-	if err := db.QueryRow(fmt.Sprintf("select * from %s where \"id\" = %d", collectionName, id)).Scan(&lob); err != nil {
+	if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s where \"id\" = %d", collectionName, id)).Scan(&lob); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,14 +56,14 @@ func testDocstoreCompare[T any](t *testing.T, db *sql.DB, collectionName string,
 func testDocstoreCreateCollection(t *testing.T, db *sql.DB) string {
 	name := driver.RandomIdentifier("docstore_").String()
 
-	if _, err := db.Exec("create collection " + name); err != nil {
+	if _, err := db.ExecContext(t.Context(), "create collection "+name); err != nil {
 		t.Fatal(err)
 	}
 	return name
 }
 
 func testDocstoreDestroyCollection(t *testing.T, db *sql.DB, name string) {
-	if _, err := db.Exec(fmt.Sprintf("drop collection %s cascade", name)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("drop collection %s cascade", name)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -93,12 +93,12 @@ func testDocstoreDefault(t *testing.T, db *sql.DB) {
 
 	marshalDocs := testDocstoreMarshal(t, testDocs)
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
 		t.Fatal(err)
 	}
 
 	// update attribute 'inline'
-	if _, err := db.Exec(fmt.Sprintf("update %s set \"addr\" = '%s' where \"id\" = %d", collectionName, "address 1 - update", 1)); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("update %s set \"addr\" = '%s' where \"id\" = %d", collectionName, "address 1 - update", 1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +130,7 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 
 	marshalDocs := testDocstoreMarshal(t, testDocs)
 
-	if _, err := db.Exec(fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("insert into %s values(?)", collectionName), marshalDocs...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,7 +139,7 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("update %[1]s set %[1]s = parse_json(?) where \"id\" = %d", collectionName, 2), marshalDoc); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("update %[1]s set %[1]s = parse_json(?) where \"id\" = %d", collectionName, 2), marshalDoc); err != nil {
 		t.Fatal(err)
 	}
 
@@ -148,7 +148,7 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("update %s set \"addr\" = parse_json(?) where \"id\" = %d", collectionName, 3), marshalDoc); err != nil {
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("update %s set \"addr\" = parse_json(?) where \"id\" = %d", collectionName, 3), marshalDoc); err != nil {
 		t.Fatal(err)
 	}
 
@@ -160,7 +160,7 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 func TestDocstore(t *testing.T) {
 	isDocstoreEnabled := func(db *sql.DB) bool {
 		count := 0
-		if err := db.QueryRow("select count(*) from m_services where service_name = 'docstore' and active_status = 'YES'").Scan(&count); err != nil {
+		if err := db.QueryRowContext(t.Context(), "select count(*) from m_services where service_name = 'docstore' and active_status = 'YES'").Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		return count > 0

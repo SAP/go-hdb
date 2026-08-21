@@ -32,13 +32,13 @@ type ClientContext struct {
 }
 
 // SetVersion sets the client version option.
-func (cc *ClientContext) SetVersion(v string) { cc.options.set(ccoVersion, v) }
+func (cc *ClientContext) SetVersion(v string) { cc.set(ccoVersion, v) }
 
 // SetType sets the client type option.
-func (cc *ClientContext) SetType(v string) { cc.options.set(ccoType, v) }
+func (cc *ClientContext) SetType(v string) { cc.set(ccoType, v) }
 
 // SetApplicationProgram sets the client application program option.
-func (cc *ClientContext) SetApplicationProgram(v string) { cc.options.set(ccoApplicationProgram, v) }
+func (cc *ClientContext) SetApplicationProgram(v string) { cc.set(ccoApplicationProgram, v) }
 
 func (cc *ClientContext) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
 	return cc.options.decode(dec, header.numArg())
@@ -147,42 +147,42 @@ type ConnectOptions struct {
 // DataFormatVersion2OrZero returns the data format version2 option if available, the zero value otherwise.
 func (co *ConnectOptions) DataFormatVersion2OrZero() int {
 	var v int32
-	co.options.get(coDataFormatVersion2, &v)
+	co.get(coDataFormatVersion2, &v)
 	return int(v)
 }
 
 // SetDataFormatVersion2 sets the data format version 2 option.
 func (co *ConnectOptions) SetDataFormatVersion2(v int) {
-	co.options.set(coDataFormatVersion2, int32(v)) //nolint: gosec
+	co.set(coDataFormatVersion2, int32(v)) //nolint: gosec
 }
 
 // SetClientDistributionMode sets the client distribution mode option.
 func (co *ConnectOptions) SetClientDistributionMode(v Cdm) {
-	co.options.set(coClientDistributionMode, int32(v))
+	co.set(coClientDistributionMode, int32(v))
 }
 
 // ClientDistributionModeOrZero returns the client distribution mode option if available, the zero value otherwise.
 func (co *ConnectOptions) ClientDistributionModeOrZero() Cdm {
 	var v int32
-	co.options.get(coClientDistributionMode, &v)
-	return Cdm(v)
+	co.get(coClientDistributionMode, &v)
+	return Cdm(v) //nolint: gosec
 }
 
 // SystemIDOrZero returns the system ID option if available, the zero value otherwise.
 func (co *ConnectOptions) SystemIDOrZero() string {
 	var v string
-	co.options.get(coSystemID, &v)
+	co.get(coSystemID, &v)
 	return v
 }
 
 // SetUpdateTopologyAnywhere sets the update topology anywhere option.
 func (co *ConnectOptions) SetUpdateTopologyAnywhere(v bool) {
-	co.options.set(coUpdateTopologyAnywhere, v)
+	co.set(coUpdateTopologyAnywhere, v)
 }
 
 // SetSelectForUpdateSupported sets the select for update supported option.
 func (co *ConnectOptions) SetSelectForUpdateSupported(v bool) {
-	co.options.set(coSelectForUpdateSupported, v)
+	co.set(coSelectForUpdateSupported, v)
 }
 
 // Compression flag bits in the int32 value of coCompressionLevelAndFlags.
@@ -196,31 +196,31 @@ const (
 // the zero value otherise.
 func (co *ConnectOptions) CompressionLevelAndFlagsOrZero() int32 {
 	var v int32
-	co.options.get(coCompressionLevelAndFlags, &v)
+	co.get(coCompressionLevelAndFlags, &v)
 	return v
 }
 
 // SetCompressionLevelAndFlags sets the compression level/flags option.
 func (co *ConnectOptions) SetCompressionLevelAndFlags(v int32) {
-	co.options.set(coCompressionLevelAndFlags, v)
+	co.set(coCompressionLevelAndFlags, v)
 }
 
 // DatabaseNameOrZero returns the database name option if available, the zero value otherwise.
 func (co *ConnectOptions) DatabaseNameOrZero() string {
 	var v string
-	co.options.get(coDatabaseName, &v)
+	co.get(coDatabaseName, &v)
 	return v
 }
 
 // FullVersionOrZero returns the full version option if available, the zero value otherwise.
 func (co *ConnectOptions) FullVersionOrZero() string {
 	var v string
-	co.options.get(coFullVersionString, &v)
+	co.get(coFullVersionString, &v)
 	return v
 }
 
 // SetClientLocale sets the client locale option.
-func (co *ConnectOptions) SetClientLocale(v string) { co.options.set(coClientLocale, v) }
+func (co *ConnectOptions) SetClientLocale(v string) { co.set(coClientLocale, v) }
 
 func (co *ConnectOptions) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
 	return co.options.decode(dec, header.numArg())
@@ -247,18 +247,18 @@ type DBConnectInfo struct {
 }
 
 // SetDatabaseName sets the database name option.
-func (ci *DBConnectInfo) SetDatabaseName(v string) { ci.options.set(ciDatabaseName, v) }
+func (ci *DBConnectInfo) SetDatabaseName(v string) { ci.set(ciDatabaseName, v) }
 
 // HostOrZero returns the host option, the zero value otherwise.
-func (ci *DBConnectInfo) HostOrZero() string { var v string; ci.options.get(ciHost, &v); return v }
+func (ci *DBConnectInfo) HostOrZero() string { var v string; ci.get(ciHost, &v); return v }
 
 // PortOrZero returns the port option, the zero value otherwise.
-func (ci *DBConnectInfo) PortOrZero() int { var v int32; ci.options.get(ciPort, &v); return int(v) }
+func (ci *DBConnectInfo) PortOrZero() int { var v int32; ci.get(ciPort, &v); return int(v) }
 
 // IsConnectedOrZero returns this IsConnected option, the zero value otherwise.
 func (ci *DBConnectInfo) IsConnectedOrZero() bool {
 	var v bool
-	ci.options.get(ciIsConnected, &v)
+	ci.get(ciIsConnected, &v)
 	return v
 }
 
@@ -388,7 +388,7 @@ const (
 )
 
 // SiteID returns the site id (high 8 bits).
-func (id SiteVolumeID) SiteID() uint8 { return uint8(id >> 24) } //nolint: gosec // id>>24 fits in 8 bits
+func (id SiteVolumeID) SiteID() uint8 { return uint8(id >> 24) }
 
 // VolumeID returns the volume id (low 24 bits).
 func (id SiteVolumeID) VolumeID() uint32 { return uint32(id) & volumeIDMask }
@@ -566,7 +566,7 @@ type optionsType interface {
 type options[K optionsType] map[K]any
 
 func (ops options[K]) String() string {
-	s := []string{}
+	s := make([]string, 0, len(ops))
 	for k, v := range ops {
 		s = append(s, k.valueString(v))
 	}

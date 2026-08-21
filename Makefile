@@ -15,11 +15,9 @@ all:
 	@echo execute tests with active lz4 compression on latest go version
 	go test ./... -tags=liblz4
 	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.25.14 go1.25.14 test ./...
-	GOTOOLCHAIN=go1.25.14 go1.25.14 test ./... -race
+	GOTOOLCHAIN=go1.26.7 go1.26.7 test ./...
+	GOTOOLCHAIN=go1.26.7 go1.26.7 test ./... -race
 	@echo execute tests on the new go version
-	GOTOOLCHAIN=go1.27.0 go1.27.0 test ./...
-	GOTOOLCHAIN=go1.27.0 go1.27.0 test ./... -race
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 #on linux: if pipx uses outdated packages, delete ~/.local/pipx/cache entries
@@ -56,11 +54,9 @@ tools:
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 #install golangci-lint
 	@echo "install latest golangci-lint version"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.25.14@latest
-	go1.25.14 download
-	go install golang.org/dl/go1.27.0@latest
-	go1.27.0 download
+	go install golang.org/dl/go1.26.7@latest
+	go1.26.7 download

@@ -70,7 +70,7 @@ func (t *sqlTracer) log(ctx context.Context, startTime time.Time, traceKind stri
 	duration := time.Since(startTime).Milliseconds()
 	l := len(nvargs)
 
-	attrs := []slog.Attr{
+	attrs := []slog.Attr{ //nolint:prealloc
 		slog.String(traceKind, query),
 		slog.Int64("ms", duration),
 	}

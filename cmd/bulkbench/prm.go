@@ -33,7 +33,7 @@ func (v prmsValue) String() string {
 // Set implements the flag.Value interface.
 func (v *prmsValue) Set(s string) error {
 	*v = nil // clear slice
-	for _, ts := range strings.Split(s, " ") {
+	for ts := range strings.SplitSeq(s, " ") {
 		t := strings.Split(ts, "x")
 		if len(t) != 2 {
 			return fmt.Errorf("invalid value: %s", s)
