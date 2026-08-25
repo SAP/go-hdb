@@ -100,6 +100,10 @@ The `tagignore=db` filter excludes samples tagged with database activity (networ
 * [Scanning database rows into Go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
 * [LZ4 compression](driver/compress/README.md) support.
 
+## Performance
+
+* For diagnosing latency and tuning throughput, see the [performance guide](PERFORMANCE.md).
+
 ## Dependencies
 
 * Please see [go.mod](https://github.com/SAP/go-hdb/blob/main/go.mod).

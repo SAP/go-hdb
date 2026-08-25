@@ -3,6 +3,13 @@ Release Notes
 
 ## v1.18.0
 
+### Minor revisions
+
+#### v1.18.1
+- reworked datatype test suite
+- added performance guide (PERFORMANCE.md) linked from README
+- bulkbench: updated htmx to 2.0.10
+
 ### Major changes
 
 - Added support of Go 1.27.

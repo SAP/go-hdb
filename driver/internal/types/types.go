@@ -74,149 +74,150 @@ func (t *_type) scanType(version uint64, dfv int, nullable bool) reflect.Type {
 	return t.dataType.ScanType(nullable)
 }
 
+// Database type names, as returned by Column.TypeName.
 const (
-	dbtnDate       = "DATE"
-	dbtnTime       = "TIME"
-	dbtnTimestamp  = "TIMESTAMP"
-	dbtnLongdate   = "LONGDATE"
-	dbtnSeconddate = "SECONDDATE"
-	dbtnDaydate    = "DAYDATE"
-	dbtnSecondtime = "SECONDTIME"
-	dbtnClob       = "CLOB"
-	dbtnNClob      = "NCLOB"
-	dbtnBlob       = "BLOB"
+	DbtnDate       = "DATE"
+	DbtnTime       = "TIME"
+	DbtnTimestamp  = "TIMESTAMP"
+	DbtnLongdate   = "LONGDATE"
+	DbtnSeconddate = "SECONDDATE"
+	DbtnDaydate    = "DAYDATE"
+	DbtnSecondtime = "SECONDTIME"
+	DbtnClob       = "CLOB"
+	DbtnNClob      = "NCLOB"
+	DbtnBlob       = "BLOB"
 
-	dbtnText    = "TEXT"
-	dbtnBintext = "BINTEXT"
+	DbtnText    = "TEXT"
+	DbtnBintext = "BINTEXT"
 
-	dbtnBoolean = "BOOLEAN"
+	DbtnBoolean = "BOOLEAN"
 
-	dbtnTinyint  = "TINYINT"
-	dbtnSmallint = "SMALLINT"
-	dbtnInteger  = "INTEGER"
-	dbtnBigint   = "BIGINT"
-	dbtnReal     = "REAL"
-	dbtnDouble   = "DOUBLE"
+	DbtnTinyint  = "TINYINT"
+	DbtnSmallint = "SMALLINT"
+	DbtnInteger  = "INTEGER"
+	DbtnBigint   = "BIGINT"
+	DbtnReal     = "REAL"
+	DbtnDouble   = "DOUBLE"
 
-	dbtnChar      = "CHAR"
-	dbtnVarchar   = "VARCHAR"
-	dbtnNChar     = "NCHAR"
-	dbtnNVarchar  = "NVARCHAR"
-	dbtnShorttext = "SHORTTEXT"
-	dbtnAlphanum  = "ALPHANUM"
-	dbtnBinary    = "BINARY"
-	dbtnVarbinary = "VARBINARY"
+	DbtnChar      = "CHAR"
+	DbtnVarchar   = "VARCHAR"
+	DbtnNChar     = "NCHAR"
+	DbtnNVarchar  = "NVARCHAR"
+	DbtnShorttext = "SHORTTEXT"
+	DbtnAlphanum  = "ALPHANUM"
+	DbtnBinary    = "BINARY"
+	DbtnVarbinary = "VARBINARY"
 
-	dbtnDecimal      = "DECIMAL"
-	dbtnSmalldecimal = "SMALLDECIMAL"
+	DbtnDecimal      = "DECIMAL"
+	DbtnSmalldecimal = "SMALLDECIMAL"
 
-	dbtnStPoint    = "ST_POINT"
-	dbtnStGeometry = "ST_GEOMETRY"
+	DbtnStPoint    = "ST_POINT"
+	DbtnStGeometry = "ST_GEOMETRY"
 
-	dbtnFixed8  = "FIXED8"
-	dbtnFixed12 = "FIXED12"
-	dbtnFixed16 = "FIXED16"
+	DbtnFixed8  = "FIXED8"
+	DbtnFixed12 = "FIXED12"
+	DbtnFixed16 = "FIXED16"
 )
 
 func _dateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
-		return true, dbtnDaydate
+		return true, DbtnDaydate
 	}
 	return false, ""
 }
 
 func _timeDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
-		return true, dbtnSecondtime
+		return true, DbtnSecondtime
 	}
 	return false, ""
 }
 
 func _timestampDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv >= p.DfvLevel3 {
-		return true, dbtnLongdate
+		return true, DbtnLongdate
 	}
 	return false, ""
 }
 
 func _longdateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnTimestamp
+		return true, DbtnTimestamp
 	}
 	return false, ""
 }
 
 func _seconddateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnTimestamp
+		return true, DbtnTimestamp
 	}
 	return false, ""
 }
 
 func _daydateDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnDate
+		return true, DbtnDate
 	}
 	return false, ""
 }
 
 func _secondtimeDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnTime
+		return true, DbtnTime
 	}
 	return false, ""
 }
 
 func _clobDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 {
-		return true, dbtnNClob
+		return true, DbtnNClob
 	}
 	return false, ""
 }
 
 func _bintextDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel6 {
-		return true, dbtnNClob
+		return true, DbtnNClob
 	}
 	return false, ""
 }
 
 func _booleanDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel7 {
-		return true, dbtnTinyint
+		return true, DbtnTinyint
 	}
 	return false, ""
 }
 
 func _charDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 { // since hdb version 4: char equals nchar
-		return true, dbtnNChar
+		return true, DbtnNChar
 	}
 	return false, ""
 }
 
 func _varcharDBTypeName(version uint64, dfv int) (bool, string) {
 	if version >= 4 { // since hdb version 4: char equals nchar
-		return true, dbtnNVarchar
+		return true, DbtnNVarchar
 	}
 	return false, ""
 }
 
 func _shorttextDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnNVarchar
+		return true, DbtnNVarchar
 	}
 	return false, ""
 }
 
 func _alphanumDBTypeName(version uint64, dfv int) (bool, string) {
 	if dfv < p.DfvLevel3 {
-		return true, dbtnNVarchar
+		return true, DbtnNVarchar
 	}
 	return false, ""
 }
 
-func _smalldecimalDBTypeName(version uint64, dfv int) (bool, string) { return true, dbtnDecimal }
+func _smalldecimalDBTypeName(version uint64, dfv int) (bool, string) { return true, DbtnDecimal }
 
 func _booleanScanType(version uint64, dfv int, nullable bool) (bool, reflect.Type) {
 	if dfv < p.DfvLevel7 {
@@ -293,11 +294,11 @@ func (t *decimalColumn) DatabaseTypeName(version uint64, dfv int) string {
 	case t.precision == 0:
 		return t.dt.databaseTypeName(version, dfv)
 	case t.precision <= 18:
-		return dbtnFixed8
+		return DbtnFixed8
 	case t.precision <= 28:
-		return dbtnFixed12
+		return DbtnFixed12
 	default: // precision <= 38
-		return dbtnFixed16
+		return DbtnFixed16
 	}
 }
 func (t *decimalColumn) DataType() string {
@@ -379,37 +380,37 @@ func formatSpatialColumn(typeName string, srid int32, nullable bool) string {
 }
 
 var (
-	_tinyint      = &_type{nil, nil, dbtnTinyint, nil, p.DtTinyint, nil}
-	_smallint     = &_type{nil, nil, dbtnSmallint, nil, p.DtSmallint, nil}
-	_integer      = &_type{nil, nil, dbtnInteger, nil, p.DtInteger, nil}
-	_bigint       = &_type{nil, nil, dbtnBigint, nil, p.DtBigint, nil}
-	_real         = &_type{nil, nil, dbtnReal, nil, p.DtReal, nil}
-	_double       = &_type{nil, nil, dbtnDouble, nil, p.DtDouble, nil}
-	_date         = &_type{nil, nil, dbtnDate, _dateDBTypeName, p.DtTime, nil}
-	_time         = &_type{nil, nil, dbtnTime, _timeDBTypeName, p.DtTime, nil}
-	_timestamp    = &_type{nil, nil, dbtnTimestamp, _timestampDBTypeName, p.DtTime, nil}
-	_longdate     = &_type{nil, nil, dbtnLongdate, _longdateDBTypeName, p.DtTime, nil}
-	_seconddate   = &_type{nil, nil, dbtnSeconddate, _seconddateDBTypeName, p.DtTime, nil}
-	_daydate      = &_type{nil, nil, dbtnDaydate, _daydateDBTypeName, p.DtTime, nil}
-	_secondtime   = &_type{nil, nil, dbtnSecondtime, _secondtimeDBTypeName, p.DtTime, nil}
-	_clob         = &_type{nil, nil, dbtnClob, _clobDBTypeName, p.DtLob, nil}
-	_nclob        = &_type{nil, nil, dbtnNClob, nil, p.DtLob, nil}
-	_blob         = &_type{nil, nil, dbtnBlob, nil, p.DtLob, nil}
-	_text         = &_type{&dfvLevel4, &mv3, dbtnText, nil, p.DtLob, nil}
-	_bintext      = &_type{&dfvLevel6, &mv3, dbtnBintext, _bintextDBTypeName, p.DtLob, nil}
-	_boolean      = &_type{nil, nil, dbtnBoolean, _booleanDBTypeName, p.DtBoolean, _booleanScanType}
-	_char         = &_type{nil, nil, dbtnChar, _charDBTypeName, p.DtString, nil}
-	_varchar      = &_type{nil, nil, dbtnVarchar, _varcharDBTypeName, p.DtString, nil}
-	_nchar        = &_type{nil, nil, dbtnNChar, nil, p.DtString, nil}
-	_nvarchar     = &_type{nil, nil, dbtnNVarchar, nil, p.DtString, nil}
-	_shorttext    = &_type{nil, &mv3, dbtnShorttext, _shorttextDBTypeName, p.DtString, nil}
-	_alphanum     = &_type{nil, &mv3, dbtnAlphanum, _alphanumDBTypeName, p.DtString, nil}
-	_binary       = &_type{nil, nil, dbtnBinary, nil, p.DtBytes, nil}
-	_varbinary    = &_type{nil, nil, dbtnVarbinary, nil, p.DtBytes, nil}
-	_decimal      = &_type{nil, nil, dbtnDecimal, nil, p.DtDecimal, nil}
-	_smalldecimal = &_type{nil, nil, dbtnSmalldecimal, _smalldecimalDBTypeName, p.DtDecimal, nil}
-	_stpoint      = &_type{&dfvLevel6, nil, dbtnStPoint, nil, p.DtLob, nil}
-	_stgeometry   = &_type{&dfvLevel6, nil, dbtnStGeometry, nil, p.DtLob, nil}
+	_tinyint      = &_type{nil, nil, DbtnTinyint, nil, p.DtTinyint, nil}
+	_smallint     = &_type{nil, nil, DbtnSmallint, nil, p.DtSmallint, nil}
+	_integer      = &_type{nil, nil, DbtnInteger, nil, p.DtInteger, nil}
+	_bigint       = &_type{nil, nil, DbtnBigint, nil, p.DtBigint, nil}
+	_real         = &_type{nil, nil, DbtnReal, nil, p.DtReal, nil}
+	_double       = &_type{nil, nil, DbtnDouble, nil, p.DtDouble, nil}
+	_date         = &_type{nil, nil, DbtnDate, _dateDBTypeName, p.DtTime, nil}
+	_time         = &_type{nil, nil, DbtnTime, _timeDBTypeName, p.DtTime, nil}
+	_timestamp    = &_type{nil, nil, DbtnTimestamp, _timestampDBTypeName, p.DtTime, nil}
+	_longdate     = &_type{nil, nil, DbtnLongdate, _longdateDBTypeName, p.DtTime, nil}
+	_seconddate   = &_type{nil, nil, DbtnSeconddate, _seconddateDBTypeName, p.DtTime, nil}
+	_daydate      = &_type{nil, nil, DbtnDaydate, _daydateDBTypeName, p.DtTime, nil}
+	_secondtime   = &_type{nil, nil, DbtnSecondtime, _secondtimeDBTypeName, p.DtTime, nil}
+	_clob         = &_type{nil, nil, DbtnClob, _clobDBTypeName, p.DtLob, nil}
+	_nclob        = &_type{nil, nil, DbtnNClob, nil, p.DtLob, nil}
+	_blob         = &_type{nil, nil, DbtnBlob, nil, p.DtLob, nil}
+	_text         = &_type{&dfvLevel4, &mv3, DbtnText, nil, p.DtLob, nil}
+	_bintext      = &_type{&dfvLevel6, &mv3, DbtnBintext, _bintextDBTypeName, p.DtLob, nil}
+	_boolean      = &_type{nil, nil, DbtnBoolean, _booleanDBTypeName, p.DtBoolean, _booleanScanType}
+	_char         = &_type{nil, nil, DbtnChar, _charDBTypeName, p.DtString, nil}
+	_varchar      = &_type{nil, nil, DbtnVarchar, _varcharDBTypeName, p.DtString, nil}
+	_nchar        = &_type{nil, nil, DbtnNChar, nil, p.DtString, nil}
+	_nvarchar     = &_type{nil, nil, DbtnNVarchar, nil, p.DtString, nil}
+	_shorttext    = &_type{nil, &mv3, DbtnShorttext, _shorttextDBTypeName, p.DtString, nil}
+	_alphanum     = &_type{nil, &mv3, DbtnAlphanum, _alphanumDBTypeName, p.DtString, nil}
+	_binary       = &_type{nil, nil, DbtnBinary, nil, p.DtBytes, nil}
+	_varbinary    = &_type{nil, nil, DbtnVarbinary, nil, p.DtBytes, nil}
+	_decimal      = &_type{nil, nil, DbtnDecimal, nil, p.DtDecimal, nil}
+	_smalldecimal = &_type{nil, nil, DbtnSmalldecimal, _smalldecimalDBTypeName, p.DtDecimal, nil}
+	_stpoint      = &_type{&dfvLevel6, nil, DbtnStPoint, nil, p.DtLob, nil}
+	_stgeometry   = &_type{&dfvLevel6, nil, DbtnStGeometry, nil, p.DtLob, nil}
 )
 
 // Basic column types.
