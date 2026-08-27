@@ -106,6 +106,17 @@ func valuerValue(v driver.Valuer) (driver.Value, error) {
 		}
 		return v.V, nil
 	default:
+		// Fallback for any other sql.Null[T] wrapping a custom driver type, mirroring
+		// the scan side (convertAssignLob / isGenericNull): the go1.24 sql.Null[T].Value()
+		// routes through DefaultParameterConverter, which rejects custom types. Handle a
+		// generic-null struct ourselves before delegating to v.Value().
+		rv := reflect.Indirect(reflect.ValueOf(v))
+		if ok, _ := isGenericNull(rv.Type()); ok {
+			if !rv.FieldByName("Valid").Bool() {
+				return nil, nil
+			}
+			return rv.FieldByName("V").Interface(), nil
+		}
 		return v.Value()
 	}
 }

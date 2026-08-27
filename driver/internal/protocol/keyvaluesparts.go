@@ -23,8 +23,14 @@ func (c *clientInfo) decode(dec *encoding.Decoder, header *PartHeader, attrs *Re
 		if err != nil {
 			return err
 		}
-		// set key value
-		(*c)[string(k.([]byte))] = string(v.([]byte))
+		// Cesu8Field returns untyped nil for a null field (see decode.go). A null key
+		// has no meaning as a map key, so skip the entry; a null value becomes "".
+		kb, ok := k.([]byte)
+		if !ok {
+			continue
+		}
+		vb, _ := v.([]byte)
+		(*c)[string(kb)] = string(vb)
 	}
 	return nil
 }

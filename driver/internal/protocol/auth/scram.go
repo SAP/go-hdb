@@ -40,7 +40,7 @@ func scramClientProof(key, salt, serverChallenge, clientChallenge []byte) ([]byt
 	}
 	sig := scramHMAC(scramSHA256(key), salt, serverChallenge, clientChallenge)
 	if len(sig) != scramClientProofSize {
-		return nil, fmt.Errorf("invalid sig size %d - expected %d", len(key), scramClientProofSize)
+		return nil, fmt.Errorf("invalid sig size %d - expected %d", len(sig), scramClientProofSize)
 	}
 	// xor sig and key into sig (inline: no further allocation).
 	for i, v := range key {

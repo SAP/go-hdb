@@ -6,12 +6,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	_ "embed" // embed stats template
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"runtime"
 	"strconv"
 	"testing"
 	"text/template"
@@ -20,8 +18,27 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/profile"
 )
 
-//go:embed stats.tmpl
-var statsTemplate string
+// statsTemplate renders the driver Stats() summary printed at the end of the test run.
+const statsTemplate = `{{define "time" -}}
+{{printf "%10d" .Count}} {{printf "%12.1f" .Sum}}{{range .Buckets}}{{printf "%10d" .}}{{end -}}
+{{end -}}
+{{define "bounds" -}}{{range $k, $v := . -}}{{printf "%10.1f" $k}}{{end}}{{end -}}
+openConnections        {{.OpenConnections}}
+openTransactions       {{.OpenTransactions}}
+openStatements         {{.OpenStatements}}
+readBytes              {{.ReadBytes}}
+writtenBytes           {{.WrittenBytes}}
+sessionConnects        {{.SessionConnects}}
+timeUnit               {{.TimeUnit}}
+{{printf "%-12s" ""}}{{printf "%10s" "Count"}} {{printf "%12s" "Sum"}}{{template "bounds" .ReadTime.Buckets}}
+{{printf "%-12s" "readTime"}}{{template "time" .ReadTime}}
+{{printf "%-12s" "writeTime"}}{{template "time" .WriteTime}}
+{{printf "%-12s" "authTime"}}{{template "time" .AuthTime}}
+sqlTimes:
+{{range $k, $v := .SQLTimes -}}
+{{printf "  %-10s" $k}}{{template "time" $v}}
+{{end}}
+`
 
 const (
 	envDSN                = "GOHDBDSN"
@@ -230,18 +247,6 @@ const (
 	memProfileName = "test.memprofile"
 )
 
-// copied from runtime/debug.
-func stack() []byte {
-	buf := make([]byte, 1024)
-	for {
-		n := runtime.Stack(buf, true) // all stacks
-		if n < len(buf) {
-			return buf[:n]
-		}
-		buf = make([]byte, 2*len(buf))
-	}
-}
-
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -277,12 +282,8 @@ func TestMain(m *testing.M) {
 	// cleanup go-hdb driver.
 	Unregister() //nolint: errcheck
 
-	// detect go routine leaks.
-	stack := stack()
-	numLeaking := bytes.Count(stack, []byte{'\n', '\n'}) // count newlines.
-	if numLeaking > 0 {
-		log.Printf("\nnumber of leaking go routines: %d\n%s\n", numLeaking, stack)
-	}
+	// detect go routine leaks (Go-version dependent implementation).
+	detectGoroutineLeaks()
 
 	os.Exit(exitCode)
 }

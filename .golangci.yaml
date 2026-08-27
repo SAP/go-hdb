@@ -52,9 +52,6 @@ linters:
         - exitAfterDefer
     gomoddirectives:
       replace-local: true
-    gosec:
-      excludes:
-        - G113
   exclusions:
     generated: lax
     presets:

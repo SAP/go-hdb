@@ -70,7 +70,7 @@ type ParseError struct {
 	err error
 }
 
-func (e ParseError) Error() string {
+func (e *ParseError) Error() string {
 	if err := errors.Unwrap(e.err); err != nil {
 		return err.Error()
 	}
@@ -78,10 +78,10 @@ func (e ParseError) Error() string {
 }
 
 // Unwrap returns the nested error.
-func (e ParseError) Unwrap() error { return e.err }
+func (e *ParseError) Unwrap() error { return e.err }
 
 // Cause returns the cause of the error.
-func (e ParseError) Cause() error { return e.err }
+func (e *ParseError) Cause() error { return e.err }
 
 func parameterNotSupportedError(k string) error {
 	return &ParseError{s: fmt.Sprintf("parameter %s is not supported", k)}
@@ -194,7 +194,13 @@ func ParseDSN(s string) (*DSN, error) {
 }
 
 // String reassembles the DSN into a valid DSN string.
-func (dsn *DSN) String() string {
+// String reassembles the DSN into a valid DSN string.
+func (dsn *DSN) String() string { return dsn.string(dsn.password) }
+
+// Redacted is like String but replaces any password with "xxxxx".
+func (dsn *DSN) Redacted() string { return dsn.string(passwordRedacted) }
+
+func (dsn *DSN) string(password string) string {
 	values := url.Values{}
 	if dsn.databaseName != "" {
 		values.Set(DSNDatabaseName, dsn.databaseName)
@@ -224,7 +230,7 @@ func (dsn *DSN) String() string {
 	}
 	switch {
 	case dsn.username != "" && dsn.password != "":
-		u.User = url.UserPassword(dsn.username, dsn.password)
+		u.User = url.UserPassword(dsn.username, password)
 	case dsn.username != "":
 		u.User = url.User(dsn.username)
 	}

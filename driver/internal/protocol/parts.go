@@ -122,7 +122,6 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 	PkResultsetID:         reflect.TypeFor[ResultsetID](),
 	PkFetchSize:           reflect.TypeFor[Fetchsize](),
 	PkReadLobRequest:      reflect.TypeFor[ReadLobRequest](),
-	PkReadLobReply:        reflect.TypeFor[ReadLobReply](),
 	PkWriteLobReply:       reflect.TypeFor[WriteLobReply](),
 	PkWriteLobRequest:     reflect.TypeFor[WriteLobRequest](),
 	PkClientContext:       reflect.TypeFor[ClientContext](),
@@ -138,6 +137,7 @@ var genPartTypeMap = map[PartKind]reflect.Type{
 	   PkOutputParameters
 	   PkResultMetadata
 	   PkResultset
+	   PkReadLobReply     (needs the locator id from the originating request)
 	*/
 }
 

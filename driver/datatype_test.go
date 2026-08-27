@@ -18,9 +18,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
-	"github.com/SAP/go-hdb/driver/internal/types"
 )
 
 func equalDate(t1, t2 time.Time) bool {
@@ -92,13 +92,13 @@ func formatAlphanum(s string) string {
 }
 
 type dttDef struct {
-	_columnType types.Column
+	_columnType coltest.Type
 	testData    []any        // static test data
 	testDataFn  func() []any // test data built fresh per run (lobs: stateful readers)
 	tx          bool         // insert within a transaction (LOB streaming: "596 - not permitted in auto-commit mode")
 }
 
-func (dtt *dttDef) columnType() types.Column { return dtt._columnType }
+func (dtt *dttDef) columnType() coltest.Type { return dtt._columnType }
 
 // data returns the test data, materialising it fresh via testDataFn when set (lobs), else the
 // static testData slice.
@@ -153,16 +153,16 @@ func (dtt *dttDef) insertTx(t *testing.T, db *sql.DB, tableName Identifier, test
 // dfv or the column instance only where it needs them.
 func (dtt *dttDef) compare(dfv int, in, out any) (bool, error) {
 	switch dtt._columnType.TypeName() {
-	case types.DbtnTinyint, types.DbtnSmallint, types.DbtnInteger, types.DbtnBigint,
-		types.DbtnReal, types.DbtnDouble, types.DbtnBoolean, types.DbtnVarchar, types.DbtnNVarchar:
+	case coltest.DbtnTinyint, coltest.DbtnSmallint, coltest.DbtnInteger, coltest.DbtnBigint,
+		coltest.DbtnReal, coltest.DbtnDouble, coltest.DbtnBoolean, coltest.DbtnVarchar, coltest.DbtnNVarchar:
 		return in == out, nil
-	case types.DbtnChar, types.DbtnNChar:
+	case coltest.DbtnChar, coltest.DbtnNChar:
 		return compareStringFixSize(in.(string), out.(string)), nil
-	case types.DbtnBinary:
+	case coltest.DbtnBinary:
 		return compareBytesFixSize(in.([]byte), out.([]byte)), nil
-	case types.DbtnVarbinary:
+	case coltest.DbtnVarbinary:
 		return bytes.Equal(in.([]byte), out.([]byte)), nil
-	case types.DbtnDecimal:
+	case coltest.DbtnDecimal:
 		rat := func(v any) *big.Rat {
 			if d, ok := v.(*Decimal); ok {
 				return (*big.Rat)(d)
@@ -171,18 +171,18 @@ func (dtt *dttDef) compare(dfv int, in, out any) (bool, error) {
 			return (*big.Rat)(&d)
 		}
 		return rat(in).Cmp(rat(out)) == 0, nil
-	case types.DbtnDate, types.DbtnDaydate:
+	case coltest.DbtnDate, coltest.DbtnDaydate:
 		return equalDate(in.(time.Time).UTC(), out.(time.Time)), nil
-	case types.DbtnTime, types.DbtnSecondtime:
+	case coltest.DbtnTime, coltest.DbtnSecondtime:
 		return equalTime(in.(time.Time).UTC(), out.(time.Time)), nil
-	case types.DbtnSeconddate:
+	case coltest.DbtnSeconddate:
 		return equalDateTime(in.(time.Time).UTC(), out.(time.Time)), nil
-	case types.DbtnTimestamp, types.DbtnLongdate:
+	case coltest.DbtnTimestamp, coltest.DbtnLongdate:
 		if dfv == p.DfvLevel1 {
 			return equalTimestamp(in.(time.Time).UTC(), out.(time.Time)), nil
 		}
 		return equalLongdate(in.(time.Time).UTC(), out.(time.Time)), nil
-	case types.DbtnAlphanum:
+	case coltest.DbtnAlphanum:
 		if dfv == p.DfvLevel1 {
 			length, ok := dtt._columnType.Length()
 			if !ok {
@@ -191,11 +191,11 @@ func (dtt *dttDef) compare(dfv int, in, out any) (bool, error) {
 			return formatAlphanumVarchar(in.(string), int(length)) == out.(string), nil
 		}
 		return formatAlphanum(in.(string)) == out.(string), nil
-	case types.DbtnClob, types.DbtnNClob, types.DbtnBlob:
+	case coltest.DbtnClob, coltest.DbtnNClob, coltest.DbtnBlob:
 		inLob, outLob := in.(Lob), out.(Lob)
 		// expected content is the reader's retained slice - no rewind of the consumed reader.
 		return bytes.Equal(inLob.rd.(*lobReader).data, outLob.wr.(*bytes.Buffer).Bytes()), nil
-	case types.DbtnText, types.DbtnBintext:
+	case coltest.DbtnText, coltest.DbtnBintext:
 		// text/bintext: content not compared - hdb may modify it (e.g. eliminate spaces).
 		return true, nil
 	default:
@@ -349,8 +349,12 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int
 			outRef.Lob = new(Lob)
 		}
 
-		if err := rows.Scan(outRef, &i); err != nil {
+		var id int
+		if err := rows.Scan(outRef, &id); err != nil {
 			t.Fatal(err)
+		}
+		if id != i { // rows are inserted with column i = index and queried "order by i"
+			t.Fatalf("row order mismatch: got id %d at position %d", id, i)
 		}
 		outVal := reflect.ValueOf(outRef).Elem().Interface()
 
@@ -701,27 +705,27 @@ func TestDataType(t *testing.T) {
 	}
 
 	type tester interface {
-		columnType() types.Column
+		columnType() coltest.Type
 		run(t *testing.T, db *sql.DB, dfv int)
 	}
 
 	tests := []tester{
-		&dttDef{_columnType: types.NullTinyint, testData: tinyintTestData},
-		&dttDef{_columnType: types.NullSmallint, testData: smallintTestData},
-		&dttDef{_columnType: types.NullInteger, testData: integerTestData},
-		&dttDef{_columnType: types.NullBigint, testData: bigintTestData},
-		&dttDef{_columnType: types.NullReal, testData: realTestData},
-		&dttDef{_columnType: types.NullDouble, testData: doubleTestData},
+		&dttDef{_columnType: coltest.NullTinyint, testData: tinyintTestData},
+		&dttDef{_columnType: coltest.NullSmallint, testData: smallintTestData},
+		&dttDef{_columnType: coltest.NullInteger, testData: integerTestData},
+		&dttDef{_columnType: coltest.NullBigint, testData: bigintTestData},
+		&dttDef{_columnType: coltest.NullReal, testData: realTestData},
+		&dttDef{_columnType: coltest.NullDouble, testData: doubleTestData},
 
-		&dttDef{_columnType: types.NullDate, testData: timeTestData},
-		&dttDef{_columnType: types.NullTime, testData: timeTestData},
-		&dttDef{_columnType: types.NullSeconddate, testData: timeTestData},
-		&dttDef{_columnType: types.NullDaydate, testData: timeTestData},
-		&dttDef{_columnType: types.NullSecondtime, testData: timeTestData},
-		&dttDef{_columnType: types.NullTimestamp, testData: timeTestData},
-		&dttDef{_columnType: types.NullLongdate, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullDate, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullTime, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullSeconddate, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullDaydate, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullSecondtime, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullTimestamp, testData: timeTestData},
+		&dttDef{_columnType: coltest.NullLongdate, testData: timeTestData},
 
-		&dttDef{_columnType: types.NullBoolean, testData: booleanTestData},
+		&dttDef{_columnType: coltest.NullBoolean, testData: booleanTestData},
 
 		/*
 		 using unicode (CESU-8) data for char HDB
@@ -731,27 +735,27 @@ func TestDataType(t *testing.T) {
 		 --> use ASCII test data only
 		 surprisingly: varchar works with unicode characters
 		*/
-		&dttDef{_columnType: types.NewNullChar(40), testData: asciiStringTestData},
-		&dttDef{_columnType: types.NewNullVarchar(40), testData: stringTestData},
-		&dttDef{_columnType: types.NewNullNChar(20), testData: stringTestData},
-		&dttDef{_columnType: types.NewNullNVarchar(20), testData: stringTestData},
-		&dttDef{_columnType: types.NewNullAlphanum(20), testData: alphanumTestData},
-		&dttDef{_columnType: types.NewNullBinary(20), testData: binaryTestData},
-		&dttDef{_columnType: types.NewNullVarbinary(20), testData: binaryTestData},
+		&dttDef{_columnType: coltest.NewNullChar(40), testData: asciiStringTestData},
+		&dttDef{_columnType: coltest.NewNullVarchar(40), testData: stringTestData},
+		&dttDef{_columnType: coltest.NewNullNChar(20), testData: stringTestData},
+		&dttDef{_columnType: coltest.NewNullNVarchar(20), testData: stringTestData},
+		&dttDef{_columnType: coltest.NewNullAlphanum(20), testData: alphanumTestData},
+		&dttDef{_columnType: coltest.NewNullBinary(20), testData: binaryTestData},
+		&dttDef{_columnType: coltest.NewNullVarbinary(20), testData: binaryTestData},
 
-		&dttDef{_columnType: types.NewNullDecimal(0, 0), testData: decimalTestData}, // floating point decimal number
+		&dttDef{_columnType: coltest.NewNullDecimal(0, 0), testData: decimalTestData}, // floating point decimal number
 
-		&dttDef{_columnType: types.NewNullDecimal(18, 2), testData: decimalTestData},        // precision, scale decimal number -fixed8
-		&dttDef{_columnType: types.NewNullDecimal(28, 2), testData: decimalFixed12TestData}, // precision, scale decimal number -fixed12
-		&dttDef{_columnType: types.NewNullDecimal(38, 2), testData: decimalFixed16TestData}, // precision, scale decimal number -fixed16
+		&dttDef{_columnType: coltest.NewNullDecimal(18, 2), testData: decimalTestData},        // precision, scale decimal number -fixed8
+		&dttDef{_columnType: coltest.NewNullDecimal(28, 2), testData: decimalFixed12TestData}, // precision, scale decimal number -fixed12
+		&dttDef{_columnType: coltest.NewNullDecimal(38, 2), testData: decimalFixed16TestData}, // precision, scale decimal number -fixed16
 
 		// LOBs: transaction required (LOB streaming not permitted in auto-commit). Test data
 		// is built fresh per run (testDataFn): the bytes.Readers are consumed on insert.
-		&dttDef{_columnType: types.NullClob, testDataFn: lobASCIITestData, tx: true},
-		&dttDef{_columnType: types.NullNClob, testDataFn: lobTestData, tx: true},
-		&dttDef{_columnType: types.NullBlob, testDataFn: lobTestData, tx: true},
-		&dttDef{_columnType: types.NullText, testDataFn: lobTestData, tx: true},
-		&dttDef{_columnType: types.NullBintext, testDataFn: lobASCIITestData, tx: true},
+		&dttDef{_columnType: coltest.NullClob, testDataFn: lobASCIITestData, tx: true},
+		&dttDef{_columnType: coltest.NullNClob, testDataFn: lobTestData, tx: true},
+		&dttDef{_columnType: coltest.NullBlob, testDataFn: lobTestData, tx: true},
+		&dttDef{_columnType: coltest.NullText, testDataFn: lobTestData, tx: true},
+		&dttDef{_columnType: coltest.NullBintext, testDataFn: lobASCIITestData, tx: true},
 	}
 
 	version := MT.Version().Major()

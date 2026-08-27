@@ -30,8 +30,9 @@ var (
 	_ ResultPartDecoder = (*Resultset)(nil)
 )
 
-func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder) error {
-	err := part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs)
+func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder) (err error) {
+	defer recoverShortBuffer(&err)
+	err = part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs)
 	if r.protTraceFn != nil {
 		r.protTraceFn(ctx, textPar, part)
 	}

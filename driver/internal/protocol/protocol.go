@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -14,6 +15,26 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
+
+// errShortRead is returned when a read falls short of what the frame declares -
+// either the reader cannot carve a segment/part header or part payload out of
+// the buffer (see Parts), or a part decoder reads past its payload (recovered
+// from an encoding.ShortBufferError, see recoverShortBuffer). The buffer framing
+// stays intact in the payload case, so only the current statement fails; the
+// connection stays usable.
+var errShortRead = errors.New("short read: buffer shorter than frame declares")
+
+// recoverShortBuffer converts an encoding.ShortBufferError panic raised by a
+// part decoder into errShortRead. Any other panic - a genuine driver bug -
+// propagates unchanged and stays fatal.
+func recoverShortBuffer(errp *error) {
+	if rec := recover(); rec != nil {
+		if _, ok := rec.(encoding.ShortBufferError); !ok {
+			panic(rec)
+		}
+		*errp = errShortRead
+	}
+}
 
 const (
 	traceMsg = "PROT"
@@ -280,6 +301,10 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 
 		for i := range int(r.mh.noOfSegm) {
 			if i != 0 {
+				if len(buf) < segmentHeaderSize {
+					yield(nil, fmt.Errorf("segment header: need %d bytes, have %d: %w", segmentHeaderSize, len(buf), errShortRead))
+					return
+				}
 				dec := encoding.Decoder(buf[:segmentHeaderSize])
 				buf = buf[segmentHeaderSize:]
 				r.sh.decode(&dec)
@@ -295,6 +320,10 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			for j := range numPart {
 				ph := r.partInfo.Header
 
+				if len(buf) < partHeaderSize {
+					yield(nil, fmt.Errorf("part header: need %d bytes, have %d: %w", partHeaderSize, len(buf), errShortRead))
+					return
+				}
 				dec := encoding.Decoder(buf[:partHeaderSize])
 				buf = buf[partHeaderSize:]
 				ph.decode(&dec)
@@ -303,11 +332,15 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 					r.protTraceFn(ctx, textParHdr, ph)
 				}
 
-				dec = encoding.Decoder(buf[:ph.bufferLength])
 				bufAdvance := int(ph.bufferLength)
 				if j != lastPart {
 					bufAdvance += padBytes(int(ph.bufferLength))
 				}
+				if len(buf) < bufAdvance {
+					yield(nil, fmt.Errorf("part payload: need %d bytes, have %d: %w", bufAdvance, len(buf), errShortRead))
+					return
+				}
+				dec = encoding.Decoder(buf[:ph.bufferLength])
 				buf = buf[bufAdvance:]
 
 				r.partInfo.Dec = &dec
@@ -373,8 +406,9 @@ func (r *Reader) readHDBErrors(ctx context.Context) error {
 	return hdbErrors
 }
 
-func (r *Reader) readPart(ctx context.Context, part PartDecoder) error {
-	err := part.decode(r.partInfo.Dec, r.partInfo.Header, r.attrs)
+func (r *Reader) readPart(ctx context.Context, part PartDecoder) (err error) {
+	defer recoverShortBuffer(&err)
+	err = part.decode(r.partInfo.Dec, r.partInfo.Header, r.attrs)
 	if r.protTraceFn != nil {
 		r.protTraceFn(ctx, textPar, part)
 	}

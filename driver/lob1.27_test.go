@@ -14,7 +14,7 @@ import (
 
 func newRandomData(size int) []byte {
 	b := make([]byte, size)
-	rand.Read(b)
+	rand.Read(b) // starting with go1.24 rand.Read is never returning an error.
 	return b
 }
 

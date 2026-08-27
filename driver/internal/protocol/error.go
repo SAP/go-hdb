@@ -65,10 +65,7 @@ func (e *HdbError) String() string {
 }
 
 func (e *HdbError) Error() string {
-	if e.stmtNo != -1 {
-		return fmt.Sprintf("SQL %s %d - %s (statement no: %d)", e.errorLevel, e.errorCode, e.errorText, e.stmtNo)
-	}
-	return fmt.Sprintf("SQL %s %d - %s", e.errorLevel, e.errorCode, e.errorText)
+	return fmt.Sprintf("SQL %s %d - %s (statement no: %d)", e.errorLevel, e.errorCode, e.errorText, e.stmtNo)
 }
 
 // StmtNo implements the driver.DBError interface.
@@ -160,15 +157,12 @@ func (e *HdbErrors) decode(dec *encoding.Decoder, header *PartHeader, attrs *Rea
 		err := new(HdbError)
 		e.errs = append(e.errs, err)
 
-		// err.stmtNo = -1
+		// Default statement number to 0 (the first/only statement).
+		// A single-record failure (e.g. duplicate key) has no rowsAffected part,
+		// so setStmtNo is never called; treating it as statement 0 keeps single
+		// errors uniform with batch statement numbering (0-based) instead of a
+		// separate "no statement number" sentinel.
 		err.stmtNo = 0
-		/*
-			in case of an hdb error when inserting one record (e.g. duplicate)
-			- hdb does not return a rowsAffected part
-			- SetStmtNo is not called and
-			- the default value (formerly -1) is kept
-			--> initialize stmtNo with zero
-		*/
 		err.errorCode = dec.Int32()
 		err.errorPosition = dec.Int32()
 		err.errorTextLength = dec.Int32()

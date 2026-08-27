@@ -1,5 +1,5 @@
-// Package types provides database types.
-package types
+// Package coltest provides database column definitions used by the driver tests.
+package coltest
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
-// Column represents a database column.
-type Column interface {
+// Type represents a database column.
+type Type interface {
 	IsSupported(version uint64, dfv int) bool
 	TypeName() string
 	DatabaseTypeName(version uint64, dfv int) string
@@ -27,10 +27,10 @@ type Spatial interface {
 
 // check if column types implement the right column interfaces.
 var (
-	_ Column  = (*basicColumn)(nil)
-	_ Column  = (*varColumn)(nil)
-	_ Column  = (*decimalColumn)(nil)
-	_ Column  = (*spatialColumn)(nil)
+	_ Type    = (*basicColumn)(nil)
+	_ Type    = (*varColumn)(nil)
+	_ Type    = (*decimalColumn)(nil)
+	_ Type    = (*spatialColumn)(nil)
 	_ Spatial = (*spatialColumn)(nil)
 )
 
@@ -74,7 +74,7 @@ func (t *_type) scanType(version uint64, dfv int, nullable bool) reflect.Type {
 	return t.dataType.ScanType(nullable)
 }
 
-// Database type names, as returned by Column.TypeName.
+// Database type names, as returned by Type.TypeName.
 const (
 	DbtnDate       = "DATE"
 	DbtnTime       = "TIME"
@@ -460,121 +460,121 @@ var (
 )
 
 // NewChar returns a new char column.
-func NewChar(length int64) Column {
+func NewChar(length int64) Type {
 	return &varColumn{dt: _char, nullable: false, length: length}
 }
 
 // NewVarchar returns a new varchar column.
-func NewVarchar(length int64) Column {
+func NewVarchar(length int64) Type {
 	return &varColumn{dt: _varchar, nullable: false, length: length}
 }
 
 // NewNChar returns a new nchar column.
-func NewNChar(length int64) Column {
+func NewNChar(length int64) Type {
 	return &varColumn{dt: _nchar, nullable: false, length: length}
 }
 
 // NewNVarchar returns a new nvarchar column.
-func NewNVarchar(length int64) Column {
+func NewNVarchar(length int64) Type {
 	return &varColumn{dt: _nvarchar, nullable: false, length: length}
 }
 
 // NewShorttext returns a new shortext column.
-func NewShorttext(length int64) Column {
+func NewShorttext(length int64) Type {
 	return &varColumn{dt: _shorttext, nullable: false, length: length}
 }
 
 // NewAlphanum returns a new alphanum column.
-func NewAlphanum(length int64) Column {
+func NewAlphanum(length int64) Type {
 	return &varColumn{dt: _alphanum, nullable: false, length: length}
 }
 
 // NewBinary returns a new binary column.
-func NewBinary(length int64) Column {
+func NewBinary(length int64) Type {
 	return &varColumn{dt: _binary, nullable: false, length: length}
 }
 
 // NewVarbinary returns a new varbinary column.
-func NewVarbinary(length int64) Column {
+func NewVarbinary(length int64) Type {
 	return &varColumn{dt: _varbinary, nullable: false, length: length}
 }
 
 // NewDecimal returns a new decimal column.
-func NewDecimal(precision, scale int64) Column {
+func NewDecimal(precision, scale int64) Type {
 	return &decimalColumn{dt: _decimal, nullable: false, precision: precision, scale: scale}
 }
 
 // NewSmalldecimal returns a new smalldecimal column.
-func NewSmalldecimal(precision, scale int64) Column {
+func NewSmalldecimal(precision, scale int64) Type {
 	return &decimalColumn{dt: _smalldecimal, nullable: false, precision: precision, scale: scale}
 }
 
 // NewSTPoint returns a new stpoint column.
-func NewSTPoint(srid int32) Column {
+func NewSTPoint(srid int32) Type {
 	return &spatialColumn{dt: _stpoint, nullable: false, srid: srid}
 }
 
 // NewSTGeometry returns a new stgeometry column.
-func NewSTGeometry(srid int32) Column {
+func NewSTGeometry(srid int32) Type {
 	return &spatialColumn{dt: _stgeometry, nullable: false, srid: srid}
 }
 
 // NewNullChar returns a new nullable char column.
-func NewNullChar(length int64) Column {
+func NewNullChar(length int64) Type {
 	return &varColumn{dt: _char, nullable: true, length: length}
 }
 
 // NewNullVarchar returns a new nullable varchar column.
-func NewNullVarchar(length int64) Column {
+func NewNullVarchar(length int64) Type {
 	return &varColumn{dt: _varchar, nullable: true, length: length}
 }
 
 // NewNullNChar returns a new nullable nchar column.
-func NewNullNChar(length int64) Column {
+func NewNullNChar(length int64) Type {
 	return &varColumn{dt: _nchar, nullable: true, length: length}
 }
 
 // NewNullNVarchar returns a new nullable nvarchar column.
-func NewNullNVarchar(length int64) Column {
+func NewNullNVarchar(length int64) Type {
 	return &varColumn{dt: _nvarchar, nullable: true, length: length}
 }
 
 // NewNullShorttext returns a new nullable shorttext column.
-func NewNullShorttext(length int64) Column {
+func NewNullShorttext(length int64) Type {
 	return &varColumn{dt: _shorttext, nullable: true, length: length}
 }
 
 // NewNullAlphanum returns a new nullable alphanum column.
-func NewNullAlphanum(length int64) Column {
+func NewNullAlphanum(length int64) Type {
 	return &varColumn{dt: _alphanum, nullable: true, length: length}
 }
 
 // NewNullBinary returns a new nullable binary column.
-func NewNullBinary(length int64) Column {
+func NewNullBinary(length int64) Type {
 	return &varColumn{dt: _binary, nullable: true, length: length}
 }
 
 // NewNullVarbinary returns a new nullable varbinary column.
-func NewNullVarbinary(length int64) Column {
+func NewNullVarbinary(length int64) Type {
 	return &varColumn{dt: _varbinary, nullable: true, length: length}
 }
 
 // NewNullDecimal returns a new nullable decimal column.
-func NewNullDecimal(precision, scale int64) Column {
+func NewNullDecimal(precision, scale int64) Type {
 	return &decimalColumn{dt: _decimal, nullable: true, precision: precision, scale: scale}
 }
 
 // NewNullSmalldecimal returns a new nullable smalldecimal column.
-func NewNullSmalldecimal(precision, scale int64) Column {
+func NewNullSmalldecimal(precision, scale int64) Type {
 	return &decimalColumn{dt: _smalldecimal, nullable: true, precision: precision, scale: scale}
 }
 
 // NewNullSTPoint returns a new nullable stpoint column.
-func NewNullSTPoint(srid int32) Column {
+func NewNullSTPoint(srid int32) Type {
 	return &spatialColumn{dt: _stpoint, nullable: true, srid: srid}
 }
 
 // NewNullSTGeometry returns a new nullable stgeometry column.
-func NewNullSTGeometry(srid int32) Column {
+func NewNullSTGeometry(srid int32) Type {
 	return &spatialColumn{dt: _stgeometry, nullable: true, srid: srid}
 }

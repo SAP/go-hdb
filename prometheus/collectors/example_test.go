@@ -113,6 +113,4 @@ func Example() {
 
 	close(done)
 	wg.Wait()
-
-	// output:
 }
