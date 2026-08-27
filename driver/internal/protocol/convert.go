@@ -192,7 +192,7 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 			return nil, errConversionNotSupported
 		}
 		if i64 > maxI64 || i64 < minI64 {
-			return nil, errConversionNotSupported
+			return nil, errIntegerOutOfRange
 		}
 		return i64, nil
 	case float64:

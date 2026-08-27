@@ -30,11 +30,12 @@ var (
 	_ ResultPartDecoder = (*Resultset)(nil)
 )
 
-func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder, lobReader LobReader) error {
+func (r *Reader) readResultPart(ctx context.Context, part ResultPartDecoder, lobReader LobReader) (err error) {
 	if lobReader == nil {
 		panic("missing lob reader") // should never happen
 	}
-	err := part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs, lobReader)
+	defer recoverShortBuffer(&err)
+	err = part.decodeResult(r.partInfo.Dec, r.partInfo.Header, r.attrs, lobReader)
 	if r.protTraceFn != nil {
 		r.protTraceFn(ctx, textPar, part)
 	}

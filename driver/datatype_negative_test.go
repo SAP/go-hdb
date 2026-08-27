@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/types"
 )
 
 // testNegative asserts that every value fails to insert. Run across all dfvs because
 // nchar/nvarchar dispatch to different encode paths per dfv - the invalid input must be
 // rejected on every one of them.
-func testNegative(t *testing.T, db *sql.DB, column types.Column, testData []any) {
+func testNegative(t *testing.T, db *sql.DB, column coltest.Type, testData []any) {
 	tableName := RandomIdentifier(column.DataType() + "_")
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, column.DataType())); err != nil {
 		t.Fatal(err)
@@ -46,12 +46,12 @@ func TestDataTypeNegative(t *testing.T) {
 	}
 
 	type test struct {
-		column   types.Column
+		column   coltest.Type
 		testData []any
 	}
 	tests := []test{
-		{types.NewNullNChar(20), invalidUnicodeTestData},
-		{types.NewNullNVarchar(20), invalidUnicodeTestData},
+		{coltest.NewNullNChar(20), invalidUnicodeTestData},
+		{coltest.NewNullNVarchar(20), invalidUnicodeTestData},
 	}
 
 	version := MT.Version().Major()

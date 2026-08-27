@@ -49,8 +49,10 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result := h.ts.execute(sequential, batchCount, batchSize, drop)
 
-	log.Printf("%s", result)  //nolint: gosec
-	h.tmpl.Execute(w, result) //nolint: errcheck
+	log.Printf("%s", result) //nolint: gosec
+	if err := h.tmpl.Execute(w, result); err != nil {
+		log.Printf("template execute error: %s", err)
+	}
 }
 
 type testResult struct {
@@ -223,7 +225,7 @@ func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait t
 	for worker, task := range tasks { // Start one worker per task.
 		wg.Go(func() {
 			j := 0
-			if _, err = task.stmt.ExecContext(ctx, func(args []any) error {
+			if _, err := task.stmt.ExecContext(ctx, func(args []any) error {
 				if j >= task.size {
 					return driver.ErrEndOfRows
 				}

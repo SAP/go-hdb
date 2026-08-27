@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.2
+- added DSN.Redacted returning the DSN with the password replaced by "xxxxx"
+- cleanups
+
 #### v1.18.1
 - reworked datatype test suite
 - added performance guide (PERFORMANCE.md) linked from README

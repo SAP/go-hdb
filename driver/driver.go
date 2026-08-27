@@ -10,10 +10,16 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.18.1"
+const DriverVersion = "1.18.2"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
+
+// passwordRedacted is the placeholder that replaces a password wherever the driver
+// renders credentials for logging or display (SQL trace, DSN.Redacted). The value
+// is kept consistent with net/url.URL.Redacted, whose "xxxxx" literal is unexported
+// and therefore cannot be reused directly.
+const passwordRedacted = "xxxxx"
 
 var clientID = func() string {
 	if hostname, err := os.Hostname(); err == nil {
@@ -45,8 +51,15 @@ func register() {
 	sql.Register(DriverName, stdHdbDriver)
 }
 
-// Unregister unregisters the go-hdb driver and frees all allocated resources.
-// After calling any go-hdb access might panic.
+// Unregister releases the resources held by the shared go-hdb driver instance,
+// notably stopping the background metrics collector goroutine. It is intended for
+// clean process shutdown (for example to satisfy goroutine-leak checks in tests).
+//
+// Unregister is not reversible: the driver singleton is created once at package
+// initialization and cannot be re-registered. Only call it when no go-hdb database
+// is in use and none will be opened afterwards - any subsequent go-hdb access
+// (opening a connection, or driver activity recording a metric) may panic on the
+// closed metrics channel.
 func Unregister() error {
 	return stdHdbDriver.shutdown()
 }

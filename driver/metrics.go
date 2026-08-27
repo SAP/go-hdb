@@ -40,11 +40,10 @@ const (
 )
 
 type histogram struct {
-	count          uint64
-	sum            float64
-	upperBounds    []float64
-	boundCounts    []uint64
-	underflowCount uint64 // in case of negative duration (will add to zero bucket)
+	count       uint64
+	sum         float64
+	upperBounds []float64
+	boundCounts []uint64
 }
 
 func newHistogram(upperBounds []float64) *histogram {
@@ -65,8 +64,7 @@ func (h *histogram) stats() *StatsHistogram {
 
 func (h *histogram) add(v float64) {
 	h.count++
-	if v < 0 {
-		h.underflowCount++
+	if v < 0 { // negative duration (e.g. clock adjustment): clamp into the zero bucket
 		v = 0
 	}
 	h.sum += v
@@ -141,14 +139,6 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 	}
 	return rv
 }
-
-/*
-func (m *metrics) collect(msgCh <-chan any) {
-	for msg := range msgCh {
-		m.handleMsg(msg)
-	}
-}
-*/
 
 func (m *metrics) lazyInit() {
 	/*

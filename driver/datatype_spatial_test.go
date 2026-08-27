@@ -11,8 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/types"
 	"github.com/SAP/go-hdb/driver/spatial"
 )
 
@@ -30,12 +30,12 @@ func equalJSON(b1, b2 []byte) (bool, error) {
 
 // testSpatial inserts each geometry via st_geomfromewkb and verifies all read-back encodings
 // (wkb, ewkb, wkt, ewkt, geojson) against the driver's own encoders.
-func testSpatial(t *testing.T, db *sql.DB, column types.Column, testData []spatial.Geometry) {
+func testSpatial(t *testing.T, db *sql.DB, column coltest.Type, testData []spatial.Geometry) {
 	tableName := RandomIdentifier(column.DataType() + "_")
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, column.DataType())); err != nil {
 		t.Fatal(err)
 	}
-	srid := column.(types.Spatial).SRID()
+	srid := column.(coltest.Spatial).SRID()
 
 	// insert within a transaction (SQL Error 596 - LOB streaming not permitted in auto-commit mode).
 	tx, err := db.BeginTx(t.Context(), nil)
@@ -194,14 +194,14 @@ func TestDataTypeSpatial(t *testing.T) {
 	}
 
 	type test struct {
-		column   types.Column
+		column   coltest.Type
 		testData []spatial.Geometry
 	}
 	tests := []test{
-		{types.NewNullSTPoint(0), stPointTestData},
-		{types.NewNullSTPoint(3857), stPointTestData},
-		{types.NewNullSTGeometry(0), stGeometryTestData},
-		{types.NewNullSTGeometry(3857), stGeometryTestData},
+		{coltest.NewNullSTPoint(0), stPointTestData},
+		{coltest.NewNullSTPoint(3857), stPointTestData},
+		{coltest.NewNullSTGeometry(0), stGeometryTestData},
+		{coltest.NewNullSTGeometry(3857), stGeometryTestData},
 	}
 
 	version := MT.Version().Major()

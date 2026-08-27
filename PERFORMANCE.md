@@ -306,8 +306,9 @@ level=INFO msg=SQL exec="SELECT * FROM t WHERE id=?" ms=12 arg.1=42
 ```
 
 Attributes: the operation key (`prepare` / `query` / `exec` / `call` / `ping`)
-carries the SQL text, `ms` carries the duration, and `arg.*` carries up to five
-parameter values.
+carries the SQL text, `ms` carries the duration, and `arg.*` carries the
+parameter values — the first five; if a statement has more, `arg.numArgSkip`
+reports how many were omitted.
 
 #### Routing trace to your logger
 
@@ -374,7 +375,7 @@ a failed round-trip and a reconnect. The driver can ping a pooled connection
 before handing it out:
 
 ```go
-connector.SetPingInterval(d) // ping idle conns older than d before reuse; 0 = off (default)
+connector.SetPingInterval(d) // on checkout, ping a pooled conn idle (unread) for ≥ d; 0 = off (default)
 ```
 
 The cost is one extra round-trip on checkout after the interval — cheap

@@ -148,6 +148,8 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 }
 
 // Fixed encodes a fixed decimal value.
+// Fixed consumes m: for negative values it mutates m in place (two's complement).
+// Callers must pass a freshly allocated, single-use *big.Int (do not reuse m afterwards).
 func (e *Encoder) Fixed(m *big.Int, size int) {
 	l := len(*e)
 	*e = slices.Grow(*e, size)

@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/internal/types"
 )
 
 func TestColumnType(t *testing.T) {
 	t.Parallel()
 
-	columnDefs := func(types []types.Column) string {
+	columnDefs := func(types []coltest.Type) string {
 		if len(types) == 0 {
 			return ""
 		}
@@ -44,7 +44,7 @@ func TestColumnType(t *testing.T) {
 		return string(buf)
 	}
 
-	compareColumnTypes := func(ct ColumnType, c types.Column, version uint64, dfv int) error {
+	compareColumnTypes := func(ct ColumnType, c coltest.Type, version uint64, dfv int) error {
 		if ct.DatabaseTypeName() != c.DatabaseTypeName(version, dfv) {
 			return fmt.Errorf("sql type %s type name %s - expected %s", c.TypeName(), ct.DatabaseTypeName(), c.DatabaseTypeName(version, dfv))
 		}
@@ -74,9 +74,9 @@ func TestColumnType(t *testing.T) {
 		return nil
 	}
 
-	testColumnType := func(t *testing.T, db *sql.DB, version uint64, dfv int, types []types.Column, values []any) {
+	testColumnType := func(t *testing.T, db *sql.DB, version uint64, dfv int, types []coltest.Type, values []any) {
 
-		tableName := RandomIdentifier("%s_" + t.Name())
+		tableName := RandomIdentifier(t.Name() + "_")
 
 		// some data types are only valid for column tables
 		// e.g. text
@@ -141,63 +141,63 @@ func TestColumnType(t *testing.T) {
 	)
 
 	type testField struct {
-		typ   types.Column
+		typ   coltest.Type
 		value any
 	}
 
 	testFields := func() []testField {
 		// create new set of fields to avoid race condition on bytes.Buffer.
 		return []testField{
-			{types.NullTinyint, 1},
-			{types.NullSmallint, 42},
-			{types.NullInteger, 4711},
-			{types.NullBigint, 68000},
+			{coltest.NullTinyint, 1},
+			{coltest.NullSmallint, 42},
+			{coltest.NullInteger, 4711},
+			{coltest.NullBigint, 68000},
 
-			{types.NullReal, 1.0},
-			{types.NullDouble, 3.14},
+			{coltest.NullReal, 1.0},
+			{coltest.NullDouble, 3.14},
 
-			{types.NullDate, testTime},
-			{types.NullTime, testTime},
-			{types.NullTimestamp, testTime},
-			{types.NullLongdate, testTime},
-			{types.NullSeconddate, testTime},
-			{types.NullDaydate, testTime},
-			{types.NullSecondtime, testTime},
+			{coltest.NullDate, testTime},
+			{coltest.NullTime, testTime},
+			{coltest.NullTimestamp, testTime},
+			{coltest.NullLongdate, testTime},
+			{coltest.NullSeconddate, testTime},
+			{coltest.NullDaydate, testTime},
+			{coltest.NullSecondtime, testTime},
 
-			{types.NullClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{types.NullNClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{types.NullBlob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullNClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullBlob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 
-			{types.NullText, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{types.NullBintext, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullText, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullBintext, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
 
-			{types.Boolean, false},
+			{coltest.Boolean, false},
 
-			{types.NewNullChar(30), testString},
-			{types.NewNullVarchar(30), testString},
-			{types.NewNullNChar(20), testString},
-			{types.NewNullNVarchar(20), testString},
+			{coltest.NewNullChar(30), testString},
+			{coltest.NewNullVarchar(30), testString},
+			{coltest.NewNullNChar(20), testString},
+			{coltest.NewNullNVarchar(20), testString},
 
-			{types.NewNullShorttext(15), testString},
-			{types.NewNullAlphanum(15), testString},
+			{coltest.NewNullShorttext(15), testString},
+			{coltest.NewNullAlphanum(15), testString},
 
-			{types.NewNullBinary(10), testBinary},
-			{types.NewNullVarbinary(10), testBinary},
+			{coltest.NewNullBinary(10), testBinary},
+			{coltest.NewNullVarbinary(10), testBinary},
 
-			{types.NewNullDecimal(0, 0), testDecimal},  // decimal
-			{types.NewNullDecimal(18, 2), testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
-			{types.NewNullDecimal(28, 4), testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
-			{types.NewNullDecimal(38, 8), testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
+			{coltest.NewNullDecimal(0, 0), testDecimal},  // decimal
+			{coltest.NewNullDecimal(18, 2), testDecimal}, // decimal(p,q) - fixed8  (beginning with dfv 8)
+			{coltest.NewNullDecimal(28, 4), testDecimal}, // decimal(p,q) - fixed12 (beginning with dfv 8)
+			{coltest.NewNullDecimal(38, 8), testDecimal}, // decimal(p,q) - fixed16 (beginning with dfv 8)
 
-			{types.NewNullSmalldecimal(0, 0), testDecimal}, // smalldecimal
+			{coltest.NewNullSmalldecimal(0, 0), testDecimal}, // smalldecimal
 
 			// TODO: insert with function (e.g. st_geomfromewkb(?))
 			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTPoint, 0), value: ""},
 			// {typ: datatypes.NewSpatialColumn(datatypes.DtSTGeometry, 0), value: ""},
 
 			// not nullable
-			{types.Tinyint, 42},
-			{types.NewVarchar(25), testString},
+			{coltest.Tinyint, 42},
+			{coltest.NewVarchar(25), testString},
 		}
 	}
 
@@ -214,7 +214,7 @@ func TestColumnType(t *testing.T) {
 			defer db.Close()
 
 			testFields := testFields()
-			types := make([]types.Column, 0, len(testFields))
+			types := make([]coltest.Type, 0, len(testFields))
 			values := make([]any, 0, len(testFields))
 			for _, field := range testFields {
 				if field.typ.IsSupported(version, dfv) {

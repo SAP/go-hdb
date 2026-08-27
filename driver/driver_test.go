@@ -15,10 +15,7 @@ import (
 func testConnection(t *testing.T, db *sql.DB) {
 	var dummy string
 	err := db.QueryRowContext(t.Context(), "select * from dummy").Scan(&dummy)
-	switch {
-	case err == sql.ErrNoRows:
-		t.Fatal(err)
-	case err != nil:
+	if err != nil {
 		t.Fatal(err)
 	}
 	if dummy != "X" {
@@ -280,7 +277,6 @@ func testDriverDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.Close()
-	// output:
 }
 
 func testDriverWithDB(t *testing.T) {
@@ -334,5 +330,5 @@ func TestDriver(t *testing.T) {
 	t.Parallel()
 
 	t.Run("driverWithoutDB", testDriverWithoutDB)
-	t.Run("driverWithtDB", testDriverWithDB)
+	t.Run("driverWithDB", testDriverWithDB)
 }

@@ -12,16 +12,41 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// ShortBufferError is panicked by a Decoder read that would consume more bytes
+// than remain in the buffer - a truncated or internally inconsistent part
+// payload, which a correct server never sends. It is recovered at the
+// part-decode boundary and turned into a normal statement error; it is not
+// meant to escape the protocol layer.
+type ShortBufferError struct{ Need, Have int }
+
+func (e ShortBufferError) Error() string {
+	return fmt.Sprintf("decode: short buffer: need %d bytes, have %d", e.Need, e.Have)
+}
+
 // Decoder decodes hdb protocol datatypes on basis of an buffer.
+//
+// Decoder primitives slice the buffer using lengths/counts taken from the wire.
+// A read is length-checked first: if the buffer is shorter than the read
+// requires - an internally inconsistent frame, which a correct server never
+// sends - the read panics ShortBufferError rather than a raw slice-bounds
+// error. The typed panic lets the part-decode boundary recover it
+// deterministically (see protocol.recoverShortBuffer) and fail just the current
+// statement, while a genuine driver bug (a different panic) still crashes.
 type Decoder []byte
 
 // Skip skips cnt bytes from reading.
 func (d *Decoder) Skip(cnt int) {
+	if len(*d) < cnt {
+		panic(ShortBufferError{Need: cnt, Have: len(*d)})
+	}
 	*d = (*d)[cnt:]
 }
 
 // Byte decodes a byte.
 func (d *Decoder) Byte() byte {
+	if len(*d) < 1 {
+		panic(ShortBufferError{Need: 1, Have: len(*d)})
+	}
 	b := (*d)[0]
 	*d = (*d)[1:]
 	return b
@@ -29,6 +54,9 @@ func (d *Decoder) Byte() byte {
 
 // Bytes decodes bytes.
 func (d *Decoder) Bytes(n int) []byte {
+	if len(*d) < n {
+		panic(ShortBufferError{Need: n, Have: len(*d)})
+	}
 	b := (*d)[:n]
 	*d = (*d)[n:]
 	return b
@@ -36,6 +64,9 @@ func (d *Decoder) Bytes(n int) []byte {
 
 // Str decodes strings.
 func (d *Decoder) Str(n int) string {
+	if len(*d) < n {
+		panic(ShortBufferError{Need: n, Have: len(*d)})
+	}
 	b := (*d)[:n]
 	*d = (*d)[n:]
 	return unsafe.ByteSlice2String(b)
@@ -53,6 +84,9 @@ func (d *Decoder) Int8() int8 {
 
 // Int16 decodes an int16.
 func (d *Decoder) Int16() int16 {
+	if len(*d) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	}
 	i16 := int16(binary.LittleEndian.Uint16(*d)) //nolint: gosec
 	*d = (*d)[2:]
 	return i16
@@ -60,6 +94,9 @@ func (d *Decoder) Int16() int16 {
 
 // Uint16 decodes an uint16.
 func (d *Decoder) Uint16() uint16 {
+	if len(*d) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	}
 	u16 := binary.LittleEndian.Uint16(*d)
 	*d = (*d)[2:]
 	return u16
@@ -67,6 +104,9 @@ func (d *Decoder) Uint16() uint16 {
 
 // Uint16ByteOrder decodes an uint16 in given byte order.
 func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
+	if len(*d) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	}
 	u16 := byteOrder.Uint16(*d)
 	*d = (*d)[2:]
 	return u16
@@ -74,6 +114,9 @@ func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
 
 // Int32 decodes an int32.
 func (d *Decoder) Int32() int32 {
+	if len(*d) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	}
 	i32 := int32(binary.LittleEndian.Uint32(*d)) //nolint: gosec
 	*d = (*d)[4:]
 	return i32
@@ -81,6 +124,9 @@ func (d *Decoder) Int32() int32 {
 
 // Uint32 decodes an uint32.
 func (d *Decoder) Uint32() uint32 {
+	if len(*d) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	}
 	u32 := binary.LittleEndian.Uint32(*d)
 	*d = (*d)[4:]
 	return u32
@@ -88,6 +134,9 @@ func (d *Decoder) Uint32() uint32 {
 
 // Uint32ByteOrder decodes an uint32 in given byte order.
 func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
+	if len(*d) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	}
 	u32 := byteOrder.Uint32(*d)
 	*d = (*d)[4:]
 	return u32
@@ -95,6 +144,9 @@ func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
 
 // Int64 decodes an int64.
 func (d *Decoder) Int64() int64 {
+	if len(*d) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	}
 	i64 := int64(binary.LittleEndian.Uint64(*d)) //nolint: gosec
 	*d = (*d)[8:]
 	return i64
@@ -102,6 +154,9 @@ func (d *Decoder) Int64() int64 {
 
 // Uint64 decodes an uint64.
 func (d *Decoder) Uint64() uint64 {
+	if len(*d) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	}
 	u64 := binary.LittleEndian.Uint64(*d)
 	*d = (*d)[8:]
 	return u64
@@ -109,6 +164,9 @@ func (d *Decoder) Uint64() uint64 {
 
 // Float32 decodes a float32.
 func (d *Decoder) Float32() float32 {
+	if len(*d) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	}
 	bits := binary.LittleEndian.Uint32(*d)
 	*d = (*d)[4:]
 	return math.Float32frombits(bits)
@@ -116,6 +174,9 @@ func (d *Decoder) Float32() float32 {
 
 // Float64 decodes a float64.
 func (d *Decoder) Float64() float64 {
+	if len(*d) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	}
 	bits := binary.LittleEndian.Uint64(*d)
 	*d = (*d)[8:]
 	return math.Float64frombits(bits)
@@ -124,6 +185,9 @@ func (d *Decoder) Float64() float64 {
 // Decimal decodes a decimal.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
+	if len(*d) < decSize {
+		panic(ShortBufferError{Need: decSize, Have: len(*d)})
+	}
 	bs := (*d)[:decSize]
 	*d = (*d)[decSize:]
 
@@ -165,6 +229,9 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 
 // Fixed decodes a fixed decimal.
 func (d *Decoder) Fixed(size int) *big.Int { // m, exp
+	if len(*d) < size {
+		panic(ShortBufferError{Need: size, Have: len(*d)})
+	}
 	bs := (*d)[:size]
 	*d = (*d)[size:]
 
@@ -201,6 +268,9 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 // CESU8Bytes decodes CESU-8 into UTF-8 bytes.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) CESU8Bytes(tr transform.Transformer, size int) ([]byte, error) {
+	if len(*d) < size {
+		panic(ShortBufferError{Need: size, Have: len(*d)})
+	}
 	p := (*d)[:size]
 	*d = (*d)[size:]
 
@@ -234,9 +304,7 @@ func (d *Decoder) LIBytes() (int, []byte) {
 	if null {
 		return n, nil
 	}
-	b := (*d)[:size]
-	*d = (*d)[size:]
-	return n + size, b
+	return n + size, d.Bytes(size)
 }
 
 // LIString decodes a string with length indicator.
@@ -474,6 +542,9 @@ func (d *Decoder) AlphanumField(alphanumDfv1 bool) (any, error) {
 
 	   ignore first byte for now
 	*/
+	if len(b) == 0 { // non-null indicator but no leading size byte: truncated payload
+		panic(ShortBufferError{Need: 1, Have: 0})
+	}
 	return b[1:], nil
 }
 

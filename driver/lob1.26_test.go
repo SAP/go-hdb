@@ -23,7 +23,7 @@ func (b *bytesLob) Scan(src any) error { return ScanLobBytes(src, (*[]byte)(b)) 
 
 func newRandomDataBytesLob(size int) bytesLob {
 	b := make([]byte, size)
-	rand.Read(b)
+	rand.Read(b) // starting with go1.24 rand.Read is never returning an error.
 	return b
 }
 

@@ -58,7 +58,7 @@ type SessionVariables map[string]string
 
 // conn attributes default values.
 const (
-	defaultBufferSize   = 16276             // default value bufferSize.
+	defaultBufferSize   = 1 << 14           // 16384 - default value bufferSize.
 	defaultBulkSize     = 10000             // default value bulkSize.
 	defaultTimeout      = 300 * time.Second // default value connection timeout (300 seconds = 5 minutes).
 	defaultTCPKeepAlive = 15 * time.Second  // default TCP keep-alive value (copied from net.dial.go)
@@ -66,9 +66,10 @@ const (
 
 // minimal / maximal values.
 const (
-	minTimeout  = 0 * time.Second // minimal timeout value.
-	minBulkSize = 1               // minimal bulkSize value.
-	maxBulkSize = p.MaxNumArg     // maximum bulk size.
+	minTimeout    = 0 * time.Second // minimal timeout value.
+	minBufferSize = 1 << 11         // 2048 - minimal bufferSize value.
+	minBulkSize   = 1               // minimal bulkSize value.
+	maxBulkSize   = p.MaxNumArg     // maximum bulk size.
 )
 
 const (
@@ -278,7 +279,9 @@ func NewDSNConnector(dsnStr string) (*Connector, error) {
 	return newDSNConnector(dsn)
 }
 
-// NativeDriver returns the concrete underlying Driver of the Connector.
+// NativeDriver returns the go-hdb Driver interface of the Connector, exposing the
+// go-hdb specific driver functions (Name, Version, Stats). Use Driver for the
+// standard database/sql/driver.Driver.
 func (c *Connector) NativeDriver() Driver { return stdHdbDriver }
 
 // Host returns the host of the connector.
@@ -579,6 +582,9 @@ SetBufferSize sets the bufferSize of the connector.
 func (c *Connector) SetBufferSize(bufferSize int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if bufferSize < minBufferSize {
+		bufferSize = minBufferSize
+	}
 	c._bufferSize = bufferSize
 }
 
@@ -748,14 +754,16 @@ func (c *Connector) SetDfv(dfv int) {
 	c._dfv = dfv
 }
 
-// CESU8Decoder returns the CESU-8 decoder of the connector.
+// CESU8Decoder returns the CESU-8 decoder constructor of the connector. It returns
+// a factory (not a decoder) because one transformer is created per connection.
 func (c *Connector) CESU8Decoder() func() transform.Transformer {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c._cesu8DecoderFn
 }
 
-// SetCESU8Decoder sets the CESU-8 decoder of the connector.
+// SetCESU8Decoder sets the CESU-8 decoder constructor of the connector (called once
+// per connection). A nil constructor resets to the default decoder.
 func (c *Connector) SetCESU8Decoder(cesu8DecoderFn func() transform.Transformer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -765,14 +773,16 @@ func (c *Connector) SetCESU8Decoder(cesu8DecoderFn func() transform.Transformer)
 	c._cesu8DecoderFn = cesu8DecoderFn
 }
 
-// CESU8Encoder returns the CESU-8 encoder of the connector.
+// CESU8Encoder returns the CESU-8 encoder constructor of the connector. It returns
+// a factory (not an encoder) because one transformer is created per connection.
 func (c *Connector) CESU8Encoder() func() transform.Transformer {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c._cesu8EncoderFn
 }
 
-// SetCESU8Encoder sets the CESU-8 encoder of the connector.
+// SetCESU8Encoder sets the CESU-8 encoder constructor of the connector (called once
+// per connection). A nil constructor resets to the default encoder.
 func (c *Connector) SetCESU8Encoder(cesu8EncoderFn func() transform.Transformer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -834,10 +844,10 @@ func (c *Connector) ConnectionRouting() bool {
 // SetConnectionRouting sets the client's request for connection routing.
 // The server may not support it; the effective routing state depends on
 // the value negotiated during authentication.
-func (c *Connector) SetConnectionRouting(v bool) {
+func (c *Connector) SetConnectionRouting(connectionRouting bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c._connectionRouting = v
+	c._connectionRouting = connectionRouting
 }
 
 // Logger returns the Logger instance of the connector.

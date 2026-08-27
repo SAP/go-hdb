@@ -45,8 +45,10 @@ func (h *dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result := h.dba.executeCommand(command)
 
-	log.Printf("%s", result)  //nolint: gosec
-	h.tmpl.Execute(w, result) //nolint: errcheck
+	log.Printf("%s", result) //nolint: gosec
+	if err := h.tmpl.Execute(w, result); err != nil {
+		log.Printf("template execute error: %s", err)
+	}
 }
 
 // dbResult is the structure used to provide db command result response.

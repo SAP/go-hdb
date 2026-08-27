@@ -132,26 +132,15 @@ func testBstring(t *testing.T) {
 	if _, err := hash.Write([]byte("TEST")); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.QueryContext(t.Context(), `SELECT 'FOOBAR' FROM DUMMY WHERE HASH_SHA256('TEST') = $1`, hash.Sum(nil))
-	if err != nil {
+	// DUMMY yields at most one row: the row is returned iff the bstring parameter
+	// binds correctly and the HASH_SHA256 comparison matches. A mis-bound parameter
+	// would yield no row -> sql.ErrNoRows.
+	var result string
+	if err := db.QueryRowContext(t.Context(), `SELECT 'FOOBAR' FROM DUMMY WHERE HASH_SHA256('TEST') = $1`, hash.Sum(nil)).Scan(&result); err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-	var found bool
-	for rows.Next() {
-		var result string
-		if err := rows.Scan(&result); err != nil {
-			t.Error(err)
-		}
-		if result != "FOOBAR" {
-			t.Errorf("expected 'FOOBAR', got '%s'", result)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if !found {
-		t.Error("failed")
+	if result != "FOOBAR" {
+		t.Errorf("expected 'FOOBAR', got '%s'", result)
 	}
 }
 

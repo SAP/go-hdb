@@ -72,7 +72,7 @@ func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 	defer rows.Close()
 
-	var lob1, lob2 stringLob // defined in lob_go1.26_test
+	var lob1, lob2 stringLob // defined in lob1.26_test
 	i = 0
 	for rows.Next() {
 		var j int
@@ -171,7 +171,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 	}
 	defer rows.Close()
 
-	var lob stringLob // defined in lob_go1.26_test
+	var lob stringLob // defined in lob1.26_test
 	i = 0
 	for rows.Next() {
 		var j int
