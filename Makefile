@@ -15,19 +15,16 @@ all:
 	@echo execute tests with active lz4 compression on latest go version
 	go test ./... -tags=liblz4
 	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.26.7 go1.26.7 test ./...
-	GOTOOLCHAIN=go1.26.7 go1.26.7 test ./... -race
+	GOTOOLCHAIN=go1.26.8 go1.26.8 test ./...
+	GOTOOLCHAIN=go1.26.8 go1.26.8 test ./... -race
 	@echo execute tests on the new go version
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
 #on linux: if pipx uses outdated packages, delete ~/.local/pipx/cache entries
+# [charset-normalizer] extra needed because reuse 6.0 added libmagic as primary
+# encoding detector, which is unavailable in a clean macOS pipx venv
 	@echo "reuse (license) check"
-# macOS specific commands here
-	@if [ "$$(uname -s)" = "Darwin" ]; then \
-		pipx run 'reuse[charset-normalizer]' lint; \
-	else \
-		pipx run reuse lint; \
-	fi
+	pipx run 'reuse[charset-normalizer]' lint
 
 #static code checks:
 checks:
@@ -58,5 +55,5 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.26.7@latest
-	go1.26.7 download
+	go install golang.org/dl/go1.26.8@latest
+	go1.26.8 download

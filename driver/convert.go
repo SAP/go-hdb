@@ -147,6 +147,9 @@ convertExecArgs
 */
 func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8Encoder transform.Transformer, lobChunkSize int) ([]int, error) {
 	numField := len(fields)
+	if numField == 0 {
+		return nil, fmt.Errorf("invalid number of fields %d", numField)
+	}
 	if (len(nvargs) % numField) != 0 {
 		return nil, fmt.Errorf("invalid number of arguments %d - multiple of %d expected", len(nvargs), numField)
 	}

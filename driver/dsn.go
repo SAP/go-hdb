@@ -194,7 +194,6 @@ func ParseDSN(s string) (*DSN, error) {
 }
 
 // String reassembles the DSN into a valid DSN string.
-// String reassembles the DSN into a valid DSN string.
 func (dsn *DSN) String() string { return dsn.string(dsn.password) }
 
 // Redacted is like String but replaces any password with "xxxxx".
