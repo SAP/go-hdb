@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.3
+- updated Go toolchain to go1.27.1 / go1.26.8
+- updated dependencies
+
 #### v1.18.2
 - added DSN.Redacted returning the DSN with the password replaced by "xxxxx"
 - cleanups

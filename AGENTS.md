@@ -42,7 +42,7 @@
 
 ### Go Version Upgrade (additional steps)
 - Update `go` and `toolchain` directives in `go.mod` and `prometheus/go.mod`.
-- Update minimum supported Go version in `Makefile` (`GOTOOLCHAIN` line and `go` install target).
+- Update minimum supported Go version in `Makefile` (`GOTOOLCHAIN` line and `go` install target) and `prometheus/Makefile` (`GOTOOLCHAIN` line).
 - Update `.github/workflows/build.yml` Go version matrix.
 - Drop version-gated compatibility files if the minimum version floor rises past them.
 - Update `RELEASENOTES.md` to document the new Go version support.
