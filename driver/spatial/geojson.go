@@ -21,16 +21,24 @@ func (c CoordZ) coordToSlice() []*float64  { return coordToSlice(c.X, c.Y, c.Z) 
 func (c CoordM) coordToSlice() []*float64  { return coordToSlice(c.X, c.Y, 0, c.M) }
 func (c CoordZM) coordToSlice() []*float64 { return coordToSlice(c.X, c.Y, c.Z, c.M) }
 
-func jsonCoord(v reflect.Value) []*float64 {
-	switch {
-	case v.Type().ConvertibleTo(coordType):
-		return v.Convert(coordType).Interface().(Coord).coordToSlice()
-	case v.Type().ConvertibleTo(coordZType):
-		return v.Convert(coordZType).Interface().(CoordZ).coordToSlice()
-	case v.Type().ConvertibleTo(coordMType):
-		return v.Convert(coordMType).Interface().(CoordM).coordToSlice()
-	case v.Type().ConvertibleTo(coordZMType):
-		return v.Convert(coordZMType).Interface().(CoordZM).coordToSlice()
+func jsonCoord(c any) []*float64 {
+	switch cv := c.(type) {
+	case Coord:
+		return cv.coordToSlice()
+	case CoordZ:
+		return cv.coordToSlice()
+	case CoordM:
+		return cv.coordToSlice()
+	case CoordZM:
+		return cv.coordToSlice()
+	case Point:
+		return Coord(cv).coordToSlice()
+	case PointZ:
+		return CoordZ(cv).coordToSlice()
+	case PointM:
+		return CoordM(cv).coordToSlice()
+	case PointZM:
+		return CoordZM(cv).coordToSlice()
 	default:
 		panic("invalid coordinate type")
 	}
@@ -48,7 +56,7 @@ func jsonConvert(rv reflect.Value) any {
 	case reflect.Interface:
 		return jsonConvert(rv.Elem())
 	default:
-		return jsonCoord(rv)
+		return jsonCoord(rv.Interface())
 	}
 }
 
@@ -57,7 +65,12 @@ func jsonConvertGeometries(rv reflect.Value) any {
 	s := make([]any, size)
 	for i := range size {
 		iv := rv.Index(i)
-		s[i] = jsonType{Type: geoTypeName(iv.Interface().(Geometry)), Coordinates: jsonConvert(iv)}
+		g := iv.Interface().(Geometry)
+		if geoType(g) == geoGeometryCollection {
+			s[i] = jsonTypeGeometries{Type: geoTypeName(g), Geometries: jsonConvertGeometries(reflect.ValueOf(g))}
+		} else {
+			s[i] = jsonType{Type: geoTypeName(g), Coordinates: jsonConvert(iv)}
+		}
 	}
 	return s
 }

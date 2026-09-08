@@ -122,6 +122,32 @@ func TestUserSwitch(t *testing.T) {
 		}
 	}
 
+	testUserSwitchFailedConnect := func() {
+		db := sql.OpenDB(ctr)
+		defer db.Close()
+
+		su := &driver.SessionUser{Username: "TestUser", Password: "TestPassword"}
+		swCtx := driver.WithUserSwitch(t.Context(), su)
+
+		conn, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+
+		// First query with the switch context: the connect fails, the session must keep its identity.
+		var n int
+		if err := conn.QueryRowContext(swCtx, "select 1 from dummy").Scan(&n); err == nil {
+			t.Fatal("expected switch user error - got nil")
+		}
+
+		// Same context again: a failed switch must not be silently skipped.
+		var user string
+		if err := conn.QueryRowContext(swCtx, "select current_user from dummy").Scan(&user); err == nil {
+			t.Fatalf("expected switch user error - got nil (session user %s)", user)
+		}
+	}
+
 	tests := []struct {
 		name string
 		fn   func()
@@ -130,6 +156,7 @@ func TestUserSwitch(t *testing.T) {
 		{"testUserSwitchOnExisting", testUserSwitchOnExisting},
 		{"testUserSwitchOnStmt", testUserSwitchOnStmt},
 		{"testUserSwitchOnTx", testUserSwitchOnTx},
+		{"testUserSwitchFailedConnect", testUserSwitchFailedConnect},
 	}
 
 	createTable()

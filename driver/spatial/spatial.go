@@ -3,8 +3,6 @@ package spatial
 
 import (
 	"math"
-	"reflect"
-	"strings"
 )
 
 // NaN returns a 'not-a-number' value.
@@ -49,13 +47,6 @@ type CoordM struct{ X, Y, M float64 }
 
 // CoordZM represents an annotated three dimensional coordinate.
 type CoordZM struct{ X, Y, M, Z float64 }
-
-var (
-	coordType   = reflect.TypeFor[Coord]()
-	coordZType  = reflect.TypeFor[CoordZ]()
-	coordMType  = reflect.TypeFor[CoordM]()
-	coordZMType = reflect.TypeFor[CoordZM]()
-)
 
 // Point represents a two dimensional point.
 type Point Coord
@@ -241,37 +232,47 @@ const (
 	geoCircularString     uint32 = 8
 )
 
-func geoTypeName(g Geometry) string {
-	name := reflect.TypeOf(g).Name()
-	size := len(name)
-	switch {
-	case name[size-2:] == "ZM":
-		return name[:size-2]
-	case strings.ContainsAny(name[size-1:], "MZ"):
-		return name[:size-1]
+func geoType(g Geometry) uint32 {
+	switch g.(type) {
+	case Point, PointZ, PointM, PointZM:
+		return geoPoint
+	case LineString, LineStringZ, LineStringM, LineStringZM:
+		return geoLineString
+	case CircularString, CircularStringZ, CircularStringM, CircularStringZM:
+		return geoCircularString
+	case Polygon, PolygonZ, PolygonM, PolygonZM:
+		return geoPolygon
+	case MultiPoint, MultiPointZ, MultiPointM, MultiPointZM:
+		return geoMultiPoint
+	case MultiLineString, MultiLineStringZ, MultiLineStringM, MultiLineStringZM:
+		return geoMultiLineString
+	case MultiPolygon, MultiPolygonZ, MultiPolygonM, MultiPolygonZM:
+		return geoMultiPolygon
+	case GeometryCollection, GeometryCollectionZ, GeometryCollectionM, GeometryCollectionZM:
+		return geoGeometryCollection
 	default:
-		return name
+		panic("invalid geometry type name")
 	}
 }
 
-func geoType(g Geometry) uint32 {
-	switch geoTypeName(g) {
-	case "Point":
-		return geoPoint
-	case "LineString":
-		return geoLineString
-	case "Polygon":
-		return geoPolygon
-	case "MultiPoint":
-		return geoMultiPoint
-	case "MultiLineString":
-		return geoMultiLineString
-	case "MultiPolygon":
-		return geoMultiPolygon
-	case "GeometryCollection":
-		return geoGeometryCollection
-	case "CircularString":
-		return geoCircularString
+func geoTypeName(g Geometry) string {
+	switch g.(type) {
+	case Point, PointZ, PointM, PointZM:
+		return "Point"
+	case LineString, LineStringZ, LineStringM, LineStringZM:
+		return "LineString"
+	case CircularString, CircularStringZ, CircularStringM, CircularStringZM:
+		return "CircularString"
+	case Polygon, PolygonZ, PolygonM, PolygonZM:
+		return "Polygon"
+	case MultiPoint, MultiPointZ, MultiPointM, MultiPointZM:
+		return "MultiPoint"
+	case MultiLineString, MultiLineStringZ, MultiLineStringM, MultiLineStringZM:
+		return "MultiLineString"
+	case MultiPolygon, MultiPolygonZ, MultiPolygonM, MultiPolygonZM:
+		return "MultiPolygon"
+	case GeometryCollection, GeometryCollectionZ, GeometryCollectionM, GeometryCollectionZM:
+		return "GeometryCollection"
 	default:
 		panic("invalid geometry type name")
 	}

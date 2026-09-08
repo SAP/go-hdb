@@ -231,7 +231,7 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	if isGenNull, _ := isGenericNull(dv.Type()); isGenNull {
 		vField := dv.FieldByName("V")
 		validField := dv.FieldByName("Valid")
-		if err := convertAssignLob(scanCtx, session, vField, src); err != nil {
+		if err := convertAssignLob(scanCtx, session, vField.Addr().Interface(), src); err != nil {
 			return err
 		}
 		validField.SetBool(true)

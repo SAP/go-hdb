@@ -98,11 +98,11 @@ type sqlTimeMsg struct {
 const numMetricCollectorCh = 100
 
 type metrics struct {
-	mu     sync.RWMutex
-	once   sync.Once // lazy init
-	wg     *sync.WaitGroup
-	msgCh  chan any
-	closed bool
+	mu      sync.RWMutex
+	connMu  sync.Mutex // guards numConn and collector start/stop transitions
+	numConn int
+	wg      *sync.WaitGroup
+	msgCh   chan any
 
 	parentMetrics *metrics
 
@@ -122,7 +122,6 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 	}
 	rv := &metrics{
 		wg:            new(sync.WaitGroup),
-		msgCh:         make(chan any, numMetricCollectorCh),
 		parentMetrics: parentMetrics,
 		timeUnit:      timeUnit,
 		divider:       float64(d),
@@ -140,31 +139,32 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 	return rv
 }
 
-func (m *metrics) lazyInit() {
-	/*
-	   start collect go routine only if go-hdb driver is used
-	   not to leak a go-routine in case only the package is
-	   imported by any other package.
-	*/
-	m.once.Do(func() {
-		m.wg.Go(func() {
-			// collect
-			for msg := range m.msgCh {
-				m.handleMsg(msg)
-			}
-		})
+func (m *metrics) addConn() {
+	m.connMu.Lock()
+	defer m.connMu.Unlock()
+	m.numConn++
+	if m.numConn > 1 {
+		return
+	}
+	m.msgCh = make(chan any, numMetricCollectorCh)
+	m.wg.Go(func() {
+		// collect
+		for msg := range m.msgCh {
+			m.handleMsg(msg)
+		}
 	})
 }
 
-func (m *metrics) close() {
-	m.mu.Lock()
-	if m.closed { // make close idempotent
-		m.mu.Unlock()
+func (m *metrics) removeConn() {
+	m.connMu.Lock()
+	defer m.connMu.Unlock()
+	m.numConn--
+	if m.numConn > 0 {
 		return
 	}
-	m.closed = true
-	m.mu.Unlock()
-
+	if m.numConn < 0 {
+		panic("unpaired removeConn")
+	}
 	close(m.msgCh)
 	m.wg.Wait()
 }

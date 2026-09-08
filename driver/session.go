@@ -309,13 +309,13 @@ func (s *session) switchUser(ctx context.Context) error {
 	if s.inTx.Load() {
 		return ErrSwitchUser
 	}
-	s.user = user.clone()
 	connectQuery := func(password string) string {
 		return "connect " + user.Username + " password \"" + password + "\""
 	}
 	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), connectQuery(passwordRedacted)); err != nil {
 		return err
 	}
+	s.user = user.clone()
 	s.metrics.msgCh <- counterMsg{idx: counterSessionConnects, v: uint64(1)}
 	return s.setSchema(ctx)
 }

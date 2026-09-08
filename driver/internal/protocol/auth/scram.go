@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 )
 
@@ -53,6 +55,21 @@ func scramSHA256(p []byte) []byte {
 	hash := sha256.New()
 	hash.Write(p)
 	return hash.Sum(nil)
+}
+
+// scramVerifyServerProof verifies the server proof: the verifier is the HMAC of
+// the salted password and the salt, the expected proof is the HMAC of the
+// verifier over clientChallenge, salt and serverChallenge.
+func scramVerifyServerProof(saltedPassword, salt, serverChallenge, clientChallenge, serverProof []byte) error {
+	if len(serverProof) != scramClientProofSize {
+		return fmt.Errorf("invalid server proof size %d - expected %d", len(serverProof), scramClientProofSize)
+	}
+	verifier := scramHMAC(saltedPassword, salt)
+	proof := scramHMAC(verifier, clientChallenge, salt, serverChallenge)
+	if !bytes.Equal(proof, serverProof) {
+		return errors.New("invalid server proof")
+	}
+	return nil
 }
 
 func scramHMAC(key []byte, prms ...[]byte) []byte {

@@ -183,6 +183,10 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 	var tmp big.Rat
 
 	c := (&tmp).Set(x) // copy
+	neg := c.Sign() < 0
+	if neg {
+		c.Neg(c) // magnitude
+	}
 	a := c.Num()
 	b := c.Denom()
 
@@ -256,6 +260,10 @@ func convertRatToDecimal(x *big.Rat, m *big.Int, digits, minExp, maxExp int) (in
 		exp++
 	}
 
+	if neg {
+		m.Neg(m) // restore sign
+	}
+
 	return exp, df
 }
 
@@ -272,11 +280,18 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 	var tmp big.Rat
 
 	c := (&tmp).SetFrac(m, r.Denom()) // norm
+	neg := c.Sign() < 0
+	if neg {
+		c.Neg(c) // magnitude
+	}
 	a := c.Num()
 	b := c.Denom()
 
 	if b.Cmp(natZero) == 0 { //
 		m.Set(a)
+		if neg {
+			m.Neg(m) // restore sign
+		}
 		return df
 	}
 
@@ -294,6 +309,9 @@ func convertRatToFixed(r *big.Rat, m *big.Int, prec, scale int) byte {
 
 	if m.Cmp(minInt) <= 0 || m.Cmp(maxInt) >= 0 {
 		df |= dfOverflow
+	}
+	if neg {
+		m.Neg(m) // restore sign
 	}
 	return df
 }

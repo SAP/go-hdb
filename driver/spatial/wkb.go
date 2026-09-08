@@ -27,14 +27,12 @@ const (
 func wkbType(g Geometry) uint32 {
 	gt := geoType(g)
 
-	name := reflect.TypeOf(g).Name()
-	size := len(name)
-	switch {
-	case name[size-2:] == "ZM":
+	switch g.(type) {
+	case GeometryZM:
 		return gt + dimZM
-	case name[size-1:] == "Z":
+	case GeometryZ:
 		return gt + dimZ
-	case name[size-1:] == "M":
+	case GeometryM:
 		return gt + dimM
 	default:
 		return gt
@@ -100,16 +98,23 @@ func (c CoordZM) encodeWKB(b *wkbBuffer) error { return b.writeCoord(c.X, c.Y, c
 
 func encodeWKBCoord(b *wkbBuffer, c any) error {
 	var err error
-	cv := reflect.ValueOf(c)
-	switch {
-	case cv.Type().ConvertibleTo(coordType):
-		err = cv.Convert(coordType).Interface().(Coord).encodeWKB(b)
-	case cv.Type().ConvertibleTo(coordZType):
-		err = cv.Convert(coordZType).Interface().(CoordZ).encodeWKB(b)
-	case cv.Type().ConvertibleTo(coordMType):
-		err = cv.Convert(coordMType).Interface().(CoordM).encodeWKB(b)
-	case cv.Type().ConvertibleTo(coordZMType):
-		err = cv.Convert(coordZMType).Interface().(CoordZM).encodeWKB(b)
+	switch cv := c.(type) {
+	case Coord:
+		err = cv.encodeWKB(b)
+	case CoordZ:
+		err = cv.encodeWKB(b)
+	case CoordM:
+		err = cv.encodeWKB(b)
+	case CoordZM:
+		err = cv.encodeWKB(b)
+	case Point:
+		err = Coord(cv).encodeWKB(b)
+	case PointZ:
+		err = CoordZ(cv).encodeWKB(b)
+	case PointM:
+		err = CoordM(cv).encodeWKB(b)
+	case PointZM:
+		err = CoordZM(cv).encodeWKB(b)
 	default:
 		panic("invalid coordinate type")
 	}

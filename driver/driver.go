@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.18.3"
+const DriverVersion = "1.18.4"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -51,18 +51,11 @@ func register() {
 	sql.Register(DriverName, stdHdbDriver)
 }
 
-// Unregister releases the resources held by the shared go-hdb driver instance,
-// notably stopping the background metrics collector goroutine. It is intended for
-// clean process shutdown (for example to satisfy goroutine-leak checks in tests).
+// Unregister is deprecated.
 //
-// Unregister is not reversible: the driver singleton is created once at package
-// initialization and cannot be re-registered. Only call it when no go-hdb database
-// is in use and none will be opened afterwards - any subsequent go-hdb access
-// (opening a connection, or driver activity recording a metric) may panic on the
-// closed metrics channel.
-func Unregister() error {
-	return stdHdbDriver.shutdown()
-}
+// Deprecated: Unregister no longer performs any action; it exists only to keep
+// existing callers compiling.
+func Unregister() error { return nil }
 
 // driver
 
@@ -83,11 +76,6 @@ type Driver interface {
 // hdbDriver represents the go sql driver implementation for hdb.
 type hdbDriver struct {
 	metrics *metrics
-}
-
-func (d hdbDriver) shutdown() error {
-	d.metrics.close()
-	return nil
 }
 
 // Open implements the driver.Driver interface.
@@ -116,7 +104,7 @@ func (d *hdbDriver) Stats() *Stats { return d.metrics.stats() }
 type DB struct {
 	// The embedded sql.DB instance. Please use only the methods of the wrapper (driver.DB).
 	// The field is exported to support use cases where a sql.DB object is requested, but please
-	// use with care as some of the sql.DB methods (e.g. Close) might be redefined in driver.DB.
+	// use with care as some of the sql.DB methods might be redefined in driver.DB.
 	*sql.DB
 	metrics *metrics
 }
@@ -130,14 +118,6 @@ func OpenDB(c *Connector) *DB {
 		DB:      sql.OpenDB(nc),
 		metrics: metrics,
 	}
-}
-
-// Close closes the database. It also calls the Close method of the sql package and returns its error.
-func (db *DB) Close() error {
-	err := db.DB.Close()
-	// close metrics only after db is closed.
-	db.metrics.close()
-	return err
 }
 
 // ExStats returns the extended database statistics.

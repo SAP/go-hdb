@@ -386,7 +386,7 @@ func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 	for _, row := range addLobDataRecs {
 		to := (row + 1) * numColumn
 
-		r, err := s.session.exec(ctx, s.query, pr, nvargs[from:to], ofs)
+		r, err := s.session.exec(ctx, s.query, pr, nvargs[from:to], ofs+from/numColumn)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err
