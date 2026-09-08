@@ -58,5 +58,21 @@ func TestSCRAM(t *testing.T) {
 				t.Fatalf("diff index % d - got %v - expected %v", i, clientProof, r.clientProof)
 			}
 		}
+		if len(r.serverProof) > 0 {
+			serverProof := r.serverProof
+			var saltedPassword []byte
+			switch r.method {
+			case MtSCRAMSHA256:
+				saltedPassword = scramHMAC(r.password, r.salt)
+			case MtSCRAMPBKDF2SHA256:
+				saltedPassword, err = scrampbkdf2sha256SaltedPassword(string(r.password), r.salt, r.rounds)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := scramVerifyServerProof(saltedPassword, r.salt, r.serverChallenge, r.clientChallenge, serverProof); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

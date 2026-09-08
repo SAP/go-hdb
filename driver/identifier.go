@@ -1,7 +1,7 @@
 package driver
 
 import (
-	"strconv"
+	"strings"
 
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
 )
@@ -27,9 +27,13 @@ func (i Identifier) isSimple() bool {
 	}
 	return true
 }
+
+// String returns the HANA-quoted form: a simple identifier passes through
+// unquoted; otherwise it is wrapped in double quotes with embedded "
+// escaped by doubling (HANA SQL Reference — Quotation marks).
 func (i Identifier) String() string {
 	if i.isSimple() {
 		return string(i)
 	}
-	return strconv.Quote(string(i))
+	return `"` + strings.ReplaceAll(string(i), `"`, `""`) + `"`
 }

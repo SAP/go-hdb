@@ -139,16 +139,18 @@ var connNo atomic.Uint64
 func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs) (*conn, error) {
 	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
-	metrics.lazyInit()
+	metrics.addConn()
 
 	dbConn, err := newDBConn(ctx, logger, host, metrics, attrs)
 	if err != nil {
+		metrics.removeConn()
 		return nil, err
 	}
 
 	session, err := newSession(ctx, dbConn, logger, metrics, routing, attrs)
 	if err != nil {
 		dbConn.Close()
+		metrics.removeConn()
 		return nil, err
 	}
 
@@ -169,6 +171,7 @@ func (c *conn) Close() error {
 	sessionErr := c.session.close()
 	dbConnErr := c.dbConn.Close()
 	c.wg.Wait()
+	c.metrics.removeConn()
 	return errors.Join(sessionErr, dbConnErr)
 }
 

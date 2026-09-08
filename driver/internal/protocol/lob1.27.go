@@ -24,27 +24,26 @@ type LobOutDescr struct {
 	Bytes   []byte
 }
 
-func newLobOutDescr(isCharLob bool) *LobOutDescr {
-	return &LobOutDescr{IsCharLob: isCharLob}
-}
-
 func (d *LobOutDescr) String() string {
 	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.Opt, d.numChar, d.numByte, d.id, d.Bytes)
 }
 
-func (d *LobOutDescr) decode(dec *encoding.Decoder) bool {
-	d.ltc = lobTypecode(dec.Int8())
-	d.Opt = LobOptions(dec.Int8())
-	if d.Opt.isNull() {
-		return true
+// decodeLobOutDescr decodes a lob output descriptor, or returns a real nil for a null value.
+// Result is used as driver.Value: a typed nil *LobOutDescr would not be recognized as nil.
+func decodeLobOutDescr(dec *encoding.Decoder, isCharLob bool) (any, error) {
+	ltc := lobTypecode(dec.Int8())
+	opt := LobOptions(dec.Int8())
+	if opt.isNull() {
+		return nil, nil
 	}
+	d := &LobOutDescr{IsCharLob: isCharLob, ltc: ltc, Opt: opt}
 	dec.Skip(2)
 	d.numChar = dec.Int64()
 	d.numByte = dec.Int64()
 	d.id = LocatorID(dec.Uint64())
 	size := int(dec.Int32())
 	d.Bytes = dec.Bytes(size)
-	return false
+	return d, nil
 }
 
 // LocatorID returns the lob locator id.

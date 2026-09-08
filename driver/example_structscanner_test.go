@@ -70,7 +70,7 @@ func ExampleStructScanner() {
 				return err
 			}
 		}
-		if rows.Err() != nil {
+		if err := rows.Err(); err != nil {
 			return err
 		}
 		return rows.Close()

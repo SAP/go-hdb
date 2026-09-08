@@ -9,22 +9,17 @@ import (
 )
 
 func wktTypeName(g Geometry) string {
-	name := reflect.TypeOf(g).Name()
-	size := len(name)
-	switch {
-	case name[size-2:] == "ZM":
-		return strings.ToUpper(name[:size-2]) + " ZM"
-	case name[size-1:] == "M":
-		return strings.ToUpper(name[:size-1]) + " M"
-	case name[size-1:] == "Z":
-		return strings.ToUpper(name[:size-1]) + " Z"
+	name := strings.ToUpper(geoTypeName(g))
+	switch g.(type) {
+	case GeometryZM:
+		return name + " ZM"
+	case GeometryM:
+		return name + " M"
+	case GeometryZ:
+		return name + " Z"
 	default:
-		return strings.ToUpper(name)
+		return name
 	}
-}
-
-func wktShortTypeName(g Geometry) string {
-	return strings.ToUpper(geoTypeName(g))
 }
 
 func formatFloat(f float64) string {
@@ -78,33 +73,31 @@ func (c CoordM) encodeWKT(b *wktBuffer)  { b.writeCoord(c.X, c.Y, c.M) }
 func (c CoordZM) encodeWKT(b *wktBuffer) { b.writeCoord(c.X, c.Y, c.Z, c.M) }
 
 func encodeWKTCoord(b *wktBuffer, c any) {
-	cv := reflect.ValueOf(c)
-	switch {
-	case cv.Type().ConvertibleTo(coordType):
-		cv.Convert(coordType).Interface().(Coord).encodeWKT(b)
-	case cv.Type().ConvertibleTo(coordZType):
-		cv.Convert(coordZType).Interface().(CoordZ).encodeWKT(b)
-	case cv.Type().ConvertibleTo(coordMType):
-		cv.Convert(coordMType).Interface().(CoordM).encodeWKT(b)
-	case cv.Type().ConvertibleTo(coordZMType):
-		cv.Convert(coordZMType).Interface().(CoordZM).encodeWKT(b)
+	switch cv := c.(type) {
+	case Coord:
+		cv.encodeWKT(b)
+	case CoordZ:
+		cv.encodeWKT(b)
+	case CoordM:
+		cv.encodeWKT(b)
+	case CoordZM:
+		cv.encodeWKT(b)
+	case Point:
+		Coord(cv).encodeWKT(b)
+	case PointZ:
+		CoordZ(cv).encodeWKT(b)
+	case PointM:
+		CoordM(cv).encodeWKT(b)
+	case PointZM:
+		CoordZM(cv).encodeWKT(b)
 	default:
 		panic("invalid coordinate type")
 	}
 }
 
-const (
-	typeFull byte = iota
-	typeShort
-	typeNone
-)
-
-func encodeWKT(b *wktBuffer, typeFlag byte, g Geometry) {
-	switch typeFlag {
-	case typeFull:
+func encodeWKT(b *wktBuffer, printType bool, g Geometry) {
+	if printType {
 		b.writeStrings(wktTypeName(g), " ")
-	case typeShort:
-		b.writeStrings(wktShortTypeName(g), " ")
 	}
 
 	switch geoType(g) {
@@ -128,12 +121,12 @@ func encodeWKT(b *wktBuffer, typeFlag byte, g Geometry) {
 	case geoMultiPoint, geoMultiLineString, geoMultiPolygon:
 		gv := reflect.ValueOf(g)
 		b.writeList(gv.Len(), func(i int) {
-			encodeWKT(b, typeNone, gv.Index(i).Interface().(Geometry))
+			encodeWKT(b, false, gv.Index(i).Interface().(Geometry))
 		})
 	case geoGeometryCollection:
 		gv := reflect.ValueOf(g)
 		b.writeList(gv.Len(), func(i int) {
-			encodeWKT(b, typeShort, gv.Index(i).Interface().(Geometry))
+			encodeWKT(b, true, gv.Index(i).Interface().(Geometry))
 		})
 	}
 }
@@ -141,7 +134,7 @@ func encodeWKT(b *wktBuffer, typeFlag byte, g Geometry) {
 // EncodeWKT encodes a geometry to the "well known text" format.
 func EncodeWKT(g Geometry) ([]byte, error) {
 	b := new(wktBuffer)
-	encodeWKT(b, typeFull, g)
+	encodeWKT(b, true, g)
 	return b.Bytes(), nil
 }
 
@@ -149,6 +142,6 @@ func EncodeWKT(g Geometry) ([]byte, error) {
 func EncodeEWKT(g Geometry, srid int32) ([]byte, error) {
 	b := new(wktBuffer)
 	b.writeStrings("SRID=", strconv.Itoa(int(srid)), ";")
-	encodeWKT(b, typeFull, g)
+	encodeWKT(b, true, g)
 	return b.Bytes(), nil
 }

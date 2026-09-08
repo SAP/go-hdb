@@ -124,7 +124,7 @@ func testSpatial(t *testing.T, db *sql.DB, column coltest.Type, testData []spati
 		if ok, err := equalJSON(geoJSON, asGeoJSONBuffer.Bytes()); err != nil {
 			t.Fatal(err)
 		} else if !ok {
-			t.Logf("test %d: geoJSON value %s - expected %s", i, asGeoJSONBuffer.Bytes(), geoJSON)
+			t.Fatalf("test %d: geoJSON value %s - expected %s", i, asGeoJSONBuffer.Bytes(), geoJSON)
 		}
 
 		asWKBBuffer.Reset()
@@ -191,6 +191,8 @@ func TestDataTypeSpatial(t *testing.T) {
 
 		spatial.GeometryCollection{},
 		spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.LineString{{X: 1, Y: 1}, {X: 2, Y: 2}}},
+		spatial.GeometryCollection{spatial.GeometryCollection{spatial.Point{X: 1, Y: 1}, spatial.Point{X: 2, Y: 2}}, spatial.Point{X: 3, Y: 3}},
+		spatial.GeometryCollectionZ{spatial.PointZ{X: 1, Y: 1, Z: 3}, spatial.LineStringZ{{X: 1, Y: 1, Z: 3}, {X: 2, Y: 2, Z: 3}}},
 	}
 
 	type test struct {

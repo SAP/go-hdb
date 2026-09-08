@@ -50,27 +50,26 @@ type lobOutDescr struct {
 	lobReply   *ReadLobReply
 }
 
-func newLobOutDescr(tr transform.Transformer, lobReader LobReader, chunkSize int) *lobOutDescr {
-	return &lobOutDescr{tr: tr, lobReader: lobReader, chunkSize: chunkSize}
-}
-
-func (d *lobOutDescr) String() string {
-	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
-}
-
-func (d *lobOutDescr) decode(dec *encoding.Decoder) bool {
-	d.ltc = lobTypecode(dec.Int8())
-	d.opt = LobOptions(dec.Int8())
-	if d.opt.isNull() {
-		return true
+// decodeLobOutDescr decodes a lob output descriptor, or returns a real nil for a null value.
+// Result is used as driver.Value: a typed nil *lobOutDescr would not be recognized as nil.
+func decodeLobOutDescr(dec *encoding.Decoder, tr transform.Transformer, lobReader LobReader, chunkSize int) (any, error) {
+	ltc := lobTypecode(dec.Int8())
+	opt := LobOptions(dec.Int8())
+	if opt.isNull() {
+		return nil, nil
 	}
+	d := &lobOutDescr{tr: tr, lobReader: lobReader, chunkSize: chunkSize, ltc: ltc, opt: opt}
 	dec.Skip(2)
 	d.numChar = dec.Int64()
 	d.numByte = dec.Int64()
 	d.id = LocatorID(dec.Uint64())
 	size := int(dec.Int32())
 	d.b = dec.Bytes(size)
-	return false
+	return d, nil
+}
+
+func (d *lobOutDescr) String() string {
+	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
 }
 
 func (d *lobOutDescr) write(b []byte) (int, error) {

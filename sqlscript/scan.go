@@ -26,10 +26,11 @@ type scanner struct {
 	data      []byte
 	atEOF     bool
 	token     []byte
+	pending   bool // statement content seen, separator not found
 }
 
 func (s *scanner) init(data []byte, atEOF bool) {
-	s.data, s.atEOF, s.token = data, atEOF, nil
+	s.data, s.atEOF, s.token, s.pending = data, atEOF, nil, false
 }
 
 func (s *scanner) nextRune() (rune, int, error) {
@@ -187,6 +188,7 @@ func (s *scanner) _scan() (bool, error) {
 			s.appendRune(nl)
 		}
 	}
+	s.pending = len(s.data) > 0 // statement content present
 	return s.scanStatement()
 }
 
@@ -198,6 +200,9 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 
 	ok, err := s._scan()
 	if errors.Is(err, io.EOF) {
+		if atEOF && s.pending {
+			return len(data), s.token, nil // unterminated final statement
+		}
 		return 0, nil, nil // need more data
 	}
 	if err != nil {

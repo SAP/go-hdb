@@ -24,7 +24,6 @@ type SCRAMSHA256 struct {
 	username, password    string
 	clientChallenge       []byte
 	salt, serverChallenge []byte
-	serverProof           []byte
 }
 
 // NewSCRAMSHA256 creates a new authSCRAMSHA256 instance.
@@ -105,6 +104,9 @@ func (a *SCRAMSHA256) FinalRepDecode(dec *encoding.Decoder, _ transform.Transfor
 	if err := DecodeAndCheckNumPrm(dec, 1); err != nil {
 		return err
 	}
-	a.serverProof = dec.AuthBytes()
+	serverProof := dec.AuthBytes()
+	if err := scramVerifyServerProof(scramHMAC([]byte(a.password), a.salt), a.salt, a.serverChallenge, a.clientChallenge, serverProof); err != nil {
+		return err
+	}
 	return nil
 }

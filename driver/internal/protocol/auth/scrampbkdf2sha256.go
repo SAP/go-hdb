@@ -12,8 +12,12 @@ import (
 	"golang.org/x/text/transform"
 )
 
+func scrampbkdf2sha256SaltedPassword(password string, salt []byte, rounds int) ([]byte, error) {
+	return pbkdf2.Key(sha256.New, password, salt, rounds, scramClientProofSize)
+}
+
 func scrampbkdf2sha256Key(password string, salt []byte, rounds int) ([]byte, error) {
-	b, err := pbkdf2.Key(sha256.New, password, salt, rounds, scramClientProofSize)
+	b, err := scrampbkdf2sha256SaltedPassword(password, salt, rounds)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +34,6 @@ type SCRAMPBKDF2SHA256 struct {
 	username, password    string
 	clientChallenge       []byte
 	salt, serverChallenge []byte
-	serverProof           []byte
 	rounds                uint32
 }
 
@@ -114,6 +117,13 @@ func (a *SCRAMPBKDF2SHA256) FinalRepDecode(dec *encoding.Decoder, _ transform.Tr
 	if err := DecodeAndCheckNumPrm(dec, 1); err != nil {
 		return err
 	}
-	a.serverProof = dec.AuthBytes()
+	serverProof := dec.AuthBytes()
+	saltedPassword, err := scrampbkdf2sha256SaltedPassword(a.password, a.salt, int(a.rounds))
+	if err != nil {
+		return err
+	}
+	if err := scramVerifyServerProof(saltedPassword, a.salt, a.serverChallenge, a.clientChallenge, serverProof); err != nil {
+		return err
+	}
 	return nil
 }

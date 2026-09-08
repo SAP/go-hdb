@@ -80,16 +80,29 @@ func testConvertRatToDecimal(t *testing.T) {
 		{new(big.Rat).SetFrac64(14999, 10000), 1, 0, 1, new(big.Int).SetInt64(1), 0, dfNotExact}, // round 1.4999 to 1
 
 		{parseRat("-9.9E6144"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("-9.9E33"), dec128MaxExp, 0},
+
+		{parseRat("9999999999999999999999999999999999"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("9999999999999999999999999999999999"), 0, 0}, // convert max 34-digit coefficient
+		{parseRat("9999999999999999999999999999999999.9"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("1"), 34, dfNotExact},                      // round across coefficient boundary
+		{parseRat("10000000000000000000000000000000000"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("1"), 34, 0},                                // convert exact 1e34
+		{parseRat("999999999999999999999999999999999999"), dec128Digits, dec128MinExp, dec128MaxExp, parseInt("1"), 36, dfNotExact},                      // silent truncation of 36 digits
 	}
 
 	m := new(big.Int)
 
+	check := func(j int, x *big.Rat, cmp *big.Int, digits, minExp, maxExp, exp int, df byte) {
+		gotExp, gotDF := convertRatToDecimal(x, m, digits, minExp, maxExp)
+		if m.Cmp(cmp) != 0 || gotExp != exp || gotDF != df {
+			t.Fatalf("converted %d value m %s exp %d df %b - expected m %s exp %d df %b", j, m, gotExp, gotDF, cmp, exp, df)
+		}
+	}
+
 	for range 1 { // use for performance tests
 		for j, d := range testData {
-			exp, df := convertRatToDecimal(d.x, m, d.digits, d.minExp, d.maxExp)
-			if m.Cmp(d.cmp) != 0 || exp != d.exp || df != d.df {
-				t.Fatalf("converted %d value m %s exp %d df %b - expected m %s exp %d df %b", j, m, exp, df, d.cmp, d.exp, d.df)
-			}
+			check(j, d.x, d.cmp, d.digits, d.minExp, d.maxExp, d.exp, d.df)
+		}
+		// repeat with flipped sign
+		for j, d := range testData {
+			check(j, new(big.Rat).Neg(d.x), new(big.Int).Neg(d.cmp), d.digits, d.minExp, d.maxExp, d.exp, d.df)
 		}
 	}
 }
@@ -114,16 +127,28 @@ func testConvertRatToFixed(t *testing.T) {
 
 		{new(big.Rat).SetFrac64(1000, 1), 3, 0, new(big.Int).SetInt64(1000), dfOverflow}, // convert 1000 - prec 3 - should overflow
 		{new(big.Rat).SetFrac64(10, 1), 3, 2, new(big.Int).SetInt64(1000), dfOverflow},   // convert 10 - prec 3, scale 2 - should overflow
+
+		{new(big.Rat).SetFrac64(7, 10), 1, 0, new(big.Int).SetInt64(1), dfNotExact},  // convert 7/10 - should round to 1
+		{new(big.Rat).SetFrac64(17, 10), 1, 0, new(big.Int).SetInt64(2), dfNotExact}, // convert 17/10 - should round to 2
+		{new(big.Rat).SetFrac64(15, 10), 1, 0, new(big.Int).SetInt64(2), dfNotExact}, // convert 15/10 - should round to 2
 	}
 
 	m := new(big.Int)
 
+	check := func(j int, x *big.Rat, cmp *big.Int, prec, scale int, df byte) {
+		gotDF := convertRatToFixed(x, m, prec, scale)
+		if m.Cmp(cmp) != 0 || gotDF != df {
+			t.Fatalf("converted %d value m %s df %b - expected m %s df %b (prec %d scale %d)", j, m, gotDF, cmp, df, prec, scale)
+		}
+	}
+
 	for range 1 { // use for performance tests
 		for j, d := range testData {
-			df := convertRatToFixed(d.x, m, d.prec, d.scale)
-			if m.Cmp(d.cmp) != 0 || df != d.df {
-				t.Fatalf("converted %d value m %s df %b - expected m %s df %b (prec %d scale %d)", j, m, df, d.cmp, d.df, d.prec, d.scale)
-			}
+			check(j, d.x, d.cmp, d.prec, d.scale, d.df)
+		}
+		// repeat with flipped sign
+		for j, d := range testData {
+			check(j, new(big.Rat).Neg(d.x), new(big.Int).Neg(d.cmp), d.prec, d.scale, d.df)
 		}
 	}
 }

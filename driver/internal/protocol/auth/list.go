@@ -24,23 +24,23 @@ func newList[K comparer[K], V any](maxEntry int, valueFn func(k K) (V, error)) *
 	}
 }
 
-func (l *list[K, V]) find(k K) (v V, ok bool) {
+func (l *list[K, V]) Get(k K) (V, error) {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
 	for i, k1 := range l.keys {
 		if k1.Compare(k) {
-			return l.values[i], true
+			v := l.values[i]
+			l.mu.RUnlock()
+			return v, nil
 		}
 	}
-	return
-}
-
-func (l *list[K, V]) Get(k K) (V, error) {
-	if v, ok := l.find(k); ok {
-		return v, nil
-	}
+	l.mu.RUnlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	for i, k1 := range l.keys {
+		if k1.Compare(k) {
+			return l.values[i], nil
+		}
+	}
 	v, err := l.valueFn(k)
 	if err != nil {
 		return v, err

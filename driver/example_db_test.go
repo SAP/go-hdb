@@ -9,7 +9,7 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleDB shows hot to print extended database statistics with the help of
+// ExampleDB shows how to print extended database statistics with the help of
 // function driver.OpenDB and a driver.DB object.
 func ExampleDB() {
 	// print default sql database statistics.

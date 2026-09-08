@@ -1,8 +1,6 @@
 package protocol
 
 import (
-	"reflect"
-
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
 )
@@ -111,38 +109,53 @@ var (
 	_ PartDecoder = (*transactionFlags)(nil)
 )
 
-var genPartTypeMap = map[PartKind]reflect.Type{
-	PkError:               reflect.TypeFor[HdbErrors](),
-	PkClientID:            reflect.TypeFor[ClientID](),
-	PkClientInfo:          reflect.TypeFor[clientInfo](),
-	PkTopologyInformation: reflect.TypeFor[TopologyInformation](),
-	PkCommand:             reflect.TypeFor[Command](),
-	PkRowsAffected:        reflect.TypeFor[RowsAffected](),
-	PkStatementID:         reflect.TypeFor[StatementID](),
-	PkResultsetID:         reflect.TypeFor[ResultsetID](),
-	PkFetchSize:           reflect.TypeFor[Fetchsize](),
-	PkReadLobRequest:      reflect.TypeFor[ReadLobRequest](),
-	PkWriteLobReply:       reflect.TypeFor[WriteLobReply](),
-	PkWriteLobRequest:     reflect.TypeFor[WriteLobRequest](),
-	PkClientContext:       reflect.TypeFor[ClientContext](),
-	PkConnectOptions:      reflect.TypeFor[ConnectOptions](),
-	PkTransactionFlags:    reflect.TypeFor[transactionFlags](),
-	PkStatementContext:    reflect.TypeFor[statementContext](),
-	PkDBConnectInfo:       reflect.TypeFor[DBConnectInfo](),
-	/*
-	   parts that cannot be used generically as additional parameters are needed
-
-	   PkParameterMetadata
-	   PkParameters
-	   PkOutputParameters
-	   PkResultMetadata
-	   PkResultset
-	   PkReadLobReply     (needs the locator id from the originating request)
-	*/
-}
-
-// to be implemented by parts needing initialization
-// in case the part is instantiated generically.
-type initer interface {
-	init()
+// newPart instantiates the generic part decoder for kind. It returns false
+// when a kind cannot be instantiated generically: authentication parts are
+// bound to the auth handshake state, other non-generic parts need additional
+// parameters (PkParameterMetadata, PkParameters, PkOutputParameters,
+// PkResultMetadata, PkResultset, PkReadLobReply - the latter needs the
+// locator id from the originating request), and unknown kinds are ignored.
+func newPart(kind PartKind) (PartDecoder, bool) {
+	var part PartDecoder
+	switch kind {
+	case PkError:
+		part = new(HdbErrors)
+	case PkClientID:
+		part = new(ClientID)
+	case PkClientInfo:
+		part = new(clientInfo)
+	case PkTopologyInformation:
+		part = new(TopologyInformation)
+	case PkCommand:
+		part = new(Command)
+	case PkRowsAffected:
+		part = new(RowsAffected)
+	case PkStatementID:
+		part = new(StatementID)
+	case PkResultsetID:
+		part = new(ResultsetID)
+	case PkFetchSize:
+		part = new(Fetchsize)
+	case PkReadLobRequest:
+		part = new(ReadLobRequest)
+	case PkWriteLobReply:
+		part = new(WriteLobReply)
+	case PkWriteLobRequest:
+		part = new(WriteLobRequest)
+	case PkClientContext:
+		part = new(ClientContext)
+	case PkConnectOptions:
+		part = new(ConnectOptions)
+	case PkTransactionFlags:
+		part = new(transactionFlags)
+	case PkStatementContext:
+		part = new(statementContext)
+	case PkDBConnectInfo:
+		part = new(DBConnectInfo)
+	case PkAuthentication:
+		return nil, false
+	default:
+		return nil, false
+	}
+	return part, true
 }

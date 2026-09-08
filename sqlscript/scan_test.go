@@ -89,6 +89,22 @@ MULTI LINE STATEMENT WITH DOUBLE QUOTED PARAMETER "
 		"--COMMENT 7\nMULTI LINE STATEMENT WITH DOUBLE QUOTED PARAMETER \"--A--B--C\" LOOKING LIKE COMMENTS",
 	}
 
-	testScan(t, DefaultSeparator, false, testScript, noCommentsResult)
-	testScan(t, DefaultSeparator, true, testScript, commentsResult)
+	testData := []struct {
+		script   string
+		comments bool
+		result   []string
+	}{
+		{testScript, false, noCommentsResult},
+		{testScript, true, commentsResult},
+		{"STATEMENT", false, []string{"STATEMENT"}},
+		{"STATEMENT ONE;\nSTATEMENT TWO", false, []string{"STATEMENT ONE", "STATEMENT TWO"}},
+		{"-- COMMENT\nSTATEMENT", true, []string{"-- COMMENT\nSTATEMENT"}},
+		{"-- COMMENT\n-- ANOTHER", true, nil},
+		{"STATEMENT;\n-- trailing comment", true, []string{"STATEMENT"}},
+		{"SELECT\n1\nFROM DUMMY", false, []string{"SELECT1FROM DUMMY"}},
+	}
+
+	for _, d := range testData {
+		testScan(t, DefaultSeparator, d.comments, d.script, d.result)
+	}
 }

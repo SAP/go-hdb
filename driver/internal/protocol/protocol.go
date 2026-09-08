@@ -8,7 +8,6 @@ import (
 	"iter"
 	"log/slog"
 	"math"
-	"reflect"
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/compress"
@@ -22,6 +21,8 @@ import (
 // from an encoding.ShortBufferError, see recoverShortBuffer). The buffer framing
 // stays intact in the payload case, so only the current statement fails; the
 // connection stays usable.
+// A declared length that is negative or above the protocol maximum (2G-1) is
+// structurally corrupt - not a short read - and fails fast with a panic instead.
 var errShortRead = errors.New("short read: buffer shorter than frame declares")
 
 // recoverShortBuffer converts an encoding.ShortBufferError panic raised by a
@@ -78,28 +79,24 @@ const (
 	minCompressionSizePercent = 95
 )
 
-type partCache map[PartKind]Part
+// compressionBeneficial reports whether the compressed size is worth keeping.
+// A packet is compressed only when the result fits within
+// minCompressionSizePercent of the original size (i.e. saves at least
+// 100 - minCompressionSizePercent percent). This mirrors the documented
+// intent: compression must save at least 5% to be used.
+func compressionBeneficial(uncompressedSize, compressedSize int) bool {
+	return float64(compressedSize)*100/float64(uncompressedSize) <= minCompressionSizePercent
+}
 
-func (c *partCache) get(kind PartKind) (Part, bool) {
+type partCache map[PartKind]PartDecoder
+
+func (c *partCache) get(kind PartKind) (PartDecoder, bool) {
 	if part, ok := (*c)[kind]; ok {
 		return part, true
 	}
-	if kind == PkAuthentication {
-		return nil, false // cannot instantiate generically
-	}
-	pt, ok := genPartTypeMap[kind]
+	part, ok := newPart(kind)
 	if !ok {
-		// whether part cannot be instantiated generically or
-		// part is not (yet) known to the driver
 		return nil, false
-	}
-	// create instance
-	part, ok := reflect.TypeAssert[Part](reflect.New(pt))
-	if !ok {
-		panic("part kind does not implement part reader interface") // should never happen
-	}
-	if part, ok := part.(initer); ok {
-		part.init()
 	}
 	(*c)[kind] = part
 	return part, true
@@ -253,6 +250,10 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 	fillBuffer := func() ([]byte, error) {
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 
+		if numWireByte < 0 {
+			panic(fmt.Sprintf("corrupt frame: varPartLength %d smaller than segment header %d", r.mh.varPartLength, segmentHeaderSize))
+		}
+
 		buf := make([]byte, numWireByte)
 		_, err := io.ReadFull(r.rd, buf)
 		return buf, err
@@ -261,6 +262,13 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 	fillBufferCompressed := func() ([]byte, error) {
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 		numDecompressByte := int(r.mh.compressionVarPartLength) - segmentHeaderSize
+
+		if numWireByte < 0 {
+			panic(fmt.Sprintf("corrupt frame: varPartLength %d smaller than segment header %d", r.mh.varPartLength, segmentHeaderSize))
+		}
+		if numDecompressByte < 0 {
+			panic(fmt.Sprintf("corrupt frame: compressionVarPartLength %d smaller than segment header %d", r.mh.compressionVarPartLength, segmentHeaderSize))
+		}
 
 		r.tmpBuf = slices.Grow(r.tmpBuf, numWireByte)
 		r.tmpBuf = r.tmpBuf[:numWireByte]
@@ -333,6 +341,9 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 				}
 
 				bufAdvance := int(ph.bufferLength)
+				if ph.bufferLength < 0 {
+					panic(fmt.Sprintf("corrupt frame: part bufferLength %d", ph.bufferLength))
+				}
 				if j != lastPart {
 					bufAdvance += padBytes(int(ph.bufferLength))
 				}
@@ -423,9 +434,7 @@ func (r *Reader) skipPart(ctx context.Context) error {
 
 	kind := r.partInfo.Header.Kind()
 	if part, ok := r.partCache.get(kind); ok {
-		if part, ok := part.(PartDecoder); ok {
-			return r.readPart(ctx, part)
-		}
+		return r.readPart(ctx, part)
 	}
 	// generic trace.
 	r.protTraceFn(ctx, textSkip, kind)
@@ -491,8 +500,8 @@ func NewWriter(wr io.Writer, attrs *WriterAttrs) *Writer {
 		mh:        new(messageHeader),
 		sh:        new(segmentHeader),
 		ph:        new(PartHeader),
-		buf:       make([]byte, 0, 1024),
-		scratch:   make([]byte, 0, 32),
+		buf:       make([]byte, hdrLen, hdrLen+1024),
+		scratch:   make([]byte, 0, initRequestSize),
 	}
 }
 
@@ -538,13 +547,25 @@ func (w *Writer) Write(ctx context.Context, messageType MessageType, commit bool
 	return err
 }
 
-func compressBuffer(compressor compress.Compressor, buf, tmpBuf []byte) (bool, []byte, error) {
-	uncompressedSize := len(buf)
+// hdrLen is the size of the message header and segment header area reserved
+// at the front of a frame buffer; both are written there by Writer._write so
+// each frame is one contiguous buffer.
+const hdrLen = messageHeaderSize + segmentHeaderSize
+
+// compressBuffer compresses the part area of frame (everything after the
+// reserved header area) into the header-reserved front of tmpBuf (retained
+// for reuse across calls) when compression is beneficial. It returns the
+// buffer to write: frame unchanged when compression does not apply, otherwise
+// a compressed frame with its own header area at the front of tmpBuf. The
+// bool reports whether compression took place.
+func (w *Writer) compressBuffer(frame []byte) ([]byte, bool, error) {
+	body := frame[hdrLen:]
+	uncompressedSize := len(body)
 	if uncompressedSize < minCompressBlockSize {
-		return false, buf, nil
+		return frame, false, nil
 	}
 
-	compressBound := compressor.CompressBound(uncompressedSize)
+	compressBound := w.attrs.compressor.CompressBound(uncompressedSize)
 	// A valid LZ4 bound is always >= the input (incompressible data expands).
 	// A smaller value means the compressor is misbehaving: either a custom
 	// implementation computing the bound wrong, or the reference C
@@ -554,19 +575,18 @@ func compressBuffer(compressor compress.Compressor, buf, tmpBuf []byte) (bool, [
 	// magnitude smaller, so this is unreachable in practice. Either way, treat
 	// the bound as invalid and send the packet uncompressed.
 	if compressBound < uncompressedSize {
-		return false, buf, nil
+		return frame, false, nil
 	}
-	tmpBuf = slices.Grow(tmpBuf, compressBound)
-	tmpBuf = tmpBuf[:compressBound]
-	compressedSize, err := compressor.Compress(buf, tmpBuf)
+	w.tmpBuf = slices.Grow(w.tmpBuf[:0], hdrLen+compressBound)
+	compressBuf := w.tmpBuf[hdrLen : hdrLen+compressBound]
+	compressedSize, err := w.attrs.compressor.Compress(body, compressBuf)
 	if err != nil {
-		return false, buf, err
+		return frame, false, err
 	}
-	// uncompressedSize always > 0
-	if (100 - float64(compressedSize)*100/float64(uncompressedSize)) < minCompressionSizePercent {
-		return false, buf, nil
+	if !compressionBeneficial(uncompressedSize, compressedSize) {
+		return frame, false, nil
 	}
-	return true, tmpBuf[:compressedSize], nil
+	return w.tmpBuf[:hdrLen+compressedSize], true, nil
 }
 
 func (w *Writer) _write(ctx context.Context, messageType MessageType, commit bool, parts ...PartEncoder) error {
@@ -580,7 +600,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	partSize := make([]int, numPart)
 	totalSize := int64(segmentHeaderSize + numPart*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
 
-	partEnc := encoding.Encoder(w.buf[:0])
+	partEnc := encoding.Encoder(w.buf[:hdrLen])
 
 	// encode parts and calculate total size
 	for i, part := range parts {
@@ -606,7 +626,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	// patch part headers
 	bufferSize := totalSize - segmentHeaderSize
 
-	pos := 0
+	pos := hdrLen
 	for i, part := range parts {
 
 		size := partSize[i]
@@ -619,7 +639,7 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		w.ph.bufferLength = int32(size)     //nolint: gosec
 		w.ph.bufferSize = int32(bufferSize) //nolint: gosec
 
-		enc := encoding.Encoder(w.scratch[:0])
+		enc := partEnc[pos:pos]
 		if err := w.ph.encode(&enc); err != nil {
 			return err
 		}
@@ -627,8 +647,6 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 			w.protTrace(ctx, textParHdr, w.ph)
 		}
 
-		// patch
-		copy(partEnc[pos:], enc[:partHeaderSize])
 		pos += partHeaderSize + size + pad
 
 		// part prot trace
@@ -639,37 +657,42 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		bufferSize -= int64(partHeaderSize + size + pad)
 	}
 
-	compress, partBuf := false, partEnc
+	w.buf = partEnc // retain grown buffer for reuse across messages
+
+	wireBuf, compressed := partEnc, false
 	if w.attrs.compressEnableWrite {
+		// compress the part area only; the resulting wireBuf has its own
+		// header area reserved at the front of tmpBuf.
 		var err error
-		if compress, partBuf, err = compressBuffer(w.attrs.compressor, partEnc, w.tmpBuf); err != nil {
+		if wireBuf, compressed, err = w.compressBuffer(partEnc); err != nil {
 			return err
 		}
 	}
 
 	// start writing
-	if compress {
+	if compressed {
 		w.mh.packetOptions = poIsCompressed
 		w.mh.compressionVarPartLength = uint32(totalSize)
-		w.mh.varPartLength = uint32(segmentHeaderSize + len(partBuf)) //nolint: gosec
 	} else {
 		w.mh.packetOptions = 0
 		w.mh.compressionVarPartLength = 0
-		w.mh.varPartLength = uint32(totalSize)
 	}
+	// varPartLength is the segment header plus the payload; len(wireBuf)-hdrLen
+	// is the payload length whether the payload is compressed in tmpBuf or plain.
+	w.mh.varPartLength = uint32(segmentHeaderSize + len(wireBuf) - hdrLen) //nolint: gosec
 
 	w.mh.sessionID = w.sessionID
 	w.mh.varPartSize = uint32(totalSize)
 	w.mh.noOfSegm = 1
 
-	enc := encoding.Encoder(w.scratch[:0])
-	if err := w.mh.encode(&enc); err != nil {
+	// message header and segment header are written into the reserved header
+	// area of the frame, followed by the part area (uncompressed in buf or
+	// compressed in tmpBuf): one contiguous frame, one write.
+	hdr := wireBuf[:0]
+	if err := w.mh.encode(&hdr); err != nil {
 		return err
 	}
-	if _, err := w.wr.Write(enc); err != nil {
-		return err
-	}
-
+	mhSize := len(hdr)
 	if w.attrs.protTrace {
 		w.protTrace(ctx, textMsgHdr, w.mh)
 	}
@@ -682,18 +705,15 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	w.sh.noOfParts = int16(numPart) //nolint: gosec
 	w.sh.segmentNo = 1
 
-	enc = encoding.Encoder(w.scratch[:0])
-	if err := w.sh.encode(&enc); err != nil {
-		return err
-	}
-	if _, err := w.wr.Write(enc); err != nil {
+	hdr = wireBuf[mhSize:mhSize]
+	if err := w.sh.encode(&hdr); err != nil {
 		return err
 	}
 	if w.attrs.protTrace {
 		w.protTrace(ctx, textSegHdr, w.sh)
 	}
 
-	_, err := w.wr.Write(partBuf)
+	_, err := w.wr.Write(wireBuf)
 	return err
 }
 

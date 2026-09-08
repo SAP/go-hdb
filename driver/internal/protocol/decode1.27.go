@@ -65,11 +65,7 @@ func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, scale 
 	case tcStPoint, tcStGeometry:
 		return dec.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext, tcText, tcNclob, tcNlocator:
-		descr := newLobOutDescr(tc.isCharLob())
-		if descr.decode(dec) {
-			return nil, nil
-		}
-		return descr, nil
+		return decodeLobOutDescr(dec, tc.isCharLob())
 	default:
 		panic("invalid type code")
 	}

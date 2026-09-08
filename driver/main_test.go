@@ -128,8 +128,6 @@ func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {
 
 	db.Close() // close before printing stats
 
-	stdHdbDriver.metrics.close() // wait for all pending metrics
-
 	t := template.Must(template.New("stats").Parse(statsTemplate))
 	b := new(bytes.Buffer)
 	if err := t.Execute(b, stdHdbDriver.Stats()); err != nil {
@@ -278,9 +276,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// cleanup go-hdb driver.
-	Unregister() //nolint: errcheck
 
 	// detect go routine leaks (Go-version dependent implementation).
 	detectGoroutineLeaks()

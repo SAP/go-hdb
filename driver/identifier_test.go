@@ -20,6 +20,10 @@ var testIdentifierData = []*testIdentifier{
 	{"testTransaction", `"testTransaction"`},
 	{"a.b.c", `"a.b.c"`},
 	{"AAA.BBB.CCC", `"AAA.BBB.CCC"`},
+	{`a"b`, `"a""b"`},
+	{`a"b"c`, `"a""b""c"`},
+	{`a\b`, `"a\b"`},
+	{`a"b\c`, `"a""b\c"`},
 }
 
 func TestIdentifierStringer(t *testing.T) {
