@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 	"unique"
+
+	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
 // CertValidationError is returned in case of X09 certificate validation errors.
@@ -60,7 +62,14 @@ func NewCertKey(certHandle, keyHandle unique.Handle[string]) (*CertKey, error) {
 }
 
 func (ck *CertKey) String() string {
-	return fmt.Sprintf("cert %s key %s", ck.certHandle.Value(), ck.keyHandle.Value())
+	cert := ""
+	if len(ck.certs) != 0 {
+		cert = fmt.Sprintf("subject %s issuer %s",
+			ck.certs[0].Subject.ToRDNSequence().String(),
+			ck.certs[0].Issuer.ToRDNSequence().String(),
+		)
+	}
+	return fmt.Sprintf("cert %s key %s", cert, trace.Redacted(ck.keyHandle.Value()))
 }
 
 // Equal returns true if the certificate and key equals the instance data, false otherwise.

@@ -28,6 +28,7 @@
 - No edits without explicit approval. Show findings one by one.
 - No silent changes or reformatting of surrounding code.
 - Code must conform to go fmt, go vet, and godoc.
+- Idiomatic Go names only. No Hungarian notation or invented conventions.
 - Use US spelling throughout. Code, comments, and documentation.
 - Only export identifiers used externally.
 

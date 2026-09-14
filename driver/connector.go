@@ -176,11 +176,13 @@ type Connector struct {
 	cbmu                 sync.Mutex // prevents refresh callbacks from being called in parallel
 
 	metrics *metrics
+
+	terminator *sessionTerminator
 }
 
 // NewConnector returns a new Connector instance with default values.
 func NewConnector() *Connector {
-	return &Connector{
+	c := &Connector{
 		_routing:            new(routing),
 		_timeout:            defaultTimeout,
 		_bufferSize:         defaultBufferSize,
@@ -198,6 +200,8 @@ func NewConnector() *Connector {
 		_logger:             slog.Default(),
 		metrics:             stdHdbDriver.metrics, // use default stdHdbDriver metrics
 	}
+	c.terminator = &sessionTerminator{connector: c}
+	return c
 }
 
 // NewBasicAuthConnector creates a connector for basic authentication.
@@ -291,7 +295,7 @@ func (c *Connector) Host() string { return c._host }
 func (c *Connector) DatabaseName() string { return c._databaseName }
 
 func (c *Connector) fetchRedirectHost(ctx context.Context, databaseName string) (string, error) {
-	conn, err := newConn(ctx, c._host, c.metrics, c._routing, c.connAttrs())
+	conn, err := newConn(ctx, c._host, c.metrics, c._routing, c.connAttrs(), c.terminator)
 	if err != nil {
 		return "", err
 	}
@@ -324,7 +328,7 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 
 	// can we connect via cookie?
 	if auth := c.cookieAuth(); auth != nil {
-		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs)
+		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.terminator)
 		if connErr != nil {
 			return nil, false, connErr
 		}
@@ -344,7 +348,7 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 	for {
 		authHnd := c.authHnd()
 
-		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs)
+		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.terminator)
 		if connErr != nil {
 			return nil, false, connErr
 		}
@@ -407,7 +411,7 @@ func (c *Connector) clone() *Connector {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return &Connector{
+	nc := &Connector{
 		_host:         c._host,
 		_databaseName: c._databaseName,
 		_routing:      c._routing,
@@ -446,6 +450,8 @@ func (c *Connector) clone() *Connector {
 
 		metrics: c.metrics,
 	}
+	nc.terminator = &sessionTerminator{connector: nc}
+	return nc
 }
 
 // WithDatabase returns a new Connector supporting tenant database connections via database name.

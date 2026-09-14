@@ -14,8 +14,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 	"golang.org/x/text/transform"
 )
 
@@ -29,11 +31,13 @@ const (
 
 // LDAP implements LDAP authentication.
 type LDAP struct {
-	username        string
-	password        string
-	clientChallenge []byte
-	serverChallenge []byte
-	serverPublicKey *rsa.PublicKey
+	username            string
+	password            string
+	clientChallenge     []byte
+	serverChallenge     []byte
+	serverPublicKey     *rsa.PublicKey
+	encryptedSessionKey []byte
+	encryptedPassword   []byte
 }
 
 // NewLDAP creates a new LDAP authentication instance.
@@ -45,7 +49,17 @@ func NewLDAP(username, password string) *LDAP {
 }
 
 func (a *LDAP) String() string {
-	return fmt.Sprintf("method type %s username %s", a.Typ(), a.username)
+	b := &strings.Builder{}
+	fmt.Fprintf(b,
+		"method type %s username %s clientChallenge %s serverChallenge %s encryptedSessionKey %s encryptedPassword %s",
+		a.Typ(), trace.Cut(a.username), trace.Cut(a.clientChallenge), trace.Cut(a.serverChallenge),
+		trace.Cut(a.encryptedSessionKey), trace.Cut(a.encryptedPassword))
+	if a.serverPublicKey != nil {
+		if der, err := x509.MarshalPKIXPublicKey(a.serverPublicKey); err == nil {
+			fmt.Fprintf(b, " serverPublicKey %s", trace.Cut(der))
+		}
+	}
+	return b.String()
 }
 
 // Typ implements the Method interface.
@@ -54,12 +68,13 @@ func (a *LDAP) Typ() string { return MtLDAP }
 // Order implements the Method interface.
 func (a *LDAP) Order() byte { return MoLDAP }
 
-// PrepareInitReq implements the Method interface.
-func (a *LDAP) PrepareInitReq(prms *Prms) error {
+// AuthLoginName implements the Method interface.
+func (a *LDAP) AuthLoginName() string { return a.username }
+
+// EncodeInitReq implements the Method interface.
+func (a *LDAP) EncodeInitReq(prms *Prms) error {
 	a.clientChallenge = make([]byte, ldapClientChallengeSize)
 	rand.Read(a.clientChallenge)
-
-	prms.addString(a.Typ())
 
 	// Add sub-parameters: client challenge and capabilities
 	subPrms := prms.addPrms()
@@ -72,8 +87,29 @@ func (a *LDAP) PrepareInitReq(prms *Prms) error {
 	return nil
 }
 
-// InitRepDecode implements the Method interface.
-func (a *LDAP) InitRepDecode(dec *encoding.Decoder) error {
+// DecodeInitReq implements the Method interface.
+func (a *LDAP) DecodeInitReq(dec *encoding.Decoder) error {
+	_, b := dec.LIBytes() // sub parameters
+	sub := encoding.Decoder(b)
+	if err := DecodeAndCheckNumPrm(&sub, 2); err != nil {
+		return err
+	}
+
+	_, clientChallenge := sub.LIBytes()
+	if len(clientChallenge) != ldapClientChallengeSize {
+		return fmt.Errorf("invalid client challenge size %d - expected %d", len(clientChallenge), ldapClientChallengeSize)
+	}
+	a.clientChallenge = clientChallenge
+
+	_, capabilities := sub.LIBytes()
+	if len(capabilities) != ldapCapabilitiesSize {
+		return fmt.Errorf("invalid capabilities size %d - expected %d", len(capabilities), ldapCapabilitiesSize)
+	}
+	return nil
+}
+
+// DecodeInitReply implements the Method interface.
+func (a *LDAP) DecodeInitReply(dec *encoding.Decoder) error {
 	dec.AuthVarFieldInd()
 	if err := DecodeAndCheckNumPrm(dec, 4); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
@@ -109,13 +145,13 @@ func (a *LDAP) InitRepDecode(dec *encoding.Decoder) error {
 	}
 
 	if !bytes.Equal(clientChallenge, a.clientChallenge) {
-		return errors.New("LDAP authentication: client challenge mismatch")
+		return fmt.Errorf("%w: LDAP authentication: client challenge mismatch", ErrAuthVerifyFailed)
 	}
 	return nil
 }
 
-// PrepareFinalReq implements the Method interface.
-func (a *LDAP) PrepareFinalReq(prms *Prms) error {
+// EncodeFinalReq implements the Method interface.
+func (a *LDAP) EncodeFinalReq(prms *Prms) error {
 	// Generate random session key
 	sessionKey := make([]byte, ldapSessionKeySize)
 	rand.Read(sessionKey)
@@ -130,9 +166,6 @@ func (a *LDAP) PrepareFinalReq(prms *Prms) error {
 		return err
 	}
 
-	prms.AddCESU8String(a.username)
-	prms.addString(a.Typ())
-
 	subPrms := prms.addPrms()
 	subPrms.addBytes(encryptedSessionKey)
 	subPrms.addBytes(encryptedPassword)
@@ -140,8 +173,21 @@ func (a *LDAP) PrepareFinalReq(prms *Prms) error {
 	return nil
 }
 
-// FinalRepDecode implements the Method interface.
-func (a *LDAP) FinalRepDecode(dec *encoding.Decoder, _ transform.Transformer) error {
+// DecodeFinalReq implements the Method interface.
+func (a *LDAP) DecodeFinalReq(dec *encoding.Decoder, logonname string) error {
+	a.username = logonname
+	_, b := dec.LIBytes() // sub parameters
+	sub := encoding.Decoder(b)
+	if err := DecodeAndCheckNumPrm(&sub, 2); err != nil {
+		return err
+	}
+	_, a.encryptedSessionKey = sub.LIBytes()
+	_, a.encryptedPassword = sub.LIBytes()
+	return nil
+}
+
+// DecodeFinalReply implements the Method interface.
+func (a *LDAP) DecodeFinalReply(dec *encoding.Decoder, _ transform.Transformer) error {
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return fmt.Errorf("LDAP authentication: %w", err)
 	}

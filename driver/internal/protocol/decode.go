@@ -5,18 +5,13 @@ import (
 )
 
 func decodeLobParameter(d *encoding.Decoder) (any, error) {
-	// real decoding (sniffer) not yet supported
-	// descr := &LobInDescr{}
-	// descr.Opt = LobOptions(d.Byte())
-	// descr._size = int(d.Int32())
-	// descr.pos = int(d.Int32())
-	d.Byte()
-	d.Int32()
-	d.Int32()
-	return nil, nil
+	opt := LobOptions(d.Int8())
+	size := int(d.Int32())
+	pos := int(d.Int32())
+	return &LobInDescr{opt: opt, pos: pos, size: size}, nil
 }
 
-func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs, scale int) (any, error) {
+func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs) (any, error) {
 	switch tc {
 	case tcBoolean:
 		return d.BooleanField()
@@ -49,11 +44,11 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs, scale
 	case tcDecimal:
 		return d.DecimalField()
 	case tcFixed8:
-		return d.Fixed8Field(scale)
+		return d.Fixed(8), nil
 	case tcFixed12:
-		return d.Fixed12Field(scale)
+		return d.Fixed(12), nil
 	case tcFixed16:
-		return d.Fixed16Field(scale)
+		return d.Fixed(16), nil
 	case tcChar, tcVarchar, tcString, tcBstring, tcBinary, tcVarbinary:
 		return d.VarField()
 	case tcAlphanum:

@@ -212,6 +212,15 @@ func (co *ConnectOptions) DatabaseNameOrZero() string {
 	return v
 }
 
+// ServerConnectionIDOrZero returns the server connection id option if available, the zero value otherwise.
+// The server connection id identifies the session on the server and is used in the session management statements
+// (alter system cancel|disconnect session). The session id of the message header cannot be used for this.
+func (co *ConnectOptions) ServerConnectionIDOrZero() int {
+	var v int32
+	co.get(coConnectionID, &v)
+	return int(v)
+}
+
 // FullVersionOrZero returns the full version option if available, the zero value otherwise.
 func (co *ConnectOptions) FullVersionOrZero() string {
 	var v string
@@ -568,7 +577,11 @@ type options[K optionsType] map[K]any
 func (ops options[K]) String() string {
 	s := make([]string, 0, len(ops))
 	for k, v := range ops {
-		s = append(s, k.valueString(v))
+		if b, ok := v.([]byte); ok {
+			s = append(s, fmt.Sprintf("%v: %x", k, b))
+		} else {
+			s = append(s, k.valueString(v))
+		}
 	}
 	slices.Sort(s)
 	return fmt.Sprintf("%v", s)

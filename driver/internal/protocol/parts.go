@@ -112,9 +112,9 @@ var (
 // newPart instantiates the generic part decoder for kind. It returns false
 // when a kind cannot be instantiated generically: authentication parts are
 // bound to the auth handshake state, other non-generic parts need additional
-// parameters (PkParameterMetadata, PkParameters, PkOutputParameters,
-// PkResultMetadata, PkResultset, PkReadLobReply - the latter needs the
-// locator id from the originating request), and unknown kinds are ignored.
+// parameters (PkParameters, PkOutputParameters, PkResultset, PkReadLobReply
+// - the latter needs the locator id from the originating request), and
+// unknown kinds are ignored.
 func newPart(kind PartKind) (PartDecoder, bool) {
 	var part PartDecoder
 	switch kind {
@@ -152,6 +152,10 @@ func newPart(kind PartKind) (PartDecoder, bool) {
 		part = new(statementContext)
 	case PkDBConnectInfo:
 		part = new(DBConnectInfo)
+	case PkParameterMetadata:
+		part = new(ParameterMetadata)
+	case PkResultMetadata:
+		part = new(ResultMetadata)
 	case PkAuthentication:
 		return nil, false
 	default:

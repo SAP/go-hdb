@@ -5,6 +5,13 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.5
+- cancelled or timed-out requests now terminate the server-side execution asynchronously
+- sniffer tool overhaul
+- protocol trace: masked authentication credentials in the output
+- bulkbench: updated htmx to 4.0.0
+- code cleanups
+
 #### v1.18.4
 - updated dependencies
 - fixed decimal encoding of negative non-integer values

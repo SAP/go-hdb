@@ -312,8 +312,8 @@ func TestBulk(t *testing.T) {
 	lobCtr := MT.NewConnector()
 	lobCtr.SetBulkSize(1000) // limit bulk size for test performance reasons
 	lobCtr.SetLobChunkSize(128)
-	lobDb := sql.OpenDB(lobCtr)
-	t.Cleanup(func() { lobDb.Close() })
+	lobDB := sql.OpenDB(lobCtr)
+	t.Cleanup(func() { lobDB.Close() })
 
 	tests := []struct {
 		name string
@@ -323,7 +323,7 @@ func TestBulk(t *testing.T) {
 	}{
 		{"testBulkInsertDuplicates", testBulkInsertDuplicates, ctr, db},
 		{"testBulkInsertStmtNo", testBulkInsertStmtNo, ctr, db},
-		{"testBulkLOBStmtNo", testBulkLOBStmtNo, lobCtr, lobDb},
+		{"testBulkLOBStmtNo", testBulkLOBStmtNo, lobCtr, lobDB},
 		{"testBulkBlob", testBulkBlob, ctr, db},
 		{"testBulkBlob106", testBulkBlob106, ctr, db},
 		{"testBulkGeo", testBulkGeo, ctr, db},

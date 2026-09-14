@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
 	"golang.org/x/text/transform"
 )
@@ -69,7 +70,7 @@ func decodeLobOutDescr(dec *encoding.Decoder, tr transform.Transformer, lobReade
 }
 
 func (d *lobOutDescr) String() string {
-	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.opt, d.numChar, d.numByte, d.id, d.b)
+	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %s", d.ltc, d.opt, d.numChar, d.numByte, d.id, trace.Cut(d.b))
 }
 
 func (d *lobOutDescr) write(b []byte) (int, error) {
@@ -154,8 +155,13 @@ type ReadLobReply struct {
 	*lobOutDescr
 }
 
+// NewReadLobReply creates a lob read reply part for the given locator id.
+func NewReadLobReply(id LocatorID) *ReadLobReply {
+	return &ReadLobReply{lobOutDescr: &lobOutDescr{id: id}}
+}
+
 func (r *ReadLobReply) String() string {
-	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.opt, r.b)
+	return fmt.Sprintf("id %d options %s bytes %s", r.id, r.opt, trace.Cut(r.b))
 }
 
 func (r *ReadLobReply) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {

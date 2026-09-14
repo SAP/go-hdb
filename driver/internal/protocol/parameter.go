@@ -3,7 +3,9 @@ package protocol
 import (
 	"database/sql/driver"
 	"fmt"
+	"math/bits"
 	"reflect"
+	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"golang.org/x/text/transform"
@@ -230,28 +232,24 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, tr transform.Transform
 		if !ok {
 			panic("invalid lob value") // should never happen
 		}
-		enc.Byte(byte(descr.opt))      //nolint: gosec
-		enc.Int32(int32(descr.size())) //nolint: gosec
-		enc.Int32(int32(descr.pos))    //nolint: gosec
+		enc.Byte(byte(descr.opt))    //nolint: gosec
+		enc.Int32(int32(descr.size)) //nolint: gosec
+		enc.Int32(int32(descr.pos))  //nolint: gosec
 		return nil
 	default:
 		panic(fmt.Errorf("invalid type code %[1]d %[1]s", f.tc)) // should never happen
 	}
 }
 
-/*
-decode parameter
-- currently not used
-- type code is first byte (see encodePrm).
-*/
-var _ = (*ParameterField)(nil).decodeParameter // mark decodeParameter as used
-
+// decodeParameter decodes a single parameter value. The type code is the
+// first byte (see encodePrm). A high bit set on the type code byte signals a
+// null value.
 func (f *ParameterField) decodeParameter(dec *encoding.Decoder, attrs *ReaderAttrs) (any, error) {
 	tc := typeCode(dec.Byte())
 	if tc&0x80 != 0 { // high bit set -> null value
 		return nil, nil
 	}
-	return decodeParameter(f.tc, dec, attrs, f.scale)
+	return decodeParameter(f.tc, dec, attrs)
 }
 
 // ParameterMetadata represents the metadata of a parameter.
@@ -281,6 +279,7 @@ func (m *ParameterMetadata) decode(dec *encoding.Decoder, header *PartHeader, at
 type InputParameters struct {
 	InputFields []*ParameterField
 	nvargs      []driver.NamedValue
+	FieldValues []driver.Value
 }
 
 // NewInputParameters returns a InputParameters instance.
@@ -289,6 +288,9 @@ func NewInputParameters(inputFields []*ParameterField, nvargs []driver.NamedValu
 }
 
 func (p *InputParameters) String() string {
+	if len(p.FieldValues) != 0 {
+		return fmt.Sprintf("fields %s values %v", p.InputFields, p.FieldValues)
+	}
 	return fmt.Sprintf("fields %s len(args) %d args %v", p.InputFields, len(p.nvargs), p.nvargs)
 }
 
@@ -300,9 +302,38 @@ func (p *InputParameters) numArg() int {
 	return len(p.nvargs) / numColumns
 }
 
-func (p *InputParameters) decode(_ *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
-	// TODO Sniffer
-	// return fmt.Errorf("not implemented")
+func (p *InputParameters) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
+	numColumns := len(p.InputFields)
+	if numColumns == 0 { // cannot decode without input field metadata
+		return nil
+	}
+	numRows := header.numArg() // number of argument rows
+	if numRows < 0 {
+		return fmt.Errorf("invalid number of arguments %d", numRows)
+	}
+	if hi, _ := bits.Mul(uint(numRows), uint(numColumns)); hi != 0 {
+		return fmt.Errorf("arguments too large: %d rows x %d cols", numRows, numColumns)
+	}
+
+	n := numRows * numColumns
+	p.FieldValues = slices.Grow(p.FieldValues, n)[:0]
+
+	for range numRows {
+		start := len(p.FieldValues)
+		for _, f := range p.InputFields {
+			v, err := f.decodeParameter(dec, attrs)
+			if err != nil {
+				return err
+			}
+			p.FieldValues = append(p.FieldValues, v)
+		}
+		// lob first chunks follow the row descriptors on the wire
+		for _, v := range p.FieldValues[start:] {
+			if descr, ok := v.(*LobInDescr); ok {
+				descr.buf.Write(dec.Bytes(descr.size))
+			}
+		}
+	}
 	return nil
 }
 

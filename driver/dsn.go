@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
 // DSN parameters.
@@ -196,8 +198,8 @@ func ParseDSN(s string) (*DSN, error) {
 // String reassembles the DSN into a valid DSN string.
 func (dsn *DSN) String() string { return dsn.string(dsn.password) }
 
-// Redacted is like String but replaces any password with "xxxxx".
-func (dsn *DSN) Redacted() string { return dsn.string(passwordRedacted) }
+// Redacted is like String but replaces any password with trace.RedactedText.
+func (dsn *DSN) Redacted() string { return dsn.string(trace.RedactedText) }
 
 func (dsn *DSN) string(password string) string {
 	values := url.Values{}

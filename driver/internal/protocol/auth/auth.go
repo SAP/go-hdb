@@ -3,8 +3,8 @@ package auth
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
@@ -37,14 +37,23 @@ const (
 )
 
 // A Method defines the interface for an authentication method.
+//
+// The request codecs are symmetric: the generic part of the authentication
+// protocol writes and reads the common framing - parameter count, logonname
+// and method name - and delegates the method specific detail parameter to the
+// dedicated methods below. The detail is a single parameter, which may be a
+// nested sub-parameter vector.
 type Method interface {
 	fmt.Stringer
 	Typ() string
 	Order() byte
-	PrepareInitReq(prms *Prms) error
-	InitRepDecode(dec *encoding.Decoder) error
-	PrepareFinalReq(prms *Prms) error
-	FinalRepDecode(dec *encoding.Decoder, tr transform.Transformer) error
+	AuthLoginName() string
+	EncodeInitReq(prms *Prms) error
+	DecodeInitReq(dec *encoding.Decoder) error
+	DecodeInitReply(dec *encoding.Decoder) error
+	EncodeFinalReq(prms *Prms) error
+	DecodeFinalReq(dec *encoding.Decoder, logonname string) error
+	DecodeFinalReply(dec *encoding.Decoder, tr transform.Transformer) error
 }
 
 // Methods defines a collection of methods.
@@ -74,65 +83,46 @@ var (
 	_ Method = (*LDAP)(nil)
 )
 
-// Prms represents authentication parameters.
-type Prms struct {
-	prms []any
+// ErrAuthVerifyFailed indicates that the server response failed client-side
+// authentication verification (e.g. an invalid SCRAM server proof or an LDAP
+// client challenge mismatch). It is a classification error: an authentication
+// method codec fails with such an error if the corresponding verification
+// cannot be performed (e.g. by a sniffer without the client credentials) and
+// not because of malformed wire content.
+var ErrAuthVerifyFailed = errors.New("authentication check failed")
+
+// NewMethod returns a new authentication method of the given type used to
+// interpret authentication wire content. The returned method is created
+// without any client credentials.
+func NewMethod(mt string) (Method, bool) {
+	switch mt {
+	case MtSCRAMSHA256:
+		return &SCRAMSHA256{}, true
+	case MtSCRAMPBKDF2SHA256:
+		return &SCRAMPBKDF2SHA256{}, true
+	case MtX509:
+		return NewX509(&CertKey{}), true
+	case MtJWT:
+		return NewJWT(""), true
+	case MtSessionCookie:
+		return NewSessionCookie(nil, "", ""), true
+	case MtLDAP:
+		return NewLDAP("", ""), true
+	default:
+		return nil, false
+	}
 }
 
-func (p *Prms) String() string { return fmt.Sprintf("%v", p.prms) }
-
-// AddCESU8String adds a CESU8 string parameter.
-func (p *Prms) AddCESU8String(s string) { p.prms = append(p.prms, s) } // unicode string
-func (p *Prms) addEmpty()               { p.prms = append(p.prms, []byte{}) }
-func (p *Prms) addBytes(b []byte)       { p.prms = append(p.prms, b) }
-func (p *Prms) addString(s string)      { p.prms = append(p.prms, []byte(s)) } // treat like bytes to distinguish from unicode string
-func (p *Prms) addPrms() *Prms {
-	prms := &Prms{}
-	p.prms = append(p.prms, prms)
-	return prms
-}
-
-// Encode encodes the parameters.
-func (p *Prms) Encode(enc *encoding.Encoder, tr transform.Transformer) error {
-	numPrms := len(p.prms)
-	if numPrms > math.MaxInt16 {
-		return fmt.Errorf("invalid number of parameters %d - maximum %d", numPrms, math.MaxInt16)
+// InitRepMethod interprets the method type of an authentication initial reply
+// into a credential-free method instance. The reply tail is decoded by the
+// returned method's DecodeInitReply.
+func InitRepMethod(dec *encoding.Decoder) (Method, error) {
+	mt := dec.AuthString()
+	m, ok := NewMethod(mt)
+	if !ok {
+		return nil, fmt.Errorf("unknown authentication method %s", mt)
 	}
-	enc.Int16(int16(numPrms))
-
-	for _, e := range p.prms {
-		switch e := e.(type) {
-		case []byte:
-			if err := enc.LIBytes(e); err != nil {
-				return err
-			}
-		case string:
-			if err := enc.CESU8LIString(tr, e); err != nil {
-				return err
-			}
-		case *Prms:
-			subEnc := encoding.Encoder(make([]byte, 0))
-			if err := e.Encode(&subEnc, tr); err != nil {
-				return err
-			}
-			if err := enc.AuthVarFieldInd(len(subEnc)); err != nil {
-				return err
-			}
-			enc.Bytes(subEnc)
-		default:
-			panic("invalid parameter") // should not happen
-		}
-	}
-	return nil
-}
-
-// Decode decodes the parameters.
-func (p *Prms) Decode(dec *encoding.Decoder) error {
-	numPrms := int(dec.Int16())
-	for range numPrms {
-
-	}
-	return nil
+	return m, nil
 }
 
 // DecodeAndCheckNumPrm decodes and checks the number of parameters and returns an error if not equal expected, nil otherwise.
