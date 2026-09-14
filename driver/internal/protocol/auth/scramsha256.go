@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 	"golang.org/x/text/transform"
 )
 
@@ -23,16 +24,18 @@ var scramKeyCache = newList(3, func(k *SCRAMSHA256) ([]byte, error) {
 type SCRAMSHA256 struct {
 	username, password    string
 	clientChallenge       []byte
+	clientProof           []byte
 	salt, serverChallenge []byte
 }
 
 // NewSCRAMSHA256 creates a new authSCRAMSHA256 instance.
 func NewSCRAMSHA256(username, password string) *SCRAMSHA256 {
-	return &SCRAMSHA256{username: username, password: password, clientChallenge: scramClientChallenge()}
+	return &SCRAMSHA256{username: username, password: password}
 }
 
 func (a *SCRAMSHA256) String() string {
-	return fmt.Sprintf("method type %s clientChallenge %v", a.Typ(), a.clientChallenge)
+	return fmt.Sprintf("method type %s username %s clientChallenge %s clientProof %s salt %s serverChallenge %s",
+		a.Typ(), trace.Cut(a.username), trace.Cut(a.clientChallenge), trace.Cut(a.clientProof), trace.Cut(a.salt), trace.Cut(a.serverChallenge))
 }
 
 // Compare implements cache.Compare interface.
@@ -46,15 +49,25 @@ func (a *SCRAMSHA256) Typ() string { return MtSCRAMSHA256 }
 // Order implements the Method interface.
 func (a *SCRAMSHA256) Order() byte { return MoSCRAMSHA256 }
 
-// PrepareInitReq implements the Method interface.
-func (a *SCRAMSHA256) PrepareInitReq(prms *Prms) error {
-	prms.addString(a.Typ())
+// AuthLoginName implements the Method interface.
+func (a *SCRAMSHA256) AuthLoginName() string { return a.username }
+
+// EncodeInitReq implements the Method interface.
+func (a *SCRAMSHA256) EncodeInitReq(prms *Prms) error {
+	a.clientChallenge = scramClientChallenge()
 	prms.addBytes(a.clientChallenge)
 	return nil
 }
 
-// InitRepDecode implements the Method interface.
-func (a *SCRAMSHA256) InitRepDecode(dec *encoding.Decoder) error {
+// DecodeInitReq implements the Method interface.
+func (a *SCRAMSHA256) DecodeInitReq(dec *encoding.Decoder) error {
+	_, clientChallenge := dec.LIBytes()
+	a.clientChallenge = clientChallenge
+	return nil
+}
+
+// DecodeInitReply implements the Method interface.
+func (a *SCRAMSHA256) DecodeInitReply(dec *encoding.Decoder) error {
 	dec.AuthVarFieldInd() // sub parameters
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
@@ -70,8 +83,8 @@ func (a *SCRAMSHA256) InitRepDecode(dec *encoding.Decoder) error {
 	return nil
 }
 
-// PrepareFinalReq implements the Method interface.
-func (a *SCRAMSHA256) PrepareFinalReq(prms *Prms) error {
+// EncodeFinalReq implements the Method interface.
+func (a *SCRAMSHA256) EncodeFinalReq(prms *Prms) error {
 	key, err := scramKeyCache.Get(a)
 	if err != nil {
 		return err
@@ -81,16 +94,26 @@ func (a *SCRAMSHA256) PrepareFinalReq(prms *Prms) error {
 		return err
 	}
 
-	prms.AddCESU8String(a.username)
-	prms.addString(a.Typ())
 	subPrms := prms.addPrms()
 	subPrms.addBytes(clientProof)
 
 	return nil
 }
 
-// FinalRepDecode implements the Method interface.
-func (a *SCRAMSHA256) FinalRepDecode(dec *encoding.Decoder, _ transform.Transformer) error {
+// DecodeFinalReq implements the Method interface.
+func (a *SCRAMSHA256) DecodeFinalReq(dec *encoding.Decoder, logonname string) error {
+	a.username = logonname
+	_, b := dec.LIBytes() // sub parameters
+	sub := encoding.Decoder(b)
+	if err := DecodeAndCheckNumPrm(&sub, 1); err != nil {
+		return err
+	}
+	_, a.clientProof = sub.LIBytes()
+	return nil
+}
+
+// DecodeFinalReply implements the Method interface.
+func (a *SCRAMSHA256) DecodeFinalReply(dec *encoding.Decoder, _ transform.Transformer) error {
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}

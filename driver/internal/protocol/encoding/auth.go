@@ -3,65 +3,58 @@ package encoding
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
 	"golang.org/x/text/transform"
 )
 
 /*
-Field size methods (used for decoding) of
-- bytes, string, unicode string
+Auth variable field size indicator - used for decoding server to client
+auth reply fields.
 
+Documented in "SAP HANA SQL Command Network Protocol Reference" version 1.2
+chapter 2.3.7.20 with:
 - a size <= 250 encoded in one byte or
 - an unsigned 2 byte integer size encoded in three bytes
   . first byte equals 255
-  . second and third byte is an big endian encoded uint16
+  . second and third byte are a big endian encoded uint16
 
-See also "SAP HANA SQL Command Network Protocol Reference" version 1.2 chapter 2.3.7.20.
+The reference implementation (hana-clients) diverges from the documentation:
+- Layout.hpp names the byte 255 DataLengthIndicator_NullValue although in the
+  auth context it denotes a length indicator (a big endian uint16 follows),
+  not a null value
+- the writer (CodecParameterWriter.cpp) caps the one byte length at 245
+  (DataLengthIndicator_Max1ByteLength) and encodes any larger size as
+  255 + big endian uint16
+- the reader (CodecParameterReader.cpp) additionally accepts the bytes
+  246 and 247 (little endian uint16 / uint32 lengths) and treats any other
+  byte as a one byte length
 
-Weirdly enough:
-- encoding follows the standard rules for length/size indicators
-- see auth prms on details
+Weirdly enough, the auth prms (client to server) follow the standard
+length/size indicator rules (see varFieldInd) instead of this one.
 */
 
 const (
-	authMaxFieldSize1ByteLen    = 250
-	authFieldSize2ByteIndicator = 255
+	authFieldLenInd1Byte = 245
+	authFieldLenInd2Byte = 246
+	authFieldLenInd4Byte = 247
+	authFieldLenIndBE    = 255
 )
-
-// AuthVarFieldSize returns the field size of an auth variable field indicator.
-func AuthVarFieldSize(size int) int {
-	if size > authMaxFieldSize1ByteLen {
-		return 3
-	}
-	return 1
-}
-
-// AuthVarFieldInd encodes an auth variable field indicator.
-func (e *Encoder) AuthVarFieldInd(size int) error {
-	switch {
-	case size <= authMaxFieldSize1ByteLen:
-		e.Byte(byte(size)) //nolint: gosec
-	case size <= math.MaxUint16:
-		e.Byte(authFieldSize2ByteIndicator)
-		e.Uint16ByteOrder(uint16(size), binary.BigEndian)
-	default:
-		return fmt.Errorf("invalid field size %d - maximum %d", size, math.MaxUint16)
-	}
-	return nil
-}
 
 // AuthVarFieldInd decodes an auth variable field indicator.
 func (d *Decoder) AuthVarFieldInd() int {
 	b := d.Byte()
 	switch {
-	case b <= authMaxFieldSize1ByteLen:
+	case b <= authFieldLenInd1Byte:
 		return int(b)
-	case b == authFieldSize2ByteIndicator:
+	case b == authFieldLenInd2Byte:
+		return int(d.Int16())
+	case b == authFieldLenIndBE:
 		return int(d.Uint16ByteOrder(binary.BigEndian))
+	case b == authFieldLenInd4Byte:
+		return int(d.Int32())
 	default:
-		panic("invalid sub parameter size indicator")
+		return int(b) // 248..254 one byte length
 	}
 }
 

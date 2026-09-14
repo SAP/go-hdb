@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 	"golang.org/x/text/transform"
 )
 
@@ -66,10 +67,11 @@ const (
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
-	rd  io.Reader
-	opt LobOptions
-	pos int
-	buf bytes.Buffer
+	rd   io.Reader
+	opt  LobOptions
+	pos  int
+	buf  bytes.Buffer
+	size int
 }
 
 func newLobInDescr(rd io.Reader) *LobInDescr {
@@ -77,8 +79,7 @@ func newLobInDescr(rd io.Reader) *LobInDescr {
 }
 
 func (d *LobInDescr) String() string {
-	// restrict output size
-	return fmt.Sprintf("options %s size %d pos %d bytes %v", d.opt, d.buf.Len(), d.pos, d.buf.Bytes()[:min(d.buf.Len(), 25)])
+	return fmt.Sprintf("options %s size %d pos %d bytes %s", d.opt, d.buf.Len(), d.pos, trace.Cut(d.buf.Bytes()))
 }
 
 // IsLastData returns true in case of last data package read, false otherwise.
@@ -94,14 +95,13 @@ func (d *LobInDescr) FetchNext(chunkSize int) error {
 	d.buf.Reset()
 	_, err := io.CopyN(&d.buf, d.rd, int64(chunkSize))
 	d.opt = loDataincluded
+	d.size = d.buf.Len()
 	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return err
 	}
 	d.opt |= loLastdata
 	return nil
 }
-
-func (d *LobInDescr) size() int { return d.buf.Len() }
 
 func (d *LobInDescr) writeFirst(enc *encoding.Encoder) { enc.Bytes(d.buf.Bytes()) }
 
@@ -126,7 +126,7 @@ type WriteLobDescr struct {
 }
 
 func (d WriteLobDescr) String() string {
-	return fmt.Sprintf("id %d options %s offset %d bytes %v", d.ID, d.opt, d.ofs, d.b)
+	return fmt.Sprintf("id %d options %s offset %d bytes %s", d.ID, d.opt, d.ofs, trace.Cut(d.b))
 }
 
 // IsLastData returns true in case of last data package read, false otherwise.

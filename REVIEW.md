@@ -85,6 +85,9 @@ AI review must carry proof, not guesses.
   that implements a network protocol and must follow it as defined. On a
   protocol violation it has no way to proceed correctly, so it fails fast
   rather than guess.
+- **Flag non-idiomatic naming.** Report names that violate Go idiom —
+  Hungarian notation, type/pointer prefixes, invented conventions. Idiomatic
+  short names are fine and are not findings.
 
 ## Project Philosophy
 
@@ -115,18 +118,16 @@ AI review must carry proof, not guesses.
 
 ### Design choices that are intentional (not defects)
 
-- **Zero-copy / arena scanning.** Scanned `string`/`[]byte`/`sql.RawBytes`
-  values alias the session read buffer and are only valid until the next
-  fetch — the `sql.RawBytes` contract. This minimizes allocations and copies
-  and is by design.
+- **Zero-copy scan values.** Scanned `string`/`[]byte`/`sql.RawBytes` values
+  alias the read buffer directly (no copy). Each read gets a fresh buffer
+  whose lifetime the GC manages, so aliased values remain valid beyond the
+  current read.
 - **Fail-fast on invalid protocol.** Decoder panics are recovery signals, not
   bugs. `recoverShortBuffer` catches only short-buffer conditions
   deliberately; other invalid values mean a corrupt frame and panic on
   purpose rather than decode garbage. This is ordinary protocol-client
   behavior: a protocol violation leaves the client with no way to proceed
   correctly, so it fails.
-- **One-way shutdown.** `Unregister()` tears the driver down permanently;
-  later use panics. This is documented and intentional.
 - **Protocol conformance.** LOB streaming and buffer sizes follow the lengths
   the protocol declares (e.g. `IsLastData()`); the driver processes
   protocol-specified data per the contract. This is neither trust nor distrust
@@ -140,7 +141,3 @@ AI review must carry proof, not guesses.
   count of *complete* characters decoded, so the next request's offset lands
   on the deferred code unit and the server re-presents it. No inter-chunk
   carry is needed.
-- **Credential exposure only via explicit opt-in tracing.** `String()`
-  methods on auth objects are reachable only from the documented protocol
-  trace (`-hdb.protTrace`, `SetProtTrace`), which is off by default. The types
-  live in internal packages and cannot be reached externally.

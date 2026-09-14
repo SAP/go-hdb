@@ -125,18 +125,24 @@ func (t *connTracker) callDB() *sql.DB {
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
-	attrs   *connAttrs
-	metrics *metrics
-	logger  *slog.Logger
-	dbConn  dbConn
-	session *session
-	wg      *sync.WaitGroup // wait for concurrent db calls when closing connections.
+	attrs      *connAttrs
+	metrics    *metrics
+	logger     *slog.Logger
+	dbConn     dbConn
+	session    *session
+	wg         *sync.WaitGroup    // wait for concurrent db calls when closing connections.
+	terminator *sessionTerminator // terminator of the owning connector; nil for transient connections that are not accounted (see newConn).
 }
 
 // unique connection number.
 var connNo atomic.Uint64
 
-func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs) (*conn, error) {
+// newConn returns a connection. A non nil terminator accounts the connection
+// with the connector's sessionTerminator (open on creation, close on Close).
+// A nil terminator marks a transient connection that is not accounted - the
+// sessionTerminator worker uses this to execute the disconnect session
+// statement without accounting for its own connection.
+func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs, terminator *sessionTerminator) (*conn, error) {
 	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
 	metrics.addConn()
@@ -157,7 +163,11 @@ func newConn(ctx context.Context, host string, metrics *metrics, routing *routin
 	stdConnTracker.add()
 	metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
 
-	return &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup)}, nil
+	c := &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup), terminator: terminator}
+	if terminator != nil {
+		terminator.open()
+	}
+	return c, nil
 }
 
 func (c *conn) authenticate(ctx context.Context, host string, authHnd *p.AuthHnd) error {
@@ -172,7 +182,17 @@ func (c *conn) Close() error {
 	dbConnErr := c.dbConn.Close()
 	c.wg.Wait()
 	c.metrics.removeConn()
+	if c.terminator != nil {
+		c.terminator.close()
+	}
 	return errors.Join(sessionErr, dbConnErr)
+}
+
+// terminateSession marks the session as canceled and requests the
+// asynchronous termination of the server session (see sessionTerminator.terminate).
+func (c *conn) terminateSession() {
+	c.session.cancel()
+	c.terminator.terminate(c.session.host, c.session.serverConnID)
 }
 
 // ResetSession implements the driver.SessionResetter interface.
@@ -207,7 +227,7 @@ func (c *conn) Ping(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return ctx.Err()
 	case <-done:
 		return sqlErr
@@ -228,7 +248,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		if pr, sqlErr = c.session.prepare(ctx, query); sqlErr != nil {
 			return
 		}
-		stmt = newStmt(c.session, c.wg, c.attrs, c.metrics, query, pr)
+		stmt = newStmt(c, c.wg, c.attrs, c.metrics, query, pr)
 		if stmtMetadata, ok := ctx.Value(stmtMetadataCtxKey).(*StmtMetadata); ok {
 			*stmtMetadata = pr
 		}
@@ -236,7 +256,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return stmt, sqlErr
@@ -290,7 +310,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return tx, sqlErr
@@ -318,7 +338,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, sqlErr
@@ -345,7 +365,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return result, sqlErr
@@ -382,7 +402,7 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 
 	select {
 	case <-ctx.Done():
-		c.session.cancel()
+		c.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return ci, sqlErr

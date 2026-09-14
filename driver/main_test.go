@@ -83,7 +83,7 @@ const (
 var dropKindStr = []string{
 	"don't drop schema",
 	"drop schema if test ran successfully",
-	"drop all existing test schemas if test ran successfully",
+	"drop all existing test schemas if test ran successfully (must not run while other tests are active)",
 }
 
 func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {

@@ -20,7 +20,7 @@ var (
 )
 
 type stmt struct {
-	session *session
+	conn    *conn
 	wg      *sync.WaitGroup // from conn
 	attrs   *connAttrs
 	metrics *metrics
@@ -44,9 +44,9 @@ func (t *totalRowsAffected) add(r driver.Result) {
 	*t += totalRowsAffected(rows)
 }
 
-func newStmt(session *session, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
+func newStmt(conn *conn, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
 	metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
-	return &stmt{session: session, wg: wg, attrs: attrs, metrics: metrics, query: query, pr: pr}
+	return &stmt{conn: conn, wg: wg, attrs: attrs, metrics: metrics, query: query, pr: pr}
 }
 
 /*
@@ -65,10 +65,10 @@ func (s *stmt) Close() error {
 		s.rows.Close()
 	}
 
-	if s.session.isBad() {
+	if s.conn.session.isBad() {
 		return driver.ErrBadConn
 	}
-	return s.session.dropStatementID(context.Background(), s.pr.stmtID)
+	return s.conn.session.dropStatementID(context.Background(), s.pr.stmtID)
 }
 
 // CheckNamedValue implements NamedValueChecker interface.
@@ -81,7 +81,7 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	if s.pr.isProcedureCall() {
 		return nil, fmt.Errorf("invalid procedure call %s - please use Exec instead", s.query)
 	}
-	if err := s.session.preventSwitchUser(ctx); err != nil {
+	if err := s.conn.session.preventSwitchUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -90,12 +90,12 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 	done := make(chan struct{})
 	s.wg.Go(func() {
 		defer close(done)
-		rows, sqlErr = s.session.query(ctx, s.query, s.pr, nvargs)
+		rows, sqlErr = s.conn.session.query(ctx, s.query, s.pr, nvargs)
 	})
 
 	select {
 	case <-ctx.Done():
-		s.session.cancel()
+		s.conn.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
 		return rows, sqlErr
@@ -106,7 +106,7 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 	if hookFn, ok := ctx.Value(connHookCtxKey).(connHookFn); ok {
 		hookFn(choStmtExec)
 	}
-	if err := s.session.preventSwitchUser(ctx); err != nil {
+	if err := s.conn.session.preventSwitchUser(ctx); err != nil {
 		return nil, err
 	}
 
@@ -125,9 +125,12 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 	select {
 	case <-ctx.Done():
-		s.session.cancel()
+		s.conn.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
+		if s.rows != nil {
+			s.rows.Close()
+		}
 		s.rows = rows
 		return result, sqlErr
 	}
@@ -141,7 +144,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		--> callResult output parameter values are set after last lob input write
 	*/
 
-	cr, callArgs, numRow, err := s.session.execCall(ctx, s.query, pr, nvargs)
+	cr, callArgs, numRow, err := s.conn.session.execCall(ctx, s.query, pr, nvargs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -191,7 +194,7 @@ func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (dri
 		if numField != 0 {
 			return nil, fmt.Errorf("invalid number of arguments %d - expected %d", numNVArg, numField)
 		}
-		return s.session.exec(ctx, s.query, s.pr, nvargs, 0)
+		return s.conn.session.exec(ctx, s.query, s.pr, nvargs, 0)
 	}
 	if numNVArg == 1 {
 		switch nvargs[0].Value.(type) {
@@ -386,7 +389,7 @@ func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.Name
 	for _, row := range addLobDataRecs {
 		to := (row + 1) * numColumn
 
-		r, err := s.session.exec(ctx, s.query, pr, nvargs[from:to], ofs+from/numColumn)
+		r, err := s.conn.session.exec(ctx, s.query, pr, nvargs[from:to], ofs+from/numColumn)
 		totalRowsAffected.add(r)
 		if err != nil {
 			return driver.RowsAffected(totalRowsAffected), err

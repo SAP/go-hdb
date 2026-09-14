@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
 // LobOutDescr represents a lob output descriptor.
@@ -25,7 +26,7 @@ type LobOutDescr struct {
 }
 
 func (d *LobOutDescr) String() string {
-	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %v", d.ltc, d.Opt, d.numChar, d.numByte, d.id, d.Bytes)
+	return fmt.Sprintf("typecode %s options %s numChar %d numByte %d id %d bytes %s", d.ltc, d.Opt, d.numChar, d.numByte, d.id, trace.Cut(d.Bytes))
 }
 
 // decodeLobOutDescr decodes a lob output descriptor, or returns a real nil for a null value.
@@ -57,7 +58,7 @@ type ReadLobReply struct {
 }
 
 func (r *ReadLobReply) String() string {
-	return fmt.Sprintf("id %d options %s bytes %v", r.id, r.Opt, r.Bytes)
+	return fmt.Sprintf("id %d options %s bytes %s", r.id, r.Opt, trace.Cut(r.Bytes))
 }
 
 // NewReadLobReply creates a lob read reply part for the given locator id.

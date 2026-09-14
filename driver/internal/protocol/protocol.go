@@ -441,6 +441,23 @@ func (r *Reader) skipPart(ctx context.Context) error {
 	return nil
 }
 
+// SkipMessage reads one complete message by wire framing and discards it. The
+// framing is taken from the message header only; the content is opaque, so
+// compressed packets pass through untouched.
+func (r *Reader) SkipMessage() error {
+	dec := encoding.Decoder(r.scratch[:messageHeaderSize])
+	if _, err := io.ReadFull(r.rd, dec); err != nil {
+		return err
+	}
+	r.mh.decode(&dec)
+	n := int(r.mh.varPartLength)
+	if n < segmentHeaderSize {
+		return fmt.Errorf("corrupt frame: varPartLength %d smaller than segment header %d", r.mh.varPartLength, segmentHeaderSize)
+	}
+	_, err := io.CopyN(io.Discard, r.rd, int64(n))
+	return err
+}
+
 const defaultSessionID = -1
 
 // WriterAttrs holds writer attributes.

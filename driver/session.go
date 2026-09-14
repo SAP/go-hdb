@@ -13,6 +13,7 @@ import (
 	"time"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
+	"github.com/SAP/go-hdb/driver/internal/trace"
 )
 
 // SessionUser provides the fields for a hdb 'connect' (switch user) statement.
@@ -60,6 +61,8 @@ type session struct {
 
 	hdbVersion   *Version
 	databaseName string
+	host         string // HANA server dialed host and port.
+	serverConnID int    // HANA server connection id (connect option coConnectionID).
 
 	user *SessionUser // session user
 
@@ -177,6 +180,8 @@ func (s *session) authenticate(ctx context.Context, host string, authHnd *p.Auth
 
 	s.hdbVersion = parseVersion(sco.FullVersionOrZero())
 	s.databaseName = sco.DatabaseNameOrZero()
+	s.host = host
+	s.serverConnID = sco.ServerConnectionIDOrZero()
 
 	s.readerAttrs.SetAlphanumDfv1(sco.DataFormatVersion2OrZero() == p.DfvLevel1)
 
@@ -312,7 +317,7 @@ func (s *session) switchUser(ctx context.Context) error {
 	connectQuery := func(password string) string {
 		return "connect " + user.Username + " password \"" + password + "\""
 	}
-	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), connectQuery(passwordRedacted)); err != nil {
+	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), connectQuery(trace.RedactedText)); err != nil {
 		return err
 	}
 	s.user = user.clone()
@@ -838,10 +843,17 @@ func (s *session) rollback(ctx context.Context) error {
 }
 
 func (s *session) disconnect(ctx context.Context) error {
-	if err := s.pwr.Write(ctx, p.MtDisconnect, false); err != nil {
-		return err
-	}
 	/*
+		Do not send a disconnect message. The reference hdbcli implementation closes
+		the TCP connection without a disconnect message and HANA terminates the session
+		on socket close. As conn.Close closes the connection right after this call, the
+		message would race the close and the server reply is unreliably delivered, so a
+		disconnect message adds no value.
+
+		// if err := s.pwr.Write(ctx, p.MtDisconnect, false); err != nil {
+		// 	return err
+		// }
+
 		Do not read server reply as on slow connections the TCP/IP connection is closed (by Server)
 		before the reply can be read completely.
 

@@ -10,16 +10,10 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.18.4"
+const DriverVersion = "1.18.5"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
-
-// passwordRedacted is the placeholder that replaces a password wherever the driver
-// renders credentials for logging or display (SQL trace, DSN.Redacted). The value
-// is kept consistent with net/url.URL.Redacted, whose "xxxxx" literal is unexported
-// and therefore cannot be reused directly.
-const passwordRedacted = "xxxxx"
 
 var clientID = func() string {
 	if hostname, err := os.Hostname(); err == nil {

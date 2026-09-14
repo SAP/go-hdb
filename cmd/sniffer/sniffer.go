@@ -33,6 +33,8 @@ func main() {
 }
 
 func handler(conn net.Conn, dbAddr net.Addr) {
+	defer conn.Close()
+
 	dbConn, err := net.Dial(dbAddr.Network(), dbAddr.String()) //nolint: noctx
 	if err != nil {
 		log.Printf("hdb connection error: %s", err)
@@ -43,8 +45,6 @@ func handler(conn net.Conn, dbAddr net.Addr) {
 
 	err = driver.NewSniffer(conn, dbConn).Run()
 	switch {
-	case err == nil:
-		return
 	case errors.Is(err, io.EOF):
 		log.Printf("client connection closed - local address %s - remote address %s",
 			conn.LocalAddr().String(),
