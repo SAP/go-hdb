@@ -61,13 +61,13 @@ func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, lobRea
 	case tcAlphanum:
 		return dec.AlphanumField(attrs.alphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return dec.Cesu8Field(attrs.tr)
+		return dec.Cesu8Field()
 	case tcStPoint, tcStGeometry:
 		return dec.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:
 		return decodeLobOutDescr(dec, nil, lobReader, attrs.lobChunkSize)
 	case tcText, tcNclob, tcNlocator:
-		return decodeLobOutDescr(dec, attrs.tr, lobReader, attrs.lobChunkSize)
+		return decodeLobOutDescr(dec, dec.Transformer(), lobReader, attrs.lobChunkSize)
 	default:
 		panic("invalid type code")
 	}

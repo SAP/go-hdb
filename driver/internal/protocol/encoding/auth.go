@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
-	"golang.org/x/text/transform"
 )
 
 /*
@@ -77,12 +76,12 @@ func (d *Decoder) AuthString() string {
 }
 
 // AuthCesu8String decodes an auth variable cesu8 string field.
-func (d *Decoder) AuthCesu8String(tr transform.Transformer) (string, error) {
+func (d *Decoder) AuthCesu8String() (string, error) {
 	size := d.AuthVarFieldInd()
 	if size == 0 {
 		return "", nil
 	}
-	b, err := d.CESU8Bytes(tr, size)
+	b, err := d.CESU8Bytes(size)
 	if err != nil {
 		return "", err
 	}

@@ -32,7 +32,7 @@ func (s *session) readLobComplete(descr *p.LobOutDescr, wr io.Writer) error {
 	for {
 		var numChar int
 		if descr.IsCharLob {
-			numChar, err = writeLobChunk(s.attrs.cesu8Decoder, data, wr)
+			numChar, err = writeLobChunk(s.lobReadDecoder, data, wr)
 		} else {
 			numChar, err = wr.Write(data)
 		}

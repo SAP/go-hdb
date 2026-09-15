@@ -6,7 +6,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/trace"
-	"golang.org/x/text/transform"
 )
 
 // SessionCookie implements session cookie authentication.
@@ -72,7 +71,7 @@ func (a *SessionCookie) DecodeFinalReq(dec *encoding.Decoder, logonname string) 
 }
 
 // DecodeFinalReply implements the Method interface.
-func (a *SessionCookie) DecodeFinalReply(dec *encoding.Decoder, _ transform.Transformer) error {
+func (a *SessionCookie) DecodeFinalReply(dec *encoding.Decoder) error {
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}

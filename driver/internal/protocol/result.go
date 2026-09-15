@@ -6,7 +6,6 @@ import (
 	"reflect"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 type columnOptions int8
@@ -40,7 +39,7 @@ func (id *ResultsetID) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAtt
 	*id = ResultsetID(dec.Uint64())
 	return nil
 }
-func (id ResultsetID) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (id ResultsetID) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(id))
 	return nil
 }
@@ -149,7 +148,7 @@ func (r *ResultMetadata) decode(dec *encoding.Decoder, header *PartHeader, attrs
 		f.decode(dec)
 		r.ResultFields[i] = f
 	}
-	if err := names.decode(dec, attrs); err != nil {
+	if err := names.decode(dec); err != nil {
 		return err
 	}
 	return nil

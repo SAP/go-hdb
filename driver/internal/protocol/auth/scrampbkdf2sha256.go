@@ -10,7 +10,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/trace"
-	"golang.org/x/text/transform"
 )
 
 func scrampbkdf2sha256SaltedPassword(password string, salt []byte, rounds int) ([]byte, error) {
@@ -119,8 +118,8 @@ func (a *SCRAMPBKDF2SHA256) EncodeFinalReq(prms *Prms) error {
 func (a *SCRAMPBKDF2SHA256) DecodeFinalReq(dec *encoding.Decoder, logonname string) error {
 	a.username = logonname
 	_, b := dec.LIBytes() // sub parameters
-	sub := encoding.Decoder(b)
-	if err := DecodeAndCheckNumPrm(&sub, 1); err != nil {
+	sub := encoding.NewDecoder(b, nil)
+	if err := DecodeAndCheckNumPrm(sub, 1); err != nil {
 		return err
 	}
 	_, a.clientProof = sub.LIBytes()
@@ -128,7 +127,7 @@ func (a *SCRAMPBKDF2SHA256) DecodeFinalReq(dec *encoding.Decoder, logonname stri
 }
 
 // DecodeFinalReply implements the Method interface.
-func (a *SCRAMPBKDF2SHA256) DecodeFinalReply(dec *encoding.Decoder, _ transform.Transformer) error {
+func (a *SCRAMPBKDF2SHA256) DecodeFinalReply(dec *encoding.Decoder) error {
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}

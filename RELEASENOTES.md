@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.6
+- internal protocol encoder/decoder refactoring and code cleanups
+
 #### v1.18.5
 - cancelled or timed-out requests now terminate the server-side execution asynchronously
 - sniffer tool overhaul

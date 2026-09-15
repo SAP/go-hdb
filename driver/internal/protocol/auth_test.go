@@ -12,20 +12,20 @@ import (
 func testJWTAuth(t *testing.T) {
 
 	authEncodeStep := func(part PartEncoder) []byte {
-		enc := encoding.Encoder(make([]byte, 0))
+		enc := encoding.NewEncoder(make([]byte, 0), cesu8.DefaultEncoder())
 
-		if err := part.encode(&enc, cesu8.DefaultEncoder()); err != nil {
+		if err := part.encode(enc); err != nil {
 			t.Fatal(err)
 		}
 
-		return enc
+		return enc.Buffer()
 	}
 
 	authDecodeStep := func(part PartDecoder, data []byte) {
-		dec := encoding.Decoder(data)
-		attrs := &ReaderAttrs{tr: cesu8.DefaultDecoder()}
+		dec := encoding.NewDecoder(data, cesu8.DefaultDecoder())
+		attrs := &ReaderAttrs{}
 
-		if err := part.decode(&dec, nil, attrs); err != nil {
+		if err := part.decode(dec, nil, attrs); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -91,20 +91,20 @@ func testJWTAuth(t *testing.T) {
 func testAuthRequestDecode(t *testing.T) {
 
 	authEncodeStep := func(part PartEncoder) []byte {
-		enc := encoding.Encoder(make([]byte, 0))
+		enc := encoding.NewEncoder(make([]byte, 0), cesu8.DefaultEncoder())
 
-		if err := part.encode(&enc, cesu8.DefaultEncoder()); err != nil {
+		if err := part.encode(enc); err != nil {
 			t.Fatal(err)
 		}
 
-		return enc
+		return enc.Buffer()
 	}
 
 	authDecodeStep := func(part PartDecoder, data []byte) {
-		dec := encoding.Decoder(data)
-		attrs := &ReaderAttrs{tr: cesu8.DefaultDecoder()}
+		dec := encoding.NewDecoder(data, cesu8.DefaultDecoder())
+		attrs := &ReaderAttrs{}
 
-		if err := part.decode(&dec, nil, attrs); err != nil {
+		if err := part.decode(dec, nil, attrs); err != nil {
 			t.Fatal(err)
 		}
 	}

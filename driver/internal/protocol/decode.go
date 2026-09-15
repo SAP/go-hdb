@@ -54,7 +54,7 @@ func decodeParameter(tc typeCode, d *encoding.Decoder, attrs *ReaderAttrs) (any,
 	case tcAlphanum:
 		return d.AlphanumField(attrs.alphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return d.Cesu8Field(attrs.tr)
+		return d.Cesu8Field()
 	case tcStPoint, tcStGeometry:
 		return d.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext:

@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 type parameterOptions int8
@@ -111,8 +110,8 @@ func (f *ParameterField) String() string {
 func (f *ParameterField) IsLob() bool { return f.tc.isLob() }
 
 // Convert returns the result of the fieldType conversion.
-func (f *ParameterField) Convert(v any, cesu8Encoder transform.Transformer) (any, error) {
-	cv, err := convertField(f.tc, v, f.prec, f.scale, cesu8Encoder)
+func (f *ParameterField) Convert(v any) (any, error) {
+	cv, err := convertField(f.tc, v, f.prec, f.scale)
 	if err != nil {
 		return nil, fmt.Errorf("field %[1]s type code %[2]s type %[3]T value %[3]v conversion error %[4]w", f.fieldName(), f.tc, v, err)
 	}
@@ -177,7 +176,7 @@ func (f *ParameterField) decode(dec *encoding.Decoder) {
 	f.names.insertOfs(uint32(f.ofs)) //nolint: gosec
 }
 
-func (f *ParameterField) encodePrm(enc *encoding.Encoder, tr transform.Transformer, v any) error {
+func (f *ParameterField) encodePrm(enc *encoding.Encoder, v any) error {
 	encTc := f.tc.encTc()
 	if v == nil && f.tc.supportNullValue() {
 		enc.Byte(byte(f.tc.nullValue())) // null value type code
@@ -224,7 +223,7 @@ func (f *ParameterField) encodePrm(enc *encoding.Encoder, tr transform.Transform
 	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcBinary, tcVarbinary:
 		return enc.VarField(v)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return enc.Cesu8Field(tr, v)
+		return enc.Cesu8Field(v)
 	case tcStPoint, tcStGeometry:
 		return enc.HexField(v)
 	case tcBlob, tcClob, tcLocator, tcNclob, tcText, tcNlocator, tcBintext:
@@ -269,7 +268,7 @@ func (m *ParameterMetadata) decode(dec *encoding.Decoder, header *PartHeader, at
 		f.decode(dec)
 		m.ParameterFields[i] = f
 	}
-	if err := names.decode(dec, attrs); err != nil {
+	if err := names.decode(dec); err != nil {
 		return err
 	}
 	return nil
@@ -337,7 +336,7 @@ func (p *InputParameters) decode(dec *encoding.Decoder, header *PartHeader, attr
 	return nil
 }
 
-func (p *InputParameters) encode(enc *encoding.Encoder, tr transform.Transformer) error {
+func (p *InputParameters) encode(enc *encoding.Encoder) error {
 	numColumns := len(p.InputFields)
 	if numColumns == 0 { // avoid divide-by-zero (e.g. prepare without parameters)
 		return nil
@@ -349,7 +348,7 @@ func (p *InputParameters) encode(enc *encoding.Encoder, tr transform.Transformer
 		for j := range numColumns {
 			// mass insert
 			f := p.InputFields[j]
-			if err := f.encodePrm(enc, tr, p.nvargs[i*numColumns+j].Value); err != nil {
+			if err := f.encodePrm(enc, p.nvargs[i*numColumns+j].Value); err != nil {
 				return err
 			}
 			if f.IsLob() && f.In() {

@@ -377,7 +377,7 @@ Bulk insert containing LOBs:
     .for all packages except the last one, the last row contains 'incomplete' LOB data ('piecewise' writing)
 */
 func (s *stmt) exec(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue, ofs int) (driver.Result, error) {
-	addLobDataRecs, err := convertExecArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize)
+	addLobDataRecs, err := convertExecArgs(pr.parameterFields, nvargs, s.attrs.cesu8EncoderFn, s.attrs.lobChunkSize)
 	if err != nil {
 		return driver.ResultNoRows, err
 	}

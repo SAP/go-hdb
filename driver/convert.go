@@ -121,7 +121,7 @@ func valuerValue(v driver.Valuer) (driver.Value, error) {
 	}
 }
 
-func convertArg(field *p.ParameterField, arg any, cesu8Encoder transform.Transformer) (any, error) {
+func convertArg(field *p.ParameterField, arg any) (any, error) {
 	// let fields with own value converter convert themselves first (e.g. NullInt64, ...)
 	// .check nested Value converters as well (e.g. sql.Null[T] has driver.Decimal as value)
 	for {
@@ -136,7 +136,7 @@ func convertArg(field *p.ParameterField, arg any, cesu8Encoder transform.Transfo
 	}
 
 	// convert field
-	return field.Convert(arg, cesu8Encoder)
+	return field.Convert(arg)
 }
 
 /*
@@ -145,7 +145,7 @@ convertExecArgs
   - out parameters are not supported
   - named parameters are not supported
 */
-func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8Encoder transform.Transformer, lobChunkSize int) ([]int, error) {
+func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8EncoderFn func() transform.Transformer, lobChunkSize int) ([]int, error) {
 	numField := len(fields)
 	if numField == 0 {
 		return nil, fmt.Errorf("invalid number of fields %d", numField)
@@ -171,12 +171,12 @@ func convertExecArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ces
 				return nil, fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
 			}
 			var err error
-			if nvarg.Value, err = convertArg(field, nvarg.Value, cesu8Encoder); err != nil {
+			if nvarg.Value, err = convertArg(field, nvarg.Value); err != nil {
 				return nil, fmt.Errorf("field %s conversion error - %w", field, err)
 			}
 			// fetch first lob chunk
 			if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-				if err := lobInDescr.FetchNext(lobChunkSize); err != nil {
+				if err := lobInDescr.FetchFirst(lobChunkSize, cesu8EncoderFn); err != nil {
 					return nil, err
 				}
 				if !lobInDescr.IsLastData() {
@@ -197,7 +197,7 @@ _convertQueryArgs
   - out parameters are not supported
   - named parameters are not supported
 */
-func convertQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8Encoder transform.Transformer, lobChunkSize int) error {
+func convertQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8EncoderFn func() transform.Transformer, lobChunkSize int) error {
 	if len(nvargs) != len(fields) {
 		return fmt.Errorf("invalid number of arguments %d - %d expected", len(nvargs), len(fields))
 	}
@@ -214,12 +214,12 @@ func convertQueryArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ce
 			return fmt.Errorf("invalid argument %s - named parameters not supported", nvarg.Name)
 		}
 		var err error
-		if nvarg.Value, err = convertArg(field, nvarg.Value, cesu8Encoder); err != nil {
+		if nvarg.Value, err = convertArg(field, nvarg.Value); err != nil {
 			return fmt.Errorf("field %s conversion error - %w", field, err)
 		}
 		// fetch first lob chunk
 		if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-			if err := lobInDescr.FetchNext(lobChunkSize); err != nil {
+			if err := lobInDescr.FetchFirst(lobChunkSize, cesu8EncoderFn); err != nil {
 				return err
 			}
 		}
@@ -246,7 +246,7 @@ func newCallArgs() *callArgs {
 	}
 }
 
-func convertCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8Encoder transform.Transformer, lobChunkSize int) (*callArgs, error) {
+func convertCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, cesu8EncoderFn func() transform.Transformer, lobChunkSize int) (*callArgs, error) {
 	callArgs := newCallArgs()
 
 	if len(nvargs) < len(fields) { // number of fields needs to match number of args or be greater (add table output args)
@@ -275,17 +275,17 @@ func convertCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ces
 				if !out.In {
 					return nil, fmt.Errorf("argument field %s mismatch - use in argument with out field", field)
 				}
-				if out.Dest, err = convertArg(field, out.Dest, cesu8Encoder); err != nil {
+				if out.Dest, err = convertArg(field, out.Dest); err != nil {
 					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
 				}
 			} else {
-				if nvarg.Value, err = convertArg(field, nvarg.Value, cesu8Encoder); err != nil {
+				if nvarg.Value, err = convertArg(field, nvarg.Value); err != nil {
 					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
 				}
 			}
 			// fetch first lob chunk
 			if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
-				if err := lobInDescr.FetchNext(lobChunkSize); err != nil {
+				if err := lobInDescr.FetchFirst(lobChunkSize, cesu8EncoderFn); err != nil {
 					return nil, err
 				}
 			}

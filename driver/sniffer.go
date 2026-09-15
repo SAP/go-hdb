@@ -157,7 +157,7 @@ type lobLocator struct {
 // the server's strict request-reply cycle.
 func (s *Sniffer) Run() error {
 	ctx := context.Background()
-	readerAttrs := p.NewReaderAttrs(true, s.logger, cesu8.DefaultDecoder(), defaultLobChunkSize, false, nil)
+	readerAttrs := p.NewReaderAttrs(true, s.logger, cesu8.DefaultDecoder, defaultLobChunkSize, false, nil)
 
 	c2d := io.TeeReader(s.conn, s.dbConn) // client request -> database
 	d2c := io.TeeReader(s.dbConn, s.conn) // database reply -> client

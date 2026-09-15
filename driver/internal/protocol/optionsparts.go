@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 // ClientContextOption represents a client context option.
@@ -648,7 +647,7 @@ func (ops *options[K]) decode(dec *encoding.Decoder, numArg int) error {
 	return nil
 }
 
-func (ops options[K]) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (ops options[K]) encode(enc *encoding.Encoder) error {
 	for k, v := range ops {
 		enc.Int8(int8(k))
 

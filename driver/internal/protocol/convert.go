@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 const (
@@ -679,7 +678,17 @@ type readProvider interface {
 	Reader() io.Reader
 }
 
-func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
+func convertLob(v any, cesu8 bool) (any, error) {
+	// All lob input values are normalized to an io.Reader here and later streamed
+	// in chunks (transcoded on the fly for N-LOBs, see LobInDescr.FetchFirst).
+	//
+	// TODO (fast path, optional perf): when the value already fits in a single
+	// chunk, we could transcode/write it whole via the scalar CESU8 primitives
+	// and skip the reader wrap + the extra writeLobs round-trip. For string/[]byte
+	// the (CESU-8) size is known up front (cesu8.StringSize / cesu8.Size); for a
+	// bare io.Reader it is only known after the first fetch. Mind the == chunkSize
+	// boundary (it must count as last-data) and keep the wire bytes / descriptor
+	// size+opt identical to the streamed path.
 	var rd io.Reader = nil
 	switch v := v.(type) {
 	case io.Reader:
@@ -698,10 +707,7 @@ func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
 		}
 	}
 	if rd != nil {
-		if cesu8Encoder != nil {
-			rd = transform.NewReader(rd, cesu8Encoder)
-		}
-		return newLobInDescr(rd), nil
+		return newLobInDescr(rd, cesu8), nil
 	}
 
 	rv := reflect.ValueOf(v)
@@ -710,13 +716,13 @@ func convertLob(v any, cesu8Encoder transform.Transformer) (any, error) {
 		if rv.IsNil() {
 			return nil, nil
 		}
-		return convertLob(rv.Elem().Interface(), cesu8Encoder)
+		return convertLob(rv.Elem().Interface(), cesu8)
 	default:
 		return nil, errConversionNotSupported
 	}
 }
 
-func convertField(tc typeCode, v any, prec, scale int, cesu8Encoder transform.Transformer) (any, error) {
+func convertField(tc typeCode, v any, prec, scale int) (any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -745,11 +751,11 @@ func convertField(tc typeCode, v any, prec, scale int, cesu8Encoder transform.Tr
 	case tcChar, tcVarchar, tcString, tcBstring, tcAlphanum, tcNchar, tcNvarchar, tcNstring, tcShorttext, tcBinary, tcVarbinary, tcStPoint, tcStGeometry:
 		return convertBytes(v)
 	case tcBlob, tcClob, tcLocator:
-		return convertLob(v, nil)
+		return convertLob(v, false)
 	case tcNclob, tcText, tcNlocator:
-		return convertLob(v, cesu8Encoder)
+		return convertLob(v, true)
 	case tcBintext: // ?? lobCESU8Type
-		return convertLob(v, nil)
+		return convertLob(v, false)
 	default:
 		panic(fmt.Errorf("invalid type code %[1]d %[1]s", tc)) // should never happen
 	}

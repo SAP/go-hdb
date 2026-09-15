@@ -51,7 +51,7 @@ func (fn *fieldNames) name(ofs uint32) string {
 	return ""
 }
 
-func (fn *fieldNames) decode(dec *encoding.Decoder, attrs *ReaderAttrs) error {
+func (fn *fieldNames) decode(dec *encoding.Decoder) error {
 	// TODO sniffer - python client texts are returned differently?
 	// - double check offset calc (CESU8 issue?)
 	var errs []error
@@ -62,7 +62,7 @@ func (fn *fieldNames) decode(dec *encoding.Decoder, attrs *ReaderAttrs) error {
 		if diff > 0 {
 			dec.Skip(diff)
 		}
-		n, s, err := dec.CESU8LIString(attrs.tr)
+		n, s, err := dec.CESU8LIString()
 		if err != nil {
 			errs = append(errs, err)
 		}
