@@ -5,7 +5,6 @@ import (
 	"math"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 // Prms represents authentication parameters.
@@ -28,7 +27,7 @@ func (p *Prms) addPrms() *Prms {
 }
 
 // Encode encodes the parameters.
-func (p *Prms) Encode(enc *encoding.Encoder, tr transform.Transformer) error {
+func (p *Prms) Encode(enc *encoding.Encoder) error {
 	numPrms := len(p.prms)
 	if numPrms > math.MaxInt16 {
 		return fmt.Errorf("invalid number of parameters %d - maximum %d", numPrms, math.MaxInt16)
@@ -42,15 +41,15 @@ func (p *Prms) Encode(enc *encoding.Encoder, tr transform.Transformer) error {
 				return err
 			}
 		case string:
-			if err := enc.CESU8LIString(tr, e); err != nil {
+			if err := enc.CESU8LIString(e); err != nil {
 				return err
 			}
 		case *Prms:
-			subEnc := encoding.Encoder(make([]byte, 0))
-			if err := e.Encode(&subEnc, tr); err != nil {
+			subEnc := encoding.NewEncoder(make([]byte, 0), enc.Transformer())
+			if err := e.Encode(subEnc); err != nil {
 				return err
 			}
-			if err := enc.LIBytes(subEnc); err != nil {
+			if err := enc.LIBytes(subEnc.Buffer()); err != nil {
 				return err
 			}
 		default:

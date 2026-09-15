@@ -32,43 +32,63 @@ func (e ShortBufferError) Error() string {
 // error. The typed panic lets the part-decode boundary recover it
 // deterministically (see protocol.recoverShortBuffer) and fail just the current
 // statement, while a genuine driver bug (a different panic) still crashes.
-type Decoder []byte
+type Decoder struct {
+	buf []byte
+	tr  transform.Transformer
+}
+
+// NewDecoder returns a new Decoder over buf using tr for CESU-8 -> UTF-8 field
+// decoding. Either argument may be nil (nil buf: set later via SetBuffer; nil
+// tr: no CESU-8 field decoding on this decoder).
+func NewDecoder(buf []byte, tr transform.Transformer) *Decoder {
+	return &Decoder{buf: buf, tr: tr}
+}
+
+// SetBuffer points the decoder at buf, resetting its read position. The
+// transformer is retained.
+func (d *Decoder) SetBuffer(buf []byte) { d.buf = buf }
+
+// Buffer returns the decoder's (remaining) buffer.
+func (d *Decoder) Buffer() []byte { return d.buf }
+
+// Transformer returns the decoder's CESU-8 transformer.
+func (d *Decoder) Transformer() transform.Transformer { return d.tr }
 
 // Skip skips cnt bytes from reading.
 func (d *Decoder) Skip(cnt int) {
-	if len(*d) < cnt {
-		panic(ShortBufferError{Need: cnt, Have: len(*d)})
+	if len(d.buf) < cnt {
+		panic(ShortBufferError{Need: cnt, Have: len(d.buf)})
 	}
-	*d = (*d)[cnt:]
+	d.buf = d.buf[cnt:]
 }
 
 // Byte decodes a byte.
 func (d *Decoder) Byte() byte {
-	if len(*d) < 1 {
-		panic(ShortBufferError{Need: 1, Have: len(*d)})
+	if len(d.buf) < 1 {
+		panic(ShortBufferError{Need: 1, Have: len(d.buf)})
 	}
-	b := (*d)[0]
-	*d = (*d)[1:]
+	b := d.buf[0]
+	d.buf = d.buf[1:]
 	return b
 }
 
 // Bytes decodes bytes.
 func (d *Decoder) Bytes(n int) []byte {
-	if len(*d) < n {
-		panic(ShortBufferError{Need: n, Have: len(*d)})
+	if len(d.buf) < n {
+		panic(ShortBufferError{Need: n, Have: len(d.buf)})
 	}
-	b := (*d)[:n]
-	*d = (*d)[n:]
+	b := d.buf[:n]
+	d.buf = d.buf[n:]
 	return b
 }
 
 // Str decodes strings.
 func (d *Decoder) Str(n int) string {
-	if len(*d) < n {
-		panic(ShortBufferError{Need: n, Have: len(*d)})
+	if len(d.buf) < n {
+		panic(ShortBufferError{Need: n, Have: len(d.buf)})
 	}
-	b := (*d)[:n]
-	*d = (*d)[n:]
+	b := d.buf[:n]
+	d.buf = d.buf[n:]
 	return unsafe.ByteSlice2String(b)
 }
 
@@ -84,112 +104,112 @@ func (d *Decoder) Int8() int8 {
 
 // Int16 decodes an int16.
 func (d *Decoder) Int16() int16 {
-	if len(*d) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	if len(d.buf) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
-	i16 := int16(binary.LittleEndian.Uint16(*d)) //nolint: gosec
-	*d = (*d)[2:]
+	i16 := int16(binary.LittleEndian.Uint16(d.buf)) //nolint: gosec
+	d.buf = d.buf[2:]
 	return i16
 }
 
 // Uint16 decodes an uint16.
 func (d *Decoder) Uint16() uint16 {
-	if len(*d) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	if len(d.buf) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
-	u16 := binary.LittleEndian.Uint16(*d)
-	*d = (*d)[2:]
+	u16 := binary.LittleEndian.Uint16(d.buf)
+	d.buf = d.buf[2:]
 	return u16
 }
 
 // Uint16ByteOrder decodes an uint16 in given byte order.
 func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
-	if len(*d) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(*d)})
+	if len(d.buf) < 2 {
+		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
-	u16 := byteOrder.Uint16(*d)
-	*d = (*d)[2:]
+	u16 := byteOrder.Uint16(d.buf)
+	d.buf = d.buf[2:]
 	return u16
 }
 
 // Int32 decodes an int32.
 func (d *Decoder) Int32() int32 {
-	if len(*d) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	if len(d.buf) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
-	i32 := int32(binary.LittleEndian.Uint32(*d)) //nolint: gosec
-	*d = (*d)[4:]
+	i32 := int32(binary.LittleEndian.Uint32(d.buf)) //nolint: gosec
+	d.buf = d.buf[4:]
 	return i32
 }
 
 // Uint32 decodes an uint32.
 func (d *Decoder) Uint32() uint32 {
-	if len(*d) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	if len(d.buf) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
-	u32 := binary.LittleEndian.Uint32(*d)
-	*d = (*d)[4:]
+	u32 := binary.LittleEndian.Uint32(d.buf)
+	d.buf = d.buf[4:]
 	return u32
 }
 
 // Uint32ByteOrder decodes an uint32 in given byte order.
 func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
-	if len(*d) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	if len(d.buf) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
-	u32 := byteOrder.Uint32(*d)
-	*d = (*d)[4:]
+	u32 := byteOrder.Uint32(d.buf)
+	d.buf = d.buf[4:]
 	return u32
 }
 
 // Int64 decodes an int64.
 func (d *Decoder) Int64() int64 {
-	if len(*d) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	if len(d.buf) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
-	i64 := int64(binary.LittleEndian.Uint64(*d)) //nolint: gosec
-	*d = (*d)[8:]
+	i64 := int64(binary.LittleEndian.Uint64(d.buf)) //nolint: gosec
+	d.buf = d.buf[8:]
 	return i64
 }
 
 // Uint64 decodes an uint64.
 func (d *Decoder) Uint64() uint64 {
-	if len(*d) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	if len(d.buf) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
-	u64 := binary.LittleEndian.Uint64(*d)
-	*d = (*d)[8:]
+	u64 := binary.LittleEndian.Uint64(d.buf)
+	d.buf = d.buf[8:]
 	return u64
 }
 
 // Float32 decodes a float32.
 func (d *Decoder) Float32() float32 {
-	if len(*d) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(*d)})
+	if len(d.buf) < 4 {
+		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
-	bits := binary.LittleEndian.Uint32(*d)
-	*d = (*d)[4:]
+	bits := binary.LittleEndian.Uint32(d.buf)
+	d.buf = d.buf[4:]
 	return math.Float32frombits(bits)
 }
 
 // Float64 decodes a float64.
 func (d *Decoder) Float64() float64 {
-	if len(*d) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(*d)})
+	if len(d.buf) < 8 {
+		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
-	bits := binary.LittleEndian.Uint64(*d)
-	*d = (*d)[8:]
+	bits := binary.LittleEndian.Uint64(d.buf)
+	d.buf = d.buf[8:]
 	return math.Float64frombits(bits)
 }
 
 // Decimal decodes a decimal.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
-	if len(*d) < decSize {
-		panic(ShortBufferError{Need: decSize, Have: len(*d)})
+	if len(d.buf) < decSize {
+		panic(ShortBufferError{Need: decSize, Have: len(d.buf)})
 	}
-	bs := (*d)[:decSize]
-	*d = (*d)[decSize:]
+	bs := d.buf[:decSize]
+	d.buf = d.buf[decSize:]
 
 	if (bs[15] & 0x70) == 0x70 { // null value (bit 4,5,6 set)
 		return nil, 0, nil
@@ -229,11 +249,11 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 
 // Fixed decodes a fixed decimal.
 func (d *Decoder) Fixed(size int) *big.Int { // m, exp
-	if len(*d) < size {
-		panic(ShortBufferError{Need: size, Have: len(*d)})
+	if len(d.buf) < size {
+		panic(ShortBufferError{Need: size, Have: len(d.buf)})
 	}
-	bs := (*d)[:size]
-	*d = (*d)[size:]
+	bs := d.buf[:size]
+	d.buf = d.buf[size:]
 
 	neg := (bs[size-1] & 0x80) != 0 // is negative number (2s complement)
 
@@ -267,14 +287,17 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 
 // CESU8Bytes decodes CESU-8 into UTF-8 bytes.
 // - error is only returned in case of conversion errors.
-func (d *Decoder) CESU8Bytes(tr transform.Transformer, size int) ([]byte, error) {
-	if len(*d) < size {
-		panic(ShortBufferError{Need: size, Have: len(*d)})
+func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
+	if len(d.buf) < size {
+		panic(ShortBufferError{Need: size, Have: len(d.buf)})
 	}
-	p := (*d)[:size]
-	*d = (*d)[size:]
+	p := d.buf[:size]
+	d.buf = d.buf[size:]
 
-	n, _, err := tr.Transform(p, p, true) // transform inline
+	// reset before use: this is a self-contained (atEOF) decode of one value; a
+	// stateful (custom) transformer must not carry state in from a prior use.
+	d.tr.Reset()
+	n, _, err := d.tr.Transform(p, p, true) // transform inline
 	if err != nil {
 		return nil, err
 	}
@@ -314,18 +337,18 @@ func (d *Decoder) LIString() (n int, s string) {
 }
 
 // CESU8LIBytes decodes CESU-8 into UTF-8 bytes with length indicator.
-func (d *Decoder) CESU8LIBytes(tr transform.Transformer) (int, []byte, error) {
+func (d *Decoder) CESU8LIBytes() (int, []byte, error) {
 	n, size, null := d.varFieldInd()
 	if null {
 		return n, nil, nil
 	}
-	b, err := d.CESU8Bytes(tr, size)
+	b, err := d.CESU8Bytes(size)
 	return n + size, b, err
 }
 
 // CESU8LIString decodes a CESU-8 into a UTF-8 string with length indicator.
-func (d *Decoder) CESU8LIString(tr transform.Transformer) (int, string, error) {
-	n, b, err := d.CESU8LIBytes(tr)
+func (d *Decoder) CESU8LIString() (int, string, error) {
+	n, b, err := d.CESU8LIBytes()
 	return n, unsafe.ByteSlice2String(b), err
 }
 
@@ -549,8 +572,8 @@ func (d *Decoder) AlphanumField(alphanumDfv1 bool) (any, error) {
 }
 
 // Cesu8Field decodes a cesu8 field.
-func (d *Decoder) Cesu8Field(tr transform.Transformer) (any, error) {
-	_, b, err := d.CESU8LIBytes(tr)
+func (d *Decoder) Cesu8Field() (any, error) {
+	_, b, err := d.CESU8LIBytes()
 	if err != nil {
 		return nil, err
 	}

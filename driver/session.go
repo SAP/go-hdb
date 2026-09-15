@@ -14,6 +14,7 @@ import (
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/trace"
+	"golang.org/x/text/transform"
 )
 
 // SessionUser provides the fields for a hdb 'connect' (switch user) statement.
@@ -56,6 +57,15 @@ type session struct {
 	readerAttrs *p.ReaderAttrs
 	writerAttrs *p.WriterAttrs
 
+	// reusable decoder for reading lob values (cesu8 -> utf8). Reads on a
+	// connection are strictly sequential (database/sql serializes per connection
+	// and each lob read completes within one Scan call), so there is never
+	// concurrent access to reset/clobber and a single instance can be reused
+	// instead of minting one per lob read. Only the encode-side lob path, where
+	// readers can interleave, needs its own instance per use (see
+	// p.LobInDescr.FetchFirst).
+	lobReadDecoder transform.Transformer
+
 	prd *p.Reader
 	pwr *p.Writer
 
@@ -82,8 +92,8 @@ type session struct {
 func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, metrics *metrics, routing *routing, attrs *connAttrs) (*session, error) {
 	protTrace := protTrace.Load()
 
-	readerAttrs := p.NewReaderAttrs(protTrace, logger, attrs.cesu8Decoder, attrs.lobChunkSize, attrs.emptyDateAsNull, attrs.compressor)
-	writerAttrs := p.NewWriterAttrs(protTrace, logger, attrs.cesu8Encoder, attrs.sessionVariables, attrs.compressor)
+	readerAttrs := p.NewReaderAttrs(protTrace, logger, attrs.cesu8DecoderFn, attrs.lobChunkSize, attrs.emptyDateAsNull, attrs.compressor)
+	writerAttrs := p.NewWriterAttrs(protTrace, logger, attrs.cesu8EncoderFn, attrs.sessionVariables, attrs.compressor)
 
 	// buffer reader
 	prd := p.NewDBReader(bufio.NewReaderSize(conn, attrs.bufferSize), readerAttrs)
@@ -109,6 +119,7 @@ func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, me
 		attrs:          attrs,
 		readerAttrs:    readerAttrs,
 		writerAttrs:    writerAttrs,
+		lobReadDecoder: attrs.cesu8DecoderFn(),
 		prd:            prd,
 		pwr:            pwr,
 		sqlTracer:      sqlTracer,
@@ -537,7 +548,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 
 	// allow e.g inserts as query -> handle commit like in exec
 
-	if err := convertQueryArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize); err != nil {
+	if err := convertQueryArgs(pr.parameterFields, nvargs, s.attrs.cesu8EncoderFn, s.attrs.lobChunkSize); err != nil {
 		return nil, err
 	}
 	inputParameters := p.NewInputParameters(pr.parameterFields, nvargs)
@@ -664,7 +675,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 	t := time.Now()
 	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeCall)
 
-	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, s.attrs.cesu8Encoder, s.attrs.lobChunkSize)
+	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, s.attrs.cesu8EncoderFn, s.attrs.lobChunkSize)
 	if err != nil {
 		return nil, nil, 0, err
 	}

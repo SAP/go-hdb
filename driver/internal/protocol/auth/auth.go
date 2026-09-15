@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 /*
@@ -53,7 +52,7 @@ type Method interface {
 	DecodeInitReply(dec *encoding.Decoder) error
 	EncodeFinalReq(prms *Prms) error
 	DecodeFinalReq(dec *encoding.Decoder, logonname string) error
-	DecodeFinalReply(dec *encoding.Decoder, tr transform.Transformer) error
+	DecodeFinalReply(dec *encoding.Decoder) error
 }
 
 // Methods defines a collection of methods.

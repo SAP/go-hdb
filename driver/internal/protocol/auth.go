@@ -7,7 +7,6 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/trace"
-	"golang.org/x/text/transform"
 )
 
 // AuthHnd holds the client authentication methods dependent on the driver.Connector attributes and handles the authentication hdb protocol.
@@ -88,7 +87,7 @@ type AuthInitRequest struct {
 
 // encode encodes the request by iterating the offered methods: the method
 // name, then the method's own detail parameters.
-func (r *AuthInitRequest) encode(enc *encoding.Encoder, tr transform.Transformer) error {
+func (r *AuthInitRequest) encode(enc *encoding.Encoder) error {
 	prms := new(auth.Prms)
 	prms.AddCESU8String(r.logonname)
 	for _, m := range r.methods {
@@ -97,7 +96,7 @@ func (r *AuthInitRequest) encode(enc *encoding.Encoder, tr transform.Transformer
 			return err
 		}
 	}
-	return prms.Encode(enc, tr)
+	return prms.Encode(enc)
 }
 
 func (r *AuthInitRequest) decode(dec *encoding.Decoder, _ *PartHeader, attrs *ReaderAttrs) error {
@@ -108,7 +107,7 @@ func (r *AuthInitRequest) decode(dec *encoding.Decoder, _ *PartHeader, attrs *Re
 	if (numPrm-1)%2 != 0 {
 		return fmt.Errorf("invalid number of parameters %d - expected pairs of method name and detail", numPrm)
 	}
-	_, logonname, err := dec.CESU8LIString(attrs.tr)
+	_, logonname, err := dec.CESU8LIString()
 	if err != nil {
 		return err
 	}
@@ -202,14 +201,14 @@ type AuthFinalRequest struct {
 	method auth.Method // the selected method: the client's prepared, the sniffer's wire-interpreted
 }
 
-func (r *AuthFinalRequest) encode(enc *encoding.Encoder, tr transform.Transformer) error {
+func (r *AuthFinalRequest) encode(enc *encoding.Encoder) error {
 	prms := new(auth.Prms)
 	prms.AddCESU8String(r.method.AuthLoginName())
 	prms.AddString(r.method.Typ())
 	if err := r.method.EncodeFinalReq(prms); err != nil {
 		return err
 	}
-	return prms.Encode(enc, tr)
+	return prms.Encode(enc)
 }
 
 func (r *AuthFinalRequest) String() string {
@@ -224,7 +223,7 @@ func (r *AuthFinalRequest) decode(dec *encoding.Decoder, _ *PartHeader, attrs *R
 	if numPrm < 3 {
 		return fmt.Errorf("invalid number of parameters %d - expected at least 3", numPrm)
 	}
-	_, logonname, err := dec.CESU8LIString(attrs.tr)
+	_, logonname, err := dec.CESU8LIString()
 	if err != nil {
 		return err
 	}
@@ -256,5 +255,5 @@ func (r *AuthFinalReply) decode(dec *encoding.Decoder, _ *PartHeader, attrs *Rea
 		return nil
 	}
 
-	return r.Method.DecodeFinalReply(dec, attrs.tr)
+	return r.Method.DecodeFinalReply(dec)
 }

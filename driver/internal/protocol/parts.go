@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 // Part represents a protocol part.
@@ -21,7 +20,7 @@ type PartDecoder interface {
 type PartEncoder interface {
 	Part
 	numArg() int
-	encode(enc *encoding.Encoder, tr transform.Transformer) error
+	encode(enc *encoding.Encoder) error
 }
 
 func (*HdbErrors) kind() PartKind           { return PkError }

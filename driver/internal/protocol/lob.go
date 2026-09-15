@@ -67,15 +67,16 @@ const (
 
 // LobInDescr represents a lob input descriptor.
 type LobInDescr struct {
-	rd   io.Reader
-	opt  LobOptions
-	pos  int
-	buf  bytes.Buffer
-	size int
+	rd    io.Reader
+	cesu8 bool // whether the lob content needs UTF-8 -> CESU-8 transformation
+	opt   LobOptions
+	pos   int
+	buf   bytes.Buffer
+	size  int
 }
 
-func newLobInDescr(rd io.Reader) *LobInDescr {
-	return &LobInDescr{rd: rd}
+func newLobInDescr(rd io.Reader, cesu8 bool) *LobInDescr {
+	return &LobInDescr{rd: rd, cesu8: cesu8}
 }
 
 func (d *LobInDescr) String() string {
@@ -85,8 +86,26 @@ func (d *LobInDescr) String() string {
 // IsLastData returns true in case of last data package read, false otherwise.
 func (d *LobInDescr) IsLastData() bool { return d.opt.IsLastData() }
 
-// FetchNext fetches the next lob chunk.
-func (d *LobInDescr) FetchNext(chunkSize int) error {
+// FetchFirst fetches the first lob chunk.
+//
+// It obtains a fresh transformer instance from cesu8EncoderFn (instead of
+// reusing a shared one) because lob input readers can interleave: on a bulk
+// insert several multi-chunk lobs are live at once and their chunks are pulled
+// round-robin. A stateful (custom) transformer shared across them would have
+// its state reset/clobbered by one reader while another is mid-transform,
+// silently corrupting the data. A fresh instance per reader keeps each one
+// isolated. The instance is created only when a transformation is actually
+// needed (d.cesu8); the default transformer is stateless, so this costs
+// nothing for it.
+func (d *LobInDescr) FetchFirst(chunkSize int, cesu8EncoderFn func() transform.Transformer) error {
+	if d.cesu8 {
+		d.rd = transform.NewReader(d.rd, cesu8EncoderFn())
+	}
+	return d.fetchNext(chunkSize)
+}
+
+// fetchNext fetches the next lob chunk.
+func (d *LobInDescr) fetchNext(chunkSize int) error {
 	/*
 		We need to guarantee, that a max amount of data is read to prevent
 		piece wise LOB writing when avoidable
@@ -134,7 +153,7 @@ func (d *WriteLobDescr) IsLastData() bool { return d.opt.IsLastData() }
 
 // FetchNext fetches the next lob chunk.
 func (d *WriteLobDescr) FetchNext(chunkSize int) error {
-	if err := d.LobInDescr.FetchNext(chunkSize); err != nil {
+	if err := d.LobInDescr.fetchNext(chunkSize); err != nil {
 		return err
 	}
 	d.opt = d.LobInDescr.opt
@@ -186,7 +205,7 @@ func (r *WriteLobRequest) decode(dec *encoding.Decoder, header *PartHeader, attr
 	return nil
 }
 
-func (r *WriteLobRequest) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (r *WriteLobRequest) encode(enc *encoding.Encoder) error {
 	for _, descr := range r.Descrs {
 		if err := descr.encode(enc); err != nil {
 			return err
@@ -246,7 +265,7 @@ func (r *ReadLobRequest) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderA
 	return nil
 }
 
-func (r *ReadLobRequest) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (r *ReadLobRequest) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(r.ID))
 	enc.Int64(r.Ofs + 1)          // 1-based
 	enc.Int32(int32(r.ChunkSize)) //nolint: gosec

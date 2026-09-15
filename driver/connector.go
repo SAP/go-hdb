@@ -103,8 +103,8 @@ type connAttrs struct {
 	fetchSize          int
 	lobChunkSize       int
 	dfv                int
-	cesu8Decoder       transform.Transformer
-	cesu8Encoder       transform.Transformer
+	cesu8DecoderFn     func() transform.Transformer
+	cesu8EncoderFn     func() transform.Transformer
 	emptyDateAsNull    bool
 	compressor         compress.Compressor
 	connectionRouting  bool
@@ -483,8 +483,8 @@ func (c *Connector) connAttrs() *connAttrs {
 		fetchSize:          c._fetchSize,
 		lobChunkSize:       c._lobChunkSize,
 		dfv:                c._dfv,
-		cesu8Decoder:       c._cesu8DecoderFn(),
-		cesu8Encoder:       c._cesu8EncoderFn(),
+		cesu8DecoderFn:     c._cesu8DecoderFn,
+		cesu8EncoderFn:     c._cesu8EncoderFn,
 		emptyDateAsNull:    c._emptyDateAsNull,
 		compressor:         c._compressor,
 		connectionRouting:  c._connectionRouting,

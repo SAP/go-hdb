@@ -33,95 +33,116 @@ func asTime(v any) time.Time {
 }
 
 // Encoder encodes hdb protocol datatypes on basis of an io.Writer.
-type Encoder []byte
+type Encoder struct {
+	buf []byte
+	tr  transform.Transformer
+}
+
+// NewEncoder returns a new Encoder over buf using tr for UTF-8 -> CESU-8 field
+// encoding. Either argument may be nil (nil buf: append from empty; nil tr: no
+// CESU-8 field encoding on this encoder).
+func NewEncoder(buf []byte, tr transform.Transformer) *Encoder {
+	return &Encoder{buf: buf, tr: tr}
+}
+
+// SetBuffer points the encoder at buf (its write head is len(buf)). The
+// transformer is retained.
+func (e *Encoder) SetBuffer(buf []byte) { e.buf = buf }
+
+// Buffer returns the encoder's accumulated buffer.
+func (e *Encoder) Buffer() []byte { return e.buf }
+
+// Transformer returns the encoder's CESU-8 transformer, e.g. to seed a separate
+// encoder that must encode CESU-8 with the same transformer (see auth.Prms).
+func (e *Encoder) Transformer() transform.Transformer { return e.tr }
 
 // Zeroes encodes cnt zero byte values.
 func (e *Encoder) Zeroes(n int) {
-	l := len(*e)
-	*e = slices.Grow(*e, n)
-	*e = (*e)[:l+n]
+	l := len(e.buf)
+	e.buf = slices.Grow(e.buf, n)
+	e.buf = e.buf[:l+n]
 	for i := l; i < l+n; i++ {
-		(*e)[i] = 0
+		e.buf[i] = 0
 	}
 }
 
 // Bytes encodes bytes.
 func (e *Encoder) Bytes(p []byte) {
-	*e = append(*e, p...)
+	e.buf = append(e.buf, p...)
 }
 
 // Byte encodes a byte.
 func (e *Encoder) Byte(b byte) {
-	*e = append(*e, b)
+	e.buf = append(e.buf, b)
 }
 
 // Bool encodes a boolean.
 func (e *Encoder) Bool(v bool) {
 	if v {
-		*e = append(*e, 1)
+		e.buf = append(e.buf, 1)
 	} else {
-		*e = append(*e, 0)
+		e.buf = append(e.buf, 0)
 	}
 }
 
 // Int8 encodes an int8.
 func (e *Encoder) Int8(i8 int8) {
-	*e = append(*e, byte(i8)) //nolint: gosec
+	e.buf = append(e.buf, byte(i8)) //nolint: gosec
 }
 
 // Int16 encodes an int16.
 func (e *Encoder) Int16(i16 int16) {
-	*e = binary.LittleEndian.AppendUint16(*e, uint16(i16)) //nolint: gosec
+	e.buf = binary.LittleEndian.AppendUint16(e.buf, uint16(i16)) //nolint: gosec
 }
 
 // Uint16 encodes an uint16.
 func (e *Encoder) Uint16(u16 uint16) {
-	*e = binary.LittleEndian.AppendUint16(*e, u16)
+	e.buf = binary.LittleEndian.AppendUint16(e.buf, u16)
 }
 
 // Uint16ByteOrder encodes an uint16 in given byte order.
 func (e *Encoder) Uint16ByteOrder(u16 uint16, byteOrder binary.ByteOrder) {
-	*e = byteOrder.(binary.AppendByteOrder).AppendUint16(*e, u16)
+	e.buf = byteOrder.(binary.AppendByteOrder).AppendUint16(e.buf, u16)
 }
 
 // Int32 encodes an int32.
 func (e *Encoder) Int32(i32 int32) {
-	*e = binary.LittleEndian.AppendUint32(*e, uint32(i32)) //nolint:gosec
+	e.buf = binary.LittleEndian.AppendUint32(e.buf, uint32(i32)) //nolint:gosec
 }
 
 // Uint32 encodes an uint32.
 func (e *Encoder) Uint32(u32 uint32) {
-	*e = binary.LittleEndian.AppendUint32(*e, u32)
+	e.buf = binary.LittleEndian.AppendUint32(e.buf, u32)
 }
 
 // Int64 encodes an int64.
 func (e *Encoder) Int64(i64 int64) {
-	*e = binary.LittleEndian.AppendUint64(*e, uint64(i64)) //nolint:gosec
+	e.buf = binary.LittleEndian.AppendUint64(e.buf, uint64(i64)) //nolint:gosec
 }
 
 // Uint64 encodes an uint64.
 func (e *Encoder) Uint64(u64 uint64) {
-	*e = binary.LittleEndian.AppendUint64(*e, u64)
+	e.buf = binary.LittleEndian.AppendUint64(e.buf, u64)
 }
 
 // Float32 encodes a float32.
 func (e *Encoder) Float32(f float32) {
 	bits := math.Float32bits(f)
-	*e = binary.LittleEndian.AppendUint32(*e, bits)
+	e.buf = binary.LittleEndian.AppendUint32(e.buf, bits)
 }
 
 // Float64 encodes a float64.
 func (e *Encoder) Float64(f float64) {
 	bits := math.Float64bits(f)
-	*e = binary.LittleEndian.AppendUint64(*e, bits)
+	e.buf = binary.LittleEndian.AppendUint64(e.buf, bits)
 }
 
 // Decimal encodes a decimal value.
 func (e *Encoder) Decimal(m *big.Int, exp int) {
-	l := len(*e)
-	*e = slices.Grow(*e, decSize)
-	*e = (*e)[:l+decSize]
-	b := (*e)[l:]
+	l := len(e.buf)
+	e.buf = slices.Grow(e.buf, decSize)
+	e.buf = e.buf[:l+decSize]
+	b := e.buf[l:]
 
 	// little endian bigint words (significand) -> little endian db decimal format
 	j := 0
@@ -151,10 +172,10 @@ func (e *Encoder) Decimal(m *big.Int, exp int) {
 // Fixed consumes m: for negative values it mutates m in place (two's complement).
 // Callers must pass a freshly allocated, single-use *big.Int (do not reuse m afterwards).
 func (e *Encoder) Fixed(m *big.Int, size int) {
-	l := len(*e)
-	*e = slices.Grow(*e, size)
-	*e = (*e)[:l+size]
-	b := (*e)[l:]
+	l := len(e.buf)
+	e.buf = slices.Grow(e.buf, size)
+	e.buf = e.buf[:l+size]
+	b := e.buf[l:]
 
 	neg := m.Sign() == -1
 	fill := byte(0)
@@ -197,17 +218,20 @@ func (e *Encoder) Fixed(m *big.Int, size int) {
 func (e *Encoder) String(s string) { e.Bytes(unsafe.String2ByteSlice(s)) }
 
 // CESU8Bytes encodes UTF-8 bytes into CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8Bytes(tr transform.Transformer, p []byte) (int, error) {
+func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 	var err error
 	var n int
 
-	*e, n, err = transform.Append(tr, *e, p)
+	// reset before use: this is a self-contained (atEOF) encode of one value; a
+	// stateful (custom) transformer must not carry state in from a prior use.
+	e.tr.Reset()
+	e.buf, n, err = transform.Append(e.tr, e.buf, p)
 	return n, err
 }
 
 // CESU8String encodes an UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
-func (e *Encoder) CESU8String(tr transform.Transformer, s string) (int, error) {
-	return e.CESU8Bytes(tr, unsafe.String2ByteSlice(s))
+func (e *Encoder) CESU8String(s string) (int, error) {
+	return e.CESU8Bytes(unsafe.String2ByteSlice(s))
 }
 
 // varFieldInd encodes a variable field indicator.
@@ -232,7 +256,7 @@ func (e *Encoder) LIBytes(p []byte) error {
 	if err := e.varFieldInd(len(p)); err != nil {
 		return err
 	}
-	*e = append(*e, p...)
+	e.buf = append(e.buf, p...)
 	return nil
 }
 
@@ -246,22 +270,22 @@ func (e *Encoder) LIString(s string) error {
 }
 
 // CESU8LIBytes encodes UTF-8 into CESU-8 bytes with length indicator.
-func (e *Encoder) CESU8LIBytes(tr transform.Transformer, p []byte) error {
+func (e *Encoder) CESU8LIBytes(p []byte) error {
 	size := cesu8.Size(p)
 	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
-	_, err := e.CESU8Bytes(tr, p)
+	_, err := e.CESU8Bytes(p)
 	return err
 }
 
 // CESU8LIString encodes an UTF-8 into a CESU-8 string with length indicator.
-func (e *Encoder) CESU8LIString(tr transform.Transformer, s string) error {
+func (e *Encoder) CESU8LIString(s string) error {
 	size := cesu8.StringSize(s)
 	if err := e.varFieldInd(size); err != nil {
 		return err
 	}
-	_, err := e.CESU8String(tr, s)
+	_, err := e.CESU8String(s)
 	return err
 }
 
@@ -424,12 +448,12 @@ func (e *Encoder) VarField(v any) error {
 }
 
 // Cesu8Field encodes a cesu8 field.
-func (e *Encoder) Cesu8Field(tr transform.Transformer, v any) error {
+func (e *Encoder) Cesu8Field(v any) error {
 	switch v := v.(type) {
 	case []byte:
-		return e.CESU8LIBytes(tr, v)
+		return e.CESU8LIBytes(v)
 	case string:
-		return e.CESU8LIString(tr, v)
+		return e.CESU8LIString(v)
 	default:
 		panic("invalid cesu8 value") // should never happen
 	}

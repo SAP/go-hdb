@@ -61,7 +61,7 @@ func decodeResult(tc typeCode, dec *encoding.Decoder, attrs *ReaderAttrs, scale 
 	case tcAlphanum:
 		return dec.AlphanumField(attrs.alphanumDfv1)
 	case tcNchar, tcNvarchar, tcNstring, tcShorttext:
-		return dec.Cesu8Field(attrs.tr)
+		return dec.Cesu8Field()
 	case tcStPoint, tcStGeometry:
 		return dec.HexField()
 	case tcBlob, tcClob, tcLocator, tcBintext, tcText, tcNclob, tcNlocator:

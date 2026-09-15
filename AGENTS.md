@@ -12,6 +12,8 @@
 - Standard library over third-party packages.
 - No dependency for straightforward code.
 - Data over objects.
+- Integration tests are the contract.
+- Bugs become tests.
 
 ## Rules
 - Aim for excellence. Every contribution must meet this standard.

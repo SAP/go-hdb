@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
-	"golang.org/x/text/transform"
 )
 
 // ClientID represents a client id part.
@@ -15,7 +14,7 @@ func (id *ClientID) decode(dec *encoding.Decoder, header *PartHeader, attrs *Rea
 	*id = dec.Bytes(header.bufLen())
 	return nil
 }
-func (id ClientID) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (id ClientID) encode(enc *encoding.Encoder) error {
 	enc.Bytes(id)
 	return nil
 }
@@ -26,14 +25,14 @@ type Command []byte
 func (c Command) String() string { return string(c) }
 func (c *Command) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
 	var err error
-	*c, err = dec.CESU8Bytes(attrs.tr, header.bufLen())
+	*c, err = dec.CESU8Bytes(header.bufLen())
 	if err != nil {
 		return err
 	}
 	return nil
 }
-func (c Command) encode(enc *encoding.Encoder, tr transform.Transformer) error {
-	_, err := enc.CESU8Bytes(tr, c)
+func (c Command) encode(enc *encoding.Encoder) error {
+	_, err := enc.CESU8Bytes(c)
 	return err
 }
 
@@ -45,7 +44,7 @@ func (s *Fetchsize) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs)
 	*s = Fetchsize(dec.Int32())
 	return nil
 }
-func (s Fetchsize) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (s Fetchsize) encode(enc *encoding.Encoder) error {
 	enc.Int32(int32(s))
 	return nil
 }
@@ -62,7 +61,7 @@ func (id *StatementID) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAtt
 }
 
 // Encode implements the partEncoder interface.
-func (id StatementID) encode(enc *encoding.Encoder, _ transform.Transformer) error {
+func (id StatementID) encode(enc *encoding.Encoder) error {
 	enc.Uint64(uint64(id))
 	return nil
 }

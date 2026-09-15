@@ -8,7 +8,6 @@ import (
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/trace"
-	"golang.org/x/text/transform"
 )
 
 const (
@@ -107,8 +106,8 @@ func (a *X509) DecodeFinalReq(dec *encoding.Decoder, logonname string) error {
 		return errors.New("expected empty username")
 	}
 	_, b := dec.LIBytes() // sub parameters
-	sub := encoding.Decoder(b)
-	if err := DecodeAndCheckNumPrm(&sub, 3); err != nil {
+	sub := encoding.NewDecoder(b, nil)
+	if err := DecodeAndCheckNumPrm(sub, 3); err != nil {
 		return err
 	}
 	if _, cert := sub.LIBytes(); len(cert) == 0 {
@@ -122,7 +121,7 @@ func (a *X509) DecodeFinalReq(dec *encoding.Decoder, logonname string) error {
 }
 
 // DecodeFinalReply implements the Method interface.
-func (a *X509) DecodeFinalReply(dec *encoding.Decoder, tr transform.Transformer) error {
+func (a *X509) DecodeFinalReply(dec *encoding.Decoder) error {
 	if err := DecodeAndCheckNumPrm(dec, 2); err != nil {
 		return err
 	}
@@ -135,6 +134,6 @@ func (a *X509) DecodeFinalReply(dec *encoding.Decoder, tr transform.Transformer)
 		return err
 	}
 	var err error
-	a.logonName, err = dec.AuthCesu8String(tr)
+	a.logonName, err = dec.AuthCesu8String()
 	return err
 }

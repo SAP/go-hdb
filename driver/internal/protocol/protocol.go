@@ -106,7 +106,7 @@ func (c *partCache) get(kind PartKind) (PartDecoder, bool) {
 type ReaderAttrs struct {
 	protTrace       bool
 	logger          *slog.Logger
-	tr              transform.Transformer
+	cesu8DecoderFn  func() transform.Transformer
 	lobChunkSize    int
 	emptyDateAsNull bool
 	compressor      compress.Compressor
@@ -114,11 +114,11 @@ type ReaderAttrs struct {
 }
 
 // NewReaderAttrs returns a new ReaderAttrs instance.
-func NewReaderAttrs(protTrace bool, logger *slog.Logger, tr transform.Transformer, lobChunkSize int, emptyDateAsNull bool, compressor compress.Compressor) *ReaderAttrs {
+func NewReaderAttrs(protTrace bool, logger *slog.Logger, cesu8DecoderFn func() transform.Transformer, lobChunkSize int, emptyDateAsNull bool, compressor compress.Compressor) *ReaderAttrs {
 	return &ReaderAttrs{
 		protTrace:       protTrace,
 		logger:          logger,
-		tr:              tr,
+		cesu8DecoderFn:  cesu8DecoderFn,
 		lobChunkSize:    lobChunkSize,
 		emptyDateAsNull: emptyDateAsNull,
 		compressor:      compressor,
@@ -135,6 +135,8 @@ type Reader struct {
 	rd io.Reader
 
 	attrs *ReaderAttrs
+
+	dec *encoding.Decoder // reused decoder (owns the connection's CESU-8 transformer)
 
 	readPrologFn func(ctx context.Context) error
 	protTraceFn  func(ctx context.Context, text string, part fmt.Stringer)
@@ -155,6 +157,7 @@ func newReader(rd io.Reader, attrs *ReaderAttrs, readFromDB bool) *Reader {
 	r := &Reader{
 		rd:        rd,
 		attrs:     attrs,
+		dec:       encoding.NewDecoder(nil, attrs.cesu8DecoderFn()),
 		mh:        &messageHeader{},
 		sh:        &segmentHeader{},
 		scratch:   make([]byte, 32),
@@ -223,21 +226,21 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 
 	readHeader := func(ctx context.Context) error {
 
-		dec := encoding.Decoder(r.scratch[:messageHeaderSize])
-		if _, err := io.ReadFull(r.rd, dec); err != nil {
+		r.dec.SetBuffer(r.scratch[:messageHeaderSize])
+		if _, err := io.ReadFull(r.rd, r.dec.Buffer()); err != nil {
 			return err
 		}
-		r.mh.decode(&dec)
+		r.mh.decode(r.dec)
 
 		if r.protTraceFn != nil {
 			r.protTraceFn(ctx, textMsgHdr, r.mh)
 		}
 
-		dec = encoding.Decoder(r.scratch[:segmentHeaderSize])
-		if _, err := io.ReadFull(r.rd, dec); err != nil {
+		r.dec.SetBuffer(r.scratch[:segmentHeaderSize])
+		if _, err := io.ReadFull(r.rd, r.dec.Buffer()); err != nil {
 			return err
 		}
-		r.sh.decode(&dec)
+		r.sh.decode(r.dec)
 		return nil
 	}
 
@@ -313,9 +316,9 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 					yield(nil, fmt.Errorf("segment header: need %d bytes, have %d: %w", segmentHeaderSize, len(buf), errShortRead))
 					return
 				}
-				dec := encoding.Decoder(buf[:segmentHeaderSize])
+				r.dec.SetBuffer(buf[:segmentHeaderSize])
 				buf = buf[segmentHeaderSize:]
-				r.sh.decode(&dec)
+				r.sh.decode(r.dec)
 			}
 
 			if r.protTraceFn != nil {
@@ -332,9 +335,11 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 					yield(nil, fmt.Errorf("part header: need %d bytes, have %d: %w", partHeaderSize, len(buf), errShortRead))
 					return
 				}
-				dec := encoding.Decoder(buf[:partHeaderSize])
+				// reuse the reader's decoder (carries the CESU-8 transformer) for the
+				// part header and then the part payload that decodes CESU-8 fields.
+				r.dec.SetBuffer(buf[:partHeaderSize])
 				buf = buf[partHeaderSize:]
-				ph.decode(&dec)
+				ph.decode(r.dec)
 
 				if r.protTraceFn != nil {
 					r.protTraceFn(ctx, textParHdr, ph)
@@ -351,10 +356,10 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 					yield(nil, fmt.Errorf("part payload: need %d bytes, have %d: %w", bufAdvance, len(buf), errShortRead))
 					return
 				}
-				dec = encoding.Decoder(buf[:ph.bufferLength])
+				r.dec.SetBuffer(buf[:ph.bufferLength])
 				buf = buf[bufAdvance:]
 
-				r.partInfo.Dec = &dec
+				r.partInfo.Dec = r.dec
 
 				if !yield(r.partInfo, nil) {
 					return
@@ -366,11 +371,11 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 
 func (r *Reader) readPrologDB(ctx context.Context) error {
 	rep := &initReply{}
-	dec := encoding.Decoder(r.scratch[:initReplySize])
-	if _, err := io.ReadFull(r.rd, dec); err != nil {
+	r.dec.SetBuffer(r.scratch[:initReplySize])
+	if _, err := io.ReadFull(r.rd, r.dec.Buffer()); err != nil {
 		return err
 	}
-	if err := rep.decode(&dec); err != nil {
+	if err := rep.decode(r.dec); err != nil {
 		return err
 	}
 	if r.protTraceFn != nil {
@@ -381,11 +386,11 @@ func (r *Reader) readPrologDB(ctx context.Context) error {
 
 func (r *Reader) readPrologClient(ctx context.Context) error {
 	req := &initRequest{}
-	dec := encoding.Decoder(r.scratch[:initRequestSize])
-	if _, err := io.ReadFull(r.rd, dec); err != nil {
+	r.dec.SetBuffer(r.scratch[:initRequestSize])
+	if _, err := io.ReadFull(r.rd, r.dec.Buffer()); err != nil {
 		return err
 	}
-	if err := req.decode(&dec); err != nil {
+	if err := req.decode(r.dec); err != nil {
 		return err
 	}
 	if r.protTraceFn != nil {
@@ -445,11 +450,11 @@ func (r *Reader) skipPart(ctx context.Context) error {
 // framing is taken from the message header only; the content is opaque, so
 // compressed packets pass through untouched.
 func (r *Reader) SkipMessage() error {
-	dec := encoding.Decoder(r.scratch[:messageHeaderSize])
-	if _, err := io.ReadFull(r.rd, dec); err != nil {
+	r.dec.SetBuffer(r.scratch[:messageHeaderSize])
+	if _, err := io.ReadFull(r.rd, r.dec.Buffer()); err != nil {
 		return err
 	}
-	r.mh.decode(&dec)
+	r.mh.decode(r.dec)
 	n := int(r.mh.varPartLength)
 	if n < segmentHeaderSize {
 		return fmt.Errorf("corrupt frame: varPartLength %d smaller than segment header %d", r.mh.varPartLength, segmentHeaderSize)
@@ -464,20 +469,20 @@ const defaultSessionID = -1
 type WriterAttrs struct {
 	protTrace           bool
 	logger              *slog.Logger
-	tr                  transform.Transformer
+	cesu8EncoderFn      func() transform.Transformer
 	sv                  map[string]string
 	compressor          compress.Compressor
 	compressEnableWrite bool
 }
 
 // NewWriterAttrs returns a WriterAttrs instance.
-func NewWriterAttrs(protTrace bool, logger *slog.Logger, tr transform.Transformer, sv map[string]string, compressor compress.Compressor) *WriterAttrs {
+func NewWriterAttrs(protTrace bool, logger *slog.Logger, cesu8EncoderFn func() transform.Transformer, sv map[string]string, compressor compress.Compressor) *WriterAttrs {
 	return &WriterAttrs{
-		protTrace:  protTrace,
-		logger:     logger,
-		tr:         tr,
-		sv:         sv,
-		compressor: compressor,
+		protTrace:      protTrace,
+		logger:         logger,
+		cesu8EncoderFn: cesu8EncoderFn,
+		sv:             sv,
+		compressor:     compressor,
 	}
 }
 
@@ -491,6 +496,8 @@ type Writer struct {
 	wr io.Writer
 
 	attrs *WriterAttrs
+
+	enc *encoding.Encoder // reused encoder (owns the connection's CESU-8 transformer)
 
 	svSent bool
 
@@ -513,6 +520,7 @@ func NewWriter(wr io.Writer, attrs *WriterAttrs) *Writer {
 	return &Writer{
 		wr:        wr,
 		attrs:     attrs,
+		enc:       encoding.NewEncoder(nil, attrs.cesu8EncoderFn()),
 		sessionID: defaultSessionID,
 		mh:        new(messageHeader),
 		sh:        new(segmentHeader),
@@ -534,7 +542,7 @@ func (w *Writer) HasError() bool { return w.hasError }
 
 // WriteProlog writes the protocol prolog.
 func (w *Writer) WriteProlog(ctx context.Context) error {
-	enc := encoding.Encoder(w.scratch[:0])
+	enc := encoding.NewEncoder(w.scratch[:0], nil)
 
 	req := &initRequest{}
 	req.product.major = productVersionMajor
@@ -543,13 +551,13 @@ func (w *Writer) WriteProlog(ctx context.Context) error {
 	req.protocol.minor = protocolVersionMinor
 	req.numOptions = 1
 	req.endianness = littleEndian
-	if err := req.encode(&enc); err != nil {
+	if err := req.encode(enc); err != nil {
 		return err
 	}
 	if w.attrs.protTrace {
 		w.protTrace(ctx, textIni, req)
 	}
-	_, err := w.wr.Write(enc)
+	_, err := w.wr.Write(enc.Buffer())
 	return err
 }
 
@@ -617,18 +625,19 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	partSize := make([]int, numPart)
 	totalSize := int64(segmentHeaderSize + numPart*partHeaderSize) // int64 to hold MaxUInt32 in 32bit OS
 
-	partEnc := encoding.Encoder(w.buf[:hdrLen])
+	partEnc := w.enc
+	partEnc.SetBuffer(w.buf[:hdrLen])
 
 	// encode parts and calculate total size
 	for i, part := range parts {
 
 		partEnc.Zeroes(partHeaderSize)
 
-		pos := len(partEnc)
-		if err := part.encode(&partEnc, w.attrs.tr); err != nil {
+		pos := len(partEnc.Buffer())
+		if err := part.encode(partEnc); err != nil {
 			return err
 		}
-		size := len(partEnc) - pos
+		size := len(partEnc.Buffer()) - pos
 		pad := padBytes(size)
 		partEnc.Zeroes(pad)
 
@@ -656,8 +665,8 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		w.ph.bufferLength = int32(size)     //nolint: gosec
 		w.ph.bufferSize = int32(bufferSize) //nolint: gosec
 
-		enc := partEnc[pos:pos]
-		if err := w.ph.encode(&enc); err != nil {
+		hdrEnc := encoding.NewEncoder(partEnc.Buffer()[pos:pos], nil)
+		if err := w.ph.encode(hdrEnc); err != nil {
 			return err
 		}
 		if w.attrs.protTrace {
@@ -674,14 +683,14 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 		bufferSize -= int64(partHeaderSize + size + pad)
 	}
 
-	w.buf = partEnc // retain grown buffer for reuse across messages
+	w.buf = partEnc.Buffer() // retain grown buffer for reuse across messages
 
-	wireBuf, compressed := partEnc, false
+	wireBuf, compressed := partEnc.Buffer(), false
 	if w.attrs.compressEnableWrite {
 		// compress the part area only; the resulting wireBuf has its own
 		// header area reserved at the front of tmpBuf.
 		var err error
-		if wireBuf, compressed, err = w.compressBuffer(partEnc); err != nil {
+		if wireBuf, compressed, err = w.compressBuffer(partEnc.Buffer()); err != nil {
 			return err
 		}
 	}
@@ -705,11 +714,11 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	// message header and segment header are written into the reserved header
 	// area of the frame, followed by the part area (uncompressed in buf or
 	// compressed in tmpBuf): one contiguous frame, one write.
-	hdr := wireBuf[:0]
-	if err := w.mh.encode(&hdr); err != nil {
+	hdrEnc := encoding.NewEncoder(wireBuf[:0], nil)
+	if err := w.mh.encode(hdrEnc); err != nil {
 		return err
 	}
-	mhSize := len(hdr)
+	mhSize := len(hdrEnc.Buffer())
 	if w.attrs.protTrace {
 		w.protTrace(ctx, textMsgHdr, w.mh)
 	}
@@ -722,8 +731,8 @@ func (w *Writer) _write(ctx context.Context, messageType MessageType, commit boo
 	w.sh.noOfParts = int16(numPart) //nolint: gosec
 	w.sh.segmentNo = 1
 
-	hdr = wireBuf[mhSize:mhSize]
-	if err := w.sh.encode(&hdr); err != nil {
+	hdrEnc = encoding.NewEncoder(wireBuf[mhSize:mhSize], nil)
+	if err := w.sh.encode(hdrEnc); err != nil {
 		return err
 	}
 	if w.attrs.protTrace {
