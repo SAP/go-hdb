@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.7
+- fixed panic on inout scalar procedure parameters
+
 #### v1.18.6
 - internal protocol encoder/decoder refactoring and code cleanups
 

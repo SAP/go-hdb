@@ -271,25 +271,28 @@ func convertCallArgs(fields []*p.ParameterField, nvargs []driver.NamedValue, ces
 
 		var err error
 		if field.In() {
+			// the encoder needs the converted scalar, not the sql.Out wrapper;
+			// use a separate in-arg so the out side keeps the sql.Out (see below).
+			inArg := *nvarg
 			if isOut {
 				if !out.In {
 					return nil, fmt.Errorf("argument field %s mismatch - use in argument with out field", field)
 				}
-				if out.Dest, err = convertArg(field, out.Dest); err != nil {
+				if inArg.Value, err = convertArg(field, out.Dest); err != nil {
 					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
 				}
 			} else {
-				if nvarg.Value, err = convertArg(field, nvarg.Value); err != nil {
+				if inArg.Value, err = convertArg(field, nvarg.Value); err != nil {
 					return nil, fmt.Errorf("field %s conversion error - %w", field, err)
 				}
 			}
 			// fetch first lob chunk
-			if lobInDescr, ok := nvarg.Value.(*p.LobInDescr); ok {
+			if lobInDescr, ok := inArg.Value.(*p.LobInDescr); ok {
 				if err := lobInDescr.FetchFirst(lobChunkSize, cesu8EncoderFn); err != nil {
 					return nil, err
 				}
 			}
-			callArgs.inArgs = append(callArgs.inArgs, *nvarg)
+			callArgs.inArgs = append(callArgs.inArgs, inArg)
 			callArgs.inFields = append(callArgs.inFields, field)
 		}
 

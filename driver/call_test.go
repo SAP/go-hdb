@@ -369,6 +369,39 @@ end
 	checkTable(conn, t.Context(), table)
 }
 
+func testCallInOut(t *testing.T, db *sql.DB) {
+	const procInOut = `create procedure %[1]s (inout idata nvarchar(25), inout n integer)
+language SQLSCRIPT as
+begin
+	idata := 'in:' || idata;
+	n := n * 2;
+end
+`
+	const txt = "Hello"
+	var out1 string
+	var out2 int64
+
+	proc := driver.RandomIdentifier("procInOut_")
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf(procInOut, proc)); err != nil {
+		t.Fatal(err)
+	}
+
+	out1 = txt
+	out2 = 21
+	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc),
+		sql.Named("IDATA", sql.Out{Dest: &out1, In: true}),
+		sql.Named("N", sql.Out{Dest: &out2, In: true}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if out1 != "in:"+txt {
+		t.Fatalf("value %s - expected %s", out1, "in:"+txt)
+	}
+	if out2 != 42 {
+		t.Fatalf("value %d - expected %d", out2, 42)
+	}
+}
+
 func testCallTableOutWithoutArg1(t *testing.T, db *sql.DB) {
 	const procWithoutArg = `create procedure %[1]s (in val integer)
 language SQLSCRIPT as
@@ -458,6 +491,7 @@ func TestCall(t *testing.T) {
 		{"table", testCallTable},
 		{"noPrm", testCallNoPrm},
 		{"noOut", testCallNoOut},
+		{"inOut", testCallInOut},
 		{"tableOutWithoutArg1", testCallTableOutWithoutArg1},
 		{"tableOutWithoutArg2", testCallTableOutWithoutArg2},
 	}
