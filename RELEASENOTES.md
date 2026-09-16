@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.8
+- documentation and GitHub Actions badge updates
+
 #### v1.18.7
 - fixed panic on inout scalar procedure parameters
 
