@@ -128,7 +128,7 @@ The `tagignore=db` filter excludes samples tagged with database activity (networ
 
 ## Performance
 
-* For diagnosing latency and tuning throughput, see the [performance guide](PERFORMANCE.md).
+* For diagnosing latency and tuning throughput, see the [performance guide](docs/PERFORMANCE.md).
 
 ## Dependencies
 

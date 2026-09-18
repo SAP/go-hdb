@@ -251,6 +251,9 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 	// referenced by the caller, so each read gets its own buffer whose lifetime
 	// the GC manages.
 	fillBuffer := func() ([]byte, error) {
+		if r.mh.varPartLength > math.MaxInt32 {
+			panic(fmt.Sprintf("corrupt frame: varPartLength %d exceeds protocol maximum %d", r.mh.varPartLength, math.MaxInt32))
+		}
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 
 		if numWireByte < 0 {
@@ -263,6 +266,12 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 	}
 
 	fillBufferCompressed := func() ([]byte, error) {
+		if r.mh.varPartLength > math.MaxInt32 {
+			panic(fmt.Sprintf("corrupt frame: varPartLength %d exceeds protocol maximum %d", r.mh.varPartLength, math.MaxInt32))
+		}
+		if r.mh.compressionVarPartLength > math.MaxInt32 {
+			panic(fmt.Sprintf("corrupt frame: compressionVarPartLength %d exceeds protocol maximum %d", r.mh.compressionVarPartLength, math.MaxInt32))
+		}
 		numWireByte := int(r.mh.varPartLength) - segmentHeaderSize
 		numDecompressByte := int(r.mh.compressionVarPartLength) - segmentHeaderSize
 
@@ -288,8 +297,11 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			panic("compressor misssing") // should never happen
 		}
 
-		_, err := compressor.Decompress(r.tmpBuf, buf)
-		return buf, err
+		n, err := compressor.Decompress(r.tmpBuf, buf)
+		if err != nil {
+			return nil, err
+		}
+		return buf[:n], nil
 	}
 
 	return func(yield func(*PartInfo, error) bool) {
@@ -310,6 +322,9 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			return
 		}
 
+		if r.mh.noOfSegm < 0 {
+			panic(fmt.Sprintf("corrupt frame: noOfSegm %d", r.mh.noOfSegm))
+		}
 		for i := range int(r.mh.noOfSegm) {
 			if i != 0 {
 				if len(buf) < segmentHeaderSize {
@@ -326,6 +341,9 @@ func (r *Reader) Parts(ctx context.Context) iter.Seq2[*PartInfo, error] {
 			}
 
 			numPart := int(r.sh.noOfParts)
+			if numPart < 0 {
+				panic(fmt.Sprintf("corrupt frame: noOfParts %d", r.sh.noOfParts))
+			}
 			lastPart := numPart - 1
 
 			for j := range numPart {

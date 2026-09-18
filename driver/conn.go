@@ -123,6 +123,48 @@ func (t *connTracker) callDB() *sql.DB {
 	return t._callDB
 }
 
+// tableOutCloser closes the connection teardown of a procedure call with table
+// output parameters once its rows are no longer needed. It is created only on
+// the successful call, simultaneously owning the fake parent rows (see
+// stmt.execCall); on any error path no closer exists, the resultsets close
+// without accounting, and never hold the connection.
+//
+// The caller assigns the closer to each table resultset and increments n once
+// per resultset after the call succeeded, and registers it on the connection
+// (conn.tableOutCloser). The registration order matters: the closer must reach
+// the connection only after the call succeeded, so database/sql never
+// validates the connection as reusable (see conn.IsValid) while cleanup still
+// writes to the session, racing a new user of the connection. The closer is
+// never removed: a connection with handed-out table rows is always discarded
+// and closed (see cleanup), so IsValid stays false for its whole remaining
+// lifetime.
+//
+// release runs cleanup on a new goroutine: the fake parent rows must not be
+// closed on the goroutine that closes a child rows, as that deadlocks on the
+// non-reentrant database/sql rows locks. While the closer is set, app-driven
+// statement closes are no-ops (see stmt.Close): the closer is the only writer
+// on the teardown path.
+type tableOutCloser struct {
+	stmt *stmt        // the connection is reached through the statement (stmt.conn)
+	rows *sql.Rows    // fake parent rows, closed by cleanup on the reaper goroutine
+	n    atomic.Int64 // table resultsets not yet closed
+}
+
+// release is called from a table resultset Close. Once the last resultset is
+// closed it closes the fake parent rows, deletes the statement, and tears the
+// connection down.
+func (o *tableOutCloser) release() {
+	if o.n.Add(-1) == 0 {
+		go o.cleanup() // parent teardown must not run on the closing goroutine
+	}
+}
+
+func (o *tableOutCloser) cleanup() {
+	o.rows.Close()          // fake parent, on the reaper goroutine (8.1-7)
+	o.stmt.close()          // drop statement, stmt gauge -1
+	_ = o.stmt.conn.close() // tear the discarded connection down (once-guard, see conn.close)
+}
+
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
 	attrs      *connAttrs
@@ -132,6 +174,21 @@ type conn struct {
 	session    *session
 	wg         *sync.WaitGroup    // wait for concurrent db calls when closing connections.
 	terminator *sessionTerminator // terminator of the owning connector; nil for transient connections that are not accounted (see newConn).
+
+	// closed is the once-guard of close: the real teardown runs at most
+	// once, whether triggered by Close or by the table-out closer's cleanup.
+	closed atomic.Bool
+
+	// tableOutCloser is set by stmt.execCall when a procedure call hands table
+	// output rows to the caller. It guards the connection against pool reuse:
+	// IsValid is false, so database/sql discards it, Close stands down, and
+	// statement closes are no-ops. The real teardown is performed by the
+	// table-out closer's cleanup once the last table rows is closed (see
+	// tableOutCloser.cleanup). It is never cleared: a connection with
+	// handed-out table rows is always discarded and closed, so a reused
+	// connection never carries a stale closer and a cleanup write never races
+	// a concurrent reuse of the connection.
+	tableOutCloser *tableOutCloser
 }
 
 // unique connection number.
@@ -174,8 +231,27 @@ func (c *conn) authenticate(ctx context.Context, host string, authHnd *p.AuthHnd
 	return c.session.authenticate(ctx, host, authHnd)
 }
 
-// Close implements the driver.Conn interface.
+// Close implements the driver.Conn interface. While table output rows are
+// alive (conn.tableOutCloser set) it stands down — the real teardown is
+// performed by the table-out closer's cleanup once the last of them is closed
+// (see tableOutCloser.cleanup).
 func (c *conn) Close() error {
+	if c.tableOutCloser != nil {
+		// Table output resultsets are still alive. Stand down: the real teardown
+		// is performed by the table-out closer's cleanup once the last of them is
+		// closed (see tableOutCloser.cleanup).
+		return nil
+	}
+	return c.close()
+}
+
+// close performs the real connection teardown, once-guarded by closed. It
+// is called by Close when nothing is held, or by the table-out closer's
+// cleanup once the last table rows is closed (see tableOutCloser.cleanup).
+func (c *conn) close() error {
+	if !c.closed.CompareAndSwap(false, true) {
+		return nil
+	}
 	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
 	stdConnTracker.remove()
 	sessionErr := c.session.close()
@@ -213,8 +289,13 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-// IsValid implements the driver.Validator interface.
-func (c *conn) IsValid() bool { return !c.session.isBad() }
+// IsValid implements the driver.Validator interface and also enforces the
+// table-output hold: while a procedure call's table output rows are
+// outstanding the connection is reported invalid, so database/sql discards
+// rather than reuses it (see conn.tableOutCloser).
+func (c *conn) IsValid() bool {
+	return !c.session.isBad() && c.tableOutCloser == nil
+}
 
 // Ping implements the driver.Pinger interface.
 func (c *conn) Ping(ctx context.Context) error {

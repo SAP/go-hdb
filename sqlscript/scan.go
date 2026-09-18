@@ -12,6 +12,10 @@ import (
 // DefaultSeparator is the default script statement separator.
 const DefaultSeparator = ';'
 
+// ErrInvalidUTF8 is returned when the script contains a byte sequence that
+// cannot be decoded as valid UTF-8.
+var ErrInvalidUTF8 = errors.New("invalid UTF-8 encoding")
+
 const (
 	nl          = '\n'
 	cr          = '\r'
@@ -46,6 +50,12 @@ func (s *scanner) nextRune() (rune, int, error) {
 	// correct UTF-8 decode without error
 	if r, width := utf8.DecodeRune(s.data); width > 1 {
 		return r, width, nil
+	}
+
+	// a multi-byte sequence that cannot be decoded: more data may still
+	// complete it, only at end of input it is invalid
+	if s.atEOF {
+		return -1, 0, ErrInvalidUTF8
 	}
 	return -1, 0, io.EOF
 }
@@ -224,6 +234,7 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 // Scan is a split function for a bufio.Scanner that returns each statement as a token.
 // It uses the default separator ';'. Comments are discarded - for adding leading comments
 // to each statement or specify a different separator please use ScanFunc.
+// Invalid UTF-8 is reported as ErrInvalidUTF8.
 func Scan(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	s := scanner{separator: DefaultSeparator, comments: false}
 	return s.scan(data, atEOF)

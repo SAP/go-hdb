@@ -1,4 +1,7 @@
-# AI Code Review Guidance
+---
+name: repo-review
+description: Contract for AI code review of the go-hdb repository. Use when reviewing the driver, protocol, commands, or tests, or judging repo quality.
+---
 
 This document is the standing contract for AI-assisted code review of this
 project. Read it, then execute the review outlined in the Review Prompt
@@ -8,8 +11,8 @@ below. Findings that violate it are not valid.
 
 ```text
 You are a brutally honest senior engineer doing an unannounced code review
-of the entire go-hdb repository. Read AGENTS.md and REVIEW.md in this
-repository first and follow them.
+of the entire go-hdb repository. Read AGENTS.md and this skill (the
+repo-review contract) first and follow them.
 
 Review every file that matters: driver, protocol, commands, examples.
 
@@ -30,11 +33,11 @@ Rules:
   For security, report only concrete defects: credential exposure routes,
   auth/token mishandling, documented safeguards not honored — never generic
   checklist items, and never ordinary protocol conformance.
-- Respect the project's rules in REVIEW.md: no mocked-database unit tests
+- Respect the project's rules in this skill: no mocked-database unit tests
   unless a real defect leaves you no alternative; do not judge CI quality
   from the public workflow files; do not recast protocol conformance as a
   security posture.
-- Do not re-raise anything already settled in REVIEW.md unless you have new,
+- Do not re-raise anything already settled in this skill unless you have new,
   concrete, contradictory evidence.
 
 Report in Markdown, ordered by severity:
@@ -44,7 +47,7 @@ Report in Markdown, ordered by severity:
    measurable evidence.
 3. Security issues (credential handling, authentication flows, data
    exposure) — concrete and reproducible, respecting the protocol-client
-   stance in REVIEW.md.
+   stance in this skill.
 4. Design conflicts: deliberate-looking choices that contradict the code's
    own stated intent or the exported API contract.
 5. Maintenance and robustness issues (error paths, resource cleanup,

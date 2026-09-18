@@ -26,9 +26,6 @@ type stmt struct {
 	metrics *metrics
 	query   string
 	pr      *prepareResult
-
-	// rows: stored procedures with table output parameters
-	rows *sql.Rows
 }
 
 type totalRowsAffected int64
@@ -59,11 +56,18 @@ NumInput differs dependent on statement (check is done in QueryContext and ExecC
 func (s *stmt) NumInput() int { return -1 }
 
 func (s *stmt) Close() error {
-	s.metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
-
-	if s.rows != nil {
-		s.rows.Close()
+	// The connection is taken over by a table-out closer: app-driven closes
+	// are no-ops, the closer performs the teardown and writes the protocol
+	// once, at the very end (see tableOutCloser.cleanup).
+	if s.conn.tableOutCloser != nil {
+		return nil
 	}
+	return s.close()
+}
+
+// close drops the server-side statement and decrements the statement gauge.
+func (s *stmt) close() error {
+	s.metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
 
 	if s.conn.session.isBad() {
 		return driver.ErrBadConn
@@ -112,12 +116,11 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 	var sqlErr error
 	var result driver.Result
-	var rows *sql.Rows // needed to avoid data race in case if context get canceled.
 	done := make(chan struct{})
 	s.wg.Go(func() {
 		defer close(done)
 		if s.pr.isProcedureCall() {
-			result, rows, sqlErr = s.execCall(ctx, s.pr, nvargs) //nolint: sqlclosecheck
+			result, sqlErr = s.execCall(ctx, s.pr, nvargs)
 		} else {
 			result, sqlErr = s.execDefault(ctx, nvargs)
 		}
@@ -128,15 +131,11 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 		s.conn.terminateSession()
 		return nil, ctx.Err()
 	case <-done:
-		if s.rows != nil {
-			s.rows.Close()
-		}
-		s.rows = rows
 		return result, sqlErr
 	}
 }
 
-func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, *sql.Rows, error) {
+func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.NamedValue) (driver.Result, error) {
 	/*
 		call without lob input parameters:
 		--> callResult output parameter values are set after read call
@@ -146,13 +145,13 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 
 	cr, callArgs, numRow, err := s.conn.session.execCall(ctx, s.query, pr, nvargs)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	numOutArgs := len(callArgs.outArgs)
 	// no output args -> done
 	if numOutArgs == 0 {
-		return driver.RowsAffected(numRow), nil, nil
+		return driver.RowsAffected(numRow), nil
 	}
 
 	numOutputField := len(cr.outFields)
@@ -165,26 +164,51 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		scanArgs[i] = new(sql.Rows)
 	}
 
-	// no table output parameters -> convert scalar output parameters
-	if len(callArgs.outFields) == numOutArgs {
-		if err := convertCallResult(cr, scanArgs); err != nil {
-			return nil, nil, err
+	// a table output resultset is returned based on the server response, not
+	// on whether the caller passed a call argument (implicit table output).
+	hasTableResult := false
+	for _, v := range cr.fieldValues {
+		if _, ok := v.(*queryResult); ok {
+			hasTableResult = true
+			break
 		}
-		return driver.RowsAffected(numRow), nil, nil
 	}
 
-	// table output parameters -> Query (needs to kept open)
+	// no table output resultset -> convert scalar output parameters
+	if !hasTableResult {
+		if err := convertCallResult(cr, scanArgs); err != nil {
+			return nil, err
+		}
+		return driver.RowsAffected(numRow), nil
+	}
+
+	// table output resultset -> Query (kept open on success; the table-out
+	// closer owns the fake parent and closes it on teardown).
 	rows, err := stdConnTracker.callDB().QueryContext(context.Background(), "", cr)
 	if err != nil {
-		return nil, rows, err
+		return nil, err
 	}
 	if !rows.Next() {
-		return nil, rows, rows.Err()
+		_ = rows.Close()
+		return nil, rows.Err()
 	}
 	if err := rows.Scan(scanArgs...); err != nil {
-		return nil, rows, err
+		_ = rows.Close() //nolint: sqlclosecheck // fake parent, closed explicitly on the error paths only
+		return nil, err
 	}
-	return driver.RowsAffected(numRow), rows, nil
+	// the call succeeded and handed the table output rows to the caller: wire
+	// the closer to the resultsets and the connection, permanently holding it
+	// against pool reuse. On any error path the resultsets stay closer-less,
+	// close without accounting, and never hold.
+	closer := &tableOutCloser{stmt: s, rows: rows}
+	for _, v := range cr.fieldValues {
+		if qr, ok := v.(*queryResult); ok {
+			qr.tableOutCloser = closer
+			closer.n.Add(1)
+		}
+	}
+	s.conn.tableOutCloser = closer
+	return driver.RowsAffected(numRow), nil
 }
 
 func (s *stmt) execDefault(ctx context.Context, nvargs []driver.NamedValue) (driver.Result, error) {
