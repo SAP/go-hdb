@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -65,7 +64,7 @@ func scramVerifyServerProof(saltedPassword, salt, serverChallenge, clientChallen
 	}
 	verifier := scramHMAC(saltedPassword, salt)
 	proof := scramHMAC(verifier, clientChallenge, salt, serverChallenge)
-	if !bytes.Equal(proof, serverProof) {
+	if !hmac.Equal(proof, serverProof) {
 		return fmt.Errorf("%w: invalid server proof", ErrAuthVerifyFailed)
 	}
 	return nil

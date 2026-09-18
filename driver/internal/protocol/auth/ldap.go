@@ -26,6 +26,8 @@ const (
 	ldapCapabilitiesSize    = 8
 	ldapDefaultCapabilities = 0x01 // called "default capabilities" in node-hdb
 	ldapSessionKeySize      = 32   // AES-256 key size
+	ldapPublicKeyBitSize    = 2048 // required server RSA key size
+	ldapPublicKeyBufLen     = 580  // maximum server RSA public key length in bytes
 )
 
 // LDAP implements LDAP authentication.
@@ -128,6 +130,9 @@ func (a *LDAP) DecodeInitReply(dec *encoding.Decoder) error {
 	if len(serverPublicKeyPEM) == 0 {
 		return errors.New("server did not provide RSA public key")
 	}
+	if len(serverPublicKeyPEM) > ldapPublicKeyBufLen {
+		return fmt.Errorf("invalid server RSA public key length %d - maximum %d", len(serverPublicKeyPEM), ldapPublicKeyBufLen)
+	}
 
 	capabilities := dec.AuthBytes()
 	if len(capabilities) == 0 {
@@ -141,6 +146,9 @@ func (a *LDAP) DecodeInitReply(dec *encoding.Decoder) error {
 	a.serverPublicKey, err = ldapParseRSAPublicKey(serverPublicKeyPEM)
 	if err != nil {
 		return fmt.Errorf("failed to parse server public key: %w", err)
+	}
+	if a.serverPublicKey.N.BitLen() != ldapPublicKeyBitSize {
+		return fmt.Errorf("invalid server RSA public key size %d bits - expected %d", a.serverPublicKey.N.BitLen(), ldapPublicKeyBitSize)
 	}
 
 	if !bytes.Equal(clientChallenge, a.clientChallenge) {

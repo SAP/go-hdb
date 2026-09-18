@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -242,8 +243,8 @@ func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait t
 	d := time.Since(t) // Duration.
 
 	for _, t := range tasks {
-		// return last error
-		err = t.err
+		// join all worker errors, not just the last one
+		err = errors.Join(err, t.err)
 		t.close()
 	}
 

@@ -48,6 +48,8 @@ linters:
     - gomodguard
   settings:
     gocritic:
+      enabled-tags:
+        - performance
       disabled-checks:
         - exitAfterDefer
     gomoddirectives:

@@ -40,7 +40,13 @@ func (a *AuthHnd) AddJWT(token string) { a.methods[auth.MtJWT] = auth.NewJWT(tok
 // AddX509 adds X509 authentication method.
 func (a *AuthHnd) AddX509(certKey *auth.CertKey) { a.methods[auth.MtX509] = auth.NewX509(certKey) }
 
-// AddLDAP adds LDAP authentication method.
+/*
+AddLDAP adds LDAP authentication method.
+
+The LDAP method does not authenticate the server: the server-provided RSA
+public key is trusted as is. LDAP authentication should therefore only be used
+over a TLS transport (see SessionTLS/SetTLS).
+*/
 func (a *AuthHnd) AddLDAP(username, password string) {
 	a.methods[auth.MtLDAP] = auth.NewLDAP(username, password)
 }

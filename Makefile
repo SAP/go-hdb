@@ -33,6 +33,11 @@ checks:
 	staticcheck -checks all -fail none ./...
 	golangci-lint run ./...
 
+#escape analysis / heap allocation scan (compiler -m flag)
+escape:
+	@echo "escape analysis - heap relevant decisions"
+	go build -gcflags='github.com/SAP/go-hdb/...=-m=2' ./... 2>&1 | grep -E 'escapes to heap|moved to heap'
+
 #go generate
 generate:
 	@echo "generate"

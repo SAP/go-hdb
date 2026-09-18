@@ -34,7 +34,7 @@ func NewSCRAMSHA256(username, password string) *SCRAMSHA256 {
 
 func (a *SCRAMSHA256) String() string {
 	return fmt.Sprintf("method type %s username %s clientChallenge %s clientProof %s salt %s serverChallenge %s",
-		a.Typ(), trace.Cut(a.username), trace.Cut(a.clientChallenge), trace.Cut(a.clientProof), trace.Cut(a.salt), trace.Cut(a.serverChallenge))
+		a.Typ(), trace.Cut(a.username), trace.Redacted(a.clientChallenge), trace.Redacted(a.clientProof), trace.Redacted(a.salt), trace.Redacted(a.serverChallenge))
 }
 
 // Compare implements cache.Compare interface.

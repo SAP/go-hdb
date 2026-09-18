@@ -97,16 +97,17 @@ func (r *noResultType) Next(dest []driver.Value) error { return io.EOF }
 // queryResult represents a single resultset of a query.
 type queryResult struct {
 	// field alignment
-	fields       []*p.ResultField
-	fieldValues  []driver.Value
-	decodeErrors p.DecodeErrors
-	_columns     []string
-	lastErr      error
-	session      *session
-	rsID         uint64
-	pos          int
-	attrs        p.PartAttributes
-	closed       bool
+	fields         []*p.ResultField
+	fieldValues    []driver.Value
+	decodeErrors   p.DecodeErrors
+	_columns       []string
+	lastErr        error
+	session        *session
+	rsID           uint64
+	pos            int
+	attrs          p.PartAttributes
+	tableOutCloser *tableOutCloser
+	closed         bool
 }
 
 // ErrScanOnClosedResultset is the error raised in case a scan is executed on a closed resultset.
@@ -124,9 +125,22 @@ func (qr *queryResult) Columns() []string {
 	return qr._columns
 }
 
-// Close implements the driver.Rows interface.
+// Close implements the driver.Rows interface. A table resultset releases
+// itself to its tableOutCloser (if any) so the connection teardown can proceed
+// once the last table rows is closed (see tableOutCloser.release).
 func (qr *queryResult) Close() error {
+	if qr.closed {
+		return nil
+	}
 	qr.closed = true
+	err := qr.close()
+	if qr.tableOutCloser != nil {
+		qr.tableOutCloser.release()
+	}
+	return err
+}
+
+func (qr *queryResult) close() error {
 	if qr.attrs.ResultsetClosed() {
 		return nil
 	}

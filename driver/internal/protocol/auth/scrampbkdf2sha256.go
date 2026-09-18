@@ -45,7 +45,7 @@ func NewSCRAMPBKDF2SHA256(username, password string) *SCRAMPBKDF2SHA256 {
 
 func (a *SCRAMPBKDF2SHA256) String() string {
 	return fmt.Sprintf("method type %s username %s clientChallenge %s clientProof %s salt %s serverChallenge %s rounds %d",
-		a.Typ(), trace.Cut(a.username), trace.Cut(a.clientChallenge), trace.Cut(a.clientProof), trace.Cut(a.salt), trace.Cut(a.serverChallenge), a.rounds)
+		a.Typ(), trace.Cut(a.username), trace.Redacted(a.clientChallenge), trace.Redacted(a.clientProof), trace.Redacted(a.salt), trace.Redacted(a.serverChallenge), a.rounds)
 }
 
 // Compare implements cache.Compare interface.
@@ -93,6 +93,9 @@ func (a *SCRAMPBKDF2SHA256) DecodeInitReply(dec *encoding.Decoder) error {
 	var err error
 	if a.rounds, err = dec.AuthBigUint32(); err != nil {
 		return err
+	}
+	if a.rounds == 0 {
+		return fmt.Errorf("invalid PBKDF2 rounds %d", a.rounds)
 	}
 	return nil
 }

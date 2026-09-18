@@ -5,6 +5,13 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.9
+- fixed race condition on stored procedures with table output parameters
+- hardened SCRAM and LDAP authentication handling
+- hardened protocol validation
+- sqlscript, sniffer and bulkbench improvements
+- code cleanups
+
 #### v1.18.8
 - documentation and GitHub Actions badge updates
 

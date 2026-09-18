@@ -25,7 +25,11 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatal(err)
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			log.Printf("accept error: %s", err)
+			continue
 		}
 
 		go handler(conn, dbAddr)

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"slices"
 	"strconv"
@@ -668,12 +669,18 @@ func (ops options[K]) encode(enc *encoding.Encoder) error {
 			enc.Byte(byte(tcDouble))
 			enc.Float64(v)
 		case string:
+			if len(v) > math.MaxInt16 {
+				return fmt.Errorf("option value length %d exceeds protocol maximum %d", len(v), math.MaxInt16)
+			}
 			enc.Byte(byte(tcString))
-			enc.Int16(int16(len(v))) //nolint: gosec
+			enc.Int16(int16(len(v))) //nolint: gosec // bounded by the guard above
 			enc.Bytes([]byte(v))
 		case []byte:
+			if len(v) > math.MaxInt16 {
+				return fmt.Errorf("option value length %d exceeds protocol maximum %d", len(v), math.MaxInt16)
+			}
 			enc.Byte(byte(tcBstring))
-			enc.Int16(int16(len(v))) //nolint: gosec
+			enc.Int16(int16(len(v))) //nolint: gosec // bounded by the guard above
 			enc.Bytes(v)
 		default:
 			panic("option type not implemented") // should never happen

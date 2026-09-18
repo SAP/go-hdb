@@ -85,7 +85,7 @@ func run() error {
 
 	log.Printf("listening on %s ...", addr)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		log.Print(err)
+		return err
 	}
 	<-done
 	return nil
