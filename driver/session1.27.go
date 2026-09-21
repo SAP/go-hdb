@@ -83,7 +83,7 @@ func writeLobChunk(tr transform.Transformer, b []byte, wr io.Writer) (int, error
 // readLob reads a single lob data package. The complete lob is read by
 // session.readLobComplete which calls this method per data package.
 func (s *session) readLob(request *p.ReadLobRequest, reply *p.ReadLobReply) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetchLob)
+	defer s.metrics.addSQLTimeValue(sqlTimeFetchLob, time.Now())
 
 	ctx := context.Background()
 

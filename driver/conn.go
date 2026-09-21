@@ -90,39 +90,6 @@ type Conn interface {
 	DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error)
 }
 
-var stdConnTracker = &connTracker{}
-
-type connTracker struct {
-	mu      sync.Mutex
-	_callDB *sql.DB
-	numConn int64
-}
-
-func (t *connTracker) add() { t.mu.Lock(); t.numConn++; t.mu.Unlock() }
-
-func (t *connTracker) remove() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.numConn--
-	if t.numConn > 0 {
-		return
-	}
-	t.numConn = 0
-	if t._callDB != nil {
-		t._callDB.Close()
-		t._callDB = nil
-	}
-}
-
-func (t *connTracker) callDB() *sql.DB {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t._callDB == nil {
-		t._callDB = sql.OpenDB(new(callConnector))
-	}
-	return t._callDB
-}
-
 // tableOutCloser closes the connection teardown of a procedure call with table
 // output parameters once its rows are no longer needed. It is created only on
 // the successful call, simultaneously owning the fake parent rows (see
@@ -153,16 +120,16 @@ type tableOutCloser struct {
 // release is called from a table resultset Close. Once the last resultset is
 // closed it closes the fake parent rows, deletes the statement, and tears the
 // connection down.
-func (o *tableOutCloser) release() {
-	if o.n.Add(-1) == 0 {
-		go o.cleanup() // parent teardown must not run on the closing goroutine
+func (tc *tableOutCloser) release() {
+	if tc.n.Add(-1) == 0 {
+		go tc.cleanup() // parent teardown must not run on the closing goroutine
 	}
 }
 
-func (o *tableOutCloser) cleanup() {
-	o.rows.Close()          // fake parent, on the reaper goroutine (8.1-7)
-	o.stmt.close()          // drop statement, stmt gauge -1
-	_ = o.stmt.conn.close() // tear the discarded connection down (once-guard, see conn.close)
+func (tc *tableOutCloser) cleanup() {
+	tc.rows.Close()          // fake parent, on the reaper goroutine (8.1-7)
+	tc.stmt.close()          // drop statement, stmt gauge -1
+	_ = tc.stmt.conn.close() // tear the discarded connection down (once-guard, see conn.close)
 }
 
 // Conn is the implementation of the database/sql/driver Conn interface.
@@ -195,34 +162,34 @@ type conn struct {
 var connNo atomic.Uint64
 
 // newConn returns a connection. A non nil terminator accounts the connection
-// with the connector's sessionTerminator (open on creation, close on Close).
+// with the connector's sessionTerminator (incrConn on creation, decrConn on Close).
 // A nil terminator marks a transient connection that is not accounted - the
 // sessionTerminator worker uses this to execute the disconnect session
 // statement without accounting for its own connection.
 func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs, terminator *sessionTerminator) (*conn, error) {
 	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
-	metrics.addConn()
+	metrics.incrConn()
 
 	dbConn, err := newDBConn(ctx, logger, host, metrics, attrs)
 	if err != nil {
-		metrics.removeConn()
+		metrics.decrConn()
 		return nil, err
 	}
 
 	session, err := newSession(ctx, dbConn, logger, metrics, routing, attrs)
 	if err != nil {
 		dbConn.Close()
-		metrics.removeConn()
+		metrics.decrConn()
 		return nil, err
 	}
 
-	stdConnTracker.add()
-	metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: 1} // increment open connections.
+	stdCallDB.incrConn()
+	metrics.addGauge(gaugeConn, 1) // increment open connections.
 
 	c := &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup), terminator: terminator}
 	if terminator != nil {
-		terminator.open()
+		terminator.incrConn()
 	}
 	return c, nil
 }
@@ -252,14 +219,14 @@ func (c *conn) close() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	c.metrics.msgCh <- gaugeMsg{idx: gaugeConn, v: -1} // decrement open connections.
-	stdConnTracker.remove()
+	c.metrics.addGauge(gaugeConn, -1) // decrement open connections.
+	stdCallDB.decrConn()
 	sessionErr := c.session.close()
 	dbConnErr := c.dbConn.Close()
 	c.wg.Wait()
-	c.metrics.removeConn()
+	c.metrics.decrConn()
 	if c.terminator != nil {
-		c.terminator.close()
+		c.terminator.decrConn()
 	}
 	return errors.Join(sessionErr, dbConnErr)
 }
@@ -503,7 +470,7 @@ type tx struct {
 }
 
 func newTx(conn *conn) *tx {
-	conn.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: 1} // increment number of transactions.
+	conn.metrics.addGauge(gaugeTx, 1) // increment number of transactions.
 	return &tx{conn: conn}
 }
 
@@ -513,7 +480,7 @@ func (t *tx) Rollback() error { return t.close(true) }
 func (t *tx) close(rollback bool) error {
 	c := t.conn
 
-	c.metrics.msgCh <- gaugeMsg{idx: gaugeTx, v: -1} // decrement number of transactions.
+	c.metrics.addGauge(gaugeTx, -1) // decrement number of transactions.
 
 	defer func() {
 		c.session.inTx.Store(false)

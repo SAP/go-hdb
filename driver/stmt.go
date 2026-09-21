@@ -42,7 +42,7 @@ func (t *totalRowsAffected) add(r driver.Result) {
 }
 
 func newStmt(conn *conn, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics, query string, pr *prepareResult) *stmt {
-	metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: 1} // increment number of statements.
+	metrics.addGauge(gaugeStmt, 1) // increment number of statements.
 	return &stmt{conn: conn, wg: wg, attrs: attrs, metrics: metrics, query: query, pr: pr}
 }
 
@@ -67,7 +67,7 @@ func (s *stmt) Close() error {
 
 // close drops the server-side statement and decrements the statement gauge.
 func (s *stmt) close() error {
-	s.metrics.msgCh <- gaugeMsg{idx: gaugeStmt, v: -1} // decrement number of statements.
+	s.metrics.addGauge(gaugeStmt, -1) // decrement number of statements.
 
 	if s.conn.session.isBad() {
 		return driver.ErrBadConn
@@ -164,18 +164,8 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		scanArgs[i] = new(sql.Rows)
 	}
 
-	// a table output resultset is returned based on the server response, not
-	// on whether the caller passed a call argument (implicit table output).
-	hasTableResult := false
-	for _, v := range cr.fieldValues {
-		if _, ok := v.(*queryResult); ok {
-			hasTableResult = true
-			break
-		}
-	}
-
-	// no table output resultset -> convert scalar output parameters
-	if !hasTableResult {
+	// no table output parameters -> convert scalar output parameters
+	if len(callArgs.outFields) == numOutArgs {
 		if err := convertCallResult(cr, scanArgs); err != nil {
 			return nil, err
 		}
@@ -184,7 +174,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 
 	// table output resultset -> Query (kept open on success; the table-out
 	// closer owns the fake parent and closes it on teardown).
-	rows, err := stdConnTracker.callDB().QueryContext(context.Background(), "", cr)
+	rows, err := stdCallDB.db().QueryContext(context.Background(), "", cr)
 	if err != nil {
 		return nil, err
 	}

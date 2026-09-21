@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.10
+- code cleanups
+
 #### v1.18.9
 - fixed race condition on stored procedures with table output parameters
 - hardened SCRAM and LDAP authentication handling

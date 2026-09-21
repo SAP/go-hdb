@@ -218,7 +218,7 @@ func (s *session) close() error {
 }
 
 func (s *session) _authenticate(ctx context.Context, authHnd *p.AuthHnd, co *p.ConnectOptions) (*p.ConnectOptions, *p.TopologyInformation, error) {
-	defer metricsAddTimeValue(s.metrics, time.Now(), timeAuth)
+	defer s.metrics.addTimeValue(timeAuth, time.Now())
 
 	// client context
 	clientContext := &p.ClientContext{}
@@ -332,7 +332,7 @@ func (s *session) switchUser(ctx context.Context) error {
 		return err
 	}
 	s.user = user.clone()
-	s.metrics.msgCh <- counterMsg{idx: counterSessionConnects, v: uint64(1)}
+	s.metrics.addCounter(counterSessionConnects, 1)
 	return s.setSchema(ctx)
 }
 
@@ -389,7 +389,7 @@ func (s *session) updateRouting(ctx context.Context, pi *p.PartInfo) {
 
 func (s *session) queryDirect(ctx context.Context, query string, traceKind string) (driver.Rows, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
+	defer s.metrics.addSQLTimeValue(sqlTimeQuery, time.Now())
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
 	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
@@ -453,7 +453,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 
 func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string) (driver.Result, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeExec)
+	defer s.metrics.addSQLTimeValue(sqlTimeExec, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
 		return nil, err
@@ -496,7 +496,7 @@ func (s *session) execDirect(ctx context.Context, query string) (driver.Result, 
 
 func (s *session) prepare(ctx context.Context, query string) (*prepareResult, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimePrepare)
+	defer s.metrics.addSQLTimeValue(sqlTimePrepare, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtPrepare, false, p.Command(query)); err != nil {
 		return nil, err
@@ -544,7 +544,7 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 
 func (s *session) query(ctx context.Context, query string, pr *prepareResult, nvargs []driver.NamedValue) (driver.Rows, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeQuery)
+	defer s.metrics.addSQLTimeValue(sqlTimeQuery, time.Now())
 
 	// allow e.g inserts as query -> handle commit like in exec
 
@@ -599,7 +599,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 
 func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nvargs []driver.NamedValue, offset int) (driver.Result, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeExec)
+	defer s.metrics.addSQLTimeValue(sqlTimeExec, time.Now())
 
 	inputParameters := p.NewInputParameters(pr.parameterFields, nvargs)
 	if err := s.pwr.Write(ctx, p.MtExecute, !s.inTx.Load(), p.StatementID(pr.stmtID), inputParameters); err != nil {
@@ -673,7 +673,7 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 
 func (s *session) execCall(ctx context.Context, query string, pr *prepareResult, nvargs []driver.NamedValue) (*callResult, *callArgs, int64, error) {
 	t := time.Now()
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeCall)
+	defer s.metrics.addSQLTimeValue(sqlTimeCall, time.Now())
 
 	callArgs, err := convertCallArgs(pr.parameterFields, nvargs, s.attrs.cesu8EncoderFn, s.attrs.lobChunkSize)
 	if err != nil {
@@ -780,7 +780,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 }
 
 func (s *session) fetchNext(ctx context.Context, qr *queryResult) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetch)
+	defer s.metrics.addSQLTimeValue(sqlTimeFetch, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtFetchNext, false, p.ResultsetID(qr.rsID), p.Fetchsize(s.attrs.fetchSize)); err != nil { //nolint: gosec
 		return err
@@ -830,7 +830,7 @@ func (s *session) closeResultsetID(ctx context.Context, id uint64) error {
 }
 
 func (s *session) commit(ctx context.Context) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeCommit)
+	defer s.metrics.addSQLTimeValue(sqlTimeCommit, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtCommit, false); err != nil {
 		return err
@@ -842,7 +842,7 @@ func (s *session) commit(ctx context.Context) error {
 }
 
 func (s *session) rollback(ctx context.Context) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeRollback)
+	defer s.metrics.addSQLTimeValue(sqlTimeRollback, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtRollback, false); err != nil {
 		return err

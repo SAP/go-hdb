@@ -26,5 +26,5 @@ func (cr *callResult) ReadLob(request *p.ReadLobRequest, reply *p.ReadLobReply) 
 
 // convertCallResult converts the stored procedure scalar output parameters.
 func convertCallResult(cr *callResult, scanArgs []any) error {
-	return stdConnTracker.callDB().QueryRow("", cr).Scan(scanArgs...)
+	return stdCallDB.db().QueryRow("", cr).Scan(scanArgs...)
 }
