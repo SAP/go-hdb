@@ -75,34 +75,34 @@ func (h *histogram) add(v float64) {
 	}
 }
 
-type counterMsg struct {
-	v   uint64
-	idx int
-}
+type msgKind uint8
 
-type gaugeMsg struct {
-	v   int64
-	idx int
-}
+const (
+	msgCounter msgKind = iota
+	msgGauge
+	msgTime
+	msgSQLTime
+	msgTimeCounter
+)
 
-type timeMsg struct {
-	d   time.Duration
-	idx int
-}
-
-type sqlTimeMsg struct {
-	d   time.Duration
-	idx int
+// metricMsg is the single message type sent to the metrics collector channel.
+type metricMsg struct {
+	kind msgKind
+	idx  int    // metric index: counter, gauge, time, or sqlTime
+	idx2 int    // counter index for msgTimeCounter
+	v    int64  // gauge value for msgGauge
+	c    uint64 // counter value for msgCounter and msgTimeCounter
+	d    time.Duration
 }
 
 const numMetricCollectorCh = 100
 
 type metrics struct {
-	mu      sync.RWMutex
-	connMu  sync.Mutex // guards numConn and collector start/stop transitions
-	numConn int
-	wg      *sync.WaitGroup
-	msgCh   chan any
+	mu     sync.RWMutex
+	connMu sync.Mutex // guards n and collector start/stop transitions
+	n      int
+	wg     *sync.WaitGroup
+	msgCh  chan metricMsg
 
 	parentMetrics *metrics
 
@@ -139,14 +139,14 @@ func newMetrics(parentMetrics *metrics, timeUnit string, timeUpperBounds []float
 	return rv
 }
 
-func (m *metrics) addConn() {
+func (m *metrics) incrConn() {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	m.numConn++
-	if m.numConn > 1 {
+	m.n++
+	if m.n > 1 {
 		return
 	}
-	m.msgCh = make(chan any, numMetricCollectorCh)
+	m.msgCh = make(chan metricMsg, numMetricCollectorCh)
 	m.wg.Go(func() {
 		// collect
 		for msg := range m.msgCh {
@@ -155,15 +155,15 @@ func (m *metrics) addConn() {
 	})
 }
 
-func (m *metrics) removeConn() {
+func (m *metrics) decrConn() {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	m.numConn--
-	if m.numConn > 0 {
+	m.n--
+	if m.n > 0 {
 		return
 	}
-	if m.numConn < 0 {
-		panic("unpaired removeConn")
+	if m.n < 0 {
+		panic("unpaired decrConn")
 	}
 	close(m.msgCh)
 	m.wg.Wait()
@@ -192,19 +192,22 @@ func (m *metrics) stats() *Stats {
 	}
 }
 
-func (m *metrics) handleMsg(msg any) {
+func (m *metrics) handleMsg(msg metricMsg) {
 	m.mu.Lock()
-	switch msg := msg.(type) {
-	case counterMsg:
-		m.counters[msg.idx] += msg.v
-	case gaugeMsg:
+	switch msg.kind {
+	case msgCounter:
+		m.counters[msg.idx] += msg.c
+	case msgGauge:
 		m.gauges[msg.idx] += msg.v
-	case timeMsg:
+	case msgTime:
 		m.times[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
-	case sqlTimeMsg:
+	case msgSQLTime:
 		m.sqlTimes[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
+	case msgTimeCounter:
+		m.times[msg.idx].add(float64(msg.d.Nanoseconds()) / m.divider)
+		m.counters[msg.idx2] += msg.c
 	default:
-		panic("invalid metric message type")
+		panic("invalid metric message kind")
 	}
 	m.mu.Unlock()
 
@@ -213,10 +216,37 @@ func (m *metrics) handleMsg(msg any) {
 	}
 }
 
-func metricsAddTimeValue(metrics *metrics, start time.Time, k int) {
-	metrics.msgCh <- timeMsg{idx: k, d: time.Since(start)}
+// addCounter sends a counter message to the metrics collector channel.
+func (m *metrics) addCounter(idx int, v uint64) {
+	m.msgCh <- metricMsg{kind: msgCounter, idx: idx, c: v}
 }
 
-func metricsAddSQLTimeValue(metrics *metrics, start time.Time, k int) {
-	metrics.msgCh <- sqlTimeMsg{idx: k, d: time.Since(start)}
+// addGauge sends a gauge message to the metrics collector channel.
+func (m *metrics) addGauge(idx int, v int64) {
+	m.msgCh <- metricMsg{kind: msgGauge, idx: idx, v: v}
+}
+
+// addTime sends a time message to the metrics collector channel.
+func (m *metrics) addTime(idx int, d time.Duration) {
+	m.msgCh <- metricMsg{kind: msgTime, idx: idx, d: d}
+}
+
+// addTimeValue sends the time elapsed since start to the metrics collector channel.
+func (m *metrics) addTimeValue(idx int, start time.Time) {
+	m.addTime(idx, time.Since(start))
+}
+
+// addSQLTime sends an SQL statement time message to the metrics collector channel.
+func (m *metrics) addSQLTime(idx int, d time.Duration) {
+	m.msgCh <- metricMsg{kind: msgSQLTime, idx: idx, d: d}
+}
+
+// addSQLTimeValue sends the time elapsed since start to the metrics collector channel.
+func (m *metrics) addSQLTimeValue(idx int, start time.Time) {
+	m.addSQLTime(idx, time.Since(start))
+}
+
+// addTimeCounter sends a combined time and counter message to the metrics collector channel.
+func (m *metrics) addTimeCounter(idx int, d time.Duration, cidx int, v uint64) {
+	m.msgCh <- metricMsg{kind: msgTimeCounter, idx: idx, d: d, idx2: cidx, c: v}
 }

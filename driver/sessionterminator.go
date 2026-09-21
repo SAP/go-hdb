@@ -58,42 +58,41 @@ const disconnectSessionStmt = "alter system disconnect session '%d'"
 type sessionTerminator struct {
 	connector *Connector
 
-	mu      sync.Mutex
-	numOpen int
-	taskCh  chan terminateEvent
-	wg      sync.WaitGroup
+	mu     sync.Mutex
+	n      int
+	taskCh chan terminateEvent
+	wg     sync.WaitGroup
 }
 
-func (t *sessionTerminator) loop(taskCh <-chan terminateEvent) {
-	for ev := range taskCh {
-		t.executeDisconnect(ev)
-	}
-}
-
-func (t *sessionTerminator) open() {
+func (t *sessionTerminator) incrConn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	if t.numOpen == 0 {
-		t.taskCh = make(chan terminateEvent, terminateQueueSize)
-		t.wg.Go(func() { t.loop(t.taskCh) })
-	}
-	t.numOpen++
-}
-
-func (t *sessionTerminator) close() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.numOpen == 0 {
+	t.n++
+	if t.n > 1 {
 		return
 	}
-	t.numOpen--
-	if t.numOpen == 0 {
-		close(t.taskCh)
-		t.wg.Wait()
-		t.taskCh = nil
+	t.taskCh = make(chan terminateEvent, terminateQueueSize)
+	t.wg.Go(func() {
+		for ev := range t.taskCh {
+			t.executeDisconnect(ev)
+		}
+	})
+}
+
+func (t *sessionTerminator) decrConn() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.n--
+	if t.n > 0 {
+		return
 	}
+	if t.n < 0 {
+		t.n = 0 // unpaired decrConn: silently ignore
+		return
+	}
+	close(t.taskCh)
+	t.wg.Wait()
+	t.taskCh = nil
 }
 
 // terminate is best effort: the termination is dropped if the queue is

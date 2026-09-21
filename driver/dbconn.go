@@ -102,8 +102,7 @@ func (c *stdDBConn) Read(b []byte) (int, error) {
 	}
 	now := time.Now()
 	n, err := c.conn.Read(b)
-	c.metrics.msgCh <- timeMsg{idx: timeRead, d: time.Since(now)}
-	c.metrics.msgCh <- counterMsg{idx: counterBytesRead, v: uint64(n)} //nolint:gosec
+	c.metrics.addTimeCounter(timeRead, time.Since(now), counterBytesRead, uint64(n)) //nolint:gosec
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", c.errLogAttrs(err, now)...)
 		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn
@@ -120,8 +119,7 @@ func (c *stdDBConn) Write(b []byte) (int, error) {
 	}
 	now := time.Now()
 	n, err := c.conn.Write(b)
-	c.metrics.msgCh <- timeMsg{idx: timeWrite, d: time.Since(now)}
-	c.metrics.msgCh <- counterMsg{idx: counterBytesWritten, v: uint64(n)} //nolint:gosec
+	c.metrics.addTimeCounter(timeWrite, time.Since(now), counterBytesWritten, uint64(n)) //nolint:gosec
 	if err != nil {
 		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", c.errLogAttrs(err, now)...)
 		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn

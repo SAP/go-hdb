@@ -59,7 +59,7 @@ func convertCallResult(cr *callResult, scanArgs []any) error {
 	// in this case.
 	for _, fieldValue := range cr.fieldValues {
 		if _, isTable := fieldValue.(*queryResult); isTable {
-			return stdConnTracker.callDB().QueryRowContext(context.Background(), "", cr).Scan(scanArgs...)
+			return stdCallDB.db().QueryRowContext(context.Background(), "", cr).Scan(scanArgs...)
 		}
 	}
 

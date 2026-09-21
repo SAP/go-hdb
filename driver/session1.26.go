@@ -24,7 +24,7 @@ read lob reply
   - --> read single lobs
 */
 func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply *p.ReadLobReply) error {
-	defer metricsAddSQLTimeValue(s.metrics, time.Now(), sqlTimeFetchLob)
+	defer s.metrics.addSQLTimeValue(sqlTimeFetchLob, time.Now())
 
 	var err error
 	for err != io.EOF { //nolint: errorlint
