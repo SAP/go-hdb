@@ -20,7 +20,7 @@ func readResultPart(ctx context.Context, pi *p.PartInfo, part p.ResultPartDecode
 readLob reads output lob or result lob parameters from db.
 
 read lob reply
-  - seems like readLobreply returns only a result for one lob - even if more than one is requested
+  - seems like readLobReply returns only a result for one lob - even if more than one is requested
   - --> read single lobs
 */
 func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply *p.ReadLobReply) error {

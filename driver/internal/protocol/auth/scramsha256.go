@@ -27,7 +27,7 @@ type SCRAMSHA256 struct {
 	salt, serverChallenge []byte
 }
 
-// NewSCRAMSHA256 creates a new authSCRAMSHA256 instance.
+// NewSCRAMSHA256 creates a new SCRAMSHA256 instance.
 func NewSCRAMSHA256(username, password string) *SCRAMSHA256 {
 	return &SCRAMSHA256{username: username, password: password}
 }

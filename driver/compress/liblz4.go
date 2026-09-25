@@ -31,7 +31,7 @@ func liblz4CompressBound(n int) int {
 	return int(C.LZ4_compressBound(C.int(n)))
 }
 
-// liblz4Compress wraps LZ4_compress_default; returns bytes written or panics
+// liblz4Compress wraps LZ4_compress_default; returns bytes written or an error
 // on failure (caller is responsible for sizing dst via cCompressBound).
 func liblz4Compress(src, dst []byte) (int, error) {
 	if len(src) == 0 {
@@ -49,7 +49,7 @@ func liblz4Compress(src, dst []byte) (int, error) {
 	return n, nil
 }
 
-// liblz4Decompress wraps LZ4_decompress_safe; returns bytes written or panics.
+// liblz4Decompress wraps LZ4_decompress_safe; returns bytes written or an error.
 func liblz4Decompress(src, dst []byte) (int, error) {
 	if len(dst) == 0 {
 		return 0, nil

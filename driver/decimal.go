@@ -26,7 +26,7 @@ func (d Decimal) Value() (driver.Value, error) {
 	return (*big.Rat)(&d), nil
 }
 
-// NullDecimal represents an Decimal that may be null.
+// NullDecimal represents a Decimal that may be null.
 // NullDecimal implements the Scanner interface so
 // it can be used as a scan destination, similar to NullString.
 type NullDecimal struct {

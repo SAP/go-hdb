@@ -12,9 +12,9 @@ create column table <TableName> (id integer, field double)
 
 ## Test variants
 
-The basic idea is to insert data in chunks (batchCount) of a fixed amount of records (batchSize) either sequentially or 'in parallel'.
-The actual 'degree of parallelization' depends heavily on the test environment (CPU cores, TCP/IP stack). bulkbench enables potential parallelism idiomatically via goroutines. Each goroutine uses a database connection — the actual number of concurrent connections is governed by the Go sql.DB connection pool configuration.
-As the test performance results are heavily 'I/O bound' the implementation mainly tries to reduce client server round-trips. Therefore the go-hdb driver bulk insert capabilities are used (please refer to the [go-hdb driver documentation and examples](https://github.com/SAP/go-hdb)
+The basic idea is to insert data in chunks (batchCount) of a fixed number of records (batchSize) either sequentially or 'in parallel'.
+The actual 'degree of parallelization' depends heavily on the test environment (CPU cores, TCP/IP stack). bulkbench enables parallelism idiomatically via goroutines. Each goroutine uses a database connection — the actual number of concurrent connections is governed by the Go sql.DB connection pool configuration.
+As the test performance results are heavily 'I/O bound' the implementation mainly tries to reduce client-server round trips. Therefore the go-hdb driver bulk insert capabilities are used (please refer to the [go-hdb driver documentation and examples](https://github.com/SAP/go-hdb)
 for details).
 
 ## In a real-world example...
@@ -30,7 +30,7 @@ for details).
 
 ## Execute tests
 
-**Caution: please do NOT use a productive HANA instance for testing as bulkbench does create schemas and database tables.**
+**Caution: please do NOT use a production HANA instance for testing as bulkbench does create schemas and database tables.**
 
 Executing bulkbench starts an HTTP server on 'localhost:8080'.
 
@@ -40,8 +40,8 @@ should be visible in the browser window:
 ![cannot display bulkbench.png](./bulkbench.png)
 
 * the first section displays some runtime information like GOMAXPROCS and the driver and database version
-* the second section lists all test relevant parameters which can be set as environment variables or commandline parameters
-* the third section allows to execute tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
+* the second section lists all test-relevant parameters which can be set as environment variables or command-line parameters
+* the third section allows executing tests with predefined BatchCount and BatchSize parameters (see parameters command-line flag)
 * the last section provides some database commands for the selected test database schema and table
 
 Clicking on one of the predefined tests will execute it and display the result consisting of test parameters and the duration.

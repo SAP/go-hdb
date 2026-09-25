@@ -16,8 +16,8 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 // A Lob is the driver representation of a database large object field.
 // A Lob object uses an io.Reader object as source for writing content to a database lob field.
 // A Lob object uses an io.Writer object as destination for reading content from a database lob field.
-// A Lob can be created by constructor method NewLob with io.Reader and io.Writer as parameters or
-// created by new, setting io.Reader and io.Writer by SetReader and SetWriter methods.
+// A Lob can be created with the NewLob constructor with io.Reader and io.Writer as parameters or
+// with new, setting io.Reader and io.Writer with the SetReader and SetWriter methods.
 type Lob struct {
 	rd io.Reader
 	wr io.Writer
@@ -33,7 +33,7 @@ func (l Lob) Reader() io.Reader {
 	return l.rd
 }
 
-// SetReader sets the io.Reader source for a lob field to be written to database
+// SetReader sets the io.Reader source for a lob field to be written to the database
 // and returns *Lob, to enable simple call chaining.
 func (l *Lob) SetReader(rd io.Reader) *Lob {
 	l.rd = rd
@@ -45,14 +45,14 @@ func (l Lob) Writer() io.Writer {
 	return l.wr
 }
 
-// SetWriter sets the io.Writer destination for a lob field to be read from database
+// SetWriter sets the io.Writer destination for a lob field to be read from the database
 // and returns *Lob, to enable simple call chaining.
 func (l *Lob) SetWriter(wr io.Writer) *Lob {
 	l.wr = wr
 	return l
 }
 
-// NullLob represents an Lob that may be null.
+// NullLob represents a Lob that may be null.
 // NullLob implements the Scanner interface so
 // it can be used as a scan destination, similar to NullString.
 type NullLob struct {

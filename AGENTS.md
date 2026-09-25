@@ -34,6 +34,14 @@
 - Use US spelling throughout. Code, comments, and documentation.
 - Only export identifiers used externally.
 
+## Mandatory context (all agentic tools)
+This file is always loaded; the skill files below are not. Before starting the
+corresponding task, read the skill file in full and follow it -- never rely on
+prior knowledge of its contents.
+
+- Reviewing or rating the driver, protocol, commands, or tests, or judging
+  repo quality: read `.agents/skills/repo-review/SKILL.md`.
+
 ## Release Process
 
 ### Standard Release

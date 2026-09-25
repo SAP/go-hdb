@@ -447,7 +447,7 @@ type decimalDecompose interface {
 	Decompose(buf []byte) (form byte, negative bool, coefficient []byte, exponent int32)
 }
 
-// convertDecimal and convertFixed are intentional copy&paste of each other,
+// convertDecimal and convertFixed are intentional copy-and-paste of each other,
 // differing only in the target constructor (decimal vs fixed). They sit on the
 // parameter hot path - a single bulk insert calls them once per decimal/fixed
 // cell (numRow * numCols times). Deduplicating would add per-call cost we want

@@ -16,7 +16,7 @@ const (
 )
 
 /*
-versionNumber holds the information of a hdb semantic version.
+versionNumber holds the information of an HDB semantic version.
 
 u.vv.wwx.yy.zzzzzzzzzz
 
@@ -88,9 +88,9 @@ func compareUint64(u1, u2 uint64) int {
 //
 //	0 in case the two versions are equal,
 //
-// -1 in case version v has lower precedence than c2,
+// -1 in case version vn has lower precedence than vn2,
 //
-//	1 in case version v has higher precedence than c2.
+//	1 in case version vn has higher precedence than vn2.
 func (vn versionNumber) compare(vn2 versionNumber) int {
 	for i := range versionCount - 1 { // ignore buildID - might not be ordered}
 		if r := compareUint64(vn[i], vn2[i]); r != 0 {
@@ -115,7 +115,7 @@ var hdbFeatureAvailability = map[uint64]versionNumber{
 	hdbfConnectClientInfo: parseVersionNumber("2.00.042"),
 }
 
-// Version is representing a hdb version.
+// Version represents an HDB version.
 type Version struct {
 	vn      versionNumber
 	feature uint64
@@ -123,25 +123,25 @@ type Version struct {
 
 func (v *Version) String() string { return v.vn.String() }
 
-// Major returns the major field of a HDBVersionNumber.
+// Major returns the major field of a Version.
 func (v *Version) Major() uint64 { return v.vn[versionMajor] }
 
-// Minor returns the minor field of a HDBVersionNumber.
+// Minor returns the minor field of a Version.
 func (v *Version) Minor() uint64 { return v.vn[versionMinor] }
 
-// SPS returns the sps field of a HDBVersionNumber.
+// SPS returns the SPS field of a Version.
 func (v *Version) SPS() uint64 { return v.vn[versionRevision] / 10 }
 
-// Revision returns the revision field of a HDBVersionNumber.
+// Revision returns the revision field of a Version.
 func (v *Version) Revision() uint64 { return v.vn[versionRevision] }
 
-// Patch returns the patch field of a HDBVersionNumber.
+// Patch returns the patch field of a Version.
 func (v *Version) Patch() uint64 { return v.vn[versionPatch] }
 
-// BuildID returns the build id field of a HDBVersionNumber.
+// BuildID returns the build ID field of a Version.
 func (v *Version) BuildID() uint64 { return v.vn[versionBuildID] }
 
-// parseVersion parses a semantic hdb version string field.
+// parseVersion parses a semantic HDB version string.
 func parseVersion(s string) *Version {
 	vn := parseVersionNumber(s)
 	if vn.isZero() { // hdb 1.00 does not report version
@@ -151,7 +151,7 @@ func parseVersion(s string) *Version {
 	var feature uint64
 	// detect features
 	for f, cv := range hdbFeatureAvailability {
-		if vn.compare(cv) >= 0 { // v is equal or greater than cv
+		if vn.compare(cv) >= 0 { // v is equal to or greater than cv
 			feature |= f // add feature
 		}
 	}
@@ -162,12 +162,12 @@ func parseVersion(s string) *Version {
 //
 //	0 in case the two versions are equal,
 //
-// -1 in case version v has lower precedence than c2,
+// -1 in case version v has lower precedence than v2,
 //
-//	1 in case version v has higher precedence than c2.
+//	1 in case version v has higher precedence than v2.
 func (v *Version) compare(v2 *Version) int {
 	return v.vn.compare(v2.vn)
 }
 
-// hasFeature returns true if HDBVersion does support feature - false otherwise.
+// hasFeature returns true if the HDB version supports the feature - false otherwise.
 func (v *Version) hasFeature(feature uint64) bool { return v.feature&feature != 0 }

@@ -6,7 +6,7 @@ import (
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
 
-// ErrorLevel sent from database server.
+// ErrorLevel sent from the database server.
 type errorLevel int8
 
 var errorLevelStrs = [...]string{"Warning", "Error", "FatalError"}

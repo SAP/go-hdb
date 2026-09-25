@@ -281,7 +281,7 @@ type InputParameters struct {
 	FieldValues []driver.Value
 }
 
-// NewInputParameters returns a InputParameters instance.
+// NewInputParameters returns an InputParameters instance.
 func NewInputParameters(inputFields []*ParameterField, nvargs []driver.NamedValue) *InputParameters {
 	return &InputParameters{InputFields: inputFields, nvargs: nvargs}
 }

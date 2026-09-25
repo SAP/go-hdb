@@ -1,5 +1,5 @@
 // Package cesu8 implements functions and constants to support text encoded in CESU-8.
-// It implements functions comparable to the unicode/utf8 package for UTF-8 de- and encoding.
+// It implements functions comparable to the unicode/utf8 package for UTF-8 decoding and encoding.
 package cesu8
 
 import (
@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	// CESUMax is the maximum amount of bytes used by an CESU-8 codepoint encoding.
+	// CESUMax is the maximum number of bytes used by a CESU-8 code point encoding.
 	CESUMax = 6
 )
 
@@ -25,7 +25,7 @@ const (
 	rune3Max = 1<<16 - 1
 )
 
-// Size returns the amount of bytes needed to encode an UTF-8 byte slice to CESU-8.
+// Size returns the number of bytes needed to encode a UTF-8 byte slice to CESU-8.
 func Size(p []byte) int {
 	n := 0
 	for len(p) > 0 {

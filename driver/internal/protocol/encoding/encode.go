@@ -229,7 +229,7 @@ func (e *Encoder) CESU8Bytes(p []byte) (int, error) {
 	return n, err
 }
 
-// CESU8String encodes an UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
+// CESU8String encodes a UTF-8 string into CESU-8 and returns the CESU-8 bytes written.
 func (e *Encoder) CESU8String(s string) (int, error) {
 	return e.CESU8Bytes(unsafe.String2ByteSlice(s))
 }
@@ -279,7 +279,7 @@ func (e *Encoder) CESU8LIBytes(p []byte) error {
 	return err
 }
 
-// CESU8LIString encodes an UTF-8 into a CESU-8 string with length indicator.
+// CESU8LIString encodes a UTF-8 string into a CESU-8 string with length indicator.
 func (e *Encoder) CESU8LIString(s string) error {
 	size := cesu8.StringSize(s)
 	if err := e.varFieldInd(size); err != nil {

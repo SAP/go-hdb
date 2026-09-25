@@ -36,7 +36,7 @@ const (
 var (
 	dsn, host, port string
 	bufferSize      int
-	// when using too many concurrent connections (approx 1000), hdb 'resets connection -> limit number of concurrent connections to 100.
+	// when using too many concurrent connections (approx 1000), HDB resets the connection -> limit number of concurrent connections to 100.
 	parameters = prmsValue{{1, 100000}, {10, 10000}, {100, 1000}, {1, 1000000}, {10, 100000}, {100, 10000}}
 	drop       bool
 	wait       int
@@ -51,7 +51,7 @@ func init() {
 	flag.IntVar(&bufferSize, fnBufferSize, getIntEnv(envBufferSize, defaultBufferSize), fmt.Sprintf("Buffer size in bytes (environment variable: %s)", envBufferSize))
 	flag.Var(&parameters, fnParameters, fmt.Sprintf("Parameters (environment variable: %s)", envParameters))
 	flag.BoolVar(&drop, fnDrop, getBoolEnv(envDrop, true), fmt.Sprintf("Drop table before test (environment variable: %s)", envDrop))
-	flag.IntVar(&wait, fnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time before starting test in seconds (environment variable: %s)", envWait))
+	flag.IntVar(&wait, fnWait, getIntEnv(envWait, 0), fmt.Sprintf("Wait time in seconds before starting the test (environment variable: %s)", envWait))
 }
 
 // flags returns a slice containing all command-line flags defined in this package.

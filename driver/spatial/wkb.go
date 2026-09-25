@@ -175,7 +175,7 @@ func encodeWKB(b *wkbBuffer, g Geometry) error {
 	return nil
 }
 
-// EncodeWKB encodes a geometry to the "well known binary" format.
+// EncodeWKB encodes a geometry to the "well-known binary" format.
 func EncodeWKB(g Geometry, isXDR bool) ([]byte, error) {
 	b := newWKBBuffer(isXDR, false, -1)
 	if err := encodeWKB(b, g); err != nil {
@@ -184,7 +184,7 @@ func EncodeWKB(g Geometry, isXDR bool) ([]byte, error) {
 	return b.bytes(), nil
 }
 
-// EncodeEWKB encodes a geometry to the "extended well known binary" format.
+// EncodeEWKB encodes a geometry to the "extended well-known binary" format.
 func EncodeEWKB(g Geometry, isXDR bool, srid int32) ([]byte, error) {
 	b := newWKBBuffer(isXDR, true, srid)
 	if err := encodeWKB(b, g); err != nil {

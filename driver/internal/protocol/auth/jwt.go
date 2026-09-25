@@ -15,7 +15,7 @@ type JWT struct {
 	_cookie   []byte
 }
 
-// NewJWT creates a new authJWT instance.
+// NewJWT creates a new JWT instance.
 func NewJWT(token string) *JWT { return &JWT{token: token} }
 
 func (a *JWT) String() string {

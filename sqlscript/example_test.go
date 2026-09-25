@@ -32,7 +32,7 @@ DROP TABLE #my_local_temp_table
 	const envDSN = "GOHDBDSN"
 
 	dsn := os.Getenv(envDSN)
-	// exit if dsn is missing.
+	// exit if DSN is missing.
 	if dsn == "" {
 		return
 	}
@@ -46,7 +46,7 @@ DROP TABLE #my_local_temp_table
 	defer db.Close()
 
 	scanner := bufio.NewScanner(strings.NewReader(ddlScript))
-	// Include comments as part of the sql statements.
+	// Include comments as part of the SQL statements.
 	scanner.Split(sqlscript.ScanFunc(sqlscript.DefaultSeparator, true))
 
 	for scanner.Scan() {

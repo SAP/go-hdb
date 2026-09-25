@@ -129,7 +129,7 @@ type LocatorID uint64 // byte[locatorIdSize]
 
 /*
 write lobs:
-- write lob field to database in chunks
+- write lob field to the database in chunks
 - loop:
   - writeLobRequest
   - writeLobReply
@@ -238,13 +238,13 @@ func (r *WriteLobReply) decode(dec *encoding.Decoder, header *PartHeader, attrs 
 type ReadLobRequest struct {
 	/*
 	   read lobs:
-	   - read lob field from database in chunks
+	   - read lob field from the database in chunks
 	   - loop:
 	     - readLobRequest
 	     - readLobReply
 
 	   - read lob reply
-	     seems like readLobreply returns only a result for one lob - even if more than one is requested
+	     seems like readLobReply returns only a result for one lob - even if more than one is requested
 	     --> read single lobs
 	*/
 	ID        LocatorID

@@ -134,7 +134,7 @@ func TestX509Authentication(t *testing.T) {
 				t.Fatal(err)
 			}
 			if currentUser != userName {
-				t.Fatalf("Unexpected current user '%s' - '%s' expected", currentUser, userName)
+				t.Fatalf("unexpected current user '%s' - '%s' expected", currentUser, userName)
 			}
 		})
 	}

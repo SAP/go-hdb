@@ -193,7 +193,7 @@ const (
 )
 
 // CompressionLevelAndFlagsOrZero gets the compression level/flags option if available,
-// the zero value otherise.
+// the zero value otherwise.
 func (co *ConnectOptions) CompressionLevelAndFlagsOrZero() int32 {
 	var v int32
 	co.get(coCompressionLevelAndFlags, &v)
