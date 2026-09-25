@@ -22,7 +22,7 @@ type testHandler struct {
 	ts   *tests
 }
 
-// newTestHandler returns a new TestHandler instance.
+// newTestHandler returns a new testHandler instance.
 func newTestHandler(dba *dba, templateFS fs.FS) (*testHandler, error) {
 	tmpl, err := template.ParseFS(templateFS, tmplTestResult)
 	if err != nil {
@@ -70,7 +70,7 @@ func (r *testResult) String() string {
 		return r.Err.Error()
 	}
 	return fmt.Sprintf(
-		"insert of %d rows in %s (sequential: %t batchCount: %d batchSize: %d bulkSize: %d)",
+		"inserted %d rows in %s (sequential: %t batchCount: %d batchSize: %d bulkSize: %d)",
 		r.BatchCount*r.BatchSize,
 		r.Duration,
 		r.Sequential,
@@ -182,8 +182,8 @@ func (ts *tests) executeSequential(db *sql.DB, batchCount, batchSize int, wait t
 
 type task struct {
 	/*
-		using a dedicated connection for each task causes hdb closing connections
-		if number of connection is approx. 1000
+		using a dedicated connection for each task causes HDB to close connections
+		if the number of connections is approx. 1000
 		conn *sql.Conn
 	*/
 	stmt *sql.Stmt

@@ -177,7 +177,7 @@ type Connector struct {
 
 	metrics *metrics
 
-	terminator *sessionTerminator
+	lifecycle *connLifecycle
 }
 
 // NewConnector returns a new Connector instance with default values.
@@ -200,7 +200,7 @@ func NewConnector() *Connector {
 		_logger:             slog.Default(),
 		metrics:             stdHdbDriver.metrics, // use default stdHdbDriver metrics
 	}
-	c.terminator = &sessionTerminator{connector: c}
+	c.lifecycle = &connLifecycle{connector: c}
 	return c
 }
 
@@ -295,7 +295,7 @@ func (c *Connector) Host() string { return c._host }
 func (c *Connector) DatabaseName() string { return c._databaseName }
 
 func (c *Connector) fetchRedirectHost(ctx context.Context, databaseName string) (string, error) {
-	conn, err := newConn(ctx, c._host, c.metrics, c._routing, c.connAttrs(), c.terminator)
+	conn, err := newConn(ctx, c._host, c.metrics, c._routing, c.connAttrs(), c.lifecycle)
 	if err != nil {
 		return "", err
 	}
@@ -313,7 +313,7 @@ func (c *Connector) fetchRedirectHost(ctx context.Context, databaseName string) 
 // connect returns a connection or an error; the bool is true if the transport to
 // host was reached, so routing state is kept even when authentication fails.
 func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool, error) {
-	// isRealAuthError returns true in case of X509 certificate validation errors or hdb authentication errors, else otherwise.
+	// isRealAuthError returns true in case of X509 certificate validation errors or hdb authentication errors, otherwise false.
 	isRealAuthError := func(err error) bool {
 		if _, ok := errors.AsType[*auth.CertValidationError](err); ok {
 			return true
@@ -328,7 +328,7 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 
 	// can we connect via cookie?
 	if auth := c.cookieAuth(); auth != nil {
-		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.terminator)
+		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.lifecycle)
 		if connErr != nil {
 			return nil, false, connErr
 		}
@@ -348,7 +348,7 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 	for {
 		authHnd := c.authHnd()
 
-		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.terminator)
+		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.lifecycle)
 		if connErr != nil {
 			return nil, false, connErr
 		}
@@ -377,6 +377,9 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 
 // Connect implements the database/sql/driver/Connector interface.
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
+	if reuse, ok := c.lifecycle.getConn(ctx); ok { // pooled session is already authenticated: skip dial.
+		return reuse, nil
+	}
 	if c._databaseName != "" {
 		if cached, ok := redirectHost(c._host, c._databaseName); ok {
 			host := c._routing.pick(cached)
@@ -450,7 +453,7 @@ func (c *Connector) clone() *Connector {
 
 		metrics: c.metrics,
 	}
-	nc.terminator = &sessionTerminator{connector: nc}
+	nc.lifecycle = &connLifecycle{connector: nc}
 	return nc
 }
 

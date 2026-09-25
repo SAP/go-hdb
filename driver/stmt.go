@@ -9,6 +9,7 @@ import (
 	"iter"
 	"slices"
 	"sync"
+	"sync/atomic"
 )
 
 // check if statements implements all required interfaces.
@@ -26,6 +27,7 @@ type stmt struct {
 	metrics *metrics
 	query   string
 	pr      *prepareResult
+	closed  atomic.Bool // guards close against repeated teardown.
 }
 
 type totalRowsAffected int64
@@ -47,7 +49,7 @@ func newStmt(conn *conn, wg *sync.WaitGroup, attrs *connAttrs, metrics *metrics,
 }
 
 /*
-NumInput differs dependent on statement (check is done in QueryContext and ExecContext):
+NumInput depends on the statement (checked in QueryContext and ExecContext):
 - #args == #param (only in params):    query, exec, exec bulk (non control query)
 - #args == #param (in and out params): exec call
 - #args == 0:                          exec bulk (control query)
@@ -56,10 +58,9 @@ NumInput differs dependent on statement (check is done in QueryContext and ExecC
 func (s *stmt) NumInput() int { return -1 }
 
 func (s *stmt) Close() error {
-	// The connection is taken over by a table-out closer: app-driven closes
-	// are no-ops, the closer performs the teardown and writes the protocol
-	// once, at the very end (see tableOutCloser.cleanup).
-	if s.conn.tableOutCloser != nil {
+	// While a table-out tracker is attached app-driven closes
+	// are no-ops; teardown runs on the worker.
+	if s.conn.tableOutTracker != nil {
 		return nil
 	}
 	return s.close()
@@ -67,6 +68,9 @@ func (s *stmt) Close() error {
 
 // close drops the server-side statement and decrements the statement gauge.
 func (s *stmt) close() error {
+	if !s.closed.CompareAndSwap(false, true) {
+		return nil
+	}
 	s.metrics.addGauge(gaugeStmt, -1) // decrement number of statements.
 
 	if s.conn.session.isBad() {
@@ -173,7 +177,7 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	}
 
 	// table output resultset -> Query (kept open on success; the table-out
-	// closer owns the fake parent and closes it on teardown).
+	// tracker owns the fake parent rows).
 	rows, err := stdCallDB.db().QueryContext(context.Background(), "", cr)
 	if err != nil {
 		return nil, err
@@ -187,17 +191,17 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 		return nil, err
 	}
 	// the call succeeded and handed the table output rows to the caller: wire
-	// the closer to the resultsets and the connection, permanently holding it
-	// against pool reuse. On any error path the resultsets stay closer-less,
+	// the tracker to the resultsets and the connection, holding it for the
+	// worker. On any error path the resultsets stay tracker-less,
 	// close without accounting, and never hold.
-	closer := &tableOutCloser{stmt: s, rows: rows}
+	tracker := &tableOutTracker{stmt: s, rows: rows, lc: s.conn.lifecycle, done: make(chan struct{})}
 	for _, v := range cr.fieldValues {
 		if qr, ok := v.(*queryResult); ok {
-			qr.tableOutCloser = closer
-			closer.n.Add(1)
+			qr.tableOutTracker = tracker
+			tracker.n.Add(1)
 		}
 	}
-	s.conn.tableOutCloser = closer
+	s.conn.tableOutTracker = tracker
 	return driver.RowsAffected(numRow), nil
 }
 

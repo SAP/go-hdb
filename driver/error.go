@@ -18,7 +18,7 @@ type DBError interface {
 	Code() int       // Code returns the database error code.
 	Position() int   // Position returns the start position of erroneous sql statements sent to the database server.
 	Level() int      // Level returns one of the database server predefined error levels.
-	Text() string    // Text returns the error description sent from database server.
+	Text() string    // Text returns the error description sent from the database server.
 	IsWarning() bool // IsWarning returns true if the HDB error level equals 0.
 	IsError() bool   // IsError returns true if the HDB error level equals 1.
 	IsFatal() bool   // IsFatal returns true if the HDB error level equals 2.

@@ -50,7 +50,7 @@ func Benchmark(b *testing.B) {
 		case l%2 != 0: // odd number
 			medDuration = ds[l/2] // mid value
 		default:
-			medDuration = (ds[l/2] + ds[l/2-1]) / 2 // even number - return avg of the two mid numbers
+			medDuration = (ds[l/2] + ds[l/2-1]) / 2 // even number - return average of the two middle values
 		}
 
 		// Add metrics.
@@ -62,7 +62,7 @@ func Benchmark(b *testing.B) {
 
 	// Additional info.
 	log.SetOutput(os.Stdout)
-	log.Printf("Runtime Info - GOMAXPROCS: %d NumCPU: %d DriverVersion %s HDBVersion: %s",
+	log.Printf("Runtime Info - GOMAXPROCS: %d NumCPU: %d DriverVersion: %s HDBVersion: %s",
 		runtime.GOMAXPROCS(0),
 		runtime.NumCPU(),
 		driver.DriverVersion,
@@ -74,13 +74,13 @@ func Benchmark(b *testing.B) {
 	})
 
 	for _, prm := range parameters {
-		// Use batchCount and batchCount flags.
+		// Use batchCount and batchSize flags.
 		b.Run(fmt.Sprintf("sequential-%dx%d", prm.BatchCount, prm.BatchSize), func(b *testing.B) {
 			f(b, true, prm.BatchCount, prm.BatchSize)
 		})
 	}
 	for _, prm := range parameters {
-		// Use batchCount and batchCount flags.
+		// Use batchCount and batchSize flags.
 		b.Run(fmt.Sprintf("concurrent-%dx%d", prm.BatchCount, prm.BatchSize), func(b *testing.B) {
 			f(b, false, prm.BatchCount, prm.BatchSize)
 		})

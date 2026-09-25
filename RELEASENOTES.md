@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.11
+- connection reuse for stored procedures with table output parameters
+
 #### v1.18.10
 - code cleanups
 
@@ -53,8 +56,8 @@ Release Notes
 
 ### Major changes
 
-- Added support of Go 1.27.
-- Dropped support of Go language versions < Go 1.26.
+- Added support for Go 1.27.
+- Dropped support for Go language versions < Go 1.26.
 
 - Starting with Go 1.27 lob values are scanned natively into `string`, `[]byte`
   and `io.Writer` based destinations. The functions `driver.ScanLobBytes`,
@@ -107,7 +110,7 @@ Release Notes
 #### v1.17.1
 - updated Go toolchain to go1.26.5 / go1.25.12
 - updated dependencies
-- prep for for go1.27.0
+- prep for go1.27.0
 
 ### New features
 
@@ -138,7 +141,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 #### v1.16.13
 - updated Go toolchain to go1.26.5 / go1.25.12
 - updated dependencies
-- prep for for go1.27.0
+- prep for go1.27.0
 
 #### v1.16.12
 - updated Go toolchain to go1.26.4 / go1.25.11
@@ -187,7 +190,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of LDAP authentication (https://github.com/SAP/go-hdb/pull/159).
+- Added support for LDAP authentication (https://github.com/SAP/go-hdb/pull/159).
 
 ## v1.15.0
 
@@ -211,8 +214,8 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of Go 1.26.
-- Dropped support of Go language versions < Go 1.25.
+- Added support for Go 1.26.
+- Dropped support for Go language versions < Go 1.25.
 
 ## v1.14.0
 
@@ -279,8 +282,8 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of Go 1.25.
-- Dropped support of Go language versions < Go 1.24.
+- Added support for Go 1.25.
+- Dropped support for Go language versions < Go 1.24.
 
 ## v1.13.0
 
@@ -305,7 +308,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 - updated dependencies
 
 #### v1.13.3
-- fixed synchronize refresh calls
+- fixed synchronized refresh calls
 
 #### v1.13.2
 - fixed toolchain
@@ -315,8 +318,8 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of Go 1.24.
-- Dropped support of Go language versions < Go 1.23.
+- Added support for Go 1.24.
+- Dropped support for Go language versions < Go 1.23.
 
 ## v1.12.0
 
@@ -353,7 +356,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 #### v1.12.1
 - updated dependencies
-- support of additional linter checks
+- support for additional linter checks
 
 ### Changes
 
@@ -375,14 +378,14 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### New features
 
-- Added bulk insert via iterator (see example) for go versions >= go1.23.0
+- Added bulk insert via iterator (see example) for Go versions >= Go 1.23.0
 - Added net.KeepAliveConfig to connector (TCPKeepAliveConfig)
-  and enable on default with default settings for go versions >= go1.23.0
+  and enabled by default with default settings for Go versions >= Go 1.23.0
 
 ### Changes
 
-- Added support of Go 1.23.
-- Dropped support of Go language versions < Go 1.22.
+- Added support for Go 1.23.
+- Dropped support for Go language versions < Go 1.22.
 
 ## v1.10.0
 
@@ -475,7 +478,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 - experimental statement metadata
 
 #### v1.8.20
-- changed minimal go version in go.mod to 1.21.0
+- changed minimum Go version in go.mod to 1.21.0
 
 #### v1.8.18 - v1.8.19
 - updated dependencies
@@ -484,7 +487,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 - CWE-770 mitigation in bulkbench benchmark
 
 #### v1.8.16
-- fixed minimal go version in go.mod to comply to the 1.N.P syntax (https://go.dev/doc/toolchain#version)
+- fixed minimum Go version in go.mod to comply with the 1.N.P syntax (https://go.dev/doc/toolchain#version)
 
 #### v1.8.15
 - fixed sql value conversion for integers and floats
@@ -529,8 +532,8 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of Go 1.22.
-- Dropped support of Go language versions < Go 1.21.
+- Added support for Go 1.22.
+- Dropped support for Go language versions < Go 1.21.
 
 ### Incompatible changes
 
@@ -581,7 +584,7 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### New features
 
-- Added driver support of scanning database rows into go structs.
+- Added driver support for scanning database rows into Go structs.
 
 ## v1.6.0
 
@@ -643,14 +646,14 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 - performance improvements
 
 #### v1.5.2
-- fixed race condition in connection conn and stmt methods in case of context canceling
+- fixed race condition in conn and stmt methods in case of context canceling
 
 #### v1.5.1
 - updated dependencies
 
 ### New features
 
-- Added support of tenant database connection via tenant database name:
+- Added support for tenant database connection via tenant database name:
   - see new Connector method WithDatabase and
   - new DSN parameter DSNDatabaseName
 
@@ -682,8 +685,8 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 ### Changes
 
-- Added support of Go 1.21.
-- Dropped support of Go language versions < Go 1.20.
+- Added support for Go 1.21.
+- Dropped support for Go language versions < Go 1.20.
 
 ### Incompatible changes
 
@@ -739,14 +742,14 @@ Most go-hdb users shouldn't be affected by this incompatible change.
 
 #### v1.3.2
 - updated dependencies
-- connection attribute logger instance getter and setter available for go1.20
+- connection attribute logger instance getter and setter available for Go 1.20
 
 #### v1.3.1
 - use slog LogAttrs to improve performance and provide context if available
 
 ### New features
 
-go-hdb [slog](https://pkg.go.dev/golang.org/x/exp/slog) support. The slog package does provide structured logging and replaces
+go-hdb [slog](https://pkg.go.dev/golang.org/x/exp/slog) support. The slog package provides structured logging and replaces
 the standard logging output including SQL and protocol traces.
 
 ### Incompatible changes
@@ -779,7 +782,7 @@ Most go-hdb users shouldn't be affected by these incompatible changes.
 #### v1.2.2
 - updated dependencies
 - pipx reuse check in Makefile
-- use errors.Join for go versions greater 1.19
+- use errors.Join for Go versions greater than 1.19
 
 #### v1.2.1
 - updated dependencies

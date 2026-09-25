@@ -88,8 +88,8 @@ func (d *profileEncoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int,
 	return
 }
 
-// NewEncoder creates a new encoder instance. With parameter errorHandler a custom error handling function could be used in case
-// the encoder would detect invalid UTF-8 encoded characters.
+// NewEncoder creates a new encoder instance. The errorHandler parameter allows a custom error-handling function to be used if
+// the encoder detects invalid UTF-8 encoded characters.
 func NewEncoder(errorHandler func(err *DecodeError) (rune, error)) *Encoder {
 	return &Encoder{errorHandler: errorHandler}
 }
@@ -171,8 +171,8 @@ func (d *profileDecoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int,
 	return
 }
 
-// NewDecoder creates a new decoder instance. With parameter errorHandler a custom error handling function could be used in case
-// the decoder would detect invalid CESU-8 encoded characters.
+// NewDecoder creates a new decoder instance. The errorHandler parameter allows a custom error-handling function to be used if
+// the decoder detects invalid CESU-8 encoded characters.
 func NewDecoder(errorHandler func(err *DecodeError) (rune, error)) *Decoder {
 	return &Decoder{errorHandler: errorHandler}
 }

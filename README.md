@@ -1,37 +1,32 @@
 # go-hdb
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/SAP/go-hdb/driver.svg)](https://pkg.go.dev/github.com/SAP/go-hdb/driver)
-[![REUSE status](https://api.reuse.software/badge/github.com/SAP/go-hdb)](https://api.reuse.software/info/github.com/SAP/go-hdb)
+[![go-version](https://img.shields.io/github/go-mod/go-version/SAP/go-hdb)](https://github.com/SAP/go-hdb/blob/main/go.mod)
 [![build](https://github.com/SAP/go-hdb/actions/workflows/build.yml/badge.svg)](https://github.com/SAP/go-hdb/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/SAP/go-hdb)](https://github.com/SAP/go-hdb/releases/latest)
+[![license](https://img.shields.io/github/license/SAP/go-hdb)](LICENSE.md)
+[![REUSE status](https://api.reuse.software/badge/github.com/SAP/go-hdb)](https://api.reuse.software/info/github.com/SAP/go-hdb)
 
-Go-hdb is a native Go (Golang) HANA database driver for Go's [database/sql](https://pkg.go.dev/database/sql) package. It implements the "SAP HANA SQL Command Network Protocol" directly, so it is **pure Go with no cgo and no HANA client library dependency** — a single statically linked binary, cross-compilable, with driver upgrades decoupled from the database version.
+Pure-Go driver for SAP HANA. No cgo, no client library - one static binary.
+Speaks the HANA SQL Command Network Protocol directly. Built for [database/sql](https://pkg.go.dev/database/sql), [minimal dependencies](https://github.com/SAP/go-hdb/blob/main/go.mod).
+Requires Go [latest or second latest version](https://golang.org/dl/).
 
-For the official SAP HANA client Go support (not this database driver), please see [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
+```go
+connector := driver.NewBasicAuthConnector("host:port", "user", "password")
+db := sql.OpenDB(connector)
 
-## Features
-
-* Compliant with the Go [database/sql](https://golang.org/pkg/database/sql) package.
-* UTF-8 to/from CESU-8 encoding for HANA Unicode types.
-* HANA decimals as:
-  * Go rational numbers via [math/big](http://golang.org/pkg/math/big) ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-Decimal)).
-  * custom decimal types via the [database/sql](https://golang.org/pkg/database/sql) decimal decompose / compose interfaces ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-package-CustomDecimal)).
-* Large Object streaming.
-* 'Bulk' query execution.
-* Stored Procedures with table output parameters.
-* Parameter free statements and queries via Execer and Queryer interfaces.
-* TLS TCP connections.
-* Little-endian (e.g. amd64) and big-endian (e.g. s390x) architecture support.
-* [Driver connector](https://golang.org/pkg/database/sql/driver/#Connector) interface.
-* [PBKDF2](https://tools.ietf.org/html/rfc2898) authentication as default, standard user/password as fallback.
-* LDAP, client certificate (X509) and JWT (JSON Web Token) authentication.
-* [Prometheus](https://prometheus.io) collectors for driver and extended database statistics.
-* [Scanning database rows into Go structs](https://pkg.go.dev/github.com/SAP/go-hdb/driver#StructScanner).
-* [LZ4 compression](driver/compress/README.md) support.
-
-## Installation
-
+var user string
+if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil {
+	// handle error
+}
 ```
-go get -u github.com/SAP/go-hdb/driver
+
+> Need the official SAP HANA client Go support (not this driver)? See [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
+
+## Install
+
+```sh
+go get github.com/SAP/go-hdb/driver
 ```
 
 ## Quickstart
@@ -42,6 +37,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	"github.com/SAP/go-hdb/driver"
 )
@@ -52,89 +48,68 @@ func main() {
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
-	var name string
-	if err := db.QueryRow("select current_user from dummy").Scan(&name); err != nil {
-		panic(err)
+	var user string
+	if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil {
+		log.Fatal(err)
 	}
-	fmt.Println(name)
+	fmt.Println(user)
 }
 ```
 
-## Building
+> For HANA Cloud (SNI/TLS), see the [cloud connection guide](docs/HANACLOUD.md).
 
-To build go-hdb, a working Go environment of the [latest or second latest Go version](https://golang.org/dl/) is required.
+## Features
 
-## Documentation
+**Core**
 
-API documentation and documented examples can be found at <https://pkg.go.dev/github.com/SAP/go-hdb/driver>.
+- `database/sql` compliant, `driver.Connector` support
+- TLS, PBKDF2 (default) with user/password fallback
+- Auth: LDAP, X.509 client cert, JWT - with refresh callbacks
+- Bulk execution, stored procedures with table output parameters
+- Little-endian (e.g. amd64) and big-endian (e.g. s390x) architecture support
 
-## HANA Cloud Connection
+**Data**
 
-The HANA cloud connection proxy uses SNI, which requires a TLS connection.
-By default, one can rely on the root certificate set provided by the host, which already comes with the necessary
-DigiCert certificates (CA, G5).
-For more information on [Go](https://go.dev/) TLS certificate handling, please see https://pkg.go.dev/crypto/tls#Config.
+- UTF-8 to/from CESU-8 for HANA Unicode types
+- HANA decimals as:
+  - Go rational numbers via `math/big` ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-Decimal)).
+  - Custom decompose/compose types ([example](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-package-CustomDecimal)).
+- LOB streaming, scanning rows into structs (`driver.StructScanner`)
+- [LZ4 compression](driver/compress/README.md)
 
-Assuming the HANA cloud 'endpoint' is "something.hanacloud.ondemand.com:443", the DSN should look as follows:
+**Observability**
 
-```
-"hdb://<USER>:<PASSWORD>@something.hanacloud.ondemand.com:443?TLSServerName=something.hanacloud.ondemand.com"
-```
-
-where:
-- TLSServerName: same as 'host'
-
-## Specific Root Certificate
-If a specific root certificate (e.g. self-signed) is needed, the TLSRootCAFile DSN parameter must point to the location in the file system where the root certificate file in PEM format is stored.
-
-## Tests
-
-To run the driver integration tests, a HANA Database server is required. The test user must have privileges to create database schemas.
-
-Set the environment variable GOHDBDSN:
-
-```
-#linux example
-export GOHDBDSN="hdb://user:password@host:port"
-go test
-```
-
-Using the Go build tag 'unit', only the driver unit tests will be executed (no HANA Database server required):
-
-```
-go test --tags unit
-```
-
-### CPU Profiling
-
-Integration tests include network I/O which dominates wall time and obscures driver CPU cost. To profile only the driver code, collect a CPU profile and then filter out database-tagged samples with `tagignore=db`:
-
-```
-go test -v -test.cpuprofile cpu.out
-go tool pprof cpu.out
-```
-
-```
-(pprof) tagignore=db
-(pprof) top 10
-```
-
-The `tagignore=db` filter excludes samples tagged with database activity (network, syscalls waiting on the server), leaving only driver-side CPU work visible. To further exclude CESU-8 encoding/decoding overhead, add `tagignore=cesu8`:
-
-```
-(pprof) tagignore=db,cesu8
-(pprof) top 10
-```
+- Driver stats via `NativeDriver().Stats()`
+- Per-DB `ExStats()` (requires `driver.OpenDB`)
+- [Prometheus collectors](https://github.com/SAP/go-hdb/tree/main/prometheus)
+- Per-statement SQL trace via `slog`
 
 ## Performance
 
-* For diagnosing latency and tuning throughput, see the [performance guide](docs/PERFORMANCE.md).
+For diagnosing latency and tuning throughput, see the [performance guide](docs/PERFORMANCE.md).
 
-## Dependencies
+## Documentation
 
-* Please see [go.mod](https://github.com/SAP/go-hdb/blob/main/go.mod).
+- API + examples: [pkg.go.dev](https://pkg.go.dev/github.com/SAP/go-hdb/driver)
+- Compression: [driver/compress/README.md](driver/compress/README.md)
+- Changes: [RELEASENOTES.md](RELEASENOTES.md)
 
-## Licensing
+## Testing
+
+To run the driver integration tests, a HANA database server is required. The test user must have privileges to create database schemas.
+
+```sh
+export GOHDBDSN="hdb://user:password@host:port"
+go test ./...
+```
+
+Unit-only (no server):
+
+```sh
+go test --tags unit ./...
+```
+
+## License
 
 SAP SE or an SAP affiliate company and go-hdb contributors. Please see our [LICENSE](LICENSE.md) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/SAP/go-hdb).
 

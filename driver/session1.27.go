@@ -21,8 +21,8 @@ func readResultPart(ctx context.Context, pi *p.PartInfo, part p.ResultPartDecode
 	return pi.ReadResultPart(ctx, part)
 }
 
-// readLobComplete reads a complete lob value to wr. value is the lob field value to scan,
-// isCharLob indicates if the lob is char based (cesu8 encoded) or byte based.
+// readLobComplete reads a complete lob value into wr. Value is the lob field value to scan.
+// IsCharLob indicates whether the lob is char-based (CESU-8 encoded) or byte-based.
 func (s *session) readLobComplete(descr *p.LobOutDescr, wr io.Writer) error {
 	request := &p.ReadLobRequest{ID: descr.LocatorID(), ChunkSize: s.attrs.lobChunkSize}
 	reply := p.NewReadLobReply(descr.LocatorID())

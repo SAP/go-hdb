@@ -38,7 +38,7 @@ type SCRAMPBKDF2SHA256 struct {
 	rounds                uint32
 }
 
-// NewSCRAMPBKDF2SHA256 creates a new authSCRAMPBKDF2SHA256 instance.
+// NewSCRAMPBKDF2SHA256 creates a new SCRAMPBKDF2SHA256 instance.
 func NewSCRAMPBKDF2SHA256(username, password string) *SCRAMPBKDF2SHA256 {
 	return &SCRAMPBKDF2SHA256{username: username, password: password}
 }

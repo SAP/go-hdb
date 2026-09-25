@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// typeCode identify the type of a field transferred to or from the database.
+// typeCode identifies the type of a field transferred to or from the database.
 type typeCode byte
 
 // null value indicator is high bit

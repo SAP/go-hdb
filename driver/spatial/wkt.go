@@ -131,14 +131,14 @@ func encodeWKT(b *wktBuffer, printType bool, g Geometry) {
 	}
 }
 
-// EncodeWKT encodes a geometry to the "well known text" format.
+// EncodeWKT encodes a geometry to the "well-known text" format.
 func EncodeWKT(g Geometry) ([]byte, error) {
 	b := new(wktBuffer)
 	encodeWKT(b, true, g)
 	return b.Bytes(), nil
 }
 
-// EncodeEWKT encodes a geometry to the "well known text" format.
+// EncodeEWKT encodes a geometry to the "well-known text" format.
 func EncodeEWKT(g Geometry, srid int32) ([]byte, error) {
 	b := new(wktBuffer)
 	b.writeStrings("SRID=", strconv.Itoa(int(srid)), ";")

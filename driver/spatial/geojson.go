@@ -85,7 +85,7 @@ type jsonTypeGeometries struct {
 	Geometries any    `json:"geometries"`
 }
 
-// EncodeGeoJSON encodes a geometry to the geoJSON format.
+// EncodeGeoJSON encodes a geometry to the GeoJSON format.
 func EncodeGeoJSON(g Geometry) ([]byte, error) {
 	switch geoType(g) {
 	case geoGeometryCollection:

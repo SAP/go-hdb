@@ -20,7 +20,7 @@ type Dialer interface {
 }
 
 // DefaultDialer is the default driver Dialer implementation.
-// TCP4 connections are preferred over TCP6 connections until HANA cloud would fully support IPv6.
+// TCP4 connections are preferred over TCP6 connections until HANA Cloud fully supports IPv6.
 // see https://github.com/SAP/go-hdb/issues/157.
 var DefaultDialer Dialer = &tcp4PrefDialer{}
 var _ = &dialer{}

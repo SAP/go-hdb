@@ -53,13 +53,13 @@ func newCollector(fn func() *driver.Stats, subsystem string, labels prometheus.L
 		),
 		readBytes: prometheus.NewDesc(
 			fqName("bytes_read"),
-			fmt.Sprintf("The total bytes read from the database connection of %s statements.", subsystem),
+			fmt.Sprintf("The total number of bytes read from the database connection of %s statements.", subsystem),
 			nil,
 			labels,
 		),
 		writtenBytes: prometheus.NewDesc(
 			fqName("bytes_written"),
-			fmt.Sprintf("The total bytes written to the database connection of %s statements.", subsystem),
+			fmt.Sprintf("The total number of bytes written to the database connection of %s statements.", subsystem),
 			nil,
 			labels,
 		),
@@ -89,7 +89,7 @@ func newCollector(fn func() *driver.Stats, subsystem string, labels prometheus.L
 		),
 		sqlTimes: prometheus.NewDesc(
 			fqName("sql_time"),
-			fmt.Sprintf("The spent time measured in %s for the different sql statements of %s.", stats.TimeUnit, subsystem),
+			fmt.Sprintf("The time spent measured in %s for the different SQL statements of %s.", stats.TimeUnit, subsystem),
 			[]string{"sql"},
 			labels,
 		),

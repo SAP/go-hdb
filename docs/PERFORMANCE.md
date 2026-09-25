@@ -48,13 +48,13 @@ HANA execution ── (H) actual query work ────────────
 ```
 
 Application-level tracing (e.g. via `otelsql`) typically measures the
-wall-clock of `Prepare`/`Exec`/`Query` as the calling code sees it — that is,
-it includes **all of phases A through H combined**. As a result, a call that
+wall-clock time of `Prepare`/`Exec`/`Query` as the calling code sees it — that is,
+it includes **all phases A through H combined**. As a result, a call that
 looks like a "slow Exec" can be almost entirely connection acquisition and
 setup (A–E) with a fast statement (H). To split these apart you need the
 driver's own instrumentation, described below.
 
-A useful thing to know about HANA specifically: establishing a *new* physical
+Useful to know about HANA specifically: establishing a *new* physical
 connection (TCP connect plus the full authentication handshake, phases C–E) is
 comparatively expensive, whereas reusing an already-authenticated connection
 from the pool skips all of it. Connection churn is therefore a frequent source
@@ -74,7 +74,7 @@ driver capabilities.
 ### HANA backend
 
 Even for trivial, index-based statements, the backend can occasionally be the
-cause:
+cause of the slowdown:
 
 - Check **load, CPU, and memory** on the HANA host over the affected window. A
   transient spike (from another workload, backups, savepoints, delta merges,
@@ -85,7 +85,7 @@ cause:
   plan-cache eviction can cause a one-off spike even for a simple query.
 
 If the backend consistently shows the statement executing quickly at the times
-your service saw a slow call, the time is being spent on the client / network /
+your service saw a slow call, the time is being spent on the client/network/
 pool side, and the driver observability below will localize it.
 
 ### Network
@@ -93,7 +93,7 @@ pool side, and the driver observability below will localize it.
 The path between the service and HANA can introduce latency that looks
 identical to a slow query from the application's point of view:
 
-- Intermittent packet loss, retransmits, or jitter add unpredictable delay to
+- Intermittent packet loss, retransmissions, or jitter add unpredictable delay to
   every round-trip (and each `Prepare`/`Exec`/`fetch` is at least one).
 - Firewalls, NAT gateways, and load balancers may silently drop idle
   connections, so the *next* use of a pooled connection stalls or fails and
@@ -107,13 +107,13 @@ attributing anything to the driver.
 
 ### A reliable reference setup
 
-It helps to have one controlled setup in which driver behaviour can be measured
+It helps to have one controlled setup in which driver behavior can be measured
 in isolation, separate from the environment where the slowdown was observed. The
 aim is not to reproduce every production condition, but to have a clean,
 repeatable baseline for comparison: if the numbers in the reference match what
 the observed environment shows, the investigation stays on the driver; if the
 reference is fast and stable while the other environment is not, that difference
-points at the environment (backend load, network, configuration) and helps
+points to the environment (backend load, network, configuration) and helps
 narrow down where to look next.
 
 go-hdb ships such a benchmark: [`cmd/bulkbench`](https://github.com/SAP/go-hdb/tree/main/cmd/bulkbench),
@@ -121,7 +121,7 @@ a throughput benchmark used for the driver's own performance analysis. It can be
 run interactively or as a Go benchmark (`go test -bench .`) and lets you vary
 the batch count and size, sequential vs. concurrent execution, and the driver's
 TCP buffer size — a good starting point for a reference measurement. (Note its
-caution: do not run it against a productive HANA instance, as it creates schemas
+warning: do not run it against a production HANA instance, as it creates schemas
 and tables.)
 
 A few things keep the reference trustworthy:
@@ -129,8 +129,8 @@ A few things keep the reference trustworthy:
 - Run against a stable, representative HANA instance — not one shared with
   unrelated heavy workloads that add their own noise.
 - Use a well-understood network path, and record its baseline latency so driver
-  time can be told apart from network time.
-- Drive it with a controlled, repeatable load, so a change's effect is
+  time can be distinguished from network time.
+- Drive it with a controlled, repeatable load, so the effect of a change is
   observable and reproducible.
 - Warm the connection pool before measuring, so first-call connection setup is
   not mistaken for per-statement latency.
@@ -140,12 +140,33 @@ against it directly, and the driver's own observability (below) tells you which
 phase the remaining time is in.
 
 For a lower-level look, the driver also supports CPU profiling that isolates
-driver-side work: collecting a `pprof` profile and filtering with `tagignore=db`
-excludes samples tagged with network and server-wait activity, so only the
-driver's own CPU cost remains (see the CPU Profiling section of the go-hdb
-[README](https://github.com/SAP/go-hdb#cpu-profiling)). That is more relevant to
-driver-internal optimization than to the latency investigation here, but it
-is worth knowing about when you need to measure the driver in isolation.
+driver-side work. Integration tests include network I/O which dominates wall
+time and obscures driver CPU cost. To profile only the driver code, collect a
+CPU profile and then filter out database-tagged samples with `tagignore=db`:
+
+```
+go test -v -test.cpuprofile cpu.out
+go tool pprof cpu.out
+```
+
+```
+(pprof) tagignore=db
+(pprof) top 10
+```
+
+The `tagignore=db` filter excludes samples tagged with database activity
+(network, syscalls waiting on the server), leaving only driver-side CPU work
+visible. To further exclude CESU-8 encoding/decoding overhead, add
+`tagignore=cesu8`:
+
+```
+(pprof) tagignore=db,cesu8
+(pprof) top 10
+```
+
+That is more relevant to driver-internal optimization than to the latency
+investigation here, but it is worth knowing about when you need to measure the
+driver in isolation.
 
 ---
 
@@ -153,7 +174,7 @@ is worth knowing about when you need to measure the driver in isolation.
 
 The tools below turn a vague "it's slow" into a measured statement about which
 phase the time is in. Start with the aggregate stats (they answer
-*get-a-connection vs. run-SQL* directly), export them so the behaviour is
+*get-a-connection vs. run-SQL* directly), export them so the behavior is
 captured over time — including intermittent spikes — and reach for the
 per-statement SQL trace when you need to see individual statements.
 
@@ -178,7 +199,7 @@ stats := db.ExStats()                        // per-*driver.DB scope
 available. `db.ExStats()` returns the same set of stats but scoped to that one
 `*driver.DB` — useful when several DSNs/tenants share a process and you want to
 attribute activity to a specific one. Per-DB events also roll up into the global
-stats, so the global stats remain the superset.
+stats, so the global stats remain a superset.
 
 #### The `Stats` struct
 
@@ -196,14 +217,14 @@ per-operation `SQLTimes` map (keys `prepare`, `query`, `exec`, `call`, `fetch`,
 
 | Signal | What it tells you |
 |---|---|
-| **`AuthTime.Count`** | How many new physical connections were authenticated. Each increment corresponds to a full connect + auth handshake. If it rises steadily during normal steady-state traffic (rather than only at startup), connections are being created rather than reused. |
+| **`AuthTime.Count`** | How many new physical connections were authenticated. Each increment corresponds to a full connect + auth handshake. If it rises steadily during steady-state traffic (rather than only at startup), connections are being created rather than reused. |
 | `AuthTime.Sum` / `AuthTime.Buckets` | How *long* each authentication took. `Sum/Count` gives the average; the buckets show the tail. High values here mean each pool miss is costly. |
 | `SQLTimes["prepare"]`, `SQLTimes["exec"]`, `SQLTimes["query"]` | Time the driver actually spent on the SQL round-trip. If these are small but the application-side latency for the same call is large, the extra time is connection acquisition (A–E), not the statement. |
 | `OpenConnections` | Live connections at the moment of sampling; compare against expected parallelism. |
 | `SessionConnects` | Total session connects. |
 
-**A decisive comparison:** sample `AuthTime.Count` at two points during normal
-steady operation (e.g. a minute apart, away from startup). If it grew, the
+**A decisive comparison:** sample `AuthTime.Count` at two points during
+steady-state operation (e.g. a minute apart, away from startup). If it grew, the
 driver opened new connections in that window, and any request that triggered
 one paid the auth cost. Correlate the timing of those increments with the
 timestamps of slow calls in your application tracing.
@@ -228,7 +249,7 @@ Two patterns to look for:
   maximum number of open connections is too low for the observed parallelism
   (phase A).
 - **`MaxIdleTimeClosed` / `MaxIdleClosed` climbing** → the pool is discarding
-  connections, forcing re-authentication on the next burst (which feeds phase
+  connections, forcing re-authentication on the next burst (which triggers phase
   D). This is governed by the idle-connection and idle-timeout settings.
 
 Together the two stat sources let you state precisely how many times a request
@@ -238,7 +259,7 @@ how long each authentication took.
 ### Exporting the stats (Prometheus / OTel)
 
 Reading the stats once shows a snapshot; exporting them continuously shows how
-they move over time. That is what lets you correlate the driver's behaviour with
+they move over time. That is what lets you correlate the driver's behavior with
 slow-request timestamps — and, when slowness is intermittent, catch the spikes
 that a one-off sample would miss. go-hdb ships Prometheus collectors for exactly
 this.
@@ -265,11 +286,11 @@ The `sql_time` histogram is what shows whether latency is in `prepare`/`exec`
 themselves versus connection setup, and a useful signal to graph and alert on
 is the *rate* of `auth_time` count (or `session_connects`): in a healthy
 steady-state service it should be roughly flat after warm-up, so spikes flag
-connection-churn events to overlay on a slow-request graph.
+connection-churn events for overlaying on a slow-request graph.
 
 ### SQL trace (per-statement)
 
-Where the stats aggregate, the SQL trace shows *individual* statements: which
+While the stats aggregate, the SQL trace shows *individual* statements: which
 one ran and how long each took. Reach for it once the stats point at SQL
 round-trips (rather than auth) and you need to know which statements.
 
@@ -336,7 +357,7 @@ Pool parameters live on `*sql.DB` / `*driver.DB`, **not** on the connector:
 ```go
 db.SetMaxOpenConns(n)      // ceiling on concurrent physical connections
 db.SetMaxIdleConns(n)      // how many connections to keep warm (idle)
-db.SetConnMaxIdleTime(d)   // close idle connections after this duration; 0 = never for being idle
+db.SetConnMaxIdleTime(d)   // close idle connections after this duration; 0 = never
 db.SetConnMaxLifetime(d)   // recycle connections after this age; 0 = no forced recycling
 ```
 
@@ -357,7 +378,7 @@ How these interact with the phases above:
 General guidance for a service with steady parallel usage:
 
 - Keeping `MaxIdleConns` close to `MaxOpenConns` avoids discarding connections
-  merely for being idle while still under the open ceiling.
+  merely because they are idle while still under the open ceiling.
 - A larger (or zero) `ConnMaxIdleTime` avoids dropping warm connections during
   quiet periods, at the cost of holding HANA-side resources for longer.
 - Size `MaxOpenConns` to the *observed* peak parallelism. The stats provide the
@@ -366,7 +387,7 @@ General guidance for a service with steady parallel usage:
 
 These are trade-offs, not fixed answers: keeping many connections warm suits a
 hot service with predictable parallelism, while a service with rare bursts may
-prefer a finite idle timeout. Size to observed behaviour rather than assumption.
+prefer a finite idle timeout. Size them to observed behavior rather than relying on assumptions.
 
 #### Optionally: detect dead idle connections
 
@@ -375,7 +396,7 @@ a failed round-trip and a reconnect. The driver can ping a pooled connection
 before handing it out:
 
 ```go
-connector.SetPingInterval(d) // on checkout, ping a pooled conn idle (unread) for ≥ d; 0 = off (default)
+connector.SetPingInterval(d) // on checkout, ping a pooled connection idle for ≥ d; 0 = off (default)
 ```
 
 The cost is one extra round-trip on checkout after the interval — cheap
@@ -405,7 +426,7 @@ Once you have driver stats, close the loop with the backend checks from
 *Before the driver deep-dive*: compare the driver's `SQLTimes["exec"]` /
 `sql_time{sql="exec"}` tail against HANA's own measured execution time for the
 same statements. A large gap (driver slow, HANA fast) confirms the time is on
-the client / network / pool side (phases A–G) rather than in HANA itself.
+the client/network/pool side (phases A–G) rather than in HANA itself.
 
 ---
 
@@ -417,7 +438,7 @@ the client / network / pool side (phases A–G) rather than in HANA itself.
        firewalls/NAT) and confirm slowdowns don't coincide with network events.
 3. [ ] Set up a controlled reference measurement (e.g. via `cmd/bulkbench`:
        representative instance, known network baseline, repeatable load, warmed
-       pool) to compare the observed environment against.
+       pool) to compare the observed environment against the reference.
 4. [ ] Sample the driver stats (`NativeDriver().Stats()` or `db.ExStats()`); log
        `AuthTime.Count`, `AuthTime.Sum`, and `SQLTimes[*].Count`.
 5. [ ] Check whether `AuthTime.Count` climbs during steady traffic
@@ -445,8 +466,8 @@ the client / network / pool side (phases A–G) rather than in HANA itself.
 - Prometheus integration: <https://github.com/SAP/go-hdb/tree/main/prometheus>
 - `cmd/bulkbench` throughput benchmark:
   <https://github.com/SAP/go-hdb/tree/main/cmd/bulkbench>
-- CPU profiling (driver-side isolation via `tagignore=db`):
-  <https://github.com/SAP/go-hdb#cpu-profiling>
+- CPU profiling: see "A reliable reference setup" above
+  (`tagignore=db`, optionally `tagignore=db,cesu8`)
 - `database/sql` pool tuning (`SetMaxOpenConns`, `SetMaxIdleConns`,
   `SetConnMaxIdleTime`, `SetConnMaxLifetime`, `DBStats`):
   <https://pkg.go.dev/database/sql>

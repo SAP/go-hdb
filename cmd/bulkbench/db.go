@@ -29,7 +29,7 @@ type dbHandler struct {
 	dba  *dba
 }
 
-// newDBHandler returns a new DBHandler instance.
+// newDBHandler returns a new dbHandler instance.
 func newDBHandler(dba *dba, templateFS fs.FS) (*dbHandler, error) {
 	tmpl, err := template.ParseFS(templateFS, tmplDBResult)
 	if err != nil {
@@ -51,7 +51,7 @@ func (h *dbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dbResult is the structure used to provide db command result response.
+// dbResult is the structure representing the result of a db command.
 type dbResult struct {
 	Command string
 	NumRow  int64
@@ -98,7 +98,7 @@ func (dba *dba) close() error {
 	return errors.Join(err1, err2)
 }
 
-// hdbVersion returns the hdb version.
+// hdbVersion returns the HDB version.
 func (dba *dba) hdbVersion() string {
 	conn, err := dba.db.Conn(context.Background())
 	if err != nil {
@@ -177,7 +177,7 @@ func existSchema(db *sql.DB, name driver.Identifier) (bool, error) {
 	return numSchemas != 0, nil
 }
 
-// ensureSchema creates a schema if it does not exist. If drop is set, an existing schema would be dropped before recreated.
+// ensureSchema creates a schema if it does not exist. If drop is set, an existing schema will be dropped before being recreated.
 func ensureSchema(db *sql.DB, name driver.Identifier, drop, cascade bool) error {
 	exist, err := existSchema(db, name)
 	if err != nil {
@@ -202,19 +202,19 @@ func ensureSchema(db *sql.DB, name driver.Identifier, drop, cascade bool) error 
 
 const columns = "id integer, field double"
 
-// createTable creates a table on the databases.
+// createTable creates a table on the database.
 func createTable(db *sql.DB, schemaName, tableName driver.Identifier) error {
 	_, err := db.ExecContext(context.Background(), fmt.Sprintf("create column table %s.%s (%s)", schemaName, tableName, columns))
 	return err
 }
 
-// dropTable drops a table from the databases.
+// dropTable drops a table from the database.
 func dropTable(db *sql.DB, schemaName, tableName driver.Identifier) error {
 	_, err := db.ExecContext(context.Background(), fmt.Sprintf("drop table %s.%s", schemaName, tableName))
 	return err
 }
 
-// existTable returns true if the table exists in schema.
+// existTable returns true if the table exists in the schema.
 func existTable(db *sql.DB, schemaName, tableName driver.Identifier) (bool, error) {
 	numTables := 0
 	if err := db.QueryRowContext(context.Background(), fmt.Sprintf("select count(*) from sys.tables where schema_name = '%s' and table_name = '%s'", string(schemaName), string(tableName))).Scan(&numTables); err != nil {
@@ -223,7 +223,7 @@ func existTable(db *sql.DB, schemaName, tableName driver.Identifier) (bool, erro
 	return numTables != 0, nil
 }
 
-// ensureTable creates a table if it does not exist. If drop is set, an existing table would be dropped before recreated.
+// ensureTable creates a table if it does not exist. If drop is set, an existing table will be dropped before being recreated.
 func ensureTable(db *sql.DB, schemaName, tableName driver.Identifier, drop bool) error {
 	exist, err := existTable(db, schemaName, tableName)
 	if err != nil {
@@ -246,7 +246,7 @@ func ensureTable(db *sql.DB, schemaName, tableName driver.Identifier, drop bool)
 	return nil
 }
 
-// deleteRows deletes all records in the database table.
+// deleteRows deletes all records from the database table.
 func deleteRows(db *sql.DB, schemaName, tableName driver.Identifier) (int64, error) {
 	result, err := db.ExecContext(context.Background(), fmt.Sprintf("delete from %s.%s", schemaName, tableName))
 	if err != nil {

@@ -15,7 +15,7 @@ type SessionCookie struct {
 	clientID  string
 }
 
-// NewSessionCookie creates a new authSessionCookie instance.
+// NewSessionCookie creates a new SessionCookie instance.
 func NewSessionCookie(cookie []byte, logonname, clientID string) *SessionCookie {
 	return &SessionCookie{cookie: cookie, logonname: logonname, clientID: clientID}
 }

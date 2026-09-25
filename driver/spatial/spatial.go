@@ -1,4 +1,4 @@
-// Package spatial implements geo spatial types and functions.
+// Package spatial implements geospatial types and functions.
 package spatial
 
 import (

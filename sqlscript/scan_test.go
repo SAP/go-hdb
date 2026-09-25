@@ -12,7 +12,7 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 		// if default values use Scan function directly
 		scanner.Split(Scan)
 	} else {
-		// else use SplitFunc 'getter'
+		// else use the SplitFunc getter function
 		scanner.Split(ScanFunc(separator, comments))
 	}
 
@@ -21,7 +21,7 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 	for scanner.Scan() {
 		// t.Logf("statement %d\n%s", i, scanner.Bytes())
 		if l <= i {
-			t.Fatalf("for scan line %d result line is missing", i)
+			t.Fatalf("result line is missing for scan line %d", i)
 		}
 		text := scanner.Text()
 		if text != result[i] {

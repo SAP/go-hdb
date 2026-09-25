@@ -21,7 +21,7 @@ type X509 struct {
 	logonName   string
 }
 
-// NewX509 creates a new authX509 instance.
+// NewX509 creates a new X509 instance.
 func NewX509(certKey *CertKey) *X509 { return &X509{certKey: certKey} }
 
 func (a *X509) String() string {

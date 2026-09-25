@@ -47,7 +47,7 @@ func newIndexTestDef(batchCount, batchSize int) *indexTestDef {
 	}
 }
 
-// newIndexHandler returns a new IndexHandler instance.
+// newIndexHandler returns a new indexHandler instance.
 func newIndexHandler(dba *dba, templateFS fs.FS) (*indexHandler, error) {
 	funcMap := template.FuncMap{
 		"gomaxprocs":    func() int { return runtime.GOMAXPROCS(0) },
@@ -91,7 +91,7 @@ func newIndexHandler(dba *dba, templateFS fs.FS) (*indexHandler, error) {
 		TableCommands:  tableCommands,
 	}
 
-	// test if data and template definition does match
+	// test whether data and template definition match
 	if err := tmpl.Execute(io.Discard, data); err != nil {
 		return nil, err
 	}

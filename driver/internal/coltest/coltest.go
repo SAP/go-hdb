@@ -479,7 +479,7 @@ func NewNVarchar(length int64) Type {
 	return &varColumn{dt: _nvarchar, nullable: false, length: length}
 }
 
-// NewShorttext returns a new shortext column.
+// NewShorttext returns a new shorttext column.
 func NewShorttext(length int64) Type {
 	return &varColumn{dt: _shorttext, nullable: false, length: length}
 }

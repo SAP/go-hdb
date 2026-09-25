@@ -30,7 +30,7 @@ var ErrNestedQuery = errors.New("nested sql queries are not supported") // depre
 // - a new sql statement is sent to the database server before the resultset processing of a previous sql query statement is finalized.
 // case 2:
 // - procedure call with table result set (out parameter) and lob(s) part of resultset.
-// On cases 1 and 2 this error can be avoided in using a transaction (sql.Tx) on the query or exec statement.
+// In cases 1 and 2 this error can be avoided by using a transaction (sql.Tx) for the query or exec statement.
 var errInvalidLobLocatorID = errors.New("invalid lob locator id - please use a transaction on the query or exec statement")
 
 // queries.
@@ -90,83 +90,63 @@ type Conn interface {
 	DBConnectInfo(ctx context.Context, databaseName string) (*DBConnectInfo, error)
 }
 
-// tableOutCloser closes the connection teardown of a procedure call with table
+// tableOutTracker retires the connection of a procedure call with table
 // output parameters once its rows are no longer needed. It is created only on
 // the successful call, simultaneously owning the fake parent rows (see
-// stmt.execCall); on any error path no closer exists, the resultsets close
+// stmt.execCall); on any error path no tracker exists, the resultsets close
 // without accounting, and never hold the connection.
 //
-// The caller assigns the closer to each table resultset and increments n once
+// The caller assigns the tracker to each table resultset and increments n once
 // per resultset after the call succeeded, and registers it on the connection
-// (conn.tableOutCloser). The registration order matters: the closer must reach
-// the connection only after the call succeeded, so database/sql never
-// validates the connection as reusable (see conn.IsValid) while cleanup still
-// writes to the session, racing a new user of the connection. The closer is
-// never removed: a connection with handed-out table rows is always discarded
-// and closed (see cleanup), so IsValid stays false for its whole remaining
-// lifetime.
+// (conn.tableOutTracker). The registration order matters: the tracker must reach
+// the connection only after the call succeeded, so no validation runs before
+// every table rowset is tracked.
 //
-// release runs cleanup on a new goroutine: the fake parent rows must not be
-// closed on the goroutine that closes a child rows, as that deadlocks on the
-// non-reentrant database/sql rows locks. While the closer is set, app-driven
-// statement closes are no-ops (see stmt.Close): the closer is the only writer
-// on the teardown path.
-type tableOutCloser struct {
-	stmt *stmt        // the connection is reached through the statement (stmt.conn)
-	rows *sql.Rows    // fake parent rows, closed by cleanup on the reaper goroutine
-	n    atomic.Int64 // table resultsets not yet closed
+// Discard hands the tracker to the lifecycle worker (`Close` queues it -- the sole
+// handoff, validated or not). The worker finalizes the tracker and pools the
+// connection for reuse; detached at queue time, so a reused connection
+// never carries a stale tracker. While the tracker is set, app-driven statement
+// closes are no-ops (see stmt.Close).
+type tableOutTracker struct {
+	stmt *stmt          // the connection is reached through the statement (stmt.conn)
+	rows *sql.Rows      // fake parent rows, closed inline by IsValid or by the lifecycle worker
+	lc   *connLifecycle // worker to wake when the last table rowset closes (see release)
+	done chan struct{}  // closed once the worker finalizes the tracker (see process)
+	n    atomic.Int64   // table resultsets not yet closed
 }
 
-// release is called from a table resultset Close. Once the last resultset is
-// closed it closes the fake parent rows, deletes the statement, and tears the
-// connection down.
-func (tc *tableOutCloser) release() {
+func (tc *tableOutTracker) release() {
 	if tc.n.Add(-1) == 0 {
-		go tc.cleanup() // parent teardown must not run on the closing goroutine
+		tc.lc.wake() // last table rowset closed: recheck pending immediately
 	}
-}
-
-func (tc *tableOutCloser) cleanup() {
-	tc.rows.Close()          // fake parent, on the reaper goroutine (8.1-7)
-	tc.stmt.close()          // drop statement, stmt gauge -1
-	_ = tc.stmt.conn.close() // tear the discarded connection down (once-guard, see conn.close)
 }
 
 // Conn is the implementation of the database/sql/driver Conn interface.
 type conn struct {
-	attrs      *connAttrs
-	metrics    *metrics
-	logger     *slog.Logger
-	dbConn     dbConn
-	session    *session
-	wg         *sync.WaitGroup    // wait for concurrent db calls when closing connections.
-	terminator *sessionTerminator // terminator of the owning connector; nil for transient connections that are not accounted (see newConn).
+	attrs     *connAttrs
+	metrics   *metrics
+	logger    *slog.Logger
+	dbConn    dbConn
+	session   *session
+	wg        *sync.WaitGroup // wait for concurrent db calls when closing connections.
+	lifecycle *connLifecycle  // lifecycle of the owning connector (see newConn).
 
-	// closed is the once-guard of close: the real teardown runs at most
-	// once, whether triggered by Close or by the table-out closer's cleanup.
+	// closed guards close against repeated teardown.
 	closed atomic.Bool
 
-	// tableOutCloser is set by stmt.execCall when a procedure call hands table
-	// output rows to the caller. It guards the connection against pool reuse:
-	// IsValid is false, so database/sql discards it, Close stands down, and
-	// statement closes are no-ops. The real teardown is performed by the
-	// table-out closer's cleanup once the last table rows is closed (see
-	// tableOutCloser.cleanup). It is never cleared: a connection with
-	// handed-out table rows is always discarded and closed, so a reused
-	// connection never carries a stale closer and a cleanup write never races
-	// a concurrent reuse of the connection.
-	tableOutCloser *tableOutCloser
+	// tableOutTracker is set by stmt.execCall when a procedure call hands table
+	// output rows to the caller. While set, it holds the connection: statement
+	// closes are no-ops and Close stands down. Discard hands the tracker to the
+	// lifecycle worker, which pools the connection for reuse. Detached at pool
+	// handoff (`get`), so a reused connection never carries a stale tracker.
+	tableOutTracker *tableOutTracker
 }
 
 // unique connection number.
 var connNo atomic.Uint64
 
-// newConn returns a connection. A non nil terminator accounts the connection
-// with the connector's sessionTerminator (incrConn on creation, decrConn on Close).
-// A nil terminator marks a transient connection that is not accounted - the
-// sessionTerminator worker uses this to execute the disconnect session
-// statement without accounting for its own connection.
-func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs, terminator *sessionTerminator) (*conn, error) {
+// newConn returns a connection bound to the owning connector's lifecycle.
+func newConn(ctx context.Context, host string, metrics *metrics, routing *routing, attrs *connAttrs, lifecycle *connLifecycle) (*conn, error) {
 	logger := attrs.logger.With(slog.Uint64("conn", connNo.Add(1)))
 
 	metrics.incrConn()
@@ -187,10 +167,7 @@ func newConn(ctx context.Context, host string, metrics *metrics, routing *routin
 	stdCallDB.incrConn()
 	metrics.addGauge(gaugeConn, 1) // increment open connections.
 
-	c := &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup), terminator: terminator}
-	if terminator != nil {
-		terminator.incrConn()
-	}
+	c := &conn{attrs: attrs, metrics: metrics, logger: logger, dbConn: dbConn, session: session, wg: new(sync.WaitGroup), lifecycle: lifecycle}
 	return c, nil
 }
 
@@ -198,23 +175,19 @@ func (c *conn) authenticate(ctx context.Context, host string, authHnd *p.AuthHnd
 	return c.session.authenticate(ctx, host, authHnd)
 }
 
-// Close implements the driver.Conn interface. While table output rows are
-// alive (conn.tableOutCloser set) it stands down — the real teardown is
-// performed by the table-out closer's cleanup once the last of them is closed
-// (see tableOutCloser.cleanup).
+// Close implements the driver.Conn interface. A discarded connection with an
+// attached tracker hands it to the lifecycle worker; teardown runs there.
+// Discard always runs Close, validated or not.
 func (c *conn) Close() error {
-	if c.tableOutCloser != nil {
-		// Table output resultsets are still alive. Stand down: the real teardown
-		// is performed by the table-out closer's cleanup once the last of them is
-		// closed (see tableOutCloser.cleanup).
+	if c.tableOutTracker != nil {
+		c.lifecycle.queue(c.tableOutTracker)
+		c.tableOutTracker = nil
 		return nil
 	}
 	return c.close()
 }
 
-// close performs the real connection teardown, once-guarded by closed. It
-// is called by Close when nothing is held, or by the table-out closer's
-// cleanup once the last table rows is closed (see tableOutCloser.cleanup).
+// close performs the real connection teardown.
 func (c *conn) close() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
@@ -225,21 +198,23 @@ func (c *conn) close() error {
 	dbConnErr := c.dbConn.Close()
 	c.wg.Wait()
 	c.metrics.decrConn()
-	if c.terminator != nil {
-		c.terminator.decrConn()
-	}
 	return errors.Join(sessionErr, dbConnErr)
 }
 
 // terminateSession marks the session as canceled and requests the
-// asynchronous termination of the server session (see sessionTerminator.terminate).
+// asynchronous termination of the server session.
 func (c *conn) terminateSession() {
 	c.session.cancel()
-	c.terminator.terminate(c.session.host, c.session.serverConnID)
+	c.lifecycle.terminate(c.session.host, c.session.serverConnID)
 }
 
 // ResetSession implements the driver.SessionResetter interface.
-func (c *conn) ResetSession(ctx context.Context) error {
+func (c *conn) ResetSession(ctx context.Context) error { return c.resetSession(ctx) }
+
+// resetSession validates a connection before reuse: shared by ResetSession
+// (database/sql free-pool reuse) and the lifecycle pool handoff (see
+// Connector.Connect), so both paths apply the same liveness check.
+func (c *conn) resetSession(ctx context.Context) error {
 	if c.session.isBad() {
 		return driver.ErrBadConn
 	}
@@ -256,12 +231,10 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-// IsValid implements the driver.Validator interface and also enforces the
-// table-output hold: while a procedure call's table output rows are
-// outstanding the connection is reported invalid, so database/sql discards
-// rather than reuses it (see conn.tableOutCloser).
+// IsValid implements the driver.Validator interface: a connection with handed-out
+// table rows is reported invalid, so database/sql discards it to Close.
 func (c *conn) IsValid() bool {
-	return !c.session.isBad() && c.tableOutCloser == nil
+	return !c.session.isBad() && c.tableOutTracker == nil
 }
 
 // Ping implements the driver.Pinger interface.
