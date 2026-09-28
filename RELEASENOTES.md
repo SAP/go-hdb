@@ -5,6 +5,9 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.18.12
+- code cleanups
+
 #### v1.18.11
 - connection reuse for stored procedures with table output parameters
 

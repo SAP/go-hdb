@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/SAP/go-hdb/driver"
@@ -21,7 +20,6 @@ begin
 end
 `
 	const txt = "Hello World!"
-	var out string
 
 	// create procedure
 	proc := driver.RandomIdentifier("procEcho_")
@@ -29,7 +27,8 @@ end
 		t.Fatal(err)
 	}
 
-	testExecInvNamedPrm := func() { // exec - invalid names (lower instead of upper case)
+	testExecInvNamedPrm := func(t *testing.T) { // exec - invalid names (lower instead of upper case)
+		var out string
 		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("idata", txt), sql.Named("odata", sql.Out{Dest: &out})); err != nil {
 			t.Log(err)
 		} else {
@@ -37,7 +36,8 @@ end
 		}
 	}
 
-	testExec := func() { // exec
+	testExec := func(t *testing.T) { // exec
+		var out string
 		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("IDATA", txt), sql.Named("ODATA", sql.Out{Dest: &out})); err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +46,8 @@ end
 		}
 	}
 
-	testExecRndPrms := func() { // exec random parameters - switch input / output argument (test named parameters)
+	testExecRndPrms := func(t *testing.T) { // exec random parameters - switch input / output argument (test named parameters)
+		var out string
 		if _, err := db.ExecContext(t.Context(), fmt.Sprintf("call %s(?, ?)", proc), sql.Named("ODATA", sql.Out{Dest: &out}), sql.Named("IDATA", txt)); err != nil {
 			t.Fatal(err)
 		}
@@ -57,7 +58,7 @@ end
 
 	tests := []struct {
 		name string
-		fct  func()
+		fn   func(t *testing.T)
 	}{
 		{"ExecInvNamedPrm", testExecInvNamedPrm},
 		{"Exec", testExec},
@@ -66,7 +67,8 @@ end
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct()
+			t.Parallel()
+			test.fn(t)
 		})
 	}
 }
@@ -107,7 +109,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		x string
 	}
 
-	checkData := func(data []testDataType, rows *sql.Rows) {
+	checkData := func(t *testing.T, data []testDataType, rows *sql.Rows) {
 		j := 0
 		for rows.Next() {
 
@@ -115,10 +117,9 @@ func testCallTable(t *testing.T, db *sql.DB) {
 			var x string
 
 			if err := rows.Scan(&i, &x); err != nil {
-				log.Fatal(err)
+				t.Fatal(err)
 			}
 
-			// log.Printf("i %d x %s", i, x)
 			if i != data[j].i {
 				t.Fatalf("value i %d - expected %d", i, data[j].i)
 			}
@@ -128,14 +129,14 @@ func testCallTable(t *testing.T, db *sql.DB) {
 			j++
 		}
 		if err := rows.Err(); err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 		if j != len(data) {
 			t.Fatalf("invalid number of records %d - expected %d", j, len(data))
 		}
 	}
 
-	testCallTableOut := func() {
+	testCallTableOut := func(t *testing.T) {
 		const procTableOut = `create procedure %[1]s (in i integer, out t1 %[2]s, out t2 %[2]s, out t3 %[2]s)
 	language SQLSCRIPT as
 	begin
@@ -173,7 +174,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		// use same connection
 		conn, err := db.Conn(t.Context())
 		if err != nil {
-			t.Fatal()
+			t.Fatal(err)
 		}
 		defer conn.Close()
 
@@ -205,9 +206,9 @@ func testCallTable(t *testing.T, db *sql.DB) {
 			t.Fatal(err)
 		}
 
-		checkData(testData[0], &resultRows1)
-		checkData(testData[1], &resultRows2)
-		checkData(testData[2], &resultRows3)
+		checkData(t, testData[0], &resultRows1)
+		checkData(t, testData[1], &resultRows2)
+		checkData(t, testData[2], &resultRows3)
 	}
 
 	/*
@@ -217,7 +218,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		https://stackoverflow.com/questions/45830478/call-stored-procedure-passing-table-type-argument
 		https://stackoverflow.com/questions/60657309/error-while-calling-hana-stored-procedure-from-python-sqlalchemy
 	*/
-	testCallTableIn := func() {
+	testCallTableIn := func(t *testing.T) {
 		const procTableIn = `create procedure %[1]s (in i integer, in t1 %[2]s, out t2 %[2]s)
 	language SQLSCRIPT as
 	begin
@@ -230,7 +231,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 		// use same connections
 		conn, err := db.Conn(t.Context())
 		if err != nil {
-			t.Fatal()
+			t.Fatal(err)
 		}
 		defer conn.Close()
 
@@ -276,13 +277,13 @@ func testCallTable(t *testing.T, db *sql.DB) {
 			t.Fatal(err)
 		}
 
-		checkData(testData, &resultRows2)
+		checkData(t, testData, &resultRows2)
 
 	}
 
 	tests := []struct {
 		name string
-		fct  func()
+		fn   func(t *testing.T)
 	}{
 		{"tableOut", testCallTableOut},
 		{"tableIn", testCallTableIn},
@@ -291,7 +292,7 @@ func testCallTable(t *testing.T, db *sql.DB) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct()
+			test.fn(t)
 		})
 	}
 }
@@ -357,7 +358,7 @@ end
 	// use same connection
 	conn, err := db.Conn(t.Context())
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -412,7 +413,7 @@ end
 	// use same connection
 	conn, err := db.Conn(t.Context())
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -442,7 +443,7 @@ end
 	// use same connection
 	conn, err := db.Conn(t.Context())
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -484,7 +485,7 @@ func TestCall(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB)
+		fn   func(t *testing.T, db *sql.DB)
 	}{
 		{"echo", testCallEcho},
 		{"blobEcho", testCallBlobEcho},
@@ -501,7 +502,7 @@ func TestCall(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db)
+			test.fn(t, db)
 		})
 	}
 }

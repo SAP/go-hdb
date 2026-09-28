@@ -7,6 +7,7 @@ import (
 )
 
 func testScan(t *testing.T, separator rune, comments bool, script string, result []string) {
+	t.Helper()
 	scanner := bufio.NewScanner(strings.NewReader(script))
 	if separator == DefaultSeparator && !comments {
 		// if default values use Scan function directly
@@ -38,6 +39,8 @@ func testScan(t *testing.T, separator rune, comments bool, script string, result
 }
 
 func TestScript(t *testing.T) {
+	t.Parallel()
+
 	testScript := `
 --Comment 0 followed by a newline
 

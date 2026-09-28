@@ -10,6 +10,7 @@ import (
 )
 
 func TestConnector(t *testing.T) {
+	t.Parallel()
 
 	testExistSessionVariables := func(t *testing.T, sv1, sv2 map[string]string) {
 		for k1, v1 := range sv1 {
@@ -207,22 +208,20 @@ func TestConnector(t *testing.T) {
 		}
 	}
 
-	t.Parallel()
-
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
-		{"testSessionVariables", testSessionVariables},
-		{"testRetryConnect", testRetryConnect},
-		{"testAuthRefreshDeadlock", testAuthRefreshDeadlock},
-		{"testAuthRefresh", testAuthRefresh},
+		{"session variables propagate on connect", testSessionVariables},
+		{"password refresh on retry", testRetryConnect},
+		{"concurrent auth refresh is deadlock-free", testAuthRefreshDeadlock},
+		{"concurrent connect with password refresh", testAuthRefresh},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t)
+			test.fn(t)
 		})
 	}
 }

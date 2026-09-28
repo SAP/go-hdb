@@ -29,6 +29,7 @@ var testJulianDayData = []testJulianDay{
 }
 
 func TestTimeToJulianDay(t *testing.T) {
+	t.Parallel()
 	for i, d := range testJulianDayData {
 		jd := TimeToDay(d.time)
 		if jd != d.jd {
@@ -38,6 +39,7 @@ func TestTimeToJulianDay(t *testing.T) {
 }
 
 func TestJulianDayToTime(t *testing.T) {
+	t.Parallel()
 	for i, d := range testJulianDayData {
 		time := DayToTime(d.jd)
 		if !time.Equal(d.time) {

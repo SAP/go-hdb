@@ -59,6 +59,7 @@ func execTableOut(t *testing.T, conn *sql.Conn, proc string) *sql.Rows {
 // open, and returns the queued tracker state. Rows stay open: the caller owns
 // them and must close to let the worker finalize.
 func queueTableOut(ctx context.Context, t *testing.T, db *sql.DB, lc *connLifecycle, proc string) (*sql.Rows, chan struct{}) {
+	t.Helper()
 	pinned, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +77,7 @@ func queueTableOut(ctx context.Context, t *testing.T, db *sql.DB, lc *connLifecy
 }
 
 func waitFinalized(t *testing.T, done chan struct{}) {
+	t.Helper()
 	select {
 	case <-done: // worker finalized: pooled or closed
 	case <-time.After(3 * time.Second):
@@ -85,6 +87,7 @@ func waitFinalized(t *testing.T, done chan struct{}) {
 
 // closeRows closes the table rows; the last close wakes the worker.
 func closeRows(t *testing.T, rows *sql.Rows) {
+	t.Helper()
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +95,7 @@ func closeRows(t *testing.T, rows *sql.Rows) {
 
 // assertPool asserts the pool depth; when want is 1 it returns the parked conn.
 func assertPool(t *testing.T, lc *connLifecycle, want int) *conn {
+	t.Helper()
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	if len(lc.pool) != want {
@@ -212,7 +216,7 @@ func TestConnLifecycle(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB, ctr *Connector, proc string)
+		fn   func(t *testing.T, db *sql.DB, ctr *Connector, proc string)
 	}{
 		{"lifecycleReuse", testLifecycleReuse},
 		{"lifecycleDoubleCloseDrops", testLifecycleDoubleCloseDrops},
@@ -228,7 +232,7 @@ func TestConnLifecycle(t *testing.T) {
 			db := sql.OpenDB(ctr)
 			defer db.Close()
 
-			test.fct(t, db, ctr, proc)
+			test.fn(t, db, ctr, proc)
 		})
 	}
 }

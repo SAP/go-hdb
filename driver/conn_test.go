@@ -45,7 +45,7 @@ func TestConnection(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB)
+		fn   func(t *testing.T, db *sql.DB)
 	}{
 		{"cancelContext", testCancelContext},
 	}
@@ -54,7 +54,7 @@ func TestConnection(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db)
+			test.fn(t, db)
 		})
 	}
 }

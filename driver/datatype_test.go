@@ -1,6 +1,6 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
@@ -114,7 +115,7 @@ type preparer interface {
 	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 }
 
-func (dtt *dttDef) insert(t *testing.T, p preparer, tableName Identifier, testData []any) int {
+func (dtt *dttDef) insert(t *testing.T, p preparer, tableName driver.Identifier, testData []any) int {
 	stmt, err := p.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values(?, ?)", tableName))
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +136,7 @@ func (dtt *dttDef) insert(t *testing.T, p preparer, tableName Identifier, testDa
 	return len(testData)
 }
 
-func (dtt *dttDef) insertTx(t *testing.T, db *sql.DB, tableName Identifier, testData []any) int {
+func (dtt *dttDef) insertTx(t *testing.T, db *sql.DB, tableName driver.Identifier, testData []any) int {
 	// use a transaction: SQL Error 596 - LOB streaming is not permitted in auto-commit mode.
 	tx, err := db.BeginTx(t.Context(), nil)
 	if err != nil {
@@ -164,10 +165,10 @@ func (dtt *dttDef) compare(dfv int, in, out any) (bool, error) {
 		return bytes.Equal(in.([]byte), out.([]byte)), nil
 	case coltest.DbtnDecimal:
 		rat := func(v any) *big.Rat {
-			if d, ok := v.(*Decimal); ok {
+			if d, ok := v.(*driver.Decimal); ok {
 				return (*big.Rat)(d)
 			}
-			d := v.(Decimal)
+			d := v.(driver.Decimal)
 			return (*big.Rat)(&d)
 		}
 		return rat(in).Cmp(rat(out)) == 0, nil
@@ -192,9 +193,9 @@ func (dtt *dttDef) compare(dfv int, in, out any) (bool, error) {
 		}
 		return formatAlphanum(in.(string)) == out.(string), nil
 	case coltest.DbtnClob, coltest.DbtnNClob, coltest.DbtnBlob:
-		inLob, outLob := in.(Lob), out.(Lob)
+		inLob, outLob := in.(driver.Lob), out.(driver.Lob)
 		// expected content is the reader's retained slice - no rewind of the consumed reader.
-		return bytes.Equal(inLob.rd.(*lobReader).data, outLob.wr.(*bytes.Buffer).Bytes()), nil
+		return bytes.Equal(inLob.Reader().(*lobReader).data, outLob.Writer().(*bytes.Buffer).Bytes()), nil
 	case coltest.DbtnText, coltest.DbtnBintext:
 		// text/bintext: content not compared - hdb may modify it (e.g. eliminate spaces).
 		return true, nil
@@ -234,17 +235,17 @@ func nullField(v any) (valid bool, value any, isNull bool) {
 			return false, nil, true
 		}
 		return true, v.Time, true
-	case NullBytes:
+	case driver.NullBytes:
 		if !v.Valid {
 			return false, nil, true
 		}
 		return true, v.Bytes, true
-	case NullDecimal:
+	case driver.NullDecimal:
 		if !v.Valid {
 			return false, nil, true
 		}
 		return true, *v.Decimal, true
-	case NullLob:
+	case driver.NullLob:
 		if !v.Valid {
 			return false, nil, true
 		}
@@ -279,12 +280,12 @@ func nullField(v any) (valid bool, value any, isNull bool) {
 			return false, nil, true
 		}
 		return true, v.V, true
-	case sql.Null[Decimal]:
+	case sql.Null[driver.Decimal]:
 		if !v.Valid {
 			return false, nil, true
 		}
 		return true, v.V, true
-	case sql.Null[Lob]:
+	case sql.Null[driver.Lob]:
 		if !v.Valid {
 			return false, nil, true
 		}
@@ -299,12 +300,12 @@ func nullField(v any) (valid bool, value any, isNull bool) {
 			return false, nil, true
 		}
 		return true, *v.V, true
-	case sql.Null[*Decimal]:
+	case sql.Null[*driver.Decimal]:
 		if !v.Valid {
 			return false, nil, true
 		}
 		return true, *v.V, true
-	case sql.Null[*Lob]:
+	case sql.Null[*driver.Lob]:
 		if !v.Valid {
 			return false, nil, true
 		}
@@ -332,7 +333,7 @@ func (dtt *dttDef) checkValue(dfv int, in, out any) (bool, error) {
 	return dtt.compare(dfv, inValue, outValue)
 }
 
-func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int, testData []any, numRecs int) {
+func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName driver.Identifier, dtv int, testData []any, numRecs int) {
 	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
@@ -345,8 +346,8 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int
 		outRef := reflect.New(reflect.TypeOf(in)).Interface()
 
 		// a NullLob scan target needs its inner *Lob allocated (NullLob.Scan writes through it).
-		if outRef, ok := outRef.(*NullLob); ok {
-			outRef.Lob = new(Lob)
+		if outRef, ok := outRef.(*driver.NullLob); ok {
+			outRef.Lob = new(driver.Lob)
 		}
 
 		var id int
@@ -377,7 +378,7 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName Identifier, dtv int
 
 func (dtt *dttDef) run(t *testing.T, db *sql.DB, dfv int) {
 	dataType := dtt._columnType.DataType()
-	tableName := RandomIdentifier(dataType + "_")
+	tableName := driver.RandomIdentifier(dataType + "_")
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, dataType)); err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +531,7 @@ func TestDataType(t *testing.T) {
 
 	natOne := big.NewRat(1, 1)
 	natTen := big.NewInt(10)
-	natHundret := big.NewRat(100, 1)
+	natHundred := big.NewRat(100, 1)
 
 	exp10 := func(n int) *big.Int {
 		r := big.NewInt(int64(n))
@@ -540,7 +541,7 @@ func TestDataType(t *testing.T) {
 	maxValue := func(prec int) *big.Rat {
 		r := new(big.Rat).SetInt(exp10(prec))
 		r.Sub(r, natOne)
-		r.Quo(r, natHundret)
+		r.Quo(r, natHundred)
 		return r
 	}
 
@@ -549,37 +550,37 @@ func TestDataType(t *testing.T) {
 		return v.Neg(v)
 	}
 
-	fixed8MinValue := (*Decimal)(minValue(18))  // min value Dec(18,2)
-	fixed8MaxValue := (*Decimal)(maxValue(18))  // max value Dec(18,2)
-	fixed12MinValue := (*Decimal)(minValue(28)) // min value Dec(18,2)
-	fixed12MaxValue := (*Decimal)(maxValue(28)) // max value Dec(18,2)
-	fixed16MinValue := (*Decimal)(minValue(38)) // min value Dec(18,2)
-	fixed16MaxValue := (*Decimal)(maxValue(38)) // max value Dec(18,2)
+	fixed8MinValue := (*driver.Decimal)(minValue(18))  // min value Dec(18,2)
+	fixed8MaxValue := (*driver.Decimal)(maxValue(18))  // max value Dec(18,2)
+	fixed12MinValue := (*driver.Decimal)(minValue(28)) // min value Dec(18,2)
+	fixed12MaxValue := (*driver.Decimal)(maxValue(28)) // max value Dec(18,2)
+	fixed16MinValue := (*driver.Decimal)(minValue(38)) // min value Dec(18,2)
+	fixed16MaxValue := (*driver.Decimal)(maxValue(38)) // max value Dec(18,2)
 
 	// decimalValue is the reusable 1/1 payload; &decimalValue serves the *Decimal forms.
-	var decimalValue = Decimal(*big.NewRat(1, 1))
+	var decimalValue = driver.Decimal(*big.NewRat(1, 1))
 
 	decimalTestData := []any{
-		(*Decimal)(big.NewRat(0, 1)),
+		(*driver.Decimal)(big.NewRat(0, 1)),
 		&decimalValue,
-		(*Decimal)(big.NewRat(-1, 1)),
-		(*Decimal)(big.NewRat(10, 1)),
-		(*Decimal)(big.NewRat(1000, 1)),
-		(*Decimal)(big.NewRat(1, 10)),
-		(*Decimal)(big.NewRat(-1, 10)),
-		(*Decimal)(big.NewRat(1, 100)),
-		(*Decimal)(big.NewRat(15, 1)),
-		(*Decimal)(big.NewRat(4, 5)),
-		(*Decimal)(big.NewRat(34, 10)),
+		(*driver.Decimal)(big.NewRat(-1, 1)),
+		(*driver.Decimal)(big.NewRat(10, 1)),
+		(*driver.Decimal)(big.NewRat(1000, 1)),
+		(*driver.Decimal)(big.NewRat(1, 10)),
+		(*driver.Decimal)(big.NewRat(-1, 10)),
+		(*driver.Decimal)(big.NewRat(1, 100)),
+		(*driver.Decimal)(big.NewRat(15, 1)),
+		(*driver.Decimal)(big.NewRat(4, 5)),
+		(*driver.Decimal)(big.NewRat(34, 10)),
 		fixed8MinValue,
 		fixed8MaxValue,
 
-		NullDecimal{Valid: false, Decimal: &decimalValue},
-		NullDecimal{Valid: true, Decimal: &decimalValue},
-		sql.Null[Decimal]{Valid: false, V: decimalValue},
-		sql.Null[Decimal]{Valid: true, V: decimalValue},
-		sql.Null[*Decimal]{Valid: false, V: &decimalValue},
-		sql.Null[*Decimal]{Valid: true, V: &decimalValue},
+		driver.NullDecimal{Valid: false, Decimal: &decimalValue},
+		driver.NullDecimal{Valid: true, Decimal: &decimalValue},
+		sql.Null[driver.Decimal]{Valid: false, V: decimalValue},
+		sql.Null[driver.Decimal]{Valid: true, V: decimalValue},
+		sql.Null[*driver.Decimal]{Valid: false, V: &decimalValue},
+		sql.Null[*driver.Decimal]{Valid: true, V: &decimalValue},
 	}
 	// fixed12/fixed16 extend the base set with additional min/max values. Each concatenation
 	// starts from a fresh slice so the base data's backing array is never mutated/aliased.
@@ -630,8 +631,8 @@ func TestDataType(t *testing.T) {
 		bytesValue,
 		[]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 		[]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0xff},
-		NullBytes{Valid: false, Bytes: bytesValue},
-		NullBytes{Valid: true, Bytes: bytesValue},
+		driver.NullBytes{Valid: false, Bytes: bytesValue},
+		driver.NullBytes{Valid: true, Bytes: bytesValue},
 		sql.Null[[]byte]{Valid: false, V: bytesValue},
 		sql.Null[[]byte]{Valid: true, V: bytesValue},
 		sql.Null[*[]byte]{Valid: false, V: &bytesValue},
@@ -679,28 +680,28 @@ func TestDataType(t *testing.T) {
 
 	lobASCIITestData := func() []any {
 		return []any{
-			NullLob{Valid: false, Lob: &Lob{rd: newLobReader(asciiData)}},
-			NullLob{Valid: true, Lob: &Lob{rd: newLobReader(asciiData)}},
-			Lob{rd: newLobReader(asciiData)},
-			Lob{rd: newLobReader(randAlphanumData)},
-			sql.Null[Lob]{Valid: false, V: Lob{rd: newLobReader(asciiData)}},
-			sql.Null[Lob]{Valid: true, V: Lob{rd: newLobReader(asciiData)}},
-			sql.Null[*Lob]{Valid: false, V: &Lob{rd: newLobReader(asciiData)}},
-			sql.Null[*Lob]{Valid: true, V: &Lob{rd: newLobReader(asciiData)}},
+			driver.NullLob{Valid: false, Lob: driver.NewLob(newLobReader(asciiData), nil)},
+			driver.NullLob{Valid: true, Lob: driver.NewLob(newLobReader(asciiData), nil)},
+			*driver.NewLob(newLobReader(asciiData), nil),
+			*driver.NewLob(newLobReader(randAlphanumData), nil),
+			sql.Null[driver.Lob]{Valid: false, V: *driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[driver.Lob]{Valid: true, V: *driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[*driver.Lob]{Valid: false, V: driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[*driver.Lob]{Valid: true, V: driver.NewLob(newLobReader(asciiData), nil)},
 		}
 	}
 
 	lobTestData := func() []any {
 		return []any{
-			NullLob{Valid: false, Lob: &Lob{rd: newLobReader(asciiData)}},
-			NullLob{Valid: true, Lob: &Lob{rd: newLobReader(asciiData)}},
-			Lob{rd: newLobReader(unicodeData)},
-			Lob{rd: newLobReader(asciiData)},
-			Lob{rd: newLobReader(randAlphanumData)},
-			sql.Null[Lob]{Valid: false, V: Lob{rd: newLobReader(asciiData)}},
-			sql.Null[Lob]{Valid: true, V: Lob{rd: newLobReader(asciiData)}},
-			sql.Null[*Lob]{Valid: false, V: &Lob{rd: newLobReader(asciiData)}},
-			sql.Null[*Lob]{Valid: true, V: &Lob{rd: newLobReader(asciiData)}},
+			driver.NullLob{Valid: false, Lob: driver.NewLob(newLobReader(asciiData), nil)},
+			driver.NullLob{Valid: true, Lob: driver.NewLob(newLobReader(asciiData), nil)},
+			*driver.NewLob(newLobReader(unicodeData), nil),
+			*driver.NewLob(newLobReader(asciiData), nil),
+			*driver.NewLob(newLobReader(randAlphanumData), nil),
+			sql.Null[driver.Lob]{Valid: false, V: *driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[driver.Lob]{Valid: true, V: *driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[*driver.Lob]{Valid: false, V: driver.NewLob(newLobReader(asciiData), nil)},
+			sql.Null[*driver.Lob]{Valid: true, V: driver.NewLob(newLobReader(asciiData), nil)},
 		}
 	}
 
@@ -758,14 +759,14 @@ func TestDataType(t *testing.T) {
 		&dttDef{_columnType: coltest.NullBintext, testDataFn: lobASCIITestData, tx: true},
 	}
 
-	version := MT.Version().Major()
+	version := driver.MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		name := fmt.Sprintf("dfv %d", dfv)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			connector := MT.NewConnector()
+			connector := driver.MT.NewConnector()
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
 			db.SetMaxIdleConns(25) // let's keep some more connections in the pool

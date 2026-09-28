@@ -146,22 +146,23 @@ func testSignEd25519(t *testing.T) {
 }
 
 func TestX509(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
-		{"testX509Verify", testX509Validate},
-		{"testSignRsa", testSignRsa},
-		{"testSignEcdsaP256", testSignEcdsaP256},
-		{"testSignEcdsaP384", testSignEcdsaP384},
-		{"testSignEcdsaP521", testSignEcdsaP521},
-		{"testSignEd25519", testSignEd25519},
+		{"client certificate validation", testX509Validate},
+		{"RSA digest", testSignRsa},
+		{"ECDSA P-256 digest", testSignEcdsaP256},
+		{"ECDSA P-384 digest", testSignEcdsaP384},
+		{"ECDSA P-521 digest", testSignEcdsaP521},
+		{"Ed25519 digest", testSignEd25519},
 	}
-	t.Parallel()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t)
+			test.fn(t)
 		})
 	}
 }

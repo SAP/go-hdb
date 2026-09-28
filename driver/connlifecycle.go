@@ -247,7 +247,7 @@ func (c *connLifecycle) executeDisconnect(ev terminateEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), cancelSessionTimeout)
 	defer cancel()
 
-	logger := c.connector._logger
+	logger := c.connector.Logger()
 
 	// The worker's own connection carries the lifecycle but is never pooled:
 	// it is closed directly after the disconnect statement.

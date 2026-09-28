@@ -1,6 +1,6 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"database/sql"
@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SAP/go-hdb/driver"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
 
-func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull bool) {
+func testEmptyDate(t *testing.T, tableName driver.Identifier, dfv int, emptyDateAsNull bool) {
 	var nt sql.NullTime
 	var emptyDate = time.Date(0, time.December, 31, 0, 0, 0, 0, time.UTC)
 
-	connector := MT.NewConnector()
+	connector := driver.MT.NewConnector()
 	connector.SetDfv(dfv)
 	connector.SetEmptyDateAsNull(emptyDateAsNull)
 	db := sql.OpenDB(connector)
@@ -57,9 +58,9 @@ func testEmptyDate(t *testing.T, tableName Identifier, dfv int, emptyDateAsNull 
 func TestEmptyDate(t *testing.T) {
 	t.Parallel()
 
-	tableName := RandomIdentifier("table_")
+	tableName := driver.RandomIdentifier("table_")
 
-	db := MT.DB()
+	db := driver.MT.DB()
 
 	// Create table.
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (d date)", tableName)); err != nil {

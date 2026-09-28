@@ -20,6 +20,8 @@ func topologyNode(host string, port int32, serviceType ServiceType, volumeID int
 }
 
 func TestTopologyInformationSortedNodeList(t *testing.T) {
+	t.Parallel()
+
 	host := "proxy:30013"
 
 	tests := []struct {
@@ -116,6 +118,7 @@ func TestTopologyInformationSortedNodeList(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ti := TopologyInformation{nodes: test.nodes}
 			got, err := ti.SortedNodeList(test.routingHost)
 			if !errors.Is(err, test.wantErr) {

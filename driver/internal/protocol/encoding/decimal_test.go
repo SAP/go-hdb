@@ -90,6 +90,7 @@ func testConvertRatToDecimal(t *testing.T) {
 	m := new(big.Int)
 
 	check := func(j int, x *big.Rat, cmp *big.Int, digits, minExp, maxExp, exp int, df byte) {
+		t.Helper()
 		gotExp, gotDF := convertRatToDecimal(x, m, digits, minExp, maxExp)
 		if m.Cmp(cmp) != 0 || gotExp != exp || gotDF != df {
 			t.Fatalf("converted %d value m %s exp %d df %b - expected m %s exp %d df %b", j, m, gotExp, gotDF, cmp, exp, df)
@@ -136,6 +137,7 @@ func testConvertRatToFixed(t *testing.T) {
 	m := new(big.Int)
 
 	check := func(j int, x *big.Rat, cmp *big.Int, prec, scale int, df byte) {
+		t.Helper()
 		gotDF := convertRatToFixed(x, m, prec, scale)
 		if m.Cmp(cmp) != 0 || gotDF != df {
 			t.Fatalf("converted %d value m %s df %b - expected m %s df %b (prec %d scale %d)", j, m, gotDF, cmp, df, prec, scale)
@@ -154,9 +156,11 @@ func testConvertRatToFixed(t *testing.T) {
 }
 
 func TestDecimal(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
 		{"digits10", testDigits10},
 		{"convertRatToDecimal", testConvertRatToDecimal},
@@ -165,7 +169,8 @@ func TestDecimal(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t)
+			t.Parallel()
+			test.fn(t)
 		})
 	}
 }

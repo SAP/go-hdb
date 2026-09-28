@@ -3,6 +3,8 @@ package protocol
 import "testing"
 
 func TestCompressionBeneficial(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		uncompressed    int
@@ -21,6 +23,7 @@ func TestCompressionBeneficial(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := compressionBeneficial(tt.uncompressed, tt.compressed); got != tt.wantCompression {
 				t.Fatalf("compressionBeneficial(%d, %d) = %t, want %t",
 					tt.uncompressed, tt.compressed, got, tt.wantCompression)

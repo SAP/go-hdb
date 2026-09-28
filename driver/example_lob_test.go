@@ -18,7 +18,7 @@ import (
 
 // ExampleLobRead reads data from a large data object database field into a bytes.Buffer.
 // Precondition: the test database table with one field of type BLOB, CLOB or NCLOB must exist.
-// For illustrative purposes we assume, that the database table has exactly one record, so
+// For illustrative purposes we assume that the database table has exactly one record, so
 // that we can use db.QueryRow.
 func ExampleLob_read() {
 	b := new(bytes.Buffer)

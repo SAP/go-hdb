@@ -152,11 +152,11 @@ func TestUserSwitch(t *testing.T) {
 		name string
 		fn   func()
 	}{
-		{"testUserSwitchOnNew", testUserSwitchOnNew},
-		{"testUserSwitchOnExisting", testUserSwitchOnExisting},
-		{"testUserSwitchOnStmt", testUserSwitchOnStmt},
-		{"testUserSwitchOnTx", testUserSwitchOnTx},
-		{"testUserSwitchFailedConnect", testUserSwitchFailedConnect},
+		{"user switch on new connection", testUserSwitchOnNew},
+		{"user switch on existing connection", testUserSwitchOnExisting},
+		{"second user switch on statement is rejected", testUserSwitchOnStmt},
+		{"second user switch on transaction is rejected", testUserSwitchOnTx},
+		{"failed switch keeps session identity", testUserSwitchFailedConnect},
 	}
 
 	createTable()
