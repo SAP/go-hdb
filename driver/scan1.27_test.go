@@ -20,6 +20,8 @@ func (w *writerLob) Write(p []byte) (int, error) {
 // lobASCIITestData rows in datatype_test.go; they are kept as unit tests until
 // go1.28 drops go1.26 support, then transfer to the integration tests.
 func TestConvertAssignLobGenericNull(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		dst   any
@@ -62,6 +64,7 @@ func TestConvertAssignLobGenericNull(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if err := convertAssignLob(driver.ScanContext{}, nil, tt.dst, tt.src); err != nil {
 				t.Fatalf("convertAssignLob returned error: %v", err)
 			}

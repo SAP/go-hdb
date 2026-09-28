@@ -35,6 +35,7 @@ type testDocstoreNested struct {
 }
 
 func testDocstoreCompare[T any](t *testing.T, db *sql.DB, collectionName string, id int, resultDoc *T) {
+	t.Helper()
 	lob := driver.Lob{}
 	b := new(bytes.Buffer)
 	lob.SetWriter(b)
@@ -157,7 +158,18 @@ func testDocstoreHDBCloud(t *testing.T, db *sql.DB) {
 	testDocstoreCompare(t, db, collectionName, 3, resultDoc3)
 }
 
+// TestDocstore requires the JSON Document Store service, enabled per tenant
+// by an administrator on the SystemDB:
+//
+//	ALTER DATABASE <tenant> ADD 'docstore';
+//	ALTER DATABASE <tenant> REMOVE 'docstore';  -- disables again, deletes stored collections
+//
+// The current tenant is reported by 'select database_name from sys.m_database'
+// (equivalently, the indexserver SQL port in the DSN). Without the service
+// the test logs a message and skips.
 func TestDocstore(t *testing.T) {
+	t.Parallel()
+
 	isDocstoreEnabled := func(db *sql.DB) bool {
 		count := 0
 		if err := db.QueryRowContext(t.Context(), "select count(*) from m_services where service_name = 'docstore' and active_status = 'YES'").Scan(&count); err != nil {
@@ -166,11 +178,9 @@ func TestDocstore(t *testing.T) {
 		return count > 0
 	}
 
-	t.Parallel()
-
 	tests := []struct {
 		name         string
-		fct          func(t *testing.T, db *sql.DB)
+		fn           func(t *testing.T, db *sql.DB)
 		onlyHDBCloud bool
 	}{
 		{"default", testDocstoreDefault, false},
@@ -193,7 +203,7 @@ func TestDocstore(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db)
+			test.fn(t, db)
 		})
 	}
 }

@@ -110,9 +110,11 @@ func testTransactionRollback(t *testing.T, db *sql.DB) {
 }
 
 func TestTransaction(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB)
+		fn   func(t *testing.T, db *sql.DB)
 	}{
 		{"transactionCommit", testTransactionCommit},
 		{"transactionRollback", testTransactionRollback},
@@ -121,7 +123,8 @@ func TestTransaction(t *testing.T) {
 	db := driver.MT.DB()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t, db)
+			t.Parallel()
+			test.fn(t, db)
 		})
 	}
 }

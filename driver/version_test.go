@@ -55,9 +55,11 @@ func testVersionFeature(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
 		{"parse", testVersionNumberParse},
 		{"compare", testVersionNumberCompare},
@@ -66,7 +68,8 @@ func TestVersion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t)
+			t.Parallel()
+			test.fn(t)
 		})
 	}
 }

@@ -361,9 +361,11 @@ func testErrTopology(t *testing.T) {
 }
 
 func TestRouting(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
 		{"priorities", testPriorities},
 		{"roundRobin", testRoundRobin},
@@ -380,11 +382,11 @@ func TestRouting(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		func(name string, fct func(t *testing.T)) {
+		func(name string, fn func(t *testing.T)) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				fct(t)
+				fn(t)
 			})
-		}(test.name, test.fct)
+		}(test.name, test.fn)
 	}
 }

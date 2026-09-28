@@ -1,6 +1,6 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
@@ -44,7 +45,7 @@ func TestColumnType(t *testing.T) {
 		return string(buf)
 	}
 
-	compareColumnTypes := func(ct ColumnType, c coltest.Type, version uint64, dfv int) error {
+	compareColumnTypes := func(ct driver.ColumnType, c coltest.Type, version uint64, dfv int) error {
 		if ct.DatabaseTypeName() != c.DatabaseTypeName(version, dfv) {
 			return fmt.Errorf("sql type %s type name %s - expected %s", c.TypeName(), ct.DatabaseTypeName(), c.DatabaseTypeName(version, dfv))
 		}
@@ -76,7 +77,7 @@ func TestColumnType(t *testing.T) {
 
 	testColumnType := func(t *testing.T, db *sql.DB, version uint64, dfv int, types []coltest.Type, values []any) {
 
-		tableName := RandomIdentifier(t.Name() + "_")
+		tableName := driver.RandomIdentifier(t.Name() + "_")
 
 		// some data types are only valid for column tables
 		// e.g. text
@@ -100,8 +101,8 @@ func TestColumnType(t *testing.T) {
 		}
 
 		// retrieve statement metadata
-		var stmtMetadata StmtMetadata
-		ctx := WithStmtMetadata(t.Context(), &stmtMetadata)
+		var stmtMetadata driver.StmtMetadata
+		ctx := driver.WithStmtMetadata(t.Context(), &stmtMetadata)
 
 		stmt, err := db.PrepareContext(ctx, fmt.Sprintf("select * from %s", tableName))
 		if err != nil {
@@ -134,7 +135,7 @@ func TestColumnType(t *testing.T) {
 	}
 
 	var (
-		testDecimal = (*Decimal)(big.NewRat(1, 1))
+		testDecimal = (*driver.Decimal)(big.NewRat(1, 1))
 		testString  = "HDB column type"
 		testBinary  = []byte{0x00, 0x01, 0x02}
 		testTime    = time.Now()
@@ -164,12 +165,12 @@ func TestColumnType(t *testing.T) {
 			{coltest.NullDaydate, testTime},
 			{coltest.NullSecondtime, testTime},
 
-			{coltest.NullClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{coltest.NullNClob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{coltest.NullBlob, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullClob, new(driver.Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullNClob, new(driver.Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullBlob, new(driver.Lob).SetReader(bytes.NewBuffer(testBinary))},
 
-			{coltest.NullText, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
-			{coltest.NullBintext, new(Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullText, new(driver.Lob).SetReader(bytes.NewBuffer(testBinary))},
+			{coltest.NullBintext, new(driver.Lob).SetReader(bytes.NewBuffer(testBinary))},
 
 			{coltest.Boolean, false},
 
@@ -201,14 +202,14 @@ func TestColumnType(t *testing.T) {
 		}
 	}
 
-	version := MT.Version().Major()
+	version := driver.MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		name := fmt.Sprintf("dfv %d", dfv)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			connector := MT.NewConnector()
+			connector := driver.MT.NewConnector()
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
 			defer db.Close()

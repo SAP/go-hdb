@@ -5,7 +5,6 @@ package driver_test
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"testing"
 
@@ -42,7 +41,7 @@ func newTestAnonBlockTable1(t *testing.T, db *sql.DB) testAnonBlockTable {
 		args1[i*2], args1[i*2+1] = i, i
 	}
 	if _, err := stmt.ExecContext(t.Context(), args1...); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
 	return &testAnonBlockTable1{_id: id, _numRow: numRow}
@@ -83,7 +82,7 @@ func newTestAnonBlockTable2(t *testing.T, db *sql.DB) testAnonBlockTable {
 		args2[i*2], args2[i*2+1] = i, float64(i)
 	}
 	if _, err := stmt.ExecContext(t.Context(), args2...); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
 	return &testAnonBlockTable2{_id: id, _numRow: numRow}
@@ -153,7 +152,7 @@ func TestAnonBlock(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB, tables []testAnonBlockTable)
+		fn   func(t *testing.T, db *sql.DB, tables []testAnonBlockTable)
 	}{
 		{"simple", testAnonBlockSimple},
 	}
@@ -161,7 +160,7 @@ func TestAnonBlock(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db, tables)
+			test.fn(t, db, tables)
 		})
 	}
 }

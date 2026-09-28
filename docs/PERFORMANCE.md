@@ -439,7 +439,7 @@ the client/network/pool side (phases A–G) rather than in HANA itself.
 3. [ ] Set up a controlled reference measurement (e.g. via `cmd/bulkbench`:
        representative instance, known network baseline, repeatable load, warmed
        pool) to compare the observed environment against the reference.
-4. [ ] Sample the driver stats (`NativeDriver().Stats()` or `db.ExStats()`); log
+4. [ ] Sample the driver stats (`connector.NativeDriver().Stats()` or `db.ExStats()`); log
        `AuthTime.Count`, `AuthTime.Sum`, and `SQLTimes[*].Count`.
 5. [ ] Check whether `AuthTime.Count` climbs during steady traffic
        (connection churn).

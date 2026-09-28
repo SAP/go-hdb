@@ -89,8 +89,8 @@ func TestScanStruct(t *testing.T) {
 		name string
 		fn   func() error
 	}{
-		{"testScanStructRows", testScanStructRows},
-		{"testScanStructRow", testScanStructRow},
+		{"scan all rows into structs", testScanStructRows},
+		{"scan first row and close", testScanStructRow},
 	}
 
 	for _, test := range tests {

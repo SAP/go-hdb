@@ -254,7 +254,7 @@ func TestLob(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, db *sql.DB)
+		fn   func(t *testing.T, db *sql.DB)
 	}{
 		{"insert", testLobInsert},
 		{"pipe", testLobPipe},
@@ -268,7 +268,7 @@ func TestLob(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, db)
+			test.fn(t, db)
 		})
 	}
 }

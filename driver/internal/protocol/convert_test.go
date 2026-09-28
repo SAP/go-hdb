@@ -10,6 +10,7 @@ import (
 )
 
 func assertEqualBool(t *testing.T, v any, r bool) {
+	t.Helper()
 	cv, err := convertField(tcBoolean, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +79,7 @@ func testConvertBool(t *testing.T) {
 }
 
 func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unparam
+	t.Helper()
 	cv, err := convertField(tc, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +101,7 @@ func assertEqualInt(t *testing.T, tc typeCode, v any, r int64) { //nolint:unpara
 }
 
 func assertEqualIntOutOfRangeError(t *testing.T, tc typeCode, v any) {
+	t.Helper()
 	_, err := convertField(tc, v, 0, 0)
 
 	if !errors.Is(err, errIntegerOutOfRange) {
@@ -135,6 +138,7 @@ func testConvertInteger(t *testing.T) {
 }
 
 func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
+	t.Helper()
 	cv, err := convertField(tc, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -151,6 +155,7 @@ func assertEqualFloat(t *testing.T, tc typeCode, v any, r float64) {
 }
 
 func assertEqualFloatOutOfRangeError(t *testing.T, tc typeCode, v any) {
+	t.Helper()
 	_, err := convertField(tc, v, 0, 0)
 
 	if !errors.Is(err, errFloatOutOfRange) {
@@ -184,6 +189,7 @@ func testConvertFloat(t *testing.T) {
 }
 
 func assertEqualTime(t *testing.T, tc typeCode, v any, r time.Time) {
+	t.Helper()
 	cv, err := convertField(tc, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +215,7 @@ func testConvertTime(t *testing.T) {
 }
 
 func assertEqualString(t *testing.T, tc typeCode, v any, r string) {
+	t.Helper()
 	cv, err := convertField(tc, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -234,6 +241,7 @@ func testConvertString(t *testing.T) {
 }
 
 func assertEqualBytes(t *testing.T, tc typeCode, v any, r []byte) {
+	t.Helper()
 	cv, err := convertField(tc, v, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -262,9 +270,11 @@ func testConvertBytes(t *testing.T) {
 }
 
 func TestConverter(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
 		{"convertBool", testConvertBool},
 		{"convertInteger", testConvertInteger},
@@ -276,7 +286,8 @@ func TestConverter(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t)
+			t.Parallel()
+			test.fn(t)
 		})
 	}
 }

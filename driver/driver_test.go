@@ -120,6 +120,7 @@ func testQueryAttributeAlias(t *testing.T, db *sql.DB) {
 }
 
 func checkAffectedRows(t *testing.T, result sql.Result, rowsExpected int64) {
+	t.Helper()
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		t.Fatal(err)
@@ -217,26 +218,30 @@ func testQueryArgs(t *testing.T, db *sql.DB) {
 
 func testComments(t *testing.T, db *sql.DB) {
 	tests := []struct {
+		name      string
 		query     string
 		supported bool
 	}{
-		{"select * from dummy\n-- my comment", true},
-		{"-- my comment\nselect * from dummy", true},
-		{"\n-- my comment\nselect * from dummy", true},
+		{"trailing comment", "select * from dummy\n-- my comment", true},
+		{"leading comment", "-- my comment\nselect * from dummy", true},
+		{"leading blank line comment", "\n-- my comment\nselect * from dummy", true},
 	}
 
 	for _, test := range tests {
-		rows, err := db.QueryContext(t.Context(), test.query)
-		if err != nil {
-			if test.supported {
-				t.Fatal(err)
-			} else {
-				t.Log(err)
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			rows, err := db.QueryContext(t.Context(), test.query)
+			if err != nil {
+				if test.supported {
+					t.Fatal(err)
+				} else {
+					t.Log(err)
+				}
 			}
-		}
-		if rows != nil {
-			rows.Close() //nolint:sqlclosecheck
-		}
+			if rows != nil {
+				rows.Close() //nolint:sqlclosecheck
+			}
+		})
 	}
 }
 

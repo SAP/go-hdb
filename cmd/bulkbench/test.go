@@ -153,6 +153,7 @@ func (ts *tests) executeSequential(db *sql.DB, batchCount, batchSize int, wait t
 	if err != nil {
 		return 0, err
 	}
+	defer conn.Close()
 
 	stmt, err := conn.PrepareContext(ctx, ts.prepareQuery)
 	if err != nil {

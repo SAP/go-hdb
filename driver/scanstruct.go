@@ -144,7 +144,10 @@ func NewStructScanner[S any]() (*StructScanner[S], error) {
 		return nil, fmt.Errorf("invalid type %s", rt.Kind())
 	}
 
-	tagger, hasTagger := any(s).(Tagger)
+	// Assert on a non-nil zero value: a nil *S would satisfy the assertion
+	// too, but calling Tag on it panics for stateful receivers.
+	var zero S
+	tagger, hasTagger := any(&zero).(Tagger)
 
 	columns := []*structColumn{}
 	nameColumnMap := map[string]*structColumn{}
@@ -277,6 +280,11 @@ func inferSQLDatatype(typ reflect.Type) (string, error) {
 	}
 
 	// dedicated datatypes.
+	// String is handled explicitly: string is convertible to []byte and would
+	// otherwise match the bytes entry below instead of its nvarchar mapping.
+	if typ.Kind() == reflect.String {
+		return "nvarchar(256)", nil
+	}
 	for ctyp, sqlType := range typeSQLDatatypes {
 		if typ.ConvertibleTo(ctyp) {
 			return sqlType, nil

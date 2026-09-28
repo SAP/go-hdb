@@ -228,7 +228,11 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		}
 		return i64, nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
-		i64 := int64(rv.Uint()) //nolint: gosec
+		u64 := rv.Uint()
+		if u64 > math.MaxInt64 {
+			return nil, errUint64OutOfRange
+		}
+		i64 := int64(u64)
 		if i64 > maxI64 || i64 < minI64 {
 			return nil, errIntegerOutOfRange
 		}

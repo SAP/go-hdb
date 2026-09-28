@@ -148,7 +148,7 @@ func testBstring(t *testing.T) {
 func TestX(t *testing.T) {
 	tests := []struct {
 		name    string
-		fct     func(t *testing.T)
+		fn      func(t *testing.T)
 		enabled bool
 	}{
 		{"invalid cesu-8", testInvalidCESU8, false},
@@ -172,7 +172,7 @@ func TestX(t *testing.T) {
 	for _, test := range tests {
 		if test.enabled {
 			t.Run(test.name, func(t *testing.T) {
-				test.fct(t)
+				test.fn(t)
 			})
 		}
 	}

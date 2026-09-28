@@ -1,12 +1,13 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"database/sql"
 	"fmt"
 	"testing"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 )
@@ -15,7 +16,7 @@ import (
 // nchar/nvarchar dispatch to different encode paths per dfv - the invalid input must be
 // rejected on every one of them.
 func testNegative(t *testing.T, db *sql.DB, column coltest.Type, testData []any) {
-	tableName := RandomIdentifier(column.DataType() + "_")
+	tableName := driver.RandomIdentifier(column.DataType() + "_")
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, column.DataType())); err != nil {
 		t.Fatal(err)
 	}
@@ -54,13 +55,13 @@ func TestDataTypeNegative(t *testing.T) {
 		{coltest.NewNullNVarchar(20), invalidUnicodeTestData},
 	}
 
-	version := MT.Version().Major()
+	version := driver.MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		t.Run(fmt.Sprintf("dfv %d", dfv), func(t *testing.T) {
 			t.Parallel()
 
-			connector := MT.NewConnector()
+			connector := driver.MT.NewConnector()
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
 			db.SetMaxIdleConns(10)

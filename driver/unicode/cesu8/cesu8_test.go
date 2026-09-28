@@ -112,19 +112,22 @@ func testReplacementChar(t *testing.T) {
 }
 
 func TestCESU8(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
-		fct  func(t *testing.T)
+		fn   func(t *testing.T)
 	}{
-		{"testCodeLen", testCodeLen},
-		{"testCP", testCP},
-		{"testString", testString},
-		{"testReplacementChar", testReplacementChar},
+		{"rune length matches encoder", testCodeLen},
+		{"code point round-trip", testCP},
+		{"string and slice sizes", testString},
+		{"replacement char round-trip", testReplacementChar},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fct(t)
+			t.Parallel()
+			test.fn(t)
 		})
 	}
 }

@@ -1,6 +1,6 @@
 //go:build !unit
 
-package driver
+package driver_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/SAP/go-hdb/driver"
 	"github.com/SAP/go-hdb/driver/internal/coltest"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/spatial"
@@ -31,7 +32,7 @@ func equalJSON(b1, b2 []byte) (bool, error) {
 // testSpatial inserts each geometry via st_geomfromewkb and verifies all read-back encodings
 // (wkb, ewkb, wkt, ewkt, geojson) against the driver's own encoders.
 func testSpatial(t *testing.T, db *sql.DB, column coltest.Type, testData []spatial.Geometry) {
-	tableName := RandomIdentifier(column.DataType() + "_")
+	tableName := driver.RandomIdentifier(column.DataType() + "_")
 	if _, err := db.ExecContext(t.Context(), fmt.Sprintf("create table %s (x %s, i integer)", tableName, column.DataType())); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func testSpatial(t *testing.T, db *sql.DB, column coltest.Type, testData []spati
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := stmt.ExecContext(t.Context(), new(Lob).SetReader(bytes.NewReader(ewkb)), i); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), new(driver.Lob).SetReader(bytes.NewReader(ewkb)), i); err != nil {
 			t.Fatalf("%d - %s", i, err)
 		}
 	}
@@ -80,7 +81,7 @@ func testSpatial(t *testing.T, db *sql.DB, column coltest.Type, testData []spati
 	i := 0
 	for rows.Next() {
 		if err := rows.Scan(&x, &recIdx,
-			&Lob{wr: asWKBBuffer}, &Lob{wr: asEWKBBuffer}, &Lob{wr: asWKTBuffer}, &Lob{wr: asEWKTBuffer}, &Lob{wr: asGeoJSONBuffer}); err != nil {
+			driver.NewLob(nil, asWKBBuffer), driver.NewLob(nil, asEWKBBuffer), driver.NewLob(nil, asWKTBuffer), driver.NewLob(nil, asEWKTBuffer), driver.NewLob(nil, asGeoJSONBuffer)); err != nil {
 			t.Fatal(err)
 		}
 
@@ -206,13 +207,13 @@ func TestDataTypeSpatial(t *testing.T) {
 		{coltest.NewNullSTGeometry(3857), stGeometryTestData},
 	}
 
-	version := MT.Version().Major()
+	version := driver.MT.Version().Major()
 
 	for _, dfv := range p.SupportedDfvs(testing.Short()) {
 		t.Run(fmt.Sprintf("dfv %d", dfv), func(t *testing.T) {
 			t.Parallel()
 
-			connector := MT.NewConnector()
+			connector := driver.MT.NewConnector()
 			connector.SetDfv(dfv)
 			db := sql.OpenDB(connector)
 			db.SetMaxIdleConns(10)

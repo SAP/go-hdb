@@ -36,6 +36,7 @@ func setupEncodingTestTable(t *testing.T, testData []struct{ s, r string }) driv
 }
 
 func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
+	t.Helper()
 	db := driver.MT.DB()
 
 	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
@@ -56,6 +57,7 @@ func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struc
 }
 
 func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
+	t.Helper()
 	connector := driver.MT.NewConnector()
 
 	// register decoder with replace error handler
@@ -96,6 +98,7 @@ func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData 
 }
 
 func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
+	t.Helper()
 	connector := driver.MT.NewConnector()
 
 	// register nop decoder to receive 'raw' undecoded data
@@ -169,17 +172,17 @@ func TestEncoding(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string })
+		fn   func(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string })
 	}{
-		{"testDecodeError", testDecodeError},
-		{"testDecodeErrorHandler", testDecodeErrorHandler},
-		{"testDecodeRaw", testDecodeRaw},
+		{"invalid CESU-8 raises decode error", testDecodeError},
+		{"replace handler substitutes replacement char", testDecodeErrorHandler},
+		{"raw decoder returns undecoded bytes", testDecodeRaw},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, tableName, testData)
+			test.fn(t, tableName, testData)
 		})
 	}
 }

@@ -317,24 +317,24 @@ func TestBulk(t *testing.T) {
 
 	tests := []struct {
 		name string
-		fct  func(t *testing.T, ctr *Connector, db *sql.DB)
+		fn   func(t *testing.T, ctr *Connector, db *sql.DB)
 		ctr  *Connector
 		db   *sql.DB
 	}{
-		{"testBulkInsertDuplicates", testBulkInsertDuplicates, ctr, db},
-		{"testBulkInsertStmtNo", testBulkInsertStmtNo, ctr, db},
-		{"testBulkLOBStmtNo", testBulkLOBStmtNo, lobCtr, lobDB},
-		{"testBulkBlob", testBulkBlob, ctr, db},
-		{"testBulkBlob106", testBulkBlob106, ctr, db},
-		{"testBulkGeo", testBulkGeo, ctr, db},
-		{"testBulkInsertInvalidUTF8", testBulkInsertInvalidUTF8, ctr, db},
-		{"testBulkInsertInvalidNumArg", testBulkInsertInvalidNumArg, ctr, db},
+		{"duplicate keys report statement numbers", testBulkInsertDuplicates, ctr, db},
+		{"statement number matches failing row", testBulkInsertStmtNo, ctr, db},
+		{"LOB-split packages offset statement numbers", testBulkLOBStmtNo, lobCtr, lobDB},
+		{"blob bulk round-trip", testBulkBlob, ctr, db},
+		{"partial-chunk blobs insert correctly (issue 106)", testBulkBlob106, ctr, db},
+		{"geometry bulk round-trip", testBulkGeo, ctr, db},
+		{"invalid UTF-8 returns transformation error", testBulkInsertInvalidUTF8, ctr, db},
+		{"argument without placeholder returns error", testBulkInsertInvalidNumArg, ctr, db},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			test.fct(t, test.ctr, test.db)
+			test.fn(t, test.ctr, test.db)
 		})
 	}
 }

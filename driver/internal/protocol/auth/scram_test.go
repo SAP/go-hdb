@@ -5,6 +5,8 @@ import (
 )
 
 func TestSCRAM(t *testing.T) {
+	t.Parallel()
+
 	testData := []struct {
 		method          string
 		salt            []byte

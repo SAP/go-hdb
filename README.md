@@ -36,7 +36,6 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 
 	"github.com/SAP/go-hdb/driver"
@@ -52,7 +51,7 @@ func main() {
 	if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(user)
+	log.Println(user)
 }
 ```
 
@@ -79,7 +78,7 @@ func main() {
 
 **Observability**
 
-- Driver stats via `NativeDriver().Stats()`
+- Driver stats via `Connector.NativeDriver().Stats()`
 - Per-DB `ExStats()` (requires `driver.OpenDB`)
 - [Prometheus collectors](https://github.com/SAP/go-hdb/tree/main/prometheus)
 - Per-statement SQL trace via `slog`
