@@ -228,7 +228,11 @@ func TestConnLifecycle(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctr := MT.NewConnector() // isolated lifecycle
+			cfg := MT.Connector().Config()
+			ctr, err := NewConfigConnector(&cfg) // isolated lifecycle
+			if err != nil {
+				t.Fatal(err)
+			}
 			db := sql.OpenDB(ctr)
 			defer db.Close()
 

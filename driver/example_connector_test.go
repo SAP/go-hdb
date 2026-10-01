@@ -12,8 +12,8 @@ import (
 	"github.com/SAP/go-hdb/driver"
 )
 
-// ExampleNewDSNConnector shows how to open a database with the help of a connector using DSN.
-func ExampleNewDSNConnector() {
+// ExampleParseDSNConfig shows how to open a database with the help of a connector configured by DSN.
+func ExampleParseDSNConfig() {
 	const (
 		envDSN = "GOHDBDSN"
 	)
@@ -23,7 +23,11 @@ func ExampleNewDSNConnector() {
 		return
 	}
 
-	connector, err := driver.NewDSNConnector(dsn)
+	cfg, err := driver.ParseDSNConfig(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	connector, err := driver.NewConfigConnector(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,8 +68,8 @@ func lookupTLS() (string, bool, string, bool) {
 	return serverName, insecureSkipVerify, rootCAFile, set
 }
 
-// ExampleNewBasicAuthConnector shows how to open a database with the help of a connector using basic authentication.
-func ExampleNewBasicAuthConnector() {
+// ExampleNewConfigConnector shows how to open a database with the help of a connector using basic authentication.
+func ExampleNewConfigConnector() {
 	const (
 		envHost     = "GOHDBHOST"
 		envUsername = "GOHDBUSERNAME"
@@ -90,16 +94,22 @@ func ExampleNewBasicAuthConnector() {
 		return
 	}
 
-	connector := driver.NewBasicAuthConnector(host, username, password)
+	cfg := driver.NewConnectorConfig()
+	cfg.Host = host
+	cfg.Username = username
+	cfg.Password = password
+	cfg.DatabaseName = database
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+		tlsConfig, err := driver.NewTLSConfig(serverName, insecureSkipVerify, rootCAFile)
+		if err != nil {
 			log.Fatal(err)
 		}
+		cfg.TLSConfig = tlsConfig
 	}
-	if database != "" {
-		connector = connector.WithDatabase(database)
+	connector, err := driver.NewConfigConnector(cfg)
+	if err != nil {
+		log.Fatal(err)
 	}
-
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
@@ -109,9 +119,9 @@ func ExampleNewBasicAuthConnector() {
 	// output:
 }
 
-// ExampleNewX509AuthConnectorByFiles shows how to open a database with the help of a connector
+// ExampleNewConfigConnector_x509 shows how to open a database with the help of a connector
 // using x509 (client certificate) authentication and providing client certificate and client key by file.
-func ExampleNewX509AuthConnectorByFiles() {
+func ExampleNewConfigConnector_x509() {
 	const (
 		envHost           = "GOHDBHOST"
 		envClientCertFile = "GOHDBCLIENTCERTFILE"
@@ -131,14 +141,20 @@ func ExampleNewX509AuthConnectorByFiles() {
 		return
 	}
 
-	connector, err := driver.NewX509AuthConnectorByFiles(host, clientCertFile, clientKeyFile)
-	if err != nil {
-		log.Fatal(err)
-	}
+	cfg := driver.NewConnectorConfig()
+	cfg.Host = host
+	cfg.ClientCertFile = clientCertFile
+	cfg.ClientKeyFile = clientKeyFile
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+		tlsConfig, err := driver.NewTLSConfig(serverName, insecureSkipVerify, rootCAFile)
+		if err != nil {
 			log.Fatal(err)
 		}
+		cfg.TLSConfig = tlsConfig
+	}
+	connector, err := driver.NewConfigConnector(cfg)
+	if err != nil {
+		log.Fatal(err)
 	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
@@ -149,8 +165,8 @@ func ExampleNewX509AuthConnectorByFiles() {
 	// output:
 }
 
-// ExampleNewJWTAuthConnector shows how to open a database with the help of a connector using JWT authentication.
-func ExampleNewJWTAuthConnector() {
+// ExampleNewConfigConnector_jwt shows how to open a database with the help of a connector using JWT authentication.
+func ExampleNewConfigConnector_jwt() {
 	const (
 		envHost  = "GOHDBHOST"
 		envToken = "GOHDBTOKEN"
@@ -167,56 +183,23 @@ func ExampleNewJWTAuthConnector() {
 
 	const invalidToken = "ey"
 
-	connector := driver.NewJWTAuthConnector(host, invalidToken)
+	cfg := driver.NewConnectorConfig()
+	cfg.Host = host
+	cfg.Token = invalidToken
+	// in case JWT authentication fails provide a (new) valid token.
+	cfg.RefreshToken = func() (string, bool) { return token, true }
 	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
+		tlsConfig, err := driver.NewTLSConfig(serverName, insecureSkipVerify, rootCAFile)
+		if err != nil {
 			log.Fatal(err)
 		}
+		cfg.TLSConfig = tlsConfig
 	}
-	// in case JWT authentication fails provide a (new) valid token.
-	connector.SetRefreshToken(func() (string, bool) { return token, true })
-
-	db := sql.OpenDB(connector)
-	defer db.Close()
-
-	if err := db.PingContext(context.Background()); err != nil {
+	connector, err := driver.NewConfigConnector(cfg)
+	if err != nil {
 		log.Fatal(err)
 	}
-	// output:
-}
 
-// ExampleConnector_WithDatabase shows how to open a tenant database with the help of a connector using basic authentication.
-func ExampleConnector_WithDatabase() {
-	const (
-		envHost     = "GOHDBHOST"
-		envUsername = "GOHDBUSERNAME"
-		envPassword = "GOHDBPASSWORD"
-		envDatabase = "GOHDBDATABASE"
-	)
-
-	host, ok := os.LookupEnv(envHost)
-	if !ok {
-		return
-	}
-	username, ok := os.LookupEnv(envUsername)
-	if !ok {
-		return
-	}
-	password, ok := os.LookupEnv(envPassword)
-	if !ok {
-		return
-	}
-	database, ok := os.LookupEnv(envDatabase)
-	if !ok {
-		return
-	}
-
-	connector := driver.NewBasicAuthConnector(host, username, password).WithDatabase(database)
-	if serverName, insecureSkipVerify, rootCAFile, ok := lookupTLS(); ok {
-		if err := connector.SetTLS(serverName, insecureSkipVerify, rootCAFile); err != nil {
-			log.Fatal(err)
-		}
-	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

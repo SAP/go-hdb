@@ -56,28 +56,52 @@ const (
 type sqlTracer struct {
 	logger *slog.Logger
 	maxArg int
+	cfg    SQLTraceConfig
 }
 
 const defSQLTracerMaxArg = 5 // default limit of number of arguments
 
-func newSQLTracer(logger *slog.Logger, maxArg int) *sqlTracer {
+// truncMs renders milliseconds truncated to two decimals via integer math.
+func truncMs(d time.Duration) float64 {
+	return float64(d.Microseconds()/10) / 100
+}
+
+// newSQLTracer returns nil unless cfg enables every-statement logging
+// or at least one trip leg.
+func newSQLTracer(logger *slog.Logger, maxArg int, cfg SQLTraceConfig) *sqlTracer {
+	if !cfg.Enabled && cfg.ServerThreshold <= 0 && cfg.TotalThreshold <= 0 {
+		return nil
+	}
 	if maxArg <= 0 {
 		maxArg = defSQLTracerMaxArg
 	}
-	return &sqlTracer{logger: logger, maxArg: maxArg}
+	return &sqlTracer{logger: logger, maxArg: maxArg, cfg: cfg}
 }
 
-func (t *sqlTracer) log(ctx context.Context, startTime time.Time, traceKind string, query string, nvargs ...driver.NamedValue) {
-	duration := time.Since(startTime).Milliseconds()
+func (t *sqlTracer) log(ctx context.Context, startTime time.Time, traceKind string, query string, serverTime time.Duration, nvargs ...driver.NamedValue) {
+	elapsed := time.Since(startTime)
 	l := len(nvargs)
 
-	attrs := []slog.Attr{ //nolint:prealloc
+	slow := (t.cfg.ServerThreshold > 0 && serverTime >= t.cfg.ServerThreshold) ||
+		(t.cfg.TotalThreshold > 0 && elapsed >= t.cfg.TotalThreshold)
+	if !t.cfg.Enabled && !slow {
+		return
+	}
+	level := slog.LevelInfo
+	if slow {
+		level = slog.LevelWarn
+	}
+
+	attrs := []slog.Attr{
 		slog.String(traceKind, query),
-		slog.Int64("ms", duration),
+		slog.Float64("ms", truncMs(elapsed)),
+	}
+	if serverTime > 0 {
+		attrs = append(attrs, slog.Float64("serverMs", truncMs(serverTime)))
 	}
 
 	if l == 0 {
-		t.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
+		t.logger.LogAttrs(ctx, level, "SQL", attrs...)
 		return
 	}
 
@@ -95,5 +119,5 @@ func (t *sqlTracer) log(ctx context.Context, startTime time.Time, traceKind stri
 	}
 	attrs = append(attrs, slog.Any("arg", slog.GroupValue(argAttrs...)))
 
-	t.logger.LogAttrs(ctx, slog.LevelInfo, "SQL", attrs...)
+	t.logger.LogAttrs(ctx, level, "SQL", attrs...)
 }

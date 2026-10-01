@@ -37,7 +37,11 @@ DROP TABLE #my_local_temp_table
 		return
 	}
 
-	connector, err := driver.NewDSNConnector(dsn)
+	cfg, err := driver.ParseDSNConfig(dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	connector, err := driver.NewConfigConnector(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

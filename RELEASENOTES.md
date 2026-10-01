@@ -1,6 +1,63 @@
 Release Notes
 =============
 
+## v1.19.0
+
+### New features
+
+- new exported `driver.ConnectorConfig` (`NewConnectorConfig`, `NewConfigConnector`)
+  alongside the (now deprecated, still working) Connector getter/setter
+  surface (see [config guide](docs/CONFIG.md)); invalid values are
+  reported as errors, details in the guide
+- two additional timeout settings: `ReadTimeout` and `WriteTimeout` join
+  `DialTimeout` (the former `Timeout`), so establishment, socket reads,
+  and socket writes can finally be budgeted independently (all default
+  5 minutes via `NewConnectorConfig`; a DSN without the `timeout` key
+  leaves all three at `0`, as before). Legacy `SetTimeout` and the DSN `timeout` key still set
+  all three at once — existing behavior is unchanged
+- per-statement slow-log trips: `SQLTraceConfig.ServerThreshold` and
+  `TotalThreshold` log statements reaching either at `Warn` with client
+  elapsed (`ms`) and, when reported by the server, server processing
+  time (`serverMs`), both fractional milliseconds; per-connector
+  `SQLTrace` / `ProtTrace` take over from the global trace flags for
+  config-built connectors (see [config guide](docs/CONFIG.md) and
+  [performance guide](docs/PERFORMANCE.md))
+- updated dependencies
+
+### Deprecations
+
+Starting with v1.19.0:
+
+- Connector getters and setters are deprecated; configure via
+  `ConnectorConfig` fields, construct with `NewConfigConnector`, read back
+  with `Connector.Config()` (see [config guide](docs/CONFIG.md))
+- `Connector.WithDatabase` is deprecated; set `ConnectorConfig.DatabaseName`
+  when constructing the connector
+
+To find every affected call site, run `staticcheck` (`SA1019`,
+also bundled in `golangci-lint`) on your application.
+
+### Incompatible changes
+
+- `TCPKeepAlive` default is now `0` (was `15s`): zero uses the
+  `net.Dialer` default (15s), negative disables. A fresh
+  `TCPKeepAlive()` therefore returns `0`, not `15s`;
+  transport behavior via the stdlib dialer is unchanged.
+- Trace flags (`protTrace`/`sqlTrace`) now freeze when the connector's
+  config is built instead of at connection creation; later toggles
+  affect only configs built afterwards. The deprecated setters remain
+  live and still affect their connector's future connections.
+- `OpenConnector` (and `NewConfigConnector`) reject an empty host at
+  construction; the deprecated `NewDSNConnector` still defers that
+  failure to connect time, as before.
+- Addendum, correcting the v1.18.0 note: with Go 1.28 the
+  `driver.ScanLobBytes`, `driver.ScanLobString` and
+  `driver.ScanLobWriter` stubs are removed — the Go 1.27 deprecated
+  no-op stubs stay, the Go 1.28 file is gone, the Go 1.26
+  implementations (`lob1.26.go`) are untouched. A missing symbol
+  breaks the build at upgrade time with the compiler listing every
+  call site.
+
 ## v1.18.0
 
 ### Minor revisions
@@ -83,6 +140,8 @@ Release Notes
   `driver.ScanLobString` and `driver.ScanLobWriter` panic if called. Applications
   still using them need to adapt to the native lob scan into `string`, `[]byte`
   and `io.Writer` based destinations (supported since Go 1.27).
+  (Superseded: per the v1.19.0 addendum above, the Go 1.28 stubs are
+  removed, so affected call sites fail at build time instead of panicking.)
 
 - The examples demonstrating the usage of `driver.ScanLobBytes`,
   `driver.ScanLobString` and `driver.ScanLobWriter` are build restricted to Go

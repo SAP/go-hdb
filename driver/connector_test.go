@@ -3,10 +3,15 @@
 package driver
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestConnector(t *testing.T) {
@@ -79,11 +84,14 @@ func TestConnector(t *testing.T) {
 			return sv, nil
 		}
 
-		ctr := MT.NewConnector()
-
 		// set session variables
-		sv1 := SessionVariables{"k1": "v1", "k2": "v2", "k3": "v3"}
-		ctr.SetSessionVariables(sv1)
+		sv1 := map[string]string{"k1": "v1", "k2": "v2", "k3": "v3"}
+		cfg := MT.Connector().Config()
+		cfg.SessionVariables = sv1
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		// check session variables
 		db := sql.OpenDB(ctr)
@@ -111,15 +119,18 @@ func TestConnector(t *testing.T) {
 	testRetryConnect := func(t *testing.T) {
 		const invalidPassword = "invalid_password"
 
-		ctr := MT.NewConnector()
-
-		password := ctr.Password() // safe password
+		cfg := MT.Connector().Config()
+		password := cfg.Password // safe password
 		refreshPassword := func() (string, bool) {
-			printInvalidConnectAttempts(t, ctr.Username())
+			printInvalidConnectAttempts(t, cfg.Username)
 			return password, true
 		}
-		ctr.SetPassword(invalidPassword) // set invalid password
-		ctr.SetRefreshPassword(refreshPassword)
+		cfg.Password = invalidPassword // set invalid password
+		cfg.RefreshPassword = refreshPassword
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
 		db := sql.OpenDB(ctr)
 		defer db.Close()
 
@@ -132,11 +143,14 @@ func TestConnector(t *testing.T) {
 	testAuthRefreshDeadlock := func(t *testing.T) {
 		const numConcurrent = 100
 
-		ctr := MT.NewConnector()
-
-		ctr.SetRefreshPassword(func() (string, bool) { return "", true })
-		ctr.SetRefreshToken(func() (string, bool) { return "", true })
-		ctr.SetRefreshClientCert(func() ([]byte, []byte, bool) { return nil, nil, true })
+		cfg := MT.Connector().Config()
+		cfg.RefreshPassword = func() (string, bool) { return "", true }
+		cfg.RefreshToken = func() (string, bool) { return "", true }
+		cfg.RefreshClientCert = func() ([]byte, []byte, bool) { return nil, nil, true }
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		wg := new(sync.WaitGroup)
 		start := make(chan struct{})
@@ -156,24 +170,27 @@ func TestConnector(t *testing.T) {
 	testAuthRefresh := func(t *testing.T) {
 		const numConcurrent = 5 // limit to 5 as after 5 invalid attempts user is locked
 
-		ctr := MT.NewConnector()
-
-		if ctr._databaseName != "" {
+		cfg := MT.Connector().Config()
+		if cfg.DatabaseName != "" {
 			// test does not work in case of redirectCache.Load() is successful, as connect is called twice,
 			// so that the password is most probably refreshed already on second call
 			t.Skip("to execute test, don't use database redirection")
 		}
 
-		password := ctr.Password()
-		ctr.SetPassword("invalid password")
+		password := cfg.Password
+		cfg.Password = "invalid password"
 		passwordRefreshed := false
-		ctr.SetRefreshPassword(func() (string, bool) {
+		cfg.RefreshPassword = func() (string, bool) {
 			if passwordRefreshed {
 				return "", false
 			}
 			passwordRefreshed = true
 			return password, true
-		})
+		}
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
 		db := sql.OpenDB(ctr)
 		defer db.Close()
 
@@ -208,6 +225,78 @@ func TestConnector(t *testing.T) {
 		}
 	}
 
+	// testSlowLogTrips forces threshold trips with 1ns thresholds: any real
+	// roundtrip exceeds them on the total leg. The server leg trips only
+	// if the server sends StatementContext (current HANA does).
+	testSlowLogTrips := func(t *testing.T) {
+		var buf bytes.Buffer
+
+		cfg := MT.Connector().Config()
+		cfg.Logger = slog.New(slog.NewJSONHandler(&buf, nil))
+		cfg.SQLTrace = SQLTraceConfig{ServerThreshold: time.Nanosecond, TotalThreshold: time.Nanosecond}
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db := sql.OpenDB(ctr)
+		defer db.Close()
+
+		for i := range 3 {
+			if _, err := db.ExecContext(t.Context(), fmt.Sprintf("select %d from dummy", i)); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		dec := json.NewDecoder(&buf)
+		entries := []map[string]any{}
+		for {
+			var m map[string]any
+			if err := dec.Decode(&m); err == io.EOF {
+				break
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			entries = append(entries, m)
+		}
+		if len(entries) < 3 {
+			t.Fatalf("no trip lines captured: got %d, want >= 3", len(entries))
+		}
+		for _, m := range entries {
+			if m["level"] != "WARN" {
+				t.Fatalf("trip line level = %v, want WARN", m["level"])
+			}
+			if _, ok := m["ms"]; !ok {
+				t.Fatal("trip line without ms")
+			}
+			if _, ok := m["serverMs"]; !ok {
+				t.Log("serverMs absent: server omits StatementContext")
+			}
+		}
+	}
+	// testSlowLogSilence asserts the silence rule: with high thresholds
+	// and Enabled false, a fast statement emits nothing (regression
+	// cover for trip-mode logging everything).
+	testSlowLogSilence := func(t *testing.T) {
+		var buf bytes.Buffer
+
+		cfg := MT.Connector().Config()
+		cfg.Logger = slog.New(slog.NewJSONHandler(&buf, nil))
+		cfg.SQLTrace = SQLTraceConfig{ServerThreshold: time.Hour, TotalThreshold: time.Hour}
+		ctr, err := NewConfigConnector(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db := sql.OpenDB(ctr)
+		defer db.Close()
+
+		if _, err := db.ExecContext(t.Context(), "select 1 from dummy"); err != nil {
+			t.Fatal(err)
+		}
+		if buf.Len() != 0 {
+			t.Fatalf("silence rule violated: emitted %d bytes, want none", buf.Len())
+		}
+	}
+
 	tests := []struct {
 		name string
 		fn   func(t *testing.T)
@@ -216,6 +305,8 @@ func TestConnector(t *testing.T) {
 		{"password refresh on retry", testRetryConnect},
 		{"concurrent auth refresh is deadlock-free", testAuthRefreshDeadlock},
 		{"concurrent connect with password refresh", testAuthRefresh},
+		{"slow log trips at Warn with both times", testSlowLogTrips},
+		{"slow log silence without trips", testSlowLogSilence},
 	}
 
 	for _, test := range tests {

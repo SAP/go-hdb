@@ -31,11 +31,11 @@ database/sql pool ── (A) waiting for a free connection  ── pool size / c
   │
   ▼
 get a connection:
-  ├─ reuse idle conn ── (B) optional Ping round-trip ──── SetPingInterval
+  ├─ reuse idle conn ── (B) optional Ping round-trip ──── PingInterval
   └─ NO idle conn → open a new one:
         ├─ (C) TCP connect ──────────────────────────── network / DNS / routing
         └─ (D) HANA auth handshake ───────────────────── AuthTime
-                └─ (E) auth refresh callback (if set) ── SetRefreshPassword/Token/ClientCert
+                └─ (E) auth refresh callback (if set) ── RefreshPassword/Token/ClientCert fields
   │
   ▼
 Prepare ── (F) round-trip to HANA ───────────────────── SQLTimes["prepare"]
@@ -44,7 +44,7 @@ Prepare ── (F) round-trip to HANA ──────────────
 Exec/Query ── (G) round-trip + fetch ────────────────── SQLTimes["exec"|"query"|"fetch"]
   │
   ▼
-HANA execution ── (H) actual query work ─────────────── HANA plan cache / expensive statements
+HANA execution ── (H) actual query work ─────────────── serverMs / plan cache / expensive statements
 ```
 
 Application-level tracing (e.g. via `otelsql`) typically measures the
@@ -187,6 +187,8 @@ connection" from "slow to *run* SQL".
 #### Getting the stats
 
 ```go
+connector, _ := driver.NewConfigConnector(cfg) // configured earlier, see docs/CONFIG.md
+
 // Global driver stats — always available:
 stats := connector.NativeDriver().Stats()   // *driver.Stats — across all uses of the driver
 
@@ -294,42 +296,57 @@ While the stats aggregate, the SQL trace shows *individual* statements: which
 one ran and how long each took. Reach for it once the stats point at SQL
 round-trips (rather than auth) and you need to know which statements.
 
-#### Enable / disable at runtime
+#### Enable per connector (recommended)
 
 ```go
-driver.SetSQLTrace(true)   // enable
-driver.SetSQLTrace(false)  // disable
-driver.SQLTrace()          // -> bool, current state
+cfg.SQLTrace = driver.SQLTraceConfig{
+    Enabled:         true,
+    ServerThreshold: 100 * time.Millisecond,
+    TotalThreshold:  time.Second,
+}
 ```
+`Enabled` logs every statement at `Info`; a slow statement is logged
+at `Warn` even when `Enabled`. Both take effect on connections the pool
+opens afterwards — existing pooled connections keep their setting until
+recycled (`ConnMaxLifetime`, idle timeout, or churn). To trace all
+traffic promptly, configure at startup, or force turnover (e.g.
+temporarily lower `ConnMaxLifetime`).
 
-Or at process start via flag:
+#### Global flags
 
-```
--hdb.sqlTrace=true
-```
-
-**Caveat:** the SQL tracer is attached to a connection when the connection is
-*created*. `SetSQLTrace(true)` therefore only affects connections opened
-**after** the call — existing pooled connections keep their previous setting
-until they are replaced. So immediately after enabling trace you will see
-output only for a subset of traffic, and coverage grows as old connections are
-recycled (via `ConnMaxLifetime`, the idle timeout, or normal churn). To trace
-all traffic promptly, enable it at startup with `-hdb.sqlTrace=true`, or force
-the pool to turn over (e.g. temporarily lower `ConnMaxLifetime`).
+`-hdb.sqlTrace=true` and `driver.SetSQLTrace(true/false)` provide the
+defaults `NewConnectorConfig` copies into `SQLTrace.Enabled`. Like all
+config-construction settings, they apply to configs built afterwards.
 
 #### What the log looks like
 
-Trace uses structured `slog` at `INFO`, message `"SQL"`:
+Trace uses structured `slog`, message `"SQL"`: level `INFO` for traced
+statements, `WARN` for threshold trips:
 
 ```
 level=INFO msg=SQL prepare="SELECT * FROM t WHERE id=?" ms=3
-level=INFO msg=SQL exec="SELECT * FROM t WHERE id=?" ms=12 arg.1=42
+level=INFO msg=SQL exec="SELECT * FROM t WHERE id=?" ms=0.32 serverMs=0.27 arg.1=42
 ```
 
 Attributes: the operation key (`prepare` / `query` / `exec` / `call` / `ping`)
-carries the SQL text, `ms` carries the duration, and `arg.*` carries the
+carries the SQL text, `ms` carries the duration, `serverMs` the server
+processing time — present only when the server reports a nonzero
+processing time (the server omits `StatementContext` otherwise) — and `arg.*` carries the
 parameter values — the first five; if a statement has more, `arg.numArgSkip`
-reports how many were omitted.
+reports how many were omitted. Level is `INFO` traced, `WARN` tripped.
+
+#### Threshold trips (production-safe sampling)
+
+For production, prefer trips over full trace: set
+`SQLTraceConfig.ServerThreshold` and/or `TotalThreshold` on the
+connector. A statement reaching either is logged at `Warn` with client
+elapsed — `ms` (network + fetch included), plus `serverMs` (server
+processing time from the reply context) when reported — both fractional
+milliseconds:
+
+```
+level=WARN msg=SQL exec="SELECT * FROM t WHERE id=?" ms=0.32 serverMs=0.27 arg.1=42
+```
 
 #### Routing trace to your logger
 
@@ -337,7 +354,7 @@ The trace (and internal driver error logs) use the logger set on the Connector,
 which defaults to `slog.Default()`:
 
 ```go
-connector.SetLogger(myStructuredLogger) // *slog.Logger
+cfg.Logger = slog.Default() // *slog.Logger, set before NewConfigConnector; plug in your own structured logger
 ```
 
 This lets the trace feed into the same logging pipeline the service already
@@ -396,7 +413,7 @@ a failed round-trip and a reconnect. The driver can ping a pooled connection
 before handing it out:
 
 ```go
-connector.SetPingInterval(d) // on checkout, ping a pooled connection idle for ≥ d; 0 = off (default)
+cfg.PingInterval = 30 * time.Second // on checkout, ping a pooled connection idle for ≥ the interval; 0 = off (default)
 ```
 
 The cost is one extra round-trip on checkout after the interval — cheap
@@ -408,12 +425,6 @@ If a credential-refresh callback is registered, it runs synchronously during
 authentication, so a slow implementation inflates `AuthTime` and serializes
 concurrent new-connection attempts:
 
-```go
-connector.SetRefreshPassword(fn)    // basic-auth password rotation
-connector.SetRefreshToken(fn)       // JWT token rotation
-connector.SetRefreshClientCert(fn)  // X509 client cert rotation
-```
-
 If any of these is set, review its implementation for latency: does it call a
 secrets manager, make an HTTP request, read a file, or take a lock? Any such
 work is paid on connection establishment and appears as slow `Prepare`/`Exec`
@@ -423,10 +434,12 @@ network I/O on the callback's hot path.
 ### Cross-check the SQL time against HANA
 
 Once you have driver stats, close the loop with the backend checks from
-*Before the driver deep-dive*: compare the driver's `SQLTimes["exec"]` /
-`sql_time{sql="exec"}` tail against HANA's own measured execution time for the
-same statements. A large gap (driver slow, HANA fast) confirms the time is on
-the client/network/pool side (phases A–G) rather than in HANA itself.
+*Before the driver deep-dive*: take the statement and timestamp from the
+trip (or trace) line. If `serverMs` dominates, work server-side
+(`M_EXPENSIVE_STATEMENTS`, SQL plan cache, `EXPLAIN`) for why the engine
+was slow. If `ms − serverMs` dominates, the engine was fast: work the
+Network section above and the fetch signals (`SQLTimes["fetch"]`, result
+size, `FetchSize`) — tuning the SQL won't help.
 
 ---
 
@@ -448,20 +461,23 @@ the client/network/pool side (phases A–G) rather than in HANA itself.
 7. [ ] Export `go_hdb_*` metrics plus `NewDBStatsCollector` to Prometheus/OTel;
        graph the rate of `auth_time` count / `session_connects`, and correlate
        auth/churn spikes with slow calls in application tracing.
-8. [ ] Enable `driver.SetSQLTrace(true)` (new connections only) to see
-       per-statement `ms`.
+8. [ ] Set `cfg.SQLTrace.Enabled` (new connections only) for full
+       trace — `driver.SetSQLTrace(true)` works the same via globals —
+       or set trip thresholds (`ServerThreshold`/`TotalThreshold`)
+       for production-safe sampling of slow statements.
 9. [ ] Review pool configuration against observed parallelism
        (`MaxIdleConns`, `ConnMaxIdleTime`, `MaxOpenConns`).
 10. [ ] If a refresh callback is registered, review it for synchronous I/O.
-11. [ ] Optionally set `SetPingInterval` to weed out dead idle connections.
-12. [ ] Cross-check the driver's `SQLTimes["exec"]` tail against HANA's own
-        execution time; a large gap points to the client/network/pool side.
+11. [ ] Optionally set `PingInterval` to weed out dead idle connections.
+12. [ ] From each `Warn` trip line: if `serverMs` dominates, work
+        server-side (`M_EXPENSIVE_STATEMENTS`, plan cache, `EXPLAIN`); if
+        `ms − serverMs` dominates, work the network/fetch side.
 
 ---
 
 ## Reference links
 
-- Driver package (Stats, SetSQLTrace, SetLogger, SetPingInterval, connector
+- Driver package (Stats, `SQLTraceConfig`, `ProtTraceConfig`, connector
   options): <https://pkg.go.dev/github.com/SAP/go-hdb/driver>
 - Prometheus integration: <https://github.com/SAP/go-hdb/tree/main/prometheus>
 - `cmd/bulkbench` throughput benchmark:

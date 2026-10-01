@@ -12,7 +12,7 @@ import (
 // TestBulkBlob.
 func testBulkBlob(t *testing.T, ctr *Connector, db *sql.DB) {
 	const numRows = 100
-	chunkSize := ctr.LobChunkSize()
+	chunkSize := ctr.Config().LobChunkSize
 	bigData := strings.Repeat("a", chunkSize)
 
 	smallLobData := func(i int) string {
@@ -116,7 +116,7 @@ func testBulkBlob106(t *testing.T, ctr *Connector, db *sql.DB) {
 		bigChunkSizeRecNo = 77 // record exceeding lob chunk size
 	)
 
-	chunkSize := MT.Connector().LobChunkSize()
+	chunkSize := ctr.Config().LobChunkSize
 
 	testData := [numRecsPerCall]string{}
 

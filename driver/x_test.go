@@ -22,15 +22,20 @@ func testInvalidCESU8(t *testing.T) {
 
 	decoder := cesu8.NewDecoder(nil)
 
-	connector := driver.MT.NewConnector()
+	cfg := driver.MT.Connector().Config()
 	// register nop decoder to receive 'raw' undecoded data
-	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })
+	cfg.CESU8Decoder = func() transform.Transformer { return transform.Nop }
+
+	connector, err := driver.NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	numRow := 0
-	err := db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
+	err = db.QueryRowContext(t.Context(), fmt.Sprintf("select count(*) from %[2]s.%[3]s where %[1]s<>''", fieldName, schemaName, tableName)).Scan(&numRow)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		t.Logf("table %s.%s is empty", schemaName, tableName)

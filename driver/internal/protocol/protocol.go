@@ -88,18 +88,24 @@ func compressionBeneficial(uncompressedSize, compressedSize int) bool {
 	return float64(compressedSize)*100/float64(uncompressedSize) <= minCompressionSizePercent
 }
 
-type partCache map[PartKind]PartDecoder
+type partCache []PartDecoder // indexed by PartKind, grows on demand
 
 func (c *partCache) get(kind PartKind) (PartDecoder, bool) {
-	if part, ok := (*c)[kind]; ok {
-		return part, true
-	}
-	part, ok := newPart(kind)
-	if !ok {
+	if kind < 0 {
 		return nil, false
 	}
-	(*c)[kind] = part
-	return part, true
+	size := int(kind) + 1
+	if size > len(*c) {
+		*c = slices.Grow(*c, size-len(*c))[:size]
+	}
+	if (*c)[kind] == nil {
+		part, ok := newPart(kind)
+		if !ok {
+			return nil, false
+		}
+		(*c)[kind] = part
+	}
+	return (*c)[kind], true
 }
 
 // ReaderAttrs holds reader attributes.

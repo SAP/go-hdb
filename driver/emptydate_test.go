@@ -16,9 +16,13 @@ func testEmptyDate(t *testing.T, tableName driver.Identifier, dfv int, emptyDate
 	var nt sql.NullTime
 	var emptyDate = time.Date(0, time.December, 31, 0, 0, 0, 0, time.UTC)
 
-	connector := driver.MT.NewConnector()
-	connector.SetDfv(dfv)
-	connector.SetEmptyDateAsNull(emptyDateAsNull)
+	cfg := driver.MT.Connector().Config()
+	cfg.Dfv = dfv
+	cfg.EmptyDateAsNull = emptyDateAsNull
+	connector, err := driver.NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

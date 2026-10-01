@@ -13,13 +13,19 @@ import (
 
 // ExampleWithUserSwitch demonstrates switching users on new or existing connections.
 func ExampleWithUserSwitch() {
-	ctr := driver.MT.Connector()
+	ctrCfg := driver.MT.Connector().Config()
+	ctr, err := driver.NewConfigConnector(&ctrCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 	db := sql.OpenDB(ctr)
 	defer db.Close()
 
 	tableName := driver.RandomIdentifier("table_")
 
-	sessionUser := &driver.SessionUser{Username: ctr.Username(), Password: ctr.Password()}
+	// Own connector, freshly built: no refresh can have run, so the
+	// config copy is current.
+	sessionUser := &driver.SessionUser{Username: ctrCfg.Username, Password: ctrCfg.Password}
 	ctx := driver.WithUserSwitch(context.Background(), sessionUser)
 
 	// Create table.

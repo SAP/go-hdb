@@ -90,10 +90,8 @@ type session struct {
 }
 
 func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, metrics *metrics, routing *routing, attrs *connAttrs) (*session, error) {
-	protTrace := protTrace.Load()
-
-	readerAttrs := p.NewReaderAttrs(protTrace, logger, attrs.cesu8DecoderFn, attrs.lobChunkSize, attrs.emptyDateAsNull, attrs.compressor)
-	writerAttrs := p.NewWriterAttrs(protTrace, logger, attrs.cesu8EncoderFn, attrs.sessionVariables, attrs.compressor)
+	readerAttrs := p.NewReaderAttrs(attrs.protTrace.Enabled, logger, attrs.cesu8DecoderFn, attrs.lobChunkSize, attrs.emptyDateAsNull, attrs.compressor)
+	writerAttrs := p.NewWriterAttrs(attrs.protTrace.Enabled, logger, attrs.cesu8EncoderFn, attrs.sessionVariables, attrs.compressor)
 
 	// buffer reader
 	prd := p.NewDBReader(bufio.NewReaderSize(conn, attrs.bufferSize), readerAttrs)
@@ -107,10 +105,7 @@ func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, me
 		return nil, err
 	}
 
-	var sqlTracer *sqlTracer
-	if sqlTrace.Load() {
-		sqlTracer = newSQLTracer(logger, 0)
-	}
+	sqlTracer := newSQLTracer(logger, 0, attrs.sqlTrace)
 
 	return &session{
 		metrics:        metrics,
@@ -387,6 +382,22 @@ func (s *session) updateRouting(ctx context.Context, pi *p.PartInfo) {
 	s.routing.updateFromReply(s.routingVersion, ti)
 }
 
+// statementContextTime consumes a StatementContext part and stores the
+// server processing time it carries (0 when the server omits it) in
+// serverTime. It decodes the part only when SQL tracing is active — the
+// sole consumer of the value — and skips the part bytes otherwise.
+func (s *session) statementContextTime(ctx context.Context, pi *p.PartInfo, serverTime *time.Duration) error {
+	if s.sqlTracer == nil {
+		return pi.SkipPart(ctx)
+	}
+	var sc p.StatementContext
+	if err := pi.ReadPart(ctx, &sc); err != nil {
+		return err
+	}
+	*serverTime = sc.ServerProcessingTimeOrZero()
+	return nil
+}
+
 func (s *session) queryDirect(ctx context.Context, query string, traceKind string) (driver.Rows, error) {
 	t := time.Now()
 	defer s.metrics.addSQLTimeValue(sqlTimeQuery, time.Now())
@@ -400,6 +411,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	var qr *queryResult
 	meta := &p.ResultMetadata{}
 	resSet := &p.Resultset{}
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -431,6 +443,10 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 			qr.attrs = pi.Header.Attrs()
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -438,7 +454,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 		}
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceKind, query)
+		s.sqlTracer.log(ctx, t, traceKind, query, serverTime)
 	}
 	if !slices.ContainsFunc(qrs, func(qr *queryResult) bool { // no select query
 		return qr.rsID != 0
@@ -460,6 +476,7 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 	}
 
 	rowsAffected := new(p.RowsAffected)
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -472,6 +489,10 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 			err = pi.ReadPart(ctx, rowsAffected)
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
 		default:
 			err = pi.SkipPart(ctx)
 		}
@@ -482,7 +503,7 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 	numRow := rowsAffected.Total()
 
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceExec, logQuery)
+		s.sqlTracer.log(ctx, t, traceExec, logQuery, serverTime)
 	}
 	if s.prd.FunctionCode() == p.FcDDL {
 		return driver.ResultNoRows, nil
@@ -505,6 +526,7 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 	pr := &prepareResult{}
 	resMeta := &p.ResultMetadata{}
 	prmMeta := &p.ParameterMetadata{}
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -529,6 +551,10 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 				return nil, err
 			}
 			pr.parameterFields = prmMeta.ParameterFields
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -537,7 +563,7 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 	}
 	pr.fc = s.prd.FunctionCode()
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, tracePrepare, query)
+		s.sqlTracer.log(ctx, t, tracePrepare, query, serverTime)
 	}
 	return pr, nil
 }
@@ -558,6 +584,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 
 	qr := &queryResult{session: s, fields: pr.resultFields}
 	resSet := &p.Resultset{}
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -582,6 +609,10 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 			qr.attrs = pi.Header.Attrs()
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -589,7 +620,7 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 		}
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceQuery, query, nvargs...)
+		s.sqlTracer.log(ctx, t, traceQuery, query, serverTime, nvargs...)
 	}
 	if qr.rsID == 0 { // non select query
 		return noResult, nil
@@ -609,6 +640,7 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 	var ids []p.LocatorID
 	lobReply := &p.WriteLobReply{}
 	rowsAffected := new(p.RowsAffected)
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -633,6 +665,10 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 			}
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -663,7 +699,7 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 		numRow += numlobRow
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceExec, query, nvargs...)
+		s.sqlTracer.log(ctx, t, traceExec, query, serverTime, nvargs...)
 	}
 	if fc == p.FcDDL {
 		return driver.ResultNoRows, nil
@@ -694,6 +730,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 	lobReply := &p.WriteLobReply{}
 	rowsAffected := new(p.RowsAffected)
 	tableRowIdx := 0
+	var serverTime time.Duration
 
 	for pi, err := range s.prd.Parts(ctx) {
 		if err != nil {
@@ -750,6 +787,10 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 			}
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
+		case p.PkStatementContext:
+			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, nil, 0, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, nil, 0, err
@@ -774,7 +815,7 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 		numRow += numLobRow
 	}
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceExecCall, query, nvargs...)
+		s.sqlTracer.log(ctx, t, traceExecCall, query, serverTime, nvargs...)
 	}
 	return cr, callArgs, numRow, nil
 }

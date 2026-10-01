@@ -21,7 +21,7 @@ const (
 /*
 DSN TLS parameters.
 For more information please see https://golang.org/pkg/crypto/tls/#Config.
-For more flexibility in TLS configuration please see driver.Connector.
+For more flexibility in TLS configuration please see driver.ConnectorConfig.
 */
 const (
 	DSNTLSRootCAFile         = "TLSRootCAFile"         // Path/filename to root certificate(s).
@@ -193,6 +193,36 @@ func ParseDSN(s string) (*DSN, error) {
 		}
 	}
 	return dsn, nil
+}
+
+// ParseDSNConfig parses a DSN string into a ConnectorConfig: parse,
+// fill, resolve TLS, apply the legacy timeout normalization (unset
+// stays zero - no deadlines - negative clamps to zero) to all three
+// timeout budgets alike. Tweak the result and hand it to
+// NewConfigConnector.
+func ParseDSNConfig(s string) (*ConnectorConfig, error) {
+	dsn, err := ParseDSN(s)
+	if err != nil {
+		return nil, err
+	}
+	cfg := NewConnectorConfig()
+	cfg.Host = dsn.host
+	cfg.DatabaseName = dsn.databaseName
+	cfg.Username = dsn.username
+	cfg.Password = dsn.password
+	cfg.DefaultSchema = dsn.defaultSchema
+	cfg.DialTimeout = max(dsn.timeout, minTimeout)
+	cfg.ReadTimeout = max(dsn.timeout, minTimeout)
+	cfg.WriteTimeout = max(dsn.timeout, minTimeout)
+	cfg.PingInterval = dsn.pingInterval
+	if dsn.tls != nil {
+		tlsConfig, err := NewTLSConfig(dsn.tls.ServerName, dsn.tls.InsecureSkipVerify, dsn.tls.RootCAFiles...)
+		if err != nil {
+			return nil, err
+		}
+		cfg.TLSConfig = tlsConfig
+	}
+	return cfg, nil
 }
 
 // String reassembles the DSN into a valid DSN string.
