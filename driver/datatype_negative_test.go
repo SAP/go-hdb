@@ -61,8 +61,12 @@ func TestDataTypeNegative(t *testing.T) {
 		t.Run(fmt.Sprintf("dfv %d", dfv), func(t *testing.T) {
 			t.Parallel()
 
-			connector := driver.MT.NewConnector()
-			connector.SetDfv(dfv)
+			cfg := driver.MT.Connector().Config()
+			cfg.Dfv = dfv
+			connector, err := driver.NewConfigConnector(&cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
 			db := sql.OpenDB(connector)
 			db.SetMaxIdleConns(10)
 			t.Cleanup(func() { db.Close() })

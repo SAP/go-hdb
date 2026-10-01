@@ -67,7 +67,19 @@ func TestLDAPAuthentication(t *testing.T) {
 		exec(db, fmt.Sprintf("ALTER USER %s AUTHORIZATION LDAP", testHDBUser), true)
 	}
 
-	connector := driver.NewBasicAuthConnector(hdbHost, hdbSystemUser, hdbSystemPassword)
+	newBasicAuthConnector := func(username, password string) *driver.Connector {
+		cfg := driver.NewConnectorConfig()
+		cfg.Host = hdbHost
+		cfg.Username = username
+		cfg.Password = password
+		connector, err := driver.NewConfigConnector(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return connector
+	}
+
+	connector := newBasicAuthConnector(hdbSystemUser, hdbSystemPassword)
 	systemDB := sql.OpenDB(connector)
 	defer systemDB.Close()
 
@@ -76,7 +88,7 @@ func TestLDAPAuthentication(t *testing.T) {
 
 	configure(systemDB)
 
-	connector = driver.NewBasicAuthConnector(hdbHost, testHDBUser, testUserPassword)
+	connector = newBasicAuthConnector(testHDBUser, testUserPassword)
 	db := sql.OpenDB(connector)
 	defer db.Close()
 

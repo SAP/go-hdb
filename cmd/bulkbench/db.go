@@ -81,7 +81,11 @@ type dba struct {
 }
 
 func newDBA(dsn string) (*dba, error) {
-	ctr, err := driver.NewDSNConnector(dsn)
+	cfg, err := driver.ParseDSNConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	ctr, err := driver.NewConfigConnector(cfg)
 	if err != nil {
 		return nil, err
 	}

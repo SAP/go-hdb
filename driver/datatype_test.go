@@ -766,8 +766,12 @@ func TestDataType(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			connector := driver.MT.NewConnector()
-			connector.SetDfv(dfv)
+			cfg := driver.MT.Connector().Config()
+			cfg.Dfv = dfv
+			connector, err := driver.NewConfigConnector(&cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
 			db := sql.OpenDB(connector)
 			db.SetMaxIdleConns(25) // let's keep some more connections in the pool
 			t.Cleanup(func() { db.Close() })

@@ -13,10 +13,16 @@ import (
 func TestUserSwitch(t *testing.T) {
 	t.Parallel()
 
-	ctr := driver.MT.Connector()
+	ctrCfg := driver.MT.Connector().Config()
+	ctr, err := driver.NewConfigConnector(&ctrCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	tableName := driver.RandomIdentifier("table_")
 
-	sessionUser := &driver.SessionUser{Username: ctr.Username(), Password: ctr.Password()}
+	// Own connector, freshly built: no refresh can have run, so the
+	// config copy is current.
+	sessionUser := &driver.SessionUser{Username: ctrCfg.Username, Password: ctrCfg.Password}
 	ctx := driver.WithUserSwitch(t.Context(), sessionUser)
 
 	secondSessionUser := &driver.SessionUser{Username: "secondUser", Password: "secondPassword"}

@@ -43,7 +43,7 @@ var (
 )
 
 func init() {
-	defaultBufferSize := driver.NewConnector().BufferSize()
+	defaultBufferSize := driver.NewConnectorConfig().BufferSize
 
 	flag.StringVar(&dsn, fnDSN, getStringEnv(envDSN, "hdb://MyUser:MyPassword@localhost:39013"), fmt.Sprintf("DSN (environment variable: %s)", envDSN))
 	flag.StringVar(&host, fnHost, getStringEnv(envHost, "localhost"), fmt.Sprintf("HTTP host (environment variable: %s)", envHost))

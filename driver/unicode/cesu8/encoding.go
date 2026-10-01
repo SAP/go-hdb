@@ -99,12 +99,25 @@ func (e *Encoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, err er
 	i, j := 0, 0
 	for i < len(src) {
 		if src[i] < utf8.RuneSelf {
-			if j >= len(dst) {
+			n := len(src)
+			for k := i; k < len(src); k++ {
+				if src[k] >= utf8.RuneSelf {
+					n = k
+					break
+				}
+			}
+			n -= i
+			if j+n > len(dst) {
+				n = len(dst) - j // partial progress, like the old byte loop
+				if n == 0 {
+					return j, i, transform.ErrShortDst
+				}
+				j += copy(dst[j:], src[i:i+n])
+				i += n
 				return j, i, transform.ErrShortDst
 			}
-			dst[j] = src[i]
-			i++
-			j++
+			j += copy(dst[j:], src[i:i+n])
+			i += n
 			continue
 		}
 		// check if additional bytes needed (ErrShortSrc) only
@@ -190,13 +203,27 @@ func (d *Decoder) TransformNumChar(dst, src []byte, atEOF bool) (nDst, nSrc, num
 	i, j := 0, 0
 	for i < len(src) {
 		if src[i] < utf8.RuneSelf {
-			if j >= len(dst) {
+			n := len(src)
+			for k := i; k < len(src); k++ {
+				if src[k] >= utf8.RuneSelf {
+					n = k
+					break
+				}
+			}
+			n -= i
+			if j+n > len(dst) {
+				n = len(dst) - j // partial progress, like the old byte loop
+				if n == 0 {
+					return j, i, numChar, transform.ErrShortDst
+				}
+				j += copy(dst[j:], src[i:i+n])
+				i += n
+				numChar += n
 				return j, i, numChar, transform.ErrShortDst
 			}
-			dst[j] = src[i]
-			i++
-			j++
-			numChar++
+			j += copy(dst[j:], src[i:i+n])
+			i += n
+			numChar += n
 			continue
 		}
 		p := src[i:]

@@ -254,13 +254,17 @@ func (ts *tests) executeConcurrent(db *sql.DB, batchCount, batchSize int, wait t
 
 func (ts *tests) setup(batchSize int) (*sql.DB, int, error) {
 	// Set bulk size to batchSize.
-	ctr, err := driver.NewDSNConnector(dsn)
+	cfg, err := driver.ParseDSNConfig(dsn)
 	if err != nil {
 		return nil, 0, err
 	}
-	ctr.SetBulkSize(batchSize)
-	ctr.SetBufferSize(bufferSize)
-	return sql.OpenDB(ctr), ctr.BulkSize(), nil
+	cfg.BulkSize = batchSize
+	cfg.BufferSize = bufferSize
+	ctr, err := driver.NewConfigConnector(cfg)
+	if err != nil {
+		return nil, 0, err
+	}
+	return sql.OpenDB(ctr), batchSize, nil
 }
 
 func (ts *tests) teardown(db *sql.DB) {

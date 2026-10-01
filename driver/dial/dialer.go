@@ -9,8 +9,13 @@ import (
 
 // DialerOptions contains optional parameters that might be used by a Dialer.
 type DialerOptions struct {
-	Timeout, TCPKeepAlive time.Duration
-	TCPKeepAliveConfig    net.KeepAliveConfig
+	Timeout time.Duration
+	// TCPKeepAlive mirrors net.Dialer.KeepAlive 1:1: zero uses the
+	// net default (15s), a negative value disables keep-alive. Under
+	// net.Dialer semantics KeepAlive is ignored whenever
+	// TCPKeepAliveConfig is enabled.
+	TCPKeepAlive       time.Duration
+	TCPKeepAliveConfig net.KeepAliveConfig
 }
 
 // The Dialer interface needs to be implemented by custom Dialers. A Dialer for providing a custom driver connection

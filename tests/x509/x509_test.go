@@ -78,7 +78,11 @@ func TestX509Authentication(t *testing.T) {
 	}
 
 	var err error
-	connector, err := driver.NewDSNConnector(dsnStr)
+	cfg, err := driver.ParseDSNConfig(dsnStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connector, err := driver.NewConfigConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +124,11 @@ func TestX509Authentication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			userConnector, err := driver.NewX509AuthConnector(connector.Host(), clientCert, clientKey)
+			userCfg := driver.NewConnectorConfig()
+			userCfg.Host = connector.Config().Host
+			userCfg.ClientCert = clientCert
+			userCfg.ClientKey = clientKey
+			userConnector, err := driver.NewConfigConnector(userCfg)
 			if err != nil {
 				t.Fatal(err)
 			}

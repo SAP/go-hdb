@@ -110,8 +110,12 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 	}
 
 	// Create a custom connector with small LOB chunk size
-	ctr := MT.NewConnector()
-	ctr.SetLobChunkSize(lobChunkSize)
+	cfg := MT.Connector().Config()
+	cfg.LobChunkSize = lobChunkSize
+	ctr, err := NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	testDB := sql.OpenDB(ctr)
 	defer testDB.Close()
 

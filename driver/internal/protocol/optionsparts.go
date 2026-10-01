@@ -8,6 +8,7 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 )
@@ -292,12 +293,21 @@ const (
 	scServerMemoryUsage             statementContextType = 8
 )
 
-type statementContext struct {
+// StatementContext represents a statement context part.
+type StatementContext struct {
 	options[statementContextType]
 }
 
-func (sc *statementContext) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+func (sc *StatementContext) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
 	return sc.options.decode(dec, header.numArg())
+}
+
+// ServerProcessingTimeOrZero returns the server processing time;
+// 0 means absent (the server only sends it when > 0).
+func (sc *StatementContext) ServerProcessingTimeOrZero() time.Duration {
+	var v int64
+	sc.get(scServerProcessingTime, &v)
+	return time.Duration(v) * time.Microsecond
 }
 
 // transaction flags.
@@ -571,16 +581,24 @@ type optionsType interface {
 	valueString(v any) string
 }
 
-// options represents a generic option part.
-type options[K optionsType] map[K]any
+// option is a single key-value protocol option.
+type option[K optionsType] struct {
+	key K
+	val any
+}
+
+// options is an ordered, slice-backed generic option set. Protocol option
+// counts are single-digit, so linear scan beats hashing; the backing
+// array reuses via [:0].
+type options[K optionsType] []option[K]
 
 func (ops options[K]) String() string {
 	s := make([]string, 0, len(ops))
-	for k, v := range ops {
-		if b, ok := v.([]byte); ok {
-			s = append(s, fmt.Sprintf("%v: %x", k, b))
+	for _, o := range ops {
+		if b, ok := o.val.([]byte); ok {
+			s = append(s, fmt.Sprintf("%v: %x", o.key, b))
 		} else {
-			s = append(s, k.valueString(v))
+			s = append(s, o.key.valueString(o.val))
 		}
 	}
 	slices.Sort(s)
@@ -588,59 +606,63 @@ func (ops options[K]) String() string {
 }
 
 func (ops *options[K]) get(k K, v any) bool {
-	if *ops == nil {
-		return false
+	for _, o := range *ops {
+		if o.key != k {
+			continue
+		}
+		switch v := v.(type) {
+		case *string:
+			*v = o.val.(string)
+		case *bool:
+			*v = o.val.(bool)
+		case *int32:
+			*v = o.val.(int32)
+		case *int64:
+			*v = o.val.(int64)
+		case *float64:
+			*v = o.val.(float64)
+		default:
+			panic("invalid option type")
+		}
+		return true
 	}
-	mv, ok := (*ops)[k]
-	if !ok {
-		return false
-	}
-	switch v := v.(type) {
-	case *string:
-		*v = mv.(string)
-	case *bool:
-		*v = mv.(bool)
-	case *int32:
-		*v = mv.(int32)
-	case *float64:
-		*v = mv.(float64)
-	default:
-		panic("invalid option type")
-	}
-	return true
+	return false
 }
 
 func (ops *options[K]) set(k K, v any) {
-	if *ops == nil {
-		*ops = options[K]{}
+	for i, o := range *ops {
+		if o.key == k {
+			(*ops)[i].val = v
+			return
+		}
 	}
-	(*ops)[k] = v
+	*ops = append(*ops, option[K]{key: k, val: v})
 }
 
 func (ops options[K]) numArg() int { return len(ops) }
 
 func (ops *options[K]) decode(dec *encoding.Decoder, numArg int) error {
-	*ops = options[K]{} // no reuse of maps - create new one
+	*ops = slices.Grow((*ops)[:0], numArg) // reuse backing array, sized upfront
 	for range numArg {
 		k := K(dec.Int8())
 
 		switch typeCode(dec.Byte()) {
 		case tcBoolean:
-			(*ops)[k] = dec.Bool()
+			*ops = append(*ops, option[K]{key: k, val: dec.Bool()})
 		case tcTinyint:
-			(*ops)[k] = dec.Int8()
+			*ops = append(*ops, option[K]{key: k, val: dec.Int8()})
 		case tcInteger:
-			(*ops)[k] = dec.Int32()
+			*ops = append(*ops, option[K]{key: k, val: dec.Int32()})
 		case tcBigint:
-			(*ops)[k] = dec.Int64()
+			*ops = append(*ops, option[K]{key: k, val: dec.Int64()})
 		case tcDouble:
-			(*ops)[k] = dec.Float64()
+			*ops = append(*ops, option[K]{key: k, val: dec.Float64()})
 		case tcString:
 			size := int(dec.Int16())
-			(*ops)[k] = dec.Str(size)
+			*ops = append(*ops, option[K]{key: k, val: dec.Str(size)})
 		case tcBstring:
 			size := int(dec.Int16())
-			(*ops)[k] = dec.Bytes(size)
+			*ops = append(*ops, option[K]{key: k, val: dec.Bytes(size)})
 		default:
 			panic("unknown option typeCode") // should never happen
 		}
@@ -649,10 +671,10 @@ func (ops *options[K]) decode(dec *encoding.Decoder, numArg int) error {
 }
 
 func (ops options[K]) encode(enc *encoding.Encoder) error {
-	for k, v := range ops {
-		enc.Int8(int8(k))
+	for _, o := range ops {
+		enc.Int8(int8(o.key))
 
-		switch v := v.(type) {
+		switch v := o.val.(type) {
 		case bool:
 			enc.Byte(byte(tcBoolean))
 			enc.Bool(v)

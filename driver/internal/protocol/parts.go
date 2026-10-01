@@ -48,7 +48,7 @@ func (*WriteLobReply) kind() PartKind       { return PkWriteLobReply }
 func (*ClientContext) kind() PartKind       { return PkClientContext }
 func (*ConnectOptions) kind() PartKind      { return PkConnectOptions }
 func (*DBConnectInfo) kind() PartKind       { return PkDBConnectInfo }
-func (*statementContext) kind() PartKind    { return PkStatementContext }
+func (*StatementContext) kind() PartKind    { return PkStatementContext }
 func (*transactionFlags) kind() PartKind    { return PkTransactionFlags }
 
 // numArg methods (result == 1).
@@ -104,7 +104,7 @@ var (
 	_ PartDecoder = (*ClientContext)(nil)
 	_ PartDecoder = (*ConnectOptions)(nil)
 	_ PartDecoder = (*DBConnectInfo)(nil)
-	_ PartDecoder = (*statementContext)(nil)
+	_ PartDecoder = (*StatementContext)(nil)
 	_ PartDecoder = (*transactionFlags)(nil)
 )
 
@@ -148,7 +148,7 @@ func newPart(kind PartKind) (PartDecoder, bool) {
 	case PkTransactionFlags:
 		part = new(transactionFlags)
 	case PkStatementContext:
-		part = new(statementContext)
+		part = new(StatementContext)
 	case PkDBConnectInfo:
 		part = new(DBConnectInfo)
 	case PkParameterMetadata:

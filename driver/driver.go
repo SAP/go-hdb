@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.18.12"
+const DriverVersion = "1.19.0"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -74,7 +74,7 @@ type hdbDriver struct {
 
 // Open implements the driver.Driver interface.
 func (d *hdbDriver) Open(dsn string) (driver.Conn, error) {
-	connector, err := NewDSNConnector(dsn)
+	connector, err := d.OpenConnector(dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,13 @@ func (d *hdbDriver) Open(dsn string) (driver.Conn, error) {
 }
 
 // OpenConnector implements the driver.DriverContext interface.
-func (d *hdbDriver) OpenConnector(dsn string) (driver.Connector, error) { return NewDSNConnector(dsn) }
+func (d *hdbDriver) OpenConnector(dsn string) (driver.Connector, error) {
+	cfg, err := ParseDSNConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return NewConfigConnector(cfg)
+}
 
 // Name returns the driver name.
 func (d *hdbDriver) Name() string { return DriverName }

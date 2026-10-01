@@ -12,7 +12,14 @@ Speaks the HANA SQL Command Network Protocol directly. Built for [database/sql](
 Requires Go [latest or second latest version](https://golang.org/dl/).
 
 ```go
-connector := driver.NewBasicAuthConnector("host:port", "user", "password")
+cfg := driver.NewConnectorConfig()
+cfg.Host = "host:port"
+cfg.Username = "user"
+cfg.Password = "password"
+connector, err := driver.NewConfigConnector(cfg)
+if err != nil {
+	// handle error
+}
 db := sql.OpenDB(connector)
 
 var user string
@@ -42,7 +49,14 @@ import (
 )
 
 func main() {
-	connector := driver.NewBasicAuthConnector("host:port", "user", "password")
+	cfg := driver.NewConnectorConfig()
+	cfg.Host = "host:port"
+	cfg.Username = "user"
+	cfg.Password = "password"
+	connector, err := driver.NewConfigConnector(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	db := sql.OpenDB(connector)
 	defer db.Close()
@@ -90,6 +104,7 @@ For diagnosing latency and tuning throughput, see the [performance guide](docs/P
 ## Documentation
 
 - API + examples: [pkg.go.dev](https://pkg.go.dev/github.com/SAP/go-hdb/driver)
+- Connector configuration: [docs/CONFIG.md](docs/CONFIG.md)
 - Compression: [driver/compress/README.md](driver/compress/README.md)
 - Changes: [RELEASENOTES.md](RELEASENOTES.md)
 

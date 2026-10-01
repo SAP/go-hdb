@@ -58,11 +58,16 @@ func testDecodeError(t *testing.T, tableName driver.Identifier, testData []struc
 
 func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	t.Helper()
-	connector := driver.MT.NewConnector()
+	cfg := driver.MT.Connector().Config()
 
 	// register decoder with replace error handler
 	decoder := cesu8.NewDecoder(cesu8.ReplaceErrorHandler)
-	connector.SetCESU8Decoder(func() transform.Transformer { return decoder })
+	cfg.CESU8Decoder = func() transform.Transformer { return decoder }
+
+	connector, err := driver.NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	db := sql.OpenDB(connector)
 	defer db.Close()
@@ -99,10 +104,15 @@ func testDecodeErrorHandler(t *testing.T, tableName driver.Identifier, testData 
 
 func testDecodeRaw(t *testing.T, tableName driver.Identifier, testData []struct{ s, r string }) {
 	t.Helper()
-	connector := driver.MT.NewConnector()
+	cfg := driver.MT.Connector().Config()
 
 	// register nop decoder to receive 'raw' undecoded data
-	connector.SetCESU8Decoder(func() transform.Transformer { return transform.Nop })
+	cfg.CESU8Decoder = func() transform.Transformer { return transform.Nop }
+
+	connector, err := driver.NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	db := sql.OpenDB(connector)
 	defer db.Close()

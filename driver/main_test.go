@@ -53,9 +53,6 @@ type MainTest struct {
 	version *Version
 }
 
-// NewConnector returns a Connector with the relevant test attributes set.
-func (mt *MainTest) NewConnector() *Connector { return mt.ctr.clone() }
-
 // Connector returns the default Test Connector with the relevant test attributes set.
 func (mt *MainTest) Connector() *Connector { return mt.ctr }
 
@@ -92,12 +89,16 @@ func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {
 		return 0, fmt.Errorf("environment variable %s not set", envDSN)
 	}
 
-	var err error
-	if mt.ctr, err = NewDSNConnector(dsnStr); err != nil {
+	cfg, err := ParseDSNConfig(dsnStr)
+	if err != nil {
+		return 0, err
+	}
+	setupCtr, err := NewConfigConnector(cfg)
+	if err != nil {
 		return 0, err
 	}
 
-	db := sql.OpenDB(mt.ctr) // use own db as 'drop schema' sometimes doesn't work for connections where the same schema is set
+	db := sql.OpenDB(setupCtr) // use own db as 'drop schema' sometimes doesn't work for connections where the same schema is set
 	defer db.Close()
 	mt.version, err = mt.detectVersion(db)
 	if err != nil {
@@ -107,10 +108,14 @@ func (mt *MainTest) run(m *testing.M, schema string, dk dropKind) (int, error) {
 		return 0, err
 	}
 
-	// init default DB and default connector
-	mt.ctr.SetDefaultSchema(schema)         // important: set test schema! but after create schema
-	mt.ctr.SetPingInterval(1 * time.Second) // turn on connection validity check while resetting
-	// mt.ctr.setBulkSize(111)                 // limit bulk size
+	// init default DB and default connector from the same parsed config:
+	// the schema exists only after setup, so it cannot be part of the
+	// initial configuration.
+	cfg.DefaultSchema = schema         // important: set test schema! but after create schema
+	cfg.PingInterval = 1 * time.Second // turn on connection validity check while resetting
+	if mt.ctr, err = NewConfigConnector(cfg); err != nil {
+		return 0, err
+	}
 	mt.db = sql.OpenDB(mt.ctr)
 	defer mt.db.Close()
 	mt.db.SetMaxIdleConns(25) // let's keep some more connections in the pool

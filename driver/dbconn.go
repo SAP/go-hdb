@@ -40,12 +40,13 @@ func (c *profileDBConn) Write(b []byte) (n int, err error) {
 
 // stdDBConn wraps the database tcp connection. It sets timeouts and handles driver ErrBadConn behavior.
 type stdDBConn struct {
-	metrics    *metrics
-	conn       net.Conn
-	timeout    time.Duration
-	logger     *slog.Logger
-	_lastRead  time.Time
-	_lastWrite time.Time
+	metrics      *metrics
+	conn         net.Conn
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	logger       *slog.Logger
+	_lastRead    time.Time
+	_lastWrite   time.Time
 }
 
 func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *metrics, attrs *connAttrs) (dbConn, error) {
@@ -58,7 +59,7 @@ func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *m
 		conn = tls.Client(conn, attrs.tlsConfig)
 	}
 
-	dbConn := &stdDBConn{metrics: metrics, conn: conn, timeout: attrs.timeout, logger: logger}
+	dbConn := &stdDBConn{metrics: metrics, conn: conn, readTimeout: attrs.readTimeout, writeTimeout: attrs.writeTimeout, logger: logger}
 	if profile.Active {
 		return &profileDBConn{dbConn: dbConn}, nil
 	}
@@ -68,21 +69,28 @@ func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *m
 func (c *stdDBConn) lastRead() time.Time  { return c._lastRead }
 func (c *stdDBConn) lastWrite() time.Time { return c._lastWrite }
 
-func (c *stdDBConn) deadline() (deadline time.Time) {
-	if c.timeout == 0 {
+func (c *stdDBConn) readDeadline() (deadline time.Time) {
+	if c.readTimeout == 0 {
 		return
 	}
-	return time.Now().Add(c.timeout)
+	return time.Now().Add(c.readTimeout)
+}
+
+func (c *stdDBConn) writeDeadline() (deadline time.Time) {
+	if c.writeTimeout == 0 {
+		return
+	}
+	return time.Now().Add(c.writeTimeout)
 }
 
 func (c *stdDBConn) Close() error { return c.conn.Close() }
 
-func (c *stdDBConn) errLogAttrs(err error, now time.Time) []slog.Attr {
+func (c *stdDBConn) errLogAttrs(err error, now time.Time, timeout time.Duration) []slog.Attr {
 	attrs := []slog.Attr{
 		slog.String("error", err.Error()),
 		slog.String("local address", c.conn.LocalAddr().String()),
 		slog.String("remote address", c.conn.RemoteAddr().String()),
-		slog.String("timeout", c.timeout.String()),
+		slog.String("timeout", timeout.String()),
 	}
 	lastAccess := c._lastRead
 	if c._lastWrite.Compare(c._lastRead) == 1 {
@@ -97,14 +105,14 @@ func (c *stdDBConn) errLogAttrs(err error, now time.Time) []slog.Attr {
 // Read implements the io.Reader interface.
 func (c *stdDBConn) Read(b []byte) (int, error) {
 	// set timeout
-	if err := c.conn.SetReadDeadline(c.deadline()); err != nil {
+	if err := c.conn.SetReadDeadline(c.readDeadline()); err != nil {
 		return 0, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
 	now := time.Now()
 	n, err := c.conn.Read(b)
 	c.metrics.addTimeCounter(timeRead, time.Since(now), counterBytesRead, uint64(n)) //nolint:gosec
 	if err != nil {
-		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", c.errLogAttrs(err, now)...)
+		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn read error", c.errLogAttrs(err, now, c.readTimeout)...)
 		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn
 	}
 	c._lastRead = now
@@ -114,14 +122,14 @@ func (c *stdDBConn) Read(b []byte) (int, error) {
 // Write implements the io.Writer interface.
 func (c *stdDBConn) Write(b []byte) (int, error) {
 	// set timeout
-	if err := c.conn.SetWriteDeadline(c.deadline()); err != nil {
+	if err := c.conn.SetWriteDeadline(c.writeDeadline()); err != nil {
 		return 0, fmt.Errorf("%w: %w", driver.ErrBadConn, err)
 	}
 	now := time.Now()
 	n, err := c.conn.Write(b)
 	c.metrics.addTimeCounter(timeWrite, time.Since(now), counterBytesWritten, uint64(n)) //nolint:gosec
 	if err != nil {
-		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", c.errLogAttrs(err, now)...)
+		c.logger.LogAttrs(context.Background(), slog.LevelError, "DB conn write error", c.errLogAttrs(err, now, c.writeTimeout)...)
 		err = fmt.Errorf("%w: %w", driver.ErrBadConn, err) // wrap error in driver.ErrBadConn
 	}
 	c._lastWrite = now

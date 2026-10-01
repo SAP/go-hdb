@@ -10,6 +10,11 @@ import (
 	"testing"
 )
 
+const (
+	testBulkSize     = 1000 // limit bulk size for test performance reasons
+	testLobChunkSize = 128  // small lob chunk size to force a piecewise lob package split
+)
+
 // TestBulkInsertDuplicates.
 func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 	table := RandomIdentifier("bulkInsertDuplicates")
@@ -73,7 +78,7 @@ func testBulkInsertDuplicates(t *testing.T, ctr *Connector, db *sql.DB) {
 
 // TestBulkInsertStmtNo.
 func testBulkInsertStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
-	bulkSize := ctr.BulkSize()
+	bulkSize := ctr.Config().BulkSize
 
 	table := RandomIdentifier("bulkInsertDuplicates")
 
@@ -164,7 +169,7 @@ func testBulkLOBStmtNo(t *testing.T, ctr *Connector, db *sql.DB) {
 	// chunk size, which splits the bulk into two packages (row 1 and rows 2|3).
 	// Row 3 has a duplicate key (k=3 already inserted), the error is returned
 	// in the second package.
-	bigData := strings.Repeat("a", ctr.LobChunkSize()+1)
+	bigData := strings.Repeat("a", ctr.Config().LobChunkSize+1)
 
 	_, err = stmt.ExecContext(t.Context(), 1, bigData, 2, "small", 3, "small")
 	if err == nil {
@@ -302,16 +307,24 @@ func testBulkInsertInvalidNumArg(t *testing.T, ctr *Connector, db *sql.DB) {
 func TestBulk(t *testing.T) {
 	t.Parallel()
 
-	ctr := MT.NewConnector()
-	ctr.SetBulkSize(1000) // limit bulk size for test performance reasons
+	ctrCfg := MT.Connector().Config()
+	ctrCfg.BulkSize = testBulkSize
+	ctr, err := NewConfigConnector(&ctrCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	db := sql.OpenDB(ctr)
 	t.Cleanup(func() { db.Close() })
 
 	// connector with a small lob chunk size to force a piecewise lob package
 	// split with minimal lob data in testBulkLOBStmtNo.
-	lobCtr := MT.NewConnector()
-	lobCtr.SetBulkSize(1000) // limit bulk size for test performance reasons
-	lobCtr.SetLobChunkSize(128)
+	lobCfg := MT.Connector().Config()
+	lobCfg.BulkSize = testBulkSize
+	lobCfg.LobChunkSize = testLobChunkSize
+	lobCtr, err := NewConfigConnector(&lobCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	lobDB := sql.OpenDB(lobCtr)
 	t.Cleanup(func() { lobDB.Close() })
 
