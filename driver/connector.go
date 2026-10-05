@@ -31,9 +31,10 @@ import (
 
 // ConnectorConfig default values.
 const (
-	defaultBufferSize = 1 << 14           // 16384 - default value bufferSize.
-	defaultBulkSize   = 10000             // default value bulkSize.
-	defaultTimeout    = 300 * time.Second // default value for DialTimeout, ReadTimeout and WriteTimeout (300 seconds = 5 minutes).
+	defaultBufferSize    = 1 << 14           // 16384 - default value bufferSize.
+	defaultBulkSize      = 10000             // default value bulkSize.
+	defaultTimeout       = 300 * time.Second // default value for DialTimeout, ReadTimeout and WriteTimeout (300 seconds = 5 minutes).
+	defaultCancelTimeout = 2 * time.Second   // default value for CancelTimeout.
 )
 
 // Minimal / maximal values enforced by validate.
@@ -93,6 +94,10 @@ type ConnectorConfig struct {
 	DialTimeout  time.Duration // budgets establishment (dial + TLS handshake); zero disables
 	ReadTimeout  time.Duration // budgets socket reads; zero disables deadlines
 	WriteTimeout time.Duration // budgets socket writes; zero disables deadlines
+	// CancelTimeout budgets the synchronous CANCEL plus victim drain;
+	// the caller's return waits up to this budget. Zero keeps the
+	// legacy async-DISCONNECT behavior (immediate sever).
+	CancelTimeout time.Duration
 	// PingInterval is the time between connection validity checks.
 	// Pinging detects broken connections: if the ping fails, another
 	// connection out of the pool is used automatically instead of
@@ -211,6 +216,7 @@ func NewConnectorConfig() *ConnectorConfig {
 		DialTimeout:        defaultTimeout,
 		ReadTimeout:        defaultTimeout,
 		WriteTimeout:       defaultTimeout,
+		CancelTimeout:      defaultCancelTimeout,
 		BufferSize:         defaultBufferSize,
 		BulkSize:           defaultBulkSize,
 		TCPKeepAliveConfig: defaultTCPKeepAliveConfig,
@@ -269,6 +275,9 @@ func (cfg *ConnectorConfig) validate() error {
 	}
 	if cfg.WriteTimeout < minTimeout {
 		errs = append(errs, fmt.Errorf("invalid write timeout %s: must not be negative", cfg.WriteTimeout))
+	}
+	if cfg.CancelTimeout < minTimeout {
+		errs = append(errs, fmt.Errorf("invalid cancel timeout %s: must not be negative", cfg.CancelTimeout))
 	}
 	if cfg.BufferSize < minBufferSize {
 		errs = append(errs, fmt.Errorf("invalid buffer size %d: minimum %d", cfg.BufferSize, minBufferSize))
@@ -336,6 +345,7 @@ type connAttrs struct {
 	dialTimeout        time.Duration
 	readTimeout        time.Duration
 	writeTimeout       time.Duration
+	cancelTimeout      time.Duration
 	pingInterval       time.Duration
 	bufferSize         int
 	bulkSize           int
@@ -365,14 +375,16 @@ func (c *connAttrs) dialContext(ctx context.Context, host string) (net.Conn, err
 }
 
 // newConnAttrs builds the session view off one immutable configuration
-// generation. Maps and TLS config are shared by reference, never cloned:
-// setters replace them wholesale, downstream code only reads (tls.Client
-// documents tls.Config reuse as safe), so sharing is sound across generations.
+// generation. Maps and TLS config are shared by reference, not re-cloned:
+// cfg is already a deep-copied, immutable generation (see clone) and
+// downstream code only reads it (tls.Client documents tls.Config reuse
+// as safe), so sharing is sound across generations.
 func newConnAttrs(cfg *ConnectorConfig) *connAttrs {
 	return &connAttrs{
 		dialTimeout:        cfg.DialTimeout,
 		readTimeout:        cfg.ReadTimeout,
 		writeTimeout:       cfg.WriteTimeout,
+		cancelTimeout:      cfg.CancelTimeout,
 		pingInterval:       cfg.PingInterval,
 		bufferSize:         cfg.BufferSize,
 		bulkSize:           cfg.BulkSize,

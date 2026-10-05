@@ -610,19 +610,26 @@ func (ops *options[K]) get(k K, v any) bool {
 		if o.key != k {
 			continue
 		}
+		var ok bool
 		switch v := v.(type) {
 		case *string:
-			*v = o.val.(string)
+			*v, ok = o.val.(string)
 		case *bool:
-			*v = o.val.(bool)
+			*v, ok = o.val.(bool)
 		case *int32:
-			*v = o.val.(int32)
+			*v, ok = o.val.(int32)
 		case *int64:
-			*v = o.val.(int64)
+			*v, ok = o.val.(int64)
 		case *float64:
-			*v = o.val.(float64)
+			*v, ok = o.val.(float64)
 		default:
 			panic("invalid option type")
+		}
+		// Fails fast if the server sent this option under a typeCode that
+		// decodes to a different Go type than the getter expects: a
+		// non-conformant frame the client cannot interpret.
+		if !ok {
+			panic(fmt.Sprintf("option %v: value type %T does not match expected %T", o.key, o.val, v))
 		}
 		return true
 	}
@@ -646,23 +653,26 @@ func (ops *options[K]) decode(dec *encoding.Decoder, numArg int) error {
 	for range numArg {
 		k := K(dec.Int8())
 
+		// set (not raw append) so a repeated key overwrites: last-wins,
+		// as the former map-backed options did. Conformant replies never
+		// repeat a key, so this is the compact single-entry case.
 		switch typeCode(dec.Byte()) {
 		case tcBoolean:
-			*ops = append(*ops, option[K]{key: k, val: dec.Bool()})
+			ops.set(k, dec.Bool())
 		case tcTinyint:
-			*ops = append(*ops, option[K]{key: k, val: dec.Int8()})
+			ops.set(k, dec.Int8())
 		case tcInteger:
-			*ops = append(*ops, option[K]{key: k, val: dec.Int32()})
+			ops.set(k, dec.Int32())
 		case tcBigint:
-			*ops = append(*ops, option[K]{key: k, val: dec.Int64()})
+			ops.set(k, dec.Int64())
 		case tcDouble:
-			*ops = append(*ops, option[K]{key: k, val: dec.Float64()})
+			ops.set(k, dec.Float64())
 		case tcString:
 			size := int(dec.Int16())
-			*ops = append(*ops, option[K]{key: k, val: dec.Str(size)})
+			ops.set(k, dec.Str(size))
 		case tcBstring:
 			size := int(dec.Int16())
-			*ops = append(*ops, option[K]{key: k, val: dec.Bytes(size)})
+			ops.set(k, dec.Bytes(size))
 		default:
 			panic("unknown option typeCode") // should never happen
 		}

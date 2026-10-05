@@ -30,7 +30,7 @@ func (i Identifier) isSimple() bool {
 
 // String returns the HANA-quoted form: a simple identifier passes through
 // unquoted; otherwise it is wrapped in double quotes with embedded "
-// escaped by doubling (HANA SQL Reference — Quotation marks).
+// escaped by doubling (HANA SQL Reference -- Quotation marks).
 func (i Identifier) String() string {
 	if i.isSimple() {
 		return string(i)

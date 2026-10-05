@@ -18,7 +18,7 @@ const (
 	// document it, and the C++ source comments it as unused.
 	poFollowUpPacket packetOptions = 0x01
 
-	// isCompressed — bit 1; per the protocol spec, set when the packet's
+	// isCompressed -- bit 1; per the protocol spec, set when the packet's
 	// varpart is LZ4-compressed; when set, the message header and
 	// the first segment header are uncompressed and the
 	// remainder of the packet is compressed.

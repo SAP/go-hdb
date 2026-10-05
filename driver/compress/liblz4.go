@@ -25,7 +25,7 @@ var (
 	errDecompress = errors.New("LZ4_decompress_safe failed")
 )
 
-// liblz4CompressBound mirrors LZ4_compressBound — max bytes the C encoder may
+// liblz4CompressBound mirrors LZ4_compressBound -- max bytes the C encoder may
 // write for an input of the given size.
 func liblz4CompressBound(n int) int {
 	return int(C.LZ4_compressBound(C.int(n)))
