@@ -66,7 +66,7 @@ func padBytes(size int) int {
 const (
 	// minCompressBlockSize: packets with a varpart smaller than this are
 	// sent uncompressed. Mirrors MIN_COMPRESS_PKT_LEN
-	// (SocketCommunication.cpp:56, = 10 KiB) — avoids the cost of
+	// (SocketCommunication.cpp:56, = 10 KiB) -- avoids the cost of
 	// compressing tiny payloads where the savings would be negligible.
 	minCompressBlockSize = 10 * 1024
 

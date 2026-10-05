@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
@@ -21,19 +22,24 @@ const (
 	// connections are not reused.
 	maxPooledAge = 5 * time.Minute
 
-	// cancelSessionTimeout bounds the server-side disconnect of a single
-	// terminated session (see executeDisconnect).
-	cancelSessionTimeout = 10 * time.Second
+	// disconnectTimeout bounds the server-side disconnect of a single
+	// terminated session (see cancelSession with force=true).
+	disconnectTimeout = 10 * time.Second
 
 	// disconnectSessionStmt is the HANA session management statement that drops
-	// the server side session of a client connection (see executeDisconnect).
+	// the server side session of a client connection (see cancelSession).
 	disconnectSessionStmt = "alter system disconnect session '%d'"
+
+	// cancelSessionStmt is the HANA session management statement that aborts
+	// the running statement of a server side session, keeping the session
+	// itself alive (see cancelSession).
+	cancelSessionStmt = "alter system cancel session '%d'"
 )
 
-// terminateEvent is a queued server-side session termination: the worker
+// disconnectEvent is a queued server-side session termination: the worker
 // executes the disconnect statement of the executor session identified by
-// serverConnID on the host (see executeDisconnect).
-type terminateEvent struct {
+// serverConnID on the host (see cancelSession with force=true).
+type disconnectEvent struct {
 	host         string // HANA server host and port of the connection.
 	serverConnID int    // HANA server connection id (connect option coConnectionID).
 }
@@ -50,16 +56,16 @@ type poolEntry struct {
 // connLifecycle handles the connection duties of a connector on a single
 // worker goroutine:
 //
-//   - terminate events (server side cancellation of an executor session after
+//   - disconnect events (server side disconnect of an executor session after
 //     a request context was canceled) are executed asynchronously (see
-//     terminate),
+//     disconnect),
 //   - connections whose table output rows are no longer needed are queued
 //     once the last table rowset is closed (see queue) and handed out again on
 //     the next connect (see getConn),
 //   - pooled connections are reaped after maxPooledAge.
 //
 // Like the database/sql connection cleaner, the lifecycle uses a signal
-// channel and a mutex: work (terminate events and pending trackers) is
+// channel and a mutex: work (disconnect events and pending trackers) is
 // queued in slices under the mutex, the adders wake the worker on the signal
 // channel or spawn it on demand (see wake), and the worker processes the queued
 // work and retires once nothing is left to do. Unlike the cleaner there is no
@@ -69,10 +75,12 @@ type connLifecycle struct {
 
 	mu sync.Mutex
 
-	wakeCh         chan struct{}      // signal channel: wake the worker (see wake).
-	terminateQueue []terminateEvent   // queued terminate events.
-	pending        []*tableOutTracker // trackers waiting for their table rowsets to close.
-	pool           []*poolEntry       // pooled connections, oldest first.
+	wakeCh          chan struct{}      // signal channel: wake the worker (see wake).
+	disconnectQueue []disconnectEvent  // queued disconnect events.
+	pending         []*tableOutTracker // trackers waiting for their table rowsets to close.
+	pool            []*poolEntry       // pooled connections, oldest first.
+
+	noSessionAdmin atomic.Bool // last cancel outcome was 258 (rights missing).
 }
 
 // wake spawns the worker if it is not running and wakes it otherwise. It must
@@ -98,16 +106,16 @@ func (c *connLifecycle) wake() {
 	c.wakeLocked()
 }
 
-// terminate requests the server side cancellation of the executor session of
+// disconnect requests the server side disconnect of the executor session of
 // the connection identified by serverConnID. The event is queued under the
-// lock and executed by the worker (see executeDisconnect).
-func (c *connLifecycle) terminate(host string, serverConnID int) {
+// lock and executed by the worker (see cancelSession with force=true).
+func (c *connLifecycle) disconnect(host string, serverConnID int) {
 	if serverConnID <= 0 {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.terminateQueue = append(c.terminateQueue, terminateEvent{host: host, serverConnID: serverConnID})
+	c.disconnectQueue = append(c.disconnectQueue, disconnectEvent{host: host, serverConnID: serverConnID})
 	c.wakeLocked()
 }
 
@@ -127,15 +135,15 @@ func (c *connLifecycle) queue(tc *tableOutTracker) {
 // There is no timer: pending trackers with open rowsets are re-driven by the
 // release wake (see tableOutTracker.release), pooled connections expire by
 // their own timer (see addConn). The disconnect statement and the rows/conn
-// closes run outside the lock, so they never block the queue/terminate adders
+// closes run outside the lock, so they never block the queue/disconnect adders
 // or the reuse getConn.
 func (c *connLifecycle) worker() {
 	for {
 		<-c.wakeCh // new work queued
 
 		c.mu.Lock()
-		terminateEvents := c.terminateQueue
-		c.terminateQueue = nil
+		disconnectEvents := c.disconnectQueue
+		c.disconnectQueue = nil
 
 		var ready []*tableOutTracker
 		// In-place filter under c.mu: the pending backing array must only be
@@ -153,9 +161,9 @@ func (c *connLifecycle) worker() {
 		c.pending = keep
 		c.mu.Unlock()
 
-		if len(terminateEvents) != 0 { // one-off, best effort: serially on the worker
-			for _, ev := range terminateEvents {
-				c.executeDisconnect(ev)
+		if len(disconnectEvents) != 0 { // one-off, best effort: serially on the worker
+			for _, ev := range disconnectEvents {
+				c.cancelSession(ev.host, ev.serverConnID, true, disconnectTimeout)
 			}
 		}
 		for _, tc := range ready { // finalized outside the lock
@@ -176,7 +184,7 @@ func (c *connLifecycle) worker() {
 		// worker never lingers on pooled entries. The check is atomic with
 		// the nil: an add that wins the lock afterwards respawns the worker.
 		c.mu.Lock()
-		if len(c.terminateQueue) == 0 && len(c.pending) == 0 {
+		if len(c.disconnectQueue) == 0 && len(c.pending) == 0 {
 			c.wakeCh = nil
 			c.mu.Unlock()
 			return
@@ -241,33 +249,68 @@ func (c *connLifecycle) getConn(ctx context.Context) (*conn, bool) {
 	}
 }
 
-// executeDisconnect executes the server side disconnect of the executor
-// session of the connection identified by serverConnID.
-func (c *connLifecycle) executeDisconnect(ev terminateEvent) {
-	ctx, cancel := context.WithTimeout(context.Background(), cancelSessionTimeout)
-	defer cancel()
+// cancelSession sends ALTER SYSTEM CANCEL (force=false) or DISCONNECT
+// (force=true) for serverConnID on host over a fresh connection.
+// Best effort: 729 fails quietly, 258 warns on the flip to refused. No result: the reuse
+// gate keys on completion, not outcome.
+func (c *connLifecycle) cancelSession(host string, serverConnID int, force bool, timeout time.Duration) {
+	attrs := *c.connector.connAttrs()
 
-	logger := c.connector.config().Logger
+	logErr := func(err error) {
+		attrs.logger.Warn("cancel session failed", slog.String("host", host), slog.Int("serverConnID", serverConnID), slog.Any("error", err))
+	}
 
-	// The worker's own connection carries the lifecycle but is never pooled:
-	// it is closed directly after the disconnect statement.
-	conn, err := newConn(ctx, ev.host, c.connector.metrics, c.connector._routing, c.connector.connAttrs(), c)
+	logNoSessionAdmin := func(err error) {
+		if c.noSessionAdmin.CompareAndSwap(false, true) {
+			attrs.logger.Warn("cancel session refused: SESSION ADMIN required", slog.String("host", host), slog.Int("serverConnID", serverConnID), slog.Any("error", err))
+		}
+	}
+
+	stmt := cancelSessionStmt
+	if force {
+		stmt = disconnectSessionStmt
+	}
+	attrs.connectionRouting = false
+	// Bound the cancel's sockets at the handed-in timeout: a wedged cancel
+	// must die fast instead of leaning on the configured defaults.
+	// Tighten only downward, including 0 (disabled) to the timeout.
+	if timeout > 0 {
+		if attrs.dialTimeout == 0 || attrs.dialTimeout > timeout {
+			attrs.dialTimeout = timeout
+		}
+		if attrs.readTimeout == 0 || attrs.readTimeout > timeout {
+			attrs.readTimeout = timeout
+		}
+		if attrs.writeTimeout == 0 || attrs.writeTimeout > timeout {
+			attrs.writeTimeout = timeout
+		}
+	}
+	// Isolated routing state: the cancel never picks, never advertises
+	// distribution, and never feeds topology back into the connector.
+	// Background: socket deadlines bound the cancel, no context deadline.
+	ctx := context.Background()
+	conn, err := newConn(ctx, host, c.connector.metrics, &routing{}, &attrs, c)
 	if err != nil {
-		logger.Warn("terminate server session failed", slog.String("host", ev.host), slog.Int("serverConnID", ev.serverConnID), slog.Any("error", err))
+		logErr(err)
 		return
 	}
 	defer conn.Close()
-
-	if err := conn.authenticate(ctx, ev.host, c.connector.authHnd()); err != nil {
-		logger.Warn("terminate server session failed", slog.String("host", ev.host), slog.Int("serverConnID", ev.serverConnID), slog.Any("error", err))
+	if err := conn.authenticate(ctx, host, c.connector.authHnd()); err != nil {
+		logErr(err)
 		return
 	}
-
-	if _, err := conn.session.execDirect(ctx, fmt.Sprintf(disconnectSessionStmt, ev.serverConnID)); err != nil {
-		// HANA error 729 (unknown session id) means the session is already gone.
-		if hdbErrors, ok := errors.AsType[*p.HdbErrors](err); ok && hdbErrors.Code() == 729 {
+	if _, err = conn.session.execDirect(ctx, fmt.Sprintf(stmt, serverConnID)); err == nil {
+		c.noSessionAdmin.Store(false) // rights proven: next 258 re-warns.
+		return
+	}
+	if hdbErrors, ok := errors.AsType[*p.HdbErrors](err); ok {
+		switch hdbErrors.Code() {
+		case 729: // victim already gone - not reusable, quiet.
+			return
+		case 258: // no SESSION ADMIN - victim untouched.
+			logNoSessionAdmin(err)
 			return
 		}
-		logger.Warn("terminate server session failed", slog.String("host", ev.host), slog.Int("serverConnID", ev.serverConnID), slog.Any("error", err))
 	}
+	logErr(err)
 }

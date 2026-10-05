@@ -103,7 +103,9 @@ func (s *stmt) QueryContext(ctx context.Context, nvargs []driver.NamedValue) (dr
 
 	select {
 	case <-ctx.Done():
-		s.conn.terminateSession()
+		if victimDone := s.conn.terminateSession(done); victimDone {
+			return rows, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return rows, sqlErr
@@ -132,7 +134,9 @@ func (s *stmt) ExecContext(ctx context.Context, nvargs []driver.NamedValue) (dri
 
 	select {
 	case <-ctx.Done():
-		s.conn.terminateSession()
+		if victimDone := s.conn.terminateSession(done); victimDone {
+			return result, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return result, sqlErr
@@ -193,15 +197,27 @@ func (s *stmt) execCall(ctx context.Context, pr *prepareResult, nvargs []driver.
 	// the call succeeded and handed the table output rows to the caller: wire
 	// the tracker to the resultsets and the connection, holding it for the
 	// worker. On any error path the resultsets stay tracker-less,
-	// close without accounting, and never hold.
+	// close without accounting, and never hold. If the request was canceled
+	// while the call ran, the connection is already doomed: close the table
+	// rowsets and the parent rows inline and never publish, so no orphaned
+	// tracker reaches the worker.
 	tracker := &tableOutTracker{stmt: s, rows: rows, lc: s.conn.lifecycle, done: make(chan struct{})}
 	for _, v := range cr.fieldValues {
 		if qr, ok := v.(*queryResult); ok {
 			qr.tableOutTracker = tracker
+			tracker.tables = append(tracker.tables, qr)
 			tracker.n.Add(1)
 		}
 	}
-	s.conn.tableOutTracker = tracker
+	if !s.conn.tryPublishTracker(tracker) {
+		// Refused means our own terminateSession canceled this request:
+		// the fake path never touches the session writer, so isBad here
+		// is canceled, and ctx.Err() is non-nil. Clean up inline, never
+		// published, nothing reaches the worker.
+		tracker.closeTables()
+		_ = rows.Close()
+		return nil, ctx.Err()
+	}
 	return driver.RowsAffected(numRow), nil
 }
 

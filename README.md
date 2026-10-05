@@ -13,22 +13,17 @@ Requires Go [latest or second latest version](https://golang.org/dl/).
 
 ```go
 cfg := driver.NewConnectorConfig()
-cfg.Host = "host:port"
-cfg.Username = "user"
-cfg.Password = "password"
+cfg.Host, cfg.Username, cfg.Password = "host:port", "user", "password"
 connector, err := driver.NewConfigConnector(cfg)
-if err != nil {
-	// handle error
-}
+// ... handle err
 db := sql.OpenDB(connector)
-
-var user string
-if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil {
-	// handle error
-}
+defer db.Close()
+// ...
 ```
 
-> Need the official SAP HANA client Go support (not this driver)? See [SAP Help Portal](https://help.sap.com/docs/SAP_HANA_CLIENT).
+Full runnable example: [`Example`](https://pkg.go.dev/github.com/SAP/go-hdb/driver#example-package) ([source](driver/example_test.go)).
+
+Looking for SAP's official HANA client for Go? That's [here](https://help.sap.com/docs/SAP_HANA_CLIENT) — this is the community driver.
 
 ## Install
 
@@ -36,40 +31,7 @@ if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil 
 go get github.com/SAP/go-hdb/driver
 ```
 
-## Quickstart
-
-```go
-package main
-
-import (
-	"database/sql"
-	"log"
-
-	"github.com/SAP/go-hdb/driver"
-)
-
-func main() {
-	cfg := driver.NewConnectorConfig()
-	cfg.Host = "host:port"
-	cfg.Username = "user"
-	cfg.Password = "password"
-	connector, err := driver.NewConfigConnector(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	db := sql.OpenDB(connector)
-	defer db.Close()
-
-	var user string
-	if err := db.QueryRow("select current_user from dummy").Scan(&user); err != nil {
-		log.Fatal(err)
-	}
-	log.Println(user)
-}
-```
-
-> For HANA Cloud (SNI/TLS), see the [cloud connection guide](docs/HANACLOUD.md).
+For HANA Cloud (SNI/TLS), see the [cloud connection guide](docs/HANACLOUD.md).
 
 ## Features
 

@@ -106,6 +106,10 @@ connections.
   `timeout` key fans out the same way when present — a DSN without the
   key leaves all three at `0` (no deadlines), preserving long-standing
   DSN behavior.
+- `CancelTimeout`: budget for the synchronous `CANCEL` plus victim drain
+  after request-context cancellation (`NewConnectorConfig` defaults to
+  2 seconds, `0` selects the legacy async-`DISCONNECT` sever). The
+  caller's return waits up to this budget.
 - `SQLTrace SQLTraceConfig`: per-statement logging. `Enabled` logs
   every statement at `Info` (prefilled from the global `sqlTrace`
   flag). Statements reaching `ServerThreshold` (server processing

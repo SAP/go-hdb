@@ -86,7 +86,7 @@ type session struct {
 		we cannot work with nested errors containing driver.ErrBadConn
 		as go sql retries these statements.
 	*/
-	canceled bool
+	canceled atomic.Bool // set off-goroutine by terminateSession, read by the exec attach guard.
 }
 
 func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, metrics *metrics, routing *routing, attrs *connAttrs) (*session, error) {
@@ -143,19 +143,19 @@ func (s *session) authenticate(ctx context.Context, host string, authHnd *p.Auth
 	// The connect option coCompressionLevelAndFlags carries an int32
 	// bitfield with two relevant flags:
 	//
-	//   coCompressionLZ4Supported  (0x00000100) — sender can decompress LZ4
-	//   coCompressionLZ4Enabled    (0x00000200) — sender wants compression on
+	//   coCompressionLZ4Supported  (0x00000100) -- sender can decompress LZ4
+	//   coCompressionLZ4Enabled    (0x00000200) -- sender wants compression on
 	//
 	// Receive side. No per-session decision is needed: every inbound packet
 	// carries an isCompressed bit in the message header, which we honour
 	// individually.
 	//
 	// Connect request. Mirrors the C++ and node-hdb clients:
-	//   - CompressDisabled     → option omitted entirely; server cannot
+	//   - CompressDisabled     -> option omitted entirely; server cannot
 	//                            send compressed packets because we did
 	//                            not advertise LZ4Supported.
-	//   - CompressEnabled      → send LZ4Supported | LZ4Enabled.
-	//   - CompressDefault      → send LZ4Supported only; let the server
+	//   - CompressEnabled      -> send LZ4Supported | LZ4Enabled.
+	//   - CompressDefault      -> send LZ4Supported only; let the server
 	//                            decide.
 	//
 	// Send side. We compress our outbound packets iff the server's connect
@@ -201,8 +201,8 @@ func (s *session) authenticate(ctx context.Context, host string, authHnd *p.Auth
 
 // we cannot work with nested errors containing driver.ErrBadConn
 // as go sql retries these statements.
-func (s *session) isBad() bool { return s.canceled || s.pwr.HasError() }
-func (s *session) cancel()     { s.canceled = true }
+func (s *session) isBad() bool { return s.canceled.Load() || s.pwr.HasError() }
+func (s *session) cancel()     { s.canceled.Store(true) }
 
 func (s *session) close() error {
 	// do not disconnect if isBad.
@@ -384,8 +384,8 @@ func (s *session) updateRouting(ctx context.Context, pi *p.PartInfo) {
 
 // statementContextTime consumes a StatementContext part and stores the
 // server processing time it carries (0 when the server omits it) in
-// serverTime. It decodes the part only when SQL tracing is active — the
-// sole consumer of the value — and skips the part bytes otherwise.
+// serverTime. It decodes the part only when SQL tracing is active -- the
+// sole consumer of the value -- and skips the part bytes otherwise.
 func (s *session) statementContextTime(ctx context.Context, pi *p.PartInfo, serverTime *time.Duration) error {
 	if s.sqlTracer == nil {
 		return pi.SkipPart(ctx)

@@ -91,33 +91,33 @@ type Conn interface {
 }
 
 // tableOutTracker retires the connection of a procedure call with table
-// output parameters once its rows are no longer needed. It is created only on
-// the successful call, simultaneously owning the fake parent rows (see
-// stmt.execCall); on any error path no tracker exists, the resultsets close
-// without accounting, and never hold the connection.
-//
-// The caller assigns the tracker to each table resultset and increments n once
-// per resultset after the call succeeded, and registers it on the connection
-// (conn.tableOutTracker). The registration order matters: the tracker must reach
-// the connection only after the call succeeded, so no validation runs before
-// every table rowset is tracked.
-//
-// Discard hands the tracker to the lifecycle worker (`Close` queues it -- the sole
-// handoff, validated or not). The worker finalizes the tracker and pools the
-// connection for reuse; detached at queue time, so a reused connection
-// never carries a stale tracker. While the tracker is set, app-driven statement
-// closes are no-ops (see stmt.Close).
+// output parameters once its rows are no longer needed. It is created only
+// on the successful call, owning the fake parent rows; on any error path
+// no tracker exists. While set, statement closes are no-ops and Close
+// stands down (see stmt.Close).
 type tableOutTracker struct {
 	stmt *stmt          // the connection is reached through the statement (stmt.conn)
-	rows *sql.Rows      // fake parent rows, closed inline by IsValid or by the lifecycle worker
+	rows *sql.Rows      // fake parent rows, closed by the lifecycle worker or inline on the cancel drain
 	lc   *connLifecycle // worker to wake when the last table rowset closes (see release)
-	done chan struct{}  // closed once the worker finalizes the tracker (see process)
+	done chan struct{}  // closed once the worker finalizes the tracker
 	n    atomic.Int64   // table resultsets not yet closed
+	// tables reaches the table rowsets for the cancel drain (see
+	// closeTables); populated before publish, read-only after.
+	tables []*queryResult
 }
 
 func (tc *tableOutTracker) release() {
 	if tc.n.Add(-1) == 0 {
 		tc.lc.wake() // last table rowset closed: recheck pending immediately
+	}
+}
+
+// closeTables closes every table rowset; each release drains n, so a queued
+// tracker is immediately ready. Safe on any path: queryResult.Close is
+// idempotent and releases even when the server close fails.
+func (tc *tableOutTracker) closeTables() {
+	for _, qr := range tc.tables {
+		_ = qr.Close()
 	}
 }
 
@@ -139,7 +139,45 @@ type conn struct {
 	// closes are no-ops and Close stands down. Discard hands the tracker to the
 	// lifecycle worker, which pools the connection for reuse. Detached at pool
 	// handoff (`get`), so a reused connection never carries a stale tracker.
+	//
+	// Publish races request cancellation: the exec goroutine attaches while
+	// terminateSession runs on the caller goroutine. mu orders guard-check
+	// plus publish (see tryPublishTracker) against cancel plus detach (see
+	// detachTrackerAndDisconnect); the post-gate read stays mutex-free, ordered
+	// by readerDone instead.
 	tableOutTracker *tableOutTracker
+	mu              sync.Mutex // orders tableOutTracker publish vs cancel detachment.
+}
+
+// tryPublishTracker publishes tc unless our own terminateSession already
+// canceled this request, in which case it reports false and the caller
+// cleans up inline. Check and publish are one critical section with the
+// cancel side (see detachTrackerAndDisconnect).
+func (c *conn) tryPublishTracker(tc *tableOutTracker) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.session.canceled.Load() {
+		return false
+	}
+	c.tableOutTracker = tc
+	return true
+}
+
+// detachTrackerAndDisconnect marks the session bad, detaches a published
+// tracker if any, then drains it and disconnects the server session --
+// drain and disconnect run unlocked. No-wait paths only (legacy,
+// victim-miss); a nil tracker skips the drain.
+func (c *conn) detachTrackerAndDisconnect(host string, serverConnID int) {
+	c.mu.Lock()
+	c.session.cancel()
+	tc := c.tableOutTracker
+	c.tableOutTracker = nil
+	c.mu.Unlock()
+	if tc != nil {
+		tc.closeTables()
+		c.lifecycle.queue(tc)
+	}
+	c.lifecycle.disconnect(host, serverConnID)
 }
 
 // unique connection number.
@@ -201,11 +239,91 @@ func (c *conn) close() error {
 	return errors.Join(sessionErr, dbConnErr)
 }
 
-// terminateSession marks the session as canceled and requests the
-// asynchronous termination of the server session.
-func (c *conn) terminateSession() {
+// terminateSession aborts the server-side session of a canceled request:
+// soft CANCEL first, async DISCONNECT on miss. A procedure call with table
+// outputs in flight is drained, never leaked: the tracker is detached and
+// discarded on every sever path, and read race-free after the gate.
+// It reports whether the victim reader finished: if so, the statement
+// outcome is final and race-free readable by the caller.
+func (c *conn) terminateSession(readerDone <-chan struct{}) (victimDone bool) {
+	host, serverConnID := c.session.host, c.session.serverConnID
+
+	if serverConnID <= 0 {
+		c.session.cancel() // no session yet: never reusable, nothing to cancel.
+		return false
+	}
+
+	if c.attrs.cancelTimeout == 0 || c.session.inTx.Load() {
+		c.detachTrackerAndDisconnect(host, serverConnID)
+		return false
+	}
+
+	// Reply-first: the operation already completed, so the wire is clean
+	// by definition -- keep directly, no cancel connection. Done-synced
+	// plain read: the goroutine is done, nothing publishes anymore.
+	select {
+	case <-readerDone:
+		if tc := c.tableOutTracker; tc != nil {
+			c.tableOutTracker = nil
+			tc.closeTables()
+			_ = tc.rows.Close()
+		}
+		return true // keep
+	default:
+	}
+
+	// Cancel runs on the conn workgroup with its own timeout budget
+	// (socket deadlines bound it, see cancelSession); Close joins it.
+	// The timer below bounds the handoff wait only.
+	timer := time.NewTimer(c.attrs.cancelTimeout)
+	defer timer.Stop()
+	cancelDone := make(chan struct{}, 1)
+	c.wg.Go(func() {
+		c.lifecycle.cancelSession(host, serverConnID, false, c.attrs.cancelTimeout)
+		close(cancelDone)
+	})
+
+	// Phase 1: victim drained in time, mechanism irrelevant.
+	victimOK := false
+	select {
+	case <-readerDone:
+		victimOK = true
+	case <-timer.C:
+	}
+
+	// Victim missed: reuse already impossible, no late-CANCEL hazard on a
+	// dead session. Skip phase 2 so the caller is blocked at most one
+	// budget; the cancel stays on c.wg, joined by Close. The mutex recheck
+	// owns a racing publish: either it is detached and drained here, or the
+	// attach guard already saw canceled and cleans up inline.
+	if !victimOK {
+		c.detachTrackerAndDisconnect(host, serverConnID)
+		return false
+	}
+
+	// Phase 2: cancel settled in time, outcome irrelevant: no CANCEL
+	// may land on a reused session.
+	cancelOK := false
+	select {
+	case <-cancelDone:
+		cancelOK = true
+	case <-timer.C:
+	}
+
+	// Post-gate: reader done, so this read is race-free. Table rows went
+	// unowned: drain inline and keep a settled session, sever otherwise.
+	if tc := c.tableOutTracker; tc != nil {
+		c.tableOutTracker = nil
+		tc.closeTables()
+		_ = tc.rows.Close()
+	}
+
+	if cancelOK {
+		return true // keep
+	}
 	c.session.cancel()
-	c.lifecycle.terminate(c.session.host, c.session.serverConnID)
+	c.lifecycle.disconnect(host, serverConnID)
+	return true
 }
 
 // ResetSession implements the driver.SessionResetter interface.
@@ -248,7 +366,9 @@ func (c *conn) Ping(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return sqlErr
+		}
 		return ctx.Err()
 	case <-done:
 		return sqlErr
@@ -277,7 +397,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return stmt, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return stmt, sqlErr
@@ -331,7 +453,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return tx, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return tx, sqlErr
@@ -359,7 +483,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, nvargs []driver.N
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return rows, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return rows, sqlErr
@@ -386,7 +512,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, nvargs []driver.Na
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return result, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return result, sqlErr
@@ -423,7 +551,9 @@ func (c *conn) DBConnectInfo(ctx context.Context, databaseName string) (*DBConne
 
 	select {
 	case <-ctx.Done():
-		c.terminateSession()
+		if victimDone := c.terminateSession(done); victimDone {
+			return ci, sqlErr
+		}
 		return nil, ctx.Err()
 	case <-done:
 		return ci, sqlErr

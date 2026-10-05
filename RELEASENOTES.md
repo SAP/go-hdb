@@ -3,6 +3,18 @@ Release Notes
 
 ## v1.19.0
 
+### Minor revisions
+
+#### v1.19.1
+
+- request-context cancellation sends `ALTER SYSTEM CANCEL SESSION` on a
+  second connection and reuses settled sessions outside transactions
+  (new `ConnectorConfig.CancelTimeout`, default 2s, `0` = legacy
+  async-`DISCONNECT`); finished victims report their outcome
+  (success, SQL error 139 - operation cancelled, or own error),
+  otherwise `ctx.Err()`
+- improved cancellation of procedure calls with table output parameters
+
 ### New features
 
 - new exported `driver.ConnectorConfig` (`NewConnectorConfig`, `NewConfigConnector`)
@@ -39,10 +51,11 @@ also bundled in `golangci-lint`) on your application.
 
 ### Incompatible changes
 
-- `TCPKeepAlive` default is now `0` (was `15s`): zero uses the
-  `net.Dialer` default (15s), negative disables. A fresh
-  `TCPKeepAlive()` therefore returns `0`, not `15s`;
-  transport behavior via the stdlib dialer is unchanged.
+- `TCPKeepAlive()` now returns `0` instead of `15s`: the config
+  constructor no longer prefills it. Getter-return change only — the old
+  `15s` was already inert (masked by the default
+  `TCPKeepAliveConfig{Enable: true}` per `net.Dialer`), so socket
+  behavior is unchanged.
 - Trace flags (`protTrace`/`sqlTrace`) now freeze when the connector's
   config is built instead of at connection creation; later toggles
   affect only configs built afterwards. The deprecated setters remain

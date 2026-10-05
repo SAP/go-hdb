@@ -5,20 +5,18 @@ import (
 	"database/sql"
 	"log"
 
-	// Register hdb driver.
-	_ "github.com/SAP/go-hdb/driver"
-)
-
-const (
-	driverName = "hdb"
-	hdbDsn     = "hdb://user:password@host:port"
+	"github.com/SAP/go-hdb/driver"
 )
 
 func Example() {
-	db, err := sql.Open(driverName, hdbDsn)
+	cfg := driver.NewConnectorConfig()
+	cfg.Host, cfg.Username, cfg.Password = "host:port", "user", "password"
+	connector, err := driver.NewConfigConnector(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	db := sql.OpenDB(connector)
 	defer db.Close()
 
 	if err := db.PingContext(context.Background()); err != nil {
