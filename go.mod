@@ -2,6 +2,6 @@ module github.com/SAP/go-hdb
 
 go 1.26.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require golang.org/x/text v0.42.0

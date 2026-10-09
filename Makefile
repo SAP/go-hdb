@@ -6,8 +6,6 @@ all:
 	@echo "build and test"
 	go build -v ./...
 	go vet ./...
-	golint -set_exit_status=true ./...
-	staticcheck -checks all -fail none ./...
 	golangci-lint run ./...
 	@echo execute tests on latest go version	
 	go test ./...
@@ -15,8 +13,8 @@ all:
 	@echo execute tests with active lz4 compression on latest go version
 	go test ./... -tags=liblz4
 	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.26.8 go1.26.8 test ./...
-	GOTOOLCHAIN=go1.26.8 go1.26.8 test ./... -race
+	GOTOOLCHAIN=go1.26.9 go1.26.9 test ./...
+	GOTOOLCHAIN=go1.26.9 go1.26.9 test ./... -race
 	@echo execute tests on the new go version
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
@@ -29,8 +27,6 @@ all:
 #static code checks:
 checks:
 	go vet ./...
-	golint -set_exit_status=true ./...
-	staticcheck -checks all -fail none ./...
 	golangci-lint run ./...
 
 #escape analysis / heap allocation scan (compiler -m flag)
@@ -48,17 +44,11 @@ tools:
 #install stringer
 	@echo "install latest stringer version"
 	go install golang.org/x/tools/cmd/stringer@latest
-#install linter
-	@echo "install latest go linter version"
-	go install golang.org/x/lint/golint@latest
-#install staticcheck
-	@echo "install latest staticcheck version"
-	go install honnef.co/go/tools/cmd/staticcheck@latest
 #install golangci-lint
 	@echo "install latest golangci-lint version"
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.26.8@latest
-	go1.26.8 download
+	go install golang.org/dl/go1.26.9@latest
+	go1.26.9 download
