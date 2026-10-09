@@ -5,6 +5,10 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.19.2
+
+- updated Go toolchain to go1.27.2 / go1.26.9
+
 #### v1.19.1
 
 - request-context cancellation sends `ALTER SYSTEM CANCEL SESSION` on a
@@ -46,8 +50,8 @@ Starting with v1.19.0:
 - `Connector.WithDatabase` is deprecated; set `ConnectorConfig.DatabaseName`
   when constructing the connector
 
-To find every affected call site, run `staticcheck` (`SA1019`,
-also bundled in `golangci-lint`) on your application.
+To find every affected call site, run `golangci-lint run` (`staticcheck`
+`SA1019` is enabled by default) on your application.
 
 ### Incompatible changes
 

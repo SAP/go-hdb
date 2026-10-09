@@ -111,7 +111,7 @@ AI review must carry proof, not guesses.
 ### CI: judged by `make`, not the public repo
 
 - The authoritative CI is the local `Makefile` `all` target: full build, `go
-  vet`, `golint`, `staticcheck`, `golangci-lint`, `go test ./...` with `-race`
+  vet`, `golangci-lint`, `go test ./...` with `-race`
   and `-tags=liblz4`, tests on older supported Go versions, and the REUSE
   license check.
 - The public warehouse (GitHub Actions or otherwise) runs only a limited

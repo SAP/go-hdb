@@ -3,8 +3,8 @@
 The canonical way to configure a connector is the exported `ConnectorConfig`
 struct. The old per-field setters (`SetTimeout`, `SetFetchSize`, …)
 keep working but are deprecated and receive no new features.
-To surface them in your application, enable `staticcheck` `SA1019`
-(bundled in `golangci-lint`).
+To surface them in your application, run `golangci-lint run`
+(`staticcheck` `SA1019` is enabled by default).
 
 Why move: `NewConfigConnector` validates once and reports every bad
 value (numbers, pairs, required fields); your `ConnectorConfig` is deep-copied at handoff so
