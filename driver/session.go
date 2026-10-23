@@ -894,7 +894,7 @@ func (s *session) rollback(ctx context.Context) error {
 	return nil
 }
 
-func (s *session) disconnect(ctx context.Context) error {
+func (s *session) disconnect(_ context.Context) error {
 	/*
 		Do not send a disconnect message. The reference hdbcli implementation closes
 		the TCP connection without a disconnect message and HANA terminates the session
