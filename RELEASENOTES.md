@@ -5,6 +5,11 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.19.3
+
+- updated Go toolchain to go1.27.3 / go1.26.10
+- updated dependencies
+
 #### v1.19.2
 
 - updated Go toolchain to go1.27.2 / go1.26.9
