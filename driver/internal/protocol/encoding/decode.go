@@ -74,6 +74,9 @@ func (d *Decoder) Byte() byte {
 
 // Bytes decodes bytes.
 func (d *Decoder) Bytes(n int) []byte {
+	if n < 0 {
+		panic(fmt.Sprintf("corrupt frame: negative field length %d", n))
+	}
 	if len(d.buf) < n {
 		panic(ShortBufferError{Need: n, Have: len(d.buf)})
 	}
@@ -84,6 +87,9 @@ func (d *Decoder) Bytes(n int) []byte {
 
 // Str decodes strings.
 func (d *Decoder) Str(n int) string {
+	if n < 0 {
+		panic(fmt.Sprintf("corrupt frame: negative field length %d", n))
+	}
 	if len(d.buf) < n {
 		panic(ShortBufferError{Need: n, Have: len(d.buf)})
 	}
@@ -249,6 +255,9 @@ func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 
 // Fixed decodes a fixed decimal.
 func (d *Decoder) Fixed(size int) *big.Int { // m, exp
+	if size < 0 {
+		panic(fmt.Sprintf("corrupt frame: negative field length %d", size))
+	}
 	if len(d.buf) < size {
 		panic(ShortBufferError{Need: size, Have: len(d.buf)})
 	}
@@ -288,6 +297,9 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 // CESU8Bytes decodes CESU-8 into UTF-8 bytes.
 // - error is only returned in case of conversion errors.
 func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
+	if size < 0 {
+		panic(fmt.Sprintf("corrupt frame: negative field length %d", size))
+	}
 	if len(d.buf) < size {
 		panic(ShortBufferError{Need: size, Have: len(d.buf)})
 	}

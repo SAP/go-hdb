@@ -37,12 +37,18 @@ const (
 	defaultCancelTimeout = 2 * time.Second   // default value for CancelTimeout.
 )
 
+const (
+	defaultMinPBKDF2Rounds = 15000   // default value minPBKDF2Rounds (iteration count observed from HANA servers).
+	defaultMaxPBKDF2Rounds = 1000000 // default MaxPBKDF2Rounds: caps a single key derivation to well under a second, bounding CPU cost from a hostile server.
+)
+
 // Minimal / maximal values enforced by validate.
 const (
-	minTimeout    = 0 * time.Second // minimal timeout value.
-	minBufferSize = 1 << 11         // 2048 - minimal bufferSize value.
-	minBulkSize   = 1               // minimal bulkSize value.
-	maxBulkSize   = p.MaxNumArg     // maximum bulk size.
+	minTimeout      = 0 * time.Second // minimal timeout value.
+	minBufferSize   = 1 << 11         // 2048 - minimal bufferSize value.
+	minBulkSize     = 1               // minimal bulkSize value.
+	maxBulkSize     = p.MaxNumArg     // maximum bulk size.
+	minPBKDF2Rounds = 1               // minimal PBKDF2 rounds value.
 )
 
 const (
@@ -79,6 +85,22 @@ type ConnectorConfig struct {
 	RefreshPassword func() (password string, ok bool)
 	Token           string
 	RefreshToken    func() (token string, ok bool)
+
+	// PBKDF2 iteration-count bounds for SCRAMPBKDF2SHA256
+	// authentication. The server supplies the rounds count during
+	// the handshake; a count below MinPBKDF2Rounds is rejected as a
+	// key-derivation downgrade, a count above MaxPBKDF2Rounds is
+	// rejected to bound key-derivation CPU cost.
+	MinPBKDF2Rounds int
+	MaxPBKDF2Rounds int
+
+	// AllowLDAPWithoutVerifiedTLS permits offering LDAP authentication
+	// on connections that are not protected by verified TLS. LDAP sends
+	// the password encrypted to a server-supplied RSA key but does not
+	// authenticate the server, so without verified TLS a rogue or
+	// man-in-the-middle server can recover the password. LDAP is
+	// therefore offered only over verified TLS unless this is set.
+	AllowLDAPWithoutVerifiedTLS bool
 
 	// X509 client identity (PEM-encoded, key not password encrypted).
 	// Static bytes and files are mutually exclusive: set one pair,
@@ -217,6 +239,8 @@ func NewConnectorConfig() *ConnectorConfig {
 		ReadTimeout:        defaultTimeout,
 		WriteTimeout:       defaultTimeout,
 		CancelTimeout:      defaultCancelTimeout,
+		MinPBKDF2Rounds:    defaultMinPBKDF2Rounds,
+		MaxPBKDF2Rounds:    defaultMaxPBKDF2Rounds,
 		BufferSize:         defaultBufferSize,
 		BulkSize:           defaultBulkSize,
 		TCPKeepAliveConfig: defaultTCPKeepAliveConfig,
@@ -284,6 +308,12 @@ func (cfg *ConnectorConfig) validate() error {
 	}
 	if cfg.BulkSize < minBulkSize || cfg.BulkSize > maxBulkSize {
 		errs = append(errs, fmt.Errorf("invalid bulk size %d: range %d..%d", cfg.BulkSize, minBulkSize, maxBulkSize))
+	}
+	if cfg.MinPBKDF2Rounds < minPBKDF2Rounds || cfg.MinPBKDF2Rounds > cfg.MaxPBKDF2Rounds {
+		errs = append(errs, fmt.Errorf("invalid min PBKDF2 rounds %d: range %d..%d", cfg.MinPBKDF2Rounds, minPBKDF2Rounds, cfg.MaxPBKDF2Rounds))
+	}
+	if cfg.MaxPBKDF2Rounds > 0 && uint64(cfg.MaxPBKDF2Rounds) > math.MaxUint32 {
+		errs = append(errs, fmt.Errorf("invalid max PBKDF2 rounds %d: maximum %d", cfg.MaxPBKDF2Rounds, uint64(math.MaxUint32)))
 	}
 	if cfg.FetchSize < minFetchSize {
 		errs = append(errs, fmt.Errorf("invalid fetch size %d: minimum %d", cfg.FetchSize, minFetchSize))
@@ -688,8 +718,15 @@ func (c *Connector) authHnd() *p.AuthHnd {
 		authHnd.AddJWT(c._password)
 	}
 	if c._password != "" {
-		authHnd.AddBasic(cfg.Username, c._password)
-		authHnd.AddLDAP(cfg.Username, c._password)
+		// rounds bounds validated to fit uint32 by validate.
+		authHnd.AddBasic(cfg.Username, c._password, uint32(cfg.MinPBKDF2Rounds), uint32(cfg.MaxPBKDF2Rounds)) //nolint:gosec // bounds checked in validate
+		// LDAP does not authenticate the server and sends the password
+		// encrypted to a server-supplied key, so offer it only over
+		// verified TLS unless explicitly allowed.
+		verifiedTLS := cfg.TLSConfig != nil && !cfg.TLSConfig.InsecureSkipVerify
+		if verifiedTLS || cfg.AllowLDAPWithoutVerifiedTLS {
+			authHnd.AddLDAP(cfg.Username, c._password)
+		}
 	}
 	return authHnd
 }

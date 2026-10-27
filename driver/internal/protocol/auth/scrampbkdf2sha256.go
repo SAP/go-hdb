@@ -36,11 +36,14 @@ type SCRAMPBKDF2SHA256 struct {
 	clientProof           []byte
 	salt, serverChallenge []byte
 	rounds                uint32
+	minRounds, maxRounds  uint32
 }
 
-// NewSCRAMPBKDF2SHA256 creates a new SCRAMPBKDF2SHA256 instance.
-func NewSCRAMPBKDF2SHA256(username, password string) *SCRAMPBKDF2SHA256 {
-	return &SCRAMPBKDF2SHA256{username: username, password: password}
+// NewSCRAMPBKDF2SHA256 creates a new SCRAMPBKDF2SHA256 instance. minRounds
+// and maxRounds bound the server-supplied PBKDF2 iteration count accepted
+// during the handshake.
+func NewSCRAMPBKDF2SHA256(username, password string, minRounds, maxRounds uint32) *SCRAMPBKDF2SHA256 {
+	return &SCRAMPBKDF2SHA256{username: username, password: password, minRounds: minRounds, maxRounds: maxRounds}
 }
 
 func (a *SCRAMPBKDF2SHA256) String() string {
@@ -94,8 +97,8 @@ func (a *SCRAMPBKDF2SHA256) DecodeInitReply(dec *encoding.Decoder) error {
 	if a.rounds, err = dec.AuthBigUint32(); err != nil {
 		return err
 	}
-	if a.rounds == 0 {
-		return fmt.Errorf("invalid PBKDF2 rounds %d", a.rounds)
+	if a.rounds < a.minRounds || a.rounds > a.maxRounds {
+		return fmt.Errorf("PBKDF2 rounds %d outside accepted range %d..%d", a.rounds, a.minRounds, a.maxRounds)
 	}
 	return nil
 }
