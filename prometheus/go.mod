@@ -7,7 +7,7 @@ toolchain go1.27.3
 replace github.com/SAP/go-hdb => ..
 
 require (
-	github.com/SAP/go-hdb v1.19.3
+	github.com/SAP/go-hdb v1.20.0
 	github.com/prometheus/client_golang v1.25.0
 )
 
@@ -17,7 +17,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.1 // indirect
-	github.com/prometheus/procfs v0.22.0 // indirect
+	github.com/prometheus/procfs v0.23.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect

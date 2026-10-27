@@ -1,6 +1,33 @@
 Release Notes
 =============
 
+## v1.20.0
+
+### New features
+
+- new `ConnectorConfig.MinPBKDF2Rounds` / `MaxPBKDF2Rounds` bound the
+  server-supplied PBKDF2 iteration count (defaults 15000 / 1000000), so a
+  rogue server can neither downgrade key derivation nor force unbounded
+  CPU cost
+- new `ConnectorConfig.AllowLDAPWithoutVerifiedTLS` (default `false`); see
+  the incompatible change below
+
+### Security hardening
+
+- a negative variable field length now fails fast as a corrupt frame
+  instead of a raw slice-bounds panic escaping the part-decode recovery
+- updated dependencies
+
+### Incompatible changes
+
+- LDAP authentication is no longer offered without verified TLS by
+  default. LDAP does not authenticate the server and sends the password
+  encrypted to a server-supplied key, so over an unverified connection
+  (plain TCP or TLS with `InsecureSkipVerify`) a rogue server could
+  select LDAP and recover the plaintext password. Set
+  `AllowLDAPWithoutVerifiedTLS` to restore the previous behavior. Ordinary
+  username/password connections are unaffected; SCRAM is still offered.
+
 ## v1.19.0
 
 ### Minor revisions

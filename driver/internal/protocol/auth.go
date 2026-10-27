@@ -29,8 +29,8 @@ func (a *AuthHnd) AddSessionCookie(cookie []byte, logonname, clientID string) {
 }
 
 // AddBasic adds basic authentication methods.
-func (a *AuthHnd) AddBasic(username, password string) {
-	a.methods[auth.MtSCRAMPBKDF2SHA256] = auth.NewSCRAMPBKDF2SHA256(username, password)
+func (a *AuthHnd) AddBasic(username, password string, minPBKDF2Rounds, maxPBKDF2Rounds uint32) {
+	a.methods[auth.MtSCRAMPBKDF2SHA256] = auth.NewSCRAMPBKDF2SHA256(username, password, minPBKDF2Rounds, maxPBKDF2Rounds)
 	a.methods[auth.MtSCRAMSHA256] = auth.NewSCRAMSHA256(username, password)
 }
 

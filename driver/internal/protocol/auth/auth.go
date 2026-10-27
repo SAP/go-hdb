@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
@@ -98,7 +99,9 @@ func NewMethod(mt string) (Method, bool) {
 	case MtSCRAMSHA256:
 		return &SCRAMSHA256{}, true
 	case MtSCRAMPBKDF2SHA256:
-		return &SCRAMPBKDF2SHA256{}, true
+		// Credential-free decode (e.g. the sniffer) enforces no policy,
+		// so accept any server-supplied iteration count.
+		return NewSCRAMPBKDF2SHA256("", "", 0, math.MaxUint32), true
 	case MtX509:
 		return NewX509(&CertKey{}), true
 	case MtJWT:
