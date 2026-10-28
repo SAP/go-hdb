@@ -49,7 +49,7 @@ func (*ClientContext) kind() PartKind       { return PkClientContext }
 func (*ConnectOptions) kind() PartKind      { return PkConnectOptions }
 func (*DBConnectInfo) kind() PartKind       { return PkDBConnectInfo }
 func (*StatementContext) kind() PartKind    { return PkStatementContext }
-func (*transactionFlags) kind() PartKind    { return PkTransactionFlags }
+func (*TransactionFlags) kind() PartKind    { return PkTransactionFlags }
 
 // numArg methods (result == 1).
 func (*AuthInitRequest) numArg() int  { return 1 }
@@ -105,7 +105,7 @@ var (
 	_ PartDecoder = (*ConnectOptions)(nil)
 	_ PartDecoder = (*DBConnectInfo)(nil)
 	_ PartDecoder = (*StatementContext)(nil)
-	_ PartDecoder = (*transactionFlags)(nil)
+	_ PartDecoder = (*TransactionFlags)(nil)
 )
 
 // newPart instantiates the generic part decoder for kind. It returns false
@@ -146,7 +146,7 @@ func newPart(kind PartKind) (PartDecoder, bool) {
 	case PkConnectOptions:
 		part = new(ConnectOptions)
 	case PkTransactionFlags:
-		part = new(transactionFlags)
+		part = new(TransactionFlags)
 	case PkStatementContext:
 		part = new(StatementContext)
 	case PkDBConnectInfo:

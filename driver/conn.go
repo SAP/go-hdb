@@ -43,6 +43,37 @@ const (
 	setAccessModeReadWrite          = "set transaction read write"
 )
 
+func isolationLevelQuery(level sql.IsolationLevel) string {
+	switch level {
+	case sql.LevelRepeatableRead:
+		return setIsolationLevelRepeatableRead
+	case sql.LevelSerializable:
+		return setIsolationLevelSerializable
+	default:
+		return setIsolationLevelReadCommitted
+	}
+}
+
+func accessModeQuery(readOnly bool) string {
+	if readOnly {
+		return setAccessModeReadOnly
+	}
+	return setAccessModeReadWrite
+}
+
+func supportedIsolationLevel(opts driver.TxOptions) (sql.IsolationLevel, error) {
+	switch sql.IsolationLevel(opts.Isolation) {
+	case sql.LevelDefault, sql.LevelReadCommitted:
+		return sql.LevelReadCommitted, nil
+	case sql.LevelRepeatableRead:
+		return sql.LevelRepeatableRead, nil
+	case sql.LevelSerializable:
+		return sql.LevelSerializable, nil
+	default:
+		return sql.LevelDefault, ErrUnsupportedIsolationLevel
+	}
+}
+
 var (
 	// register as var to execute even before init functions are called.
 	_ = p.RegisterScanType(p.DtBytes, reflect.TypeFor[[]byte](), reflect.TypeFor[NullBytes]())
@@ -406,29 +437,31 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 }
 
+// setTxState moves the connection to target, sending a SET TRANSACTION
+// statement only for a setting that differs from the cache.
+func (c *conn) setTxState(ctx context.Context, current, target txState) error {
+	if target.isolationLevel != current.isolationLevel {
+		if _, err := c.session.execDirect(ctx, isolationLevelQuery(target.isolationLevel)); err != nil {
+			return err
+		}
+	}
+	if target.readOnly != current.readOnly {
+		if _, err := c.session.execDirect(ctx, accessModeQuery(target.readOnly)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // BeginTx implements the driver.ConnBeginTx interface.
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	if c.session.inTx.Load() {
 		return nil, ErrNestedTransaction
 	}
 
-	var isolationLevelQuery string
-	switch sql.IsolationLevel(opts.Isolation) {
-	case sql.LevelDefault, sql.LevelReadCommitted:
-		isolationLevelQuery = setIsolationLevelReadCommitted
-	case sql.LevelRepeatableRead:
-		isolationLevelQuery = setIsolationLevelRepeatableRead
-	case sql.LevelSerializable:
-		isolationLevelQuery = setIsolationLevelSerializable
-	default:
-		return nil, ErrUnsupportedIsolationLevel
-	}
-
-	var accessModeQuery string
-	if opts.ReadOnly {
-		accessModeQuery = setAccessModeReadOnly
-	} else {
-		accessModeQuery = setAccessModeReadWrite
+	isolationLevel, err := supportedIsolationLevel(opts)
+	if err != nil {
+		return nil, err
 	}
 
 	var sqlErr error
@@ -439,15 +472,11 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		if sqlErr = c.session.switchUser(ctx); sqlErr != nil {
 			return
 		}
-		// set isolation level
-		if _, sqlErr = c.session.execDirect(ctx, isolationLevelQuery); sqlErr != nil {
+		state := c.session.txState
+		if sqlErr = c.setTxState(ctx, state, txState{isolationLevel, opts.ReadOnly}); sqlErr != nil {
 			return
 		}
-		// set access mode
-		if _, sqlErr = c.session.execDirect(ctx, accessModeQuery); sqlErr != nil {
-			return
-		}
-		tx = newTx(c)
+		tx = newTx(c, state)
 		c.session.inTx.Store(true)
 	})
 
@@ -568,13 +597,14 @@ var (
 )
 
 type tx struct {
-	conn   *conn
-	closed atomic.Bool
+	conn        *conn
+	prevTxState txState // transaction state captured in BeginTx, restored on close.
+	closed      atomic.Bool
 }
 
-func newTx(conn *conn) *tx {
+func newTx(conn *conn, prevTxState txState) *tx {
 	conn.metrics.addGauge(gaugeTx, 1) // increment number of transactions.
-	return &tx{conn: conn}
+	return &tx{conn: conn, prevTxState: prevTxState}
 }
 
 func (t *tx) Commit() error   { return t.close(false) }
@@ -585,19 +615,35 @@ func (t *tx) close(rollback bool) error {
 
 	c.metrics.addGauge(gaugeTx, -1) // decrement number of transactions.
 
-	defer func() {
-		c.session.inTx.Store(false)
-	}()
-
 	if c.session.isBad() {
+		c.session.inTx.Store(false)
 		return driver.ErrBadConn
 	}
 	if closed := t.closed.Swap(true); closed {
+		c.session.inTx.Store(false)
 		return nil
 	}
 
+	ctx := context.Background()
+	var err error
 	if rollback {
-		return c.session.rollback(context.Background())
+		err = c.session.rollback(ctx)
+	} else {
+		err = c.session.commit(ctx)
 	}
-	return c.session.commit(context.Background())
+
+	// Clear inTx before restoring so the restore runs as autocommit
+	// (execDirect derives the commit flag from !inTx).
+	c.session.inTx.Store(false)
+
+	// Restore the state captured in BeginTx; on failure cancel the session so
+	// the connection is not pooled with unknown state. The restore belongs here
+	// rather than in ResetSession: every transaction end (including a
+	// context-cancelled rollback) funnels through close, and only here is the
+	// pre-transaction state in scope -- ResetSession also runs for connections
+	// used with no transaction and has nothing to restore.
+	if err := c.setTxState(ctx, c.session.txState, t.prevTxState); err != nil {
+		c.session.cancel()
+	}
+	return err
 }
