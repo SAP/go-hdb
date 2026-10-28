@@ -3,6 +3,7 @@ package driver
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
@@ -38,6 +39,17 @@ func (u *SessionUser) clone() *SessionUser {
 type switchUserCtxKeyType struct{}
 
 var switchUserCtxKey switchUserCtxKeyType
+
+// txState is the isolation level and access mode the driver believes the
+// connection to be in, kept current from the transaction flags the server
+// reports.
+type txState struct {
+	isolationLevel sql.IsolationLevel
+	readOnly       bool
+}
+
+// defaultTxState is a fresh HANA session's transaction state.
+var defaultTxState = txState{isolationLevel: sql.LevelReadCommitted, readOnly: false}
 
 // WithUserSwitch can be used to switch a user on a new or an existing connection
 // (see https://help.sap.com/docs/hana-cloud-database/sap-hana-cloud-sap-hana-database-sql-reference-guide/connect-statement-session-management).
@@ -79,6 +91,11 @@ type session struct {
 	// atomic as data race got reported on closeTx + exec in parallel
 	inTx atomic.Bool
 
+	// txState: current isolation level and access mode. Touched only on the
+	// connection goroutine (database/sql serializes per connection), so no
+	// synchronization -- unlike inTx, which terminateSession writes off-goroutine.
+	txState txState
+
 	sqlTracer *sqlTracer
 
 	/*
@@ -118,6 +135,7 @@ func newSession(ctx context.Context, conn io.ReadWriter, logger *slog.Logger, me
 		prd:            prd,
 		pwr:            pwr,
 		sqlTracer:      sqlTracer,
+		txState:        defaultTxState,
 	}, nil
 }
 
@@ -398,6 +416,23 @@ func (s *session) statementContextTime(ctx context.Context, pi *p.PartInfo, serv
 	return nil
 }
 
+// updateTransactionFlags folds the change flags of a TransactionFlags part into
+// the cached state. A flag is present only when the value actually changed, so
+// an absent flag leaves the cache untouched.
+func (s *session) updateTransactionFlags(ctx context.Context, pi *p.PartInfo) error {
+	var tf p.TransactionFlags
+	if err := pi.ReadPart(ctx, &tf); err != nil {
+		return err
+	}
+	if level, ok := tf.IsolationLevel(); ok {
+		s.txState.isolationLevel = level
+	}
+	if readOnly, ok := tf.ReadOnlyMode(); ok {
+		s.txState.readOnly = readOnly
+	}
+	return nil
+}
+
 func (s *session) queryDirect(ctx context.Context, query string, traceKind string) (driver.Rows, error) {
 	t := time.Now()
 	defer s.metrics.addSQLTimeValue(sqlTimeQuery, time.Now())
@@ -447,6 +482,10 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
 				return nil, err
 			}
+		case p.PkTransactionFlags:
+			if err := s.updateTransactionFlags(ctx, pi); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -490,9 +529,9 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 		case p.PkTopologyInformation:
 			s.updateRouting(ctx, pi)
 		case p.PkStatementContext:
-			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
-				return nil, err
-			}
+			err = s.statementContextTime(ctx, pi, &serverTime)
+		case p.PkTransactionFlags:
+			err = s.updateTransactionFlags(ctx, pi)
 		default:
 			err = pi.SkipPart(ctx)
 		}
@@ -555,6 +594,10 @@ func (s *session) prepare(ctx context.Context, query string) (*prepareResult, er
 			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
 				return nil, err
 			}
+		case p.PkTransactionFlags:
+			if err := s.updateTransactionFlags(ctx, pi); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -613,6 +656,10 @@ func (s *session) query(ctx context.Context, query string, pr *prepareResult, nv
 			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
 				return nil, err
 			}
+		case p.PkTransactionFlags:
+			if err := s.updateTransactionFlags(ctx, pi); err != nil {
+				return nil, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, err
@@ -667,6 +714,10 @@ func (s *session) exec(ctx context.Context, query string, pr *prepareResult, nva
 			s.updateRouting(ctx, pi)
 		case p.PkStatementContext:
 			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
+				return nil, err
+			}
+		case p.PkTransactionFlags:
+			if err := s.updateTransactionFlags(ctx, pi); err != nil {
 				return nil, err
 			}
 		default:
@@ -791,6 +842,10 @@ func (s *session) execCall(ctx context.Context, query string, pr *prepareResult,
 			if err := s.statementContextTime(ctx, pi, &serverTime); err != nil {
 				return nil, nil, 0, err
 			}
+		case p.PkTransactionFlags:
+			if err := s.updateTransactionFlags(ctx, pi); err != nil {
+				return nil, nil, 0, err
+			}
 		default:
 			if err := pi.SkipPart(ctx); err != nil {
 				return nil, nil, 0, err
@@ -870,16 +925,35 @@ func (s *session) closeResultsetID(ctx context.Context, id uint64) error {
 	return s.prd.SkipParts(ctx)
 }
 
+// readTransactionReply drains a commit or rollback reply, capturing the
+// transaction flags so the cache follows any change it reports.
+func (s *session) readTransactionReply(ctx context.Context) error {
+	for pi, err := range s.prd.Parts(ctx) {
+		if err != nil {
+			return err
+		}
+		switch pi.Header.Kind() {
+		case p.PkError:
+			err = pi.ReadHDBErrors(ctx)
+		case p.PkTransactionFlags:
+			err = s.updateTransactionFlags(ctx, pi)
+		default:
+			err = pi.SkipPart(ctx)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *session) commit(ctx context.Context) error {
 	defer s.metrics.addSQLTimeValue(sqlTimeCommit, time.Now())
 
 	if err := s.pwr.Write(ctx, p.MtCommit, false); err != nil {
 		return err
 	}
-	if err := s.prd.SkipParts(ctx); err != nil {
-		return err
-	}
-	return nil
+	return s.readTransactionReply(ctx)
 }
 
 func (s *session) rollback(ctx context.Context) error {
@@ -888,10 +962,7 @@ func (s *session) rollback(ctx context.Context) error {
 	if err := s.pwr.Write(ctx, p.MtRollback, false); err != nil {
 		return err
 	}
-	if err := s.prd.SkipParts(ctx); err != nil {
-		return err
-	}
-	return nil
+	return s.readTransactionReply(ctx)
 }
 
 func (s *session) disconnect(_ context.Context) error {

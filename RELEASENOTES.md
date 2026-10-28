@@ -3,6 +3,19 @@ Release Notes
 
 ## v1.20.0
 
+### Minor revisions
+
+#### v1.20.1
+
+- transaction isolation level and access mode no longer leak past
+  `Commit`/`Rollback` onto a reused connection. HANA keeps both as session
+  state outlasting the transaction, so a read-only transaction could leave a
+  pooled connection unable to write (`SQL error 129`) and a non-default
+  isolation level could carry into later work. The connection is now restored
+  to its pre-transaction state on commit and rollback (see
+  [transaction handling](docs/TRANSACTION.md))
+- updated dependencies
+
 ### New features
 
 - new `ConnectorConfig.MinPBKDF2Rounds` / `MaxPBKDF2Rounds` bound the

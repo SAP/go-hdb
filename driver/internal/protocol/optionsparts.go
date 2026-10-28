@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"cmp"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -329,12 +330,51 @@ const (
 	tfLast                           transactionFlagType = 8
 )
 
-type transactionFlags struct {
+// HANA transaction isolation level numbers, matching the tfNewIsolationLevel flag.
+const (
+	isolationLevelReadCommitted  = 1
+	isolationLevelRepeatableRead = 2
+	isolationLevelSerializable   = 3
+)
+
+type TransactionFlags struct {
 	options[transactionFlagType]
 }
 
-func (tf *transactionFlags) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
+func (tf *TransactionFlags) decode(dec *encoding.Decoder, header *PartHeader, _ *ReaderAttrs) error {
 	return tf.options.decode(dec, header.numArg())
+}
+
+// IsolationLevel reports the isolation level the server switched to, as a HANA
+// level number (1 read committed, 2 repeatable read, 3 serializable). The
+// server includes the tfNewIsolationLevel flag only when a statement actually
+// changed the level; ok is false when the flag is absent.
+func (tf *TransactionFlags) IsolationLevel() (level sql.IsolationLevel, ok bool) {
+	var v int32
+	if !tf.get(tfNewIsolationLevel, &v) {
+		return 0, false
+	}
+	switch v {
+	case isolationLevelReadCommitted:
+		return sql.LevelReadCommitted, true
+	case isolationLevelRepeatableRead:
+		return sql.LevelRepeatableRead, true
+	case isolationLevelSerializable:
+		return sql.LevelSerializable, true
+	default:
+		return 0, false
+	}
+}
+
+// ReadOnlyMode reports the access mode the server switched to (true read only,
+// false read write). The server includes the tfReadOnlyMode flag only when a
+// statement actually changed the mode; ok is false when the flag is absent.
+func (tf *TransactionFlags) ReadOnlyMode() (readOnly bool, ok bool) {
+	var v bool
+	if !tf.get(tfReadOnlyMode, &v) {
+		return false, false
+	}
+	return v, true
 }
 
 type topologyOption int8
@@ -604,6 +644,9 @@ func (ops options[K]) String() string {
 	slices.Sort(s)
 	return fmt.Sprintf("%v", s)
 }
+
+//TODO: after go1.28
+// func (ops *options[K]) get[V any](k K) (V, bool) {
 
 func (ops *options[K]) get(k K, v any) bool {
 	for _, o := range *ops {
