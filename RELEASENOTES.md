@@ -5,6 +5,18 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.20.2
+
+- the protocol sniffer (`cmd/sniffer`) no longer crashes the whole proxy when
+  a single client sends a structurally corrupt protocol frame. Such a frame
+  fails fast with a panic in the shared reader by design; the per-connection
+  handler now recovers it, so only the offending connection is dropped and
+  other proxied sessions are unaffected
+- the switch-user `connect` statement password is now redacted in the protocol
+  trace while redaction is enabled, matching the SQL trace. The sniffer does
+  not parse SQL command text and therefore does not redact secrets contained in
+  statements; it is a development and diagnostic tool (see its documentation)
+
 #### v1.20.1
 
 - transaction isolation level and access mode no longer leak past

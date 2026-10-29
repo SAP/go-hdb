@@ -341,7 +341,8 @@ func (s *session) switchUser(ctx context.Context) error {
 	connectQuery := func(password string) string {
 		return "connect " + user.Username + " password \"" + password + "\""
 	}
-	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), connectQuery(trace.RedactedText)); err != nil {
+	redacted := connectQuery(trace.RedactedText)
+	if _, err := s.execDirectQueryLog(ctx, connectQuery(user.Password), &redacted); err != nil {
 		return err
 	}
 	s.user = user.clone()
@@ -438,7 +439,7 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	defer s.metrics.addSQLTimeValue(sqlTimeQuery, time.Now())
 
 	// allow e.g inserts as query -> handle commit like in _execDirect
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.NewCommand(query, nil)); err != nil {
 		return nil, err
 	}
 
@@ -506,11 +507,11 @@ func (s *session) queryDirect(ctx context.Context, query string, traceKind strin
 	return qr, nil
 }
 
-func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string) (driver.Result, error) {
+func (s *session) execDirectQueryLog(ctx context.Context, query string, redactedQuery *string) (driver.Result, error) {
 	t := time.Now()
 	defer s.metrics.addSQLTimeValue(sqlTimeExec, time.Now())
 
-	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtExecuteDirect, !s.inTx.Load(), p.NewCommand(query, redactedQuery)); err != nil {
 		return nil, err
 	}
 
@@ -542,7 +543,11 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 	numRow := rowsAffected.Total()
 
 	if s.sqlTracer != nil {
-		s.sqlTracer.log(ctx, t, traceExec, logQuery, serverTime)
+		if redactedQuery != nil {
+			s.sqlTracer.log(ctx, t, traceExec, *redactedQuery, serverTime)
+		} else {
+			s.sqlTracer.log(ctx, t, traceExec, query, serverTime)
+		}
 	}
 	if s.prd.FunctionCode() == p.FcDDL {
 		return driver.ResultNoRows, nil
@@ -551,14 +556,14 @@ func (s *session) execDirectQueryLog(ctx context.Context, query, logQuery string
 }
 
 func (s *session) execDirect(ctx context.Context, query string) (driver.Result, error) {
-	return s.execDirectQueryLog(ctx, query, query)
+	return s.execDirectQueryLog(ctx, query, nil)
 }
 
 func (s *session) prepare(ctx context.Context, query string) (*prepareResult, error) {
 	t := time.Now()
 	defer s.metrics.addSQLTimeValue(sqlTimePrepare, time.Now())
 
-	if err := s.pwr.Write(ctx, p.MtPrepare, false, p.Command(query)); err != nil {
+	if err := s.pwr.Write(ctx, p.MtPrepare, false, p.NewCommand(query, nil)); err != nil {
 		return nil, err
 	}
 
