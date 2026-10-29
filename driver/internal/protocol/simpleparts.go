@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
+	"github.com/SAP/go-hdb/driver/internal/unsafe"
 )
 
 // ClientID represents a client id part.
@@ -20,19 +21,32 @@ func (id ClientID) encode(enc *encoding.Encoder) error {
 }
 
 // Command represents a command part with cesu8 content.
-type Command []byte
+type Command struct {
+	cmd      []byte
+	traceCmd *string // if non-nil, shown in the protocol trace instead of the raw command
+}
 
-func (c Command) String() string { return string(c) }
+// NewCommand returns a command part for cmd.
+func NewCommand(cmd string, traceCmd *string) Command {
+	return Command{cmd: unsafe.String2ByteSlice(cmd), traceCmd: traceCmd}
+}
+
+func (c Command) String() string {
+	if c.traceCmd != nil {
+		return *c.traceCmd
+	}
+	return unsafe.ByteSlice2String(c.cmd)
+}
 func (c *Command) decode(dec *encoding.Decoder, header *PartHeader, attrs *ReaderAttrs) error {
 	var err error
-	*c, err = dec.CESU8Bytes(header.bufLen())
+	c.cmd, err = dec.CESU8Bytes(header.bufLen())
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (c Command) encode(enc *encoding.Encoder) error {
-	_, err := enc.CESU8Bytes(c)
+	_, err := enc.CESU8Bytes(c.cmd)
 	return err
 }
 

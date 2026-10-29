@@ -39,6 +39,20 @@ func main() {
 func handler(conn net.Conn, dbAddr net.Addr) {
 	defer conn.Close()
 
+	// A structurally corrupt protocol frame panics the shared reader by design
+	// (see driver/internal/protocol: negative or out-of-range declared lengths
+	// fail fast). Contain it to this connection so one bad client cannot crash
+	// the proxy and drop every other proxied session.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("sniffer panic recovered - close connection - local address %s - remote address %s: %v",
+				conn.LocalAddr().String(),
+				conn.RemoteAddr().String(),
+				r,
+			)
+		}
+	}()
+
 	dbConn, err := net.Dial(dbAddr.Network(), dbAddr.String()) //nolint: noctx
 	if err != nil {
 		log.Printf("hdb connection error: %s", err)
@@ -91,6 +105,10 @@ at the protocol level when connecting a client to the database server.
 Using with other clients might
 - completely fail or
 - provide incomplete output
+
+%[1]s is a development and diagnostic tool. Trace redaction is honored for
+structured protocol parts, but SQL command text is not redacted and may
+expose secrets contained in statements.
 
 Usage of %[1]s:
 `

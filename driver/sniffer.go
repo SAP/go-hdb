@@ -13,6 +13,12 @@ import (
 )
 
 // A Sniffer is a simple proxy for logging hdb protocol requests and responses.
+//
+// The Sniffer is a development and diagnostic tool, not part of the driver's
+// hardened surface. It can inspect traffic of any client. Trace redaction is
+// honored for structured protocol parts (authentication secrets, session
+// cookies, tokens, keys), but SQL command text is not redacted and may expose
+// secrets contained in statements.
 type Sniffer struct {
 	logger *slog.Logger
 	conn   net.Conn
