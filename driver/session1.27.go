@@ -9,8 +9,6 @@ import (
 	"time"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
-	"github.com/SAP/go-hdb/driver/unicode/cesu8"
-	"golang.org/x/text/transform"
 )
 
 // readResultPart reads a protocol result part. On Go 1.27+ lobs are read via
@@ -22,20 +20,14 @@ func readResultPart(ctx context.Context, pi *p.PartInfo, part p.ResultPartDecode
 }
 
 // readLobComplete reads a complete lob value into wr. Value is the lob field value to scan.
-// IsCharLob indicates whether the lob is char-based (CESU-8 encoded) or byte-based.
 func (s *session) readLobComplete(descr *p.LobOutDescr, wr io.Writer) error {
 	request := &p.ReadLobRequest{ID: descr.LocatorID(), ChunkSize: s.attrs.lobChunkSize}
-	reply := p.NewReadLobReply(descr.LocatorID())
+	reply := descr.NewReadLobReply()
 
-	var err error
-	data, opt := descr.Bytes, descr.Opt
-	for {
-		var numChar int
-		if descr.IsCharLob {
-			numChar, err = writeLobChunk(s.lobReadDecoder, data, wr)
-		} else {
-			numChar, err = wr.Write(data)
-		}
+	data, numChar, err := descr.Bytes(s.lobReadDecoder)
+	opt := descr.Opt
+	for err == nil {
+		_, err = wr.Write(data)
 		if err != nil {
 			break
 		}
@@ -46,7 +38,12 @@ func (s *session) readLobComplete(descr *p.LobOutDescr, wr io.Writer) error {
 		if err = s.readLob(request, reply); err != nil {
 			break
 		}
-		data, opt = reply.Bytes, reply.Opt
+		data, numChar, err = reply.Bytes(s.lobReadDecoder)
+		opt = reply.Opt
+	}
+	// A Lob (possibly embedded) hides its pipe behind Write.
+	if lwr, ok := wr.(interface{ lobWriter() io.Writer }); ok {
+		wr = lwr.lobWriter()
 	}
 	// if the writer is a pipe-end -> close at the end
 	if pwr, ok := wr.(*io.PipeWriter); ok {
@@ -57,27 +54,6 @@ func (s *session) readLobComplete(descr *p.LobOutDescr, wr io.Writer) error {
 		}
 	}
 	return err
-}
-
-// writeLobChunk writes a char based lob data chunk (cesu8 -> utf8) to wr and returns the number of characters written.
-func writeLobChunk(tr transform.Transformer, b []byte, wr io.Writer) (int, error) {
-	var nDst, numChar int
-	var err error
-	tr.Reset()
-	if ntr, ok := tr.(cesu8.NumCharTransformer); ok { // fasttrack
-		nDst, _, numChar, err = ntr.TransformNumChar(b, b, false) // cesu8 -> utf8 (always enough space)
-	} else { // slow
-		nDst, _, err = tr.Transform(b, b, false) // cesu8 -> utf8 (always enough space)
-		numChar = cesu8.NumChar(b[:nDst])
-	}
-	if err != nil && err != transform.ErrShortSrc { //nolint: errorlint
-		return nDst, err
-	}
-
-	if _, err := wr.Write(b[:nDst]); err != nil {
-		return numChar, err
-	}
-	return numChar, nil
 }
 
 // readLob reads a single lob data package. The complete lob is read by

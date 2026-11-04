@@ -63,12 +63,9 @@ func TestConvertAssignLobGenericNull(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if err := convertAssignLob(driver.ScanContext{}, nil, tt.dst, tt.src); err != nil {
-				t.Fatalf("convertAssignLob returned error: %v", err)
-			}
-			tt.check(t, tt.dst)
-		})
+		if err := convertAssignLob(driver.ScanContext{}, nil, tt.dst, tt.src); err != nil {
+			t.Fatalf("%s: convertAssignLob returned error: %v", tt.name, err)
+		}
+		tt.check(t, tt.dst)
 	}
 }

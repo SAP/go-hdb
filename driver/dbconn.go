@@ -49,6 +49,22 @@ type stdDBConn struct {
 	_lastWrite   time.Time
 }
 
+// newTLSConn completes the TLS handshake and closes conn on failure.
+func newTLSConn(ctx context.Context, conn net.Conn, config *tls.Config, timeout time.Duration) (*tls.Conn, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	tlsConn := tls.Client(conn, config)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close() // Preserve the handshake error.
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
 func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *metrics, attrs *connAttrs) (dbConn, error) {
 	conn, err := attrs.dialContext(ctx, host)
 	if err != nil {
@@ -56,7 +72,10 @@ func newDBConn(ctx context.Context, logger *slog.Logger, host string, metrics *m
 	}
 	// is TLS connection requested?
 	if attrs.tlsConfig != nil {
-		conn = tls.Client(conn, attrs.tlsConfig)
+		conn, err = newTLSConn(ctx, conn, attrs.tlsConfig, attrs.dialTimeout)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dbConn := &stdDBConn{metrics: metrics, conn: conn, readTimeout: attrs.readTimeout, writeTimeout: attrs.writeTimeout, logger: logger}

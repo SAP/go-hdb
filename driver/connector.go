@@ -65,10 +65,15 @@ const (
 
 var defaultTCPKeepAliveConfig = net.KeepAliveConfig{Enable: true}
 
-// ConnectorConfig holds the static connector configuration. A ConnectorConfig may be
-// freely mutated until it is handed to NewConfigConnector,
-// which validates and deep-copies it: later mutations affect
-// nothing. Start from NewConnectorConfig, which fills in defaults;
+// ConnectorConfig holds the static connector configuration. NewConfigConnector
+// validates and copies it. The struct, SessionVariables map, and ClientCert and
+// ClientKey byte slices are copied. TLSConfig is shallow-cloned using
+// [tls.Config.Clone]. Nested TLS configuration data, including certificate pools
+// and slices, remains shared and must remain immutable after handoff; copy that
+// data explicitly before modifying it. Callbacks and interface-valued resources
+// remain shared. These copying rules also apply to [Connector.Config].
+//
+// Start from NewConnectorConfig, which fills in defaults;
 // a hand-built ConnectorConfig must set every required field (validate
 // rejects nil function/interface fields and out-of-range numbers).
 type ConnectorConfig struct {
@@ -113,7 +118,7 @@ type ConnectorConfig struct {
 	RefreshClientCert func() (clientCert, clientKey []byte, ok bool) // explicit refresh override, nil unless set
 
 	// Network.
-	DialTimeout  time.Duration // budgets establishment (dial + TLS handshake); zero disables
+	DialTimeout  time.Duration // budgets TCP dialing and TLS handshake separately; zero adds no deadline
 	ReadTimeout  time.Duration // budgets socket reads; zero disables deadlines
 	WriteTimeout time.Duration // budgets socket writes; zero disables deadlines
 	// CancelTimeout budgets the synchronous CANCEL plus victim drain;
@@ -129,8 +134,9 @@ type ConnectorConfig struct {
 	PingInterval       time.Duration
 	TCPKeepAlive       time.Duration       // see net.Dialer: zero uses the net default (15s), negative disables
 	TCPKeepAliveConfig net.KeepAliveConfig // see net.Dialer
-	TLSConfig          *tls.Config
-	Dialer             dial.Dialer // required; NewConnectorConfig provides the default dialer
+	// TLSConfig is shallow-cloned; see ConnectorConfig for sharing rules.
+	TLSConfig *tls.Config
+	Dialer    dial.Dialer // required; NewConnectorConfig provides the default dialer
 
 	// Session.
 	DefaultSchema string
@@ -258,10 +264,7 @@ func NewConnectorConfig() *ConnectorConfig {
 	}
 }
 
-// clone returns a deep copy of c: mutable references (TLSConfig,
-// SessionVariables, cert bytes) are copied so no state leaks between
-// generations, callers, or the connector. Stateless handles (Logger,
-// Dialer, Compressor, callbacks) stay shared by design.
+// clone copies cfg according to the sharing rules documented in ConnectorConfig.
 func (cfg *ConnectorConfig) clone() *ConnectorConfig {
 	cp := *cfg
 	cp.TLSConfig = cfg.TLSConfig.Clone()
@@ -404,11 +407,9 @@ func (c *connAttrs) dialContext(ctx context.Context, host string) (net.Conn, err
 	return c.dialer.DialContext(ctx, host, dial.DialerOptions{Timeout: c.dialTimeout, TCPKeepAlive: c.tcpKeepAlive, TCPKeepAliveConfig: c.tcpKeepAliveConfig})
 }
 
-// newConnAttrs builds the session view off one immutable configuration
-// generation. Maps and TLS config are shared by reference, not re-cloned:
-// cfg is already a deep-copied, immutable generation (see clone) and
-// downstream code only reads it (tls.Client documents tls.Config reuse
-// as safe), so sharing is sound across generations.
+// newConnAttrs builds the session view from one configuration generation.
+// Maps and TLS config are shared by reference. The driver treats configuration
+// data as read-only; callers must follow ConnectorConfig's sharing rules.
 func newConnAttrs(cfg *ConnectorConfig) *connAttrs {
 	return &connAttrs{
 		dialTimeout:        cfg.DialTimeout,
@@ -467,10 +468,10 @@ type Connector struct {
 
 	mu sync.RWMutex // guards updateCfg (deprecated setters) and auth mutation
 
-	// cfg is the authoritative configuration, deep-copied at
-	// construction into an immutable generation. Deprecated setters
-	// replace the generation copy-on-write (see updateCfg); all other
-	// readers load the pointer lock-free.
+	// cfg is the authoritative configuration, copied at construction according
+	// to ConnectorConfig's sharing rules. Deprecated setters replace the
+	// generation copy-on-write (see updateCfg); all other readers load the
+	// pointer lock-free.
 	cfg atomic.Pointer[ConnectorConfig]
 
 	hasCookie      atomic.Bool
@@ -487,11 +488,11 @@ type Connector struct {
 }
 
 // newConnector returns a Connector with wiring (routing, lifecycle,
-// metrics) holding a deep copy of cfg. It performs no validation and
-// no I/O and cannot fail; callers pass NewConnectorConfig defaults
-// (NewConnector), validated configs (NewConfigConnector) or
-// defaults-based configs whose inputs cannot fail validation
-// (legacy wrappers).
+// metrics) holding a copy of cfg following ConnectorConfig's sharing rules.
+// It performs no validation or I/O and cannot fail. Callers pass
+// NewConnectorConfig defaults (NewConnector), validated configs
+// (NewConfigConnector), or defaults-based configs whose inputs cannot fail
+// validation (legacy wrappers).
 func newConnector(cfg *ConnectorConfig) *Connector {
 	c := &Connector{
 		_routing: new(routing),
@@ -511,8 +512,9 @@ func (c *Connector) config() *ConnectorConfig { return c.cfg.Load() }
 func (c *Connector) connAttrs() *connAttrs { return newConnAttrs(c.config()) }
 
 // NewConfigConnector validates cfg and returns a Connector holding
-// a deep copy of it. Invalid values are returned as error, never
-// silently clamped. The X509 identity is established like the legacy
+// a copy following the sharing rules documented in [ConnectorConfig].
+// Invalid values are returned as error, never silently clamped.
+// The X509 identity is established like the legacy
 // constructors: files are read first when set, else static bytes;
 // file read and key errors fail fast here, never on first connect.
 func NewConfigConnector(cfg *ConnectorConfig) (*Connector, error) {
@@ -679,10 +681,11 @@ func (c *Connector) clone() *Connector {
 	return nc
 }
 
-// Config returns a deep copy of the connector's user configuration for
+// Config returns a copy of the connector's user configuration for
 // derive-tweak-construct cycles: construction input plus deprecated
-// setter mutations. Runtime-refreshed credentials stay connector-local;
-// derives inherit the refresh callbacks and re-acquire on first use.
+// setter mutations. The sharing rules documented in [ConnectorConfig] apply.
+// Runtime-refreshed credentials stay connector-local; derives inherit the
+// refresh callbacks and re-acquire on first use.
 func (c *Connector) Config() ConnectorConfig {
 	return *c.config().clone()
 }

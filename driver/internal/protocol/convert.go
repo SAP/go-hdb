@@ -29,10 +29,13 @@ const (
 )
 
 var (
-	timeReflectType   = reflect.TypeFor[time.Time]()
-	bytesReflectType  = reflect.TypeFor[[]byte]()
-	stringReflectType = reflect.TypeFor[string]()
-	ratReflectType    = reflect.TypeFor[big.Rat]()
+	timeReflectType             = reflect.TypeFor[time.Time]()
+	bytesReflectType            = reflect.TypeFor[[]byte]()
+	stringReflectType           = reflect.TypeFor[string]()
+	ratReflectType              = reflect.TypeFor[big.Rat]()
+	readerReflectType           = reflect.TypeFor[io.Reader]()
+	readProviderReflectType     = reflect.TypeFor[readProvider]()
+	decimalDecomposeReflectType = reflect.TypeFor[decimalDecompose]()
 )
 
 var (
@@ -42,6 +45,12 @@ var (
 	errFloatOutOfRange        = errors.New("float out of range")
 )
 
+// isNilValueReceiver checks for a nil pointer whose value type implements the interface.
+func isNilValueReceiver(v any, interfaceType reflect.Type) bool {
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Pointer && rv.IsNil() && rv.Type().Elem().Implements(interfaceType)
+}
+
 /*
 Conversion routines hdb parameters
   - return value is any to avoid allocations in case
@@ -49,6 +58,10 @@ Conversion routines hdb parameters
 */
 
 func convertBool(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
 	// check needs to be done on each type individually as if combining types in one case
 	// the v type stays on any and the comparison v != 0 would always be true.
 	switch v := v.(type) {
@@ -113,6 +126,10 @@ var (
 )
 
 func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocyclo
+	if v == nil {
+		return nil, nil
+	}
+
 	switch v := v.(type) {
 	case bool:
 		if v {
@@ -186,8 +203,12 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		}
 		return i64, nil
 	case float32:
+		// MaxInt64 rounds up to 2^63 as a float, so the upper bound is exclusive.
+		if v < math.MinInt64 || v >= math.MaxInt64 {
+			return nil, errIntegerOutOfRange
+		}
 		i64 := int64(v)
-		if v != float32(i64) { // should work for overflow, NaN, +-INF as well
+		if v != float32(i64) { // reject fractional values and NaN
 			return nil, errConversionNotSupported
 		}
 		if i64 > maxI64 || i64 < minI64 {
@@ -195,8 +216,12 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		}
 		return i64, nil
 	case float64:
+		// MaxInt64 rounds up to 2^63 as a float, so the upper bound is exclusive.
+		if v < math.MinInt64 || v >= math.MaxInt64 {
+			return nil, errIntegerOutOfRange
+		}
 		i64 := int64(v)
-		if v != float64(i64) { // should work for overflow, NaN, +-INF as well
+		if v != float64(i64) { // reject fractional values and NaN
 			return nil, errConversionNotSupported
 		}
 		if i64 > maxI64 || i64 < minI64 {
@@ -249,8 +274,12 @@ func convertInteger(v any, minI64, maxI64 int64) (any, error) { //nolint: gocycl
 		return i64, nil
 	case reflect.Float32, reflect.Float64:
 		f64 := rv.Float()
+		// MaxInt64 rounds up to 2^63 as a float, so the upper bound is exclusive.
+		if f64 < math.MinInt64 || f64 >= math.MaxInt64 {
+			return nil, errIntegerOutOfRange
+		}
 		i64 := int64(f64)
-		if f64 != float64(i64) { // should work for overflow, NaN, +-INF as well
+		if f64 != float64(i64) { // reject fractional values and NaN
 			return nil, errConversionNotSupported
 		}
 		if i64 > maxI64 || i64 < minI64 {
@@ -285,6 +314,10 @@ var (
 )
 
 func convertFloat(v any, maxF64 float64) (any, error) { //nolint: gocyclo
+	if v == nil {
+		return nil, nil
+	}
+
 	switch v := v.(type) {
 	case float32:
 		f64 := float64(v)
@@ -421,6 +454,10 @@ func convertFloat(v any, maxF64 float64) (any, error) { //nolint: gocyclo
 }
 
 func convertTime(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
 	if v, ok := v.(time.Time); ok {
 		return v, nil
 	}
@@ -459,16 +496,35 @@ type decimalDecompose interface {
 // NOTE: keep both functions in sync - a change in one (added input type, changed
 // routing) almost always needs the same change in the other.
 func convertDecimal(v any) (any, error) { //nolint: gocyclo
+	if v == nil {
+		return nil, nil
+	}
+
 	switch v := v.(type) {
 	case decimalDecompose:
+		if isNilValueReceiver(v, decimalDecomposeReflectType) {
+			return nil, nil
+		}
 		form, negative, coefficient, exponent := v.Decompose(nil)
 		return encoding.NewDecimalFromDecompose(form, negative, coefficient, exponent)
 	case *big.Int:
+		if v == nil {
+			return nil, nil
+		}
 		return encoding.NewDecimalFromRat(new(big.Rat).SetInt(v))
 	case *big.Rat:
+		if v == nil {
+			return nil, nil
+		}
 		return encoding.NewDecimalFromRat(v)
 	case *big.Float:
+		if v == nil {
+			return nil, nil
+		}
 		r, _ := v.Rat(nil) // ignore accuracy
+		if r == nil {
+			return nil, errConversionNotSupported
+		}
 		return encoding.NewDecimalFromRat(r)
 	case bool:
 		if v {
@@ -554,16 +610,35 @@ func convertDecimal(v any) (any, error) { //nolint: gocyclo
 }
 
 func convertFixed(v any, prec, scale int) (any, error) { //nolint: gocyclo
+	if v == nil {
+		return nil, nil
+	}
+
 	switch v := v.(type) {
 	case decimalDecompose:
+		if isNilValueReceiver(v, decimalDecomposeReflectType) {
+			return nil, nil
+		}
 		form, negative, coefficient, exponent := v.Decompose(nil)
 		return encoding.NewFixedFromDecompose(form, negative, coefficient, exponent, prec, scale)
 	case *big.Int:
+		if v == nil {
+			return nil, nil
+		}
 		return encoding.NewFixedFromRat(new(big.Rat).SetInt(v), prec, scale)
 	case *big.Rat:
+		if v == nil {
+			return nil, nil
+		}
 		return encoding.NewFixedFromRat(v, prec, scale)
 	case *big.Float:
+		if v == nil {
+			return nil, nil
+		}
 		r, _ := v.Rat(nil) // ignore accuracy
+		if r == nil {
+			return nil, errConversionNotSupported
+		}
 		return encoding.NewFixedFromRat(r, prec, scale)
 	case bool:
 		if v {
@@ -649,6 +724,10 @@ func convertFixed(v any, prec, scale int) (any, error) { //nolint: gocyclo
 }
 
 func convertBytes(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
 	switch v := v.(type) {
 	case string, []byte:
 		return v, nil
@@ -683,6 +762,10 @@ type readProvider interface {
 }
 
 func convertLob(v any, cesu8 bool) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+
 	// All lob input values are normalized to an io.Reader here and later streamed
 	// in chunks (transcoded on the fly for N-LOBs, see LobInDescr.FetchFirst).
 	//
@@ -696,8 +779,14 @@ func convertLob(v any, cesu8 bool) (any, error) {
 	var rd io.Reader = nil
 	switch v := v.(type) {
 	case io.Reader:
+		if isNilValueReceiver(v, readerReflectType) {
+			return nil, nil
+		}
 		rd = v
 	case readProvider:
+		if isNilValueReceiver(v, readProviderReflectType) {
+			return nil, nil
+		}
 		rd = v.Reader()
 	default:
 		// check if string or []byte

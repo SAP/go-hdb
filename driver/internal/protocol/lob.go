@@ -115,7 +115,8 @@ func (d *LobInDescr) fetchNext(chunkSize int) error {
 	_, err := io.CopyN(&d.buf, d.rd, int64(chunkSize))
 	d.opt = loDataincluded
 	d.size = d.buf.Len()
-	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+	// CopyN reports EOF for a short final chunk; propagate other reader errors.
+	if !errors.Is(err, io.EOF) {
 		return err
 	}
 	d.opt |= loLastdata

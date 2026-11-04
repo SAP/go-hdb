@@ -195,3 +195,40 @@ func testLobAffectedRows(t *testing.T, db *sql.DB) {
 		t.Fatalf("data2 mismatch")
 	}
 }
+
+func TestLob(t *testing.T) {
+	t.Parallel()
+
+	testsWithDB := []struct {
+		name string
+		fn   func(t *testing.T, db *sql.DB)
+	}{
+		{"insert", testLobInsert},
+		{"delayedScan", testLobDelayedScan},
+		{"nilPlusBigLob", testLobNilPlusBig},
+		{"affectedRows", testLobAffectedRows},
+		{"embeddedLob", testEmbeddedLob},
+	}
+
+	testsWithoutDB := []struct {
+		name string
+		fn   func(t *testing.T)
+	}{
+		{"pipe", testLobPipe},
+	}
+
+	db := MT.DB()
+	for _, test := range testsWithDB {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fn(t, db)
+		})
+	}
+
+	for _, test := range testsWithoutDB {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			test.fn(t)
+		})
+	}
+}

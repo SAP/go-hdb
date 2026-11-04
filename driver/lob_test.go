@@ -11,12 +11,26 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/SAP/go-hdb/driver/internal/rand/alphanum"
 )
 
-func testLobPipe(t *testing.T, db *sql.DB) {
-	const lobSize = 10000
+// testLobPipe verifies that BLOBs read through plain, embedded, and nested
+// Lob destinations match the input and that scanning closes each output pipe.
+func testLobPipe(t *testing.T) {
+	const (
+		lobSize   = 10000
+		chunkSize = 1024
+	)
+	cfg := MT.Connector().Config()
+	cfg.LobChunkSize = chunkSize
+	ctr, err := NewConfigConnector(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(ctr)
+	defer db.Close()
 
 	table := RandomIdentifier("lobPipe_")
 
@@ -36,11 +50,11 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 
-	if _, err := tx.ExecContext(t.Context(), fmt.Sprintf("create table %s (b blob)", table)); err != nil {
+	if _, err := tx.ExecContext(t.Context(), fmt.Sprintf(`create table %s ("plain" blob, "embedded" blob, "nested" blob)`, table)); err != nil {
 		t.Fatalf("create table failed: %s", err)
 	}
 
-	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?)", table))
+	stmt, err := tx.PrepareContext(t.Context(), fmt.Sprintf("insert into %s values (?, ?, ?)", table))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +64,10 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 	rd, wr := io.Pipe()
 	lob.SetReader(rd)
 
+	data := wrBuf.Bytes()
 	wg := new(sync.WaitGroup)
 	wg.Go(func() {
-		if _, err := stmt.ExecContext(t.Context(), lob); err != nil {
+		if _, err := stmt.ExecContext(t.Context(), lob, data, data); err != nil {
 			t.Error(err)
 			return
 		}
@@ -72,27 +87,48 @@ func testLobPipe(t *testing.T, db *sql.DB) {
 		t.Fatal(err)
 	}
 
-	rd, wr = io.Pipe()
-	lob.SetWriter(wr)
+	var readers [3]*io.PipeReader
+	var writers [3]*io.PipeWriter
+	for i := range readers {
+		readers[i], writers[i] = io.Pipe()
+		defer readers[i].Close()
+		defer writers[i].Close()
+	}
+	lob.SetWriter(writers[0])
+	type embeddedLob struct{ *Lob }
+	type nestedLob struct{ *embeddedLob }
+	embedded := embeddedLob{NewLob(nil, writers[1])}
+	nested := nestedLob{&embeddedLob{NewLob(nil, writers[2])}}
 
 	wg.Go(func() {
-		if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table)).Scan(lob); err != nil {
+		if err := db.QueryRowContext(t.Context(), fmt.Sprintf("select * from %s", table)).Scan(lob, &embedded, &nested); err != nil {
+			for _, wr := range writers {
+				_ = wr.CloseWithError(err)
+			}
 			t.Error(err)
 			return
 		}
 		t.Log("scan finalized")
 	})
 
-	rdBuf := &bytes.Buffer{}
-	if _, err := rdBuf.ReadFrom(rd); err != nil {
-		t.Fatal(err)
+	timer := time.AfterFunc(10*time.Second, func() {
+		err := errors.New("LOB pipe did not finish")
+		for _, rd := range readers {
+			_ = rd.CloseWithError(err)
+		}
+	})
+	defer timer.Stop()
+	for i, name := range []string{"plain", "embedded", "nested"} {
+		rdBuf := &bytes.Buffer{}
+		if _, err := rdBuf.ReadFrom(readers[i]); err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
+			t.Errorf("%s: read buffer is not equal to write buffer", name)
+		}
 	}
-
 	wg.Wait()
-
-	if !bytes.Equal(rdBuf.Bytes(), cmpBuf.Bytes()) {
-		t.Fatalf("read buffer is not equal to write buffer")
-	}
 }
 
 func testLobDelayedScan(t *testing.T, db *sql.DB) {
@@ -247,28 +283,5 @@ func testEmbeddedLob(t *testing.T, db *sql.DB) {
 	}
 	if got := nullLob.Lob.wr.(*bytes.Buffer).Bytes(); !bytes.Equal(got, testData) {
 		t.Fatalf("embedded null lob: got %d bytes - expected %d bytes", len(got), len(testData))
-	}
-}
-
-func TestLob(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		fn   func(t *testing.T, db *sql.DB)
-	}{
-		{"insert", testLobInsert},
-		{"pipe", testLobPipe},
-		{"delayedScan", testLobDelayedScan},
-		{"nilPlusBigLob", testLobNilPlusBig},
-		{"affectedRows", testLobAffectedRows},
-		{"embeddedLob", testEmbeddedLob},
-	}
-
-	db := MT.DB()
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			test.fn(t, db)
-		})
 	}
 }
