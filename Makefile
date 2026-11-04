@@ -5,8 +5,7 @@ all:
 	go mod tidy
 	@echo "build and test"
 	go build -v ./...
-	go vet ./...
-	golangci-lint run ./...
+	$(MAKE) checks
 	@echo execute tests on latest go version	
 	go test ./...
 	go test ./... -race
@@ -28,6 +27,7 @@ all:
 checks:
 	go vet ./...
 	golangci-lint run ./...
+	govulncheck ./...
 
 #escape analysis / heap allocation scan (compiler -m flag)
 escape:
@@ -47,6 +47,9 @@ tools:
 #install golangci-lint
 	@echo "install latest golangci-lint version"
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+#install govulncheck
+	@echo "install latest govulncheck version"
+	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 #install additional go versions
 go:

@@ -18,6 +18,13 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 // A Lob object uses an io.Writer object as destination for reading content from a database lob field.
 // A Lob can be created with the NewLob constructor with io.Reader and io.Writer as parameters or
 // with new, setting io.Reader and io.Writer with the SetReader and SetWriter methods.
+//
+// On Go 1.27, *Lob implements io.Writer for scanning and has no Scan method.
+// Prefer scanning directly into string or []byte for materialized values, or
+// an io.Writer for streaming. A custom sql.Scanner takes precedence over
+// io.Writer and receives materialized LOB bytes, or nil for SQL NULL.
+// Callers must initialize embedded *Lob fields before scanning.
+// On Go 1.26, *Lob continues to implement sql.Scanner.
 type Lob struct {
 	rd io.Reader
 	wr io.Writer
@@ -53,41 +60,14 @@ func (l *Lob) SetWriter(wr io.Writer) *Lob {
 }
 
 // NullLob represents a Lob that may be null.
-// NullLob implements the Scanner interface so
-// it can be used as a scan destination, similar to NullString.
+// It can be used as a scan destination, similar to sql.NullString.
+// On Go 1.27, *NullLob implements io.Writer and has no Scan method; the scanning
+// rules documented for Lob also apply. Callers must initialize embedded
+// *NullLob fields, but the contained Lob is allocated on the first write if nil.
+// On Go 1.26, *NullLob continues to implement sql.Scanner.
 type NullLob struct {
 	Lob   *Lob
 	Valid bool // Valid is true if Lob is not NULL
-}
-
-// Scan implements the database/sql/Scanner interface.
-func (n *NullLob) Scan(value any) error {
-	/*
-		starting with go1.27 fallback method only
-	*/
-	/*
-		In contrast to the Null[T] Scan implementation we do not
-		create a new lob instance in case of value == nil to
-		enable reuse of n.Lob.
-
-		func (n *Null[T]) Scan(value any) error {
-			if value == nil {
-				n.V, n.Valid = *new(T), false
-				return nil
-			}
-			n.Valid = true
-			return convertAssign(&n.V, value)
-		}
-	*/
-	if value == nil {
-		n.Valid = false
-		return nil
-	}
-	if n.Lob == nil {
-		n.Lob = new(Lob)
-	}
-	n.Valid = true
-	return n.Lob.Scan(value)
 }
 
 // Value implements the database/sql/Valuer interface.

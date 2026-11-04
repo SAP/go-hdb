@@ -41,7 +41,7 @@
 						{{- range .Flags}}
 						<tr>
 							<td>{{.Name}}</td>
-							<td>{{.Value}}</td>
+							<td>{{flagValue .}}</td>
 							<td>{{.Usage}}</td>
 						</tr>
 						{{- end}}

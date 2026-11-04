@@ -19,9 +19,24 @@ var ErrInvalidUTF8 = errors.New("invalid UTF-8 encoding")
 const (
 	nl          = '\n'
 	cr          = '\r'
+	space       = ' '
 	minus       = '-'
+	slash       = '/'
+	asterisk    = '*'
+	underscore  = '_'
+	hash        = '#'
+	dollar      = '$'
 	singleQuote = '\''
 	doubleQuote = '"'
+
+	lineEndings = "\r\n"
+)
+
+var (
+	blockCommentEnd = []byte("*/")
+	beginKeyword    = []byte("BEGIN")
+	caseKeyword     = []byte("CASE")
+	endKeyword      = []byte("END")
 )
 
 type scanner struct {
@@ -71,21 +86,6 @@ func (s *scanner) readRune() (rune, error) {
 	return r, err
 }
 
-func (s *scanner) appendRune(r rune) {
-	s.token = utf8.AppendRune(s.token, r)
-}
-
-func (s *scanner) appendLine(data []byte) {
-	l := len(data)
-	if l == 0 {
-		return
-	}
-	if data[l-1] == cr { // cut off trailing \r
-		l--
-	}
-	s.token = append(s.token, s.data[:l]...)
-}
-
 func (s *scanner) scanWhitespace() error {
 	for {
 		r, err := s.peekRune()
@@ -101,7 +101,7 @@ func (s *scanner) scanWhitespace() error {
 	}
 }
 
-func (s *scanner) scanComment() (bool, error) {
+func (s *scanner) scanComment(keep bool) (bool, error) {
 	if len(s.data) < 2 {
 		if s.atEOF {
 			return false, nil
@@ -109,63 +109,168 @@ func (s *scanner) scanComment() (bool, error) {
 		return false, io.EOF
 	}
 
-	if s.data[0] != minus || s.data[1] != minus {
+	end := len(s.data)
+	switch {
+	case s.data[0] == minus && s.data[1] == minus:
+		if i := bytes.IndexAny(s.data, lineEndings); i >= 0 {
+			end = i + 1
+			if s.data[i] == cr {
+				if end == len(s.data) && !s.atEOF {
+					return false, io.EOF // CRLF may span reads.
+				}
+				if end < len(s.data) && s.data[end] == nl {
+					end++
+				}
+			}
+		} else if !s.atEOF {
+			return false, io.EOF
+		}
+	case s.data[0] == slash && s.data[1] == asterisk:
+		if i := bytes.Index(s.data[2:], blockCommentEnd); i >= 0 {
+			end = i + 4
+		} else if !s.atEOF {
+			return false, io.EOF
+		}
+	default:
 		return false, nil
 	}
 
-	if i := bytes.IndexByte(s.data, nl); i >= 0 {
-		// terminated line
-		if s.comments {
-			s.appendLine(s.data[:i])
-		}
-		s.data = s.data[i+1:]
-		return true, nil
+	if !utf8.Valid(s.data[:end]) {
+		return false, ErrInvalidUTF8
 	}
-
-	if s.atEOF {
-		// non-terminated final line
-		if s.comments {
-			s.appendLine(s.data)
-		}
-		s.data = s.data[len(s.data):]
-		return true, nil
+	if keep {
+		s.token = append(s.token, s.data[:end]...)
 	}
-
-	// need more data
-	return false, io.EOF
+	s.data = s.data[end:]
+	return true, nil
 }
 
 func (s *scanner) scanString(quote rune) error {
-	s.appendRune(quote)
 	for {
 		r, err := s.readRune()
 		if err != nil {
 			return err
 		}
-		switch r {
-		case quote:
-			s.appendRune(r)
-			r2, err := s.peekRune()
-			if err != nil {
-				return err
-			}
-			if r2 != quote {
-				return nil
-			}
-		case nl, cr:
-			// skip line endings
-		default:
-			s.appendRune(r)
+		if r != quote {
+			continue
+		}
+		r2, err := s.peekRune()
+		if err != nil {
+			return err
+		}
+		if r2 != quote {
+			return nil
+		}
+		// Consume both quotes of an escape without leaving the string.
+		if _, err := s.readRune(); err != nil {
+			return err
 		}
 	}
 }
 
-func (s *scanner) scanStatement() (bool, error) {
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == underscore || r == hash || r == dollar
+}
+
+func (s *scanner) scanWord() ([]byte, error) {
+	data := s.data
 	for {
-		r, err := s.readRune()
+		r, width, err := s.nextRune()
+		if err != nil {
+			if errors.Is(err, io.EOF) && s.atEOF {
+				break
+			}
+			return nil, err
+		}
+		if r == s.separator || !isWordRune(r) {
+			break
+		}
+		s.data = s.data[width:]
+	}
+	word := data[:len(data)-len(s.data)]
+	return word, nil
+}
+
+func (s *scanner) scanStatement() (ok bool, err error) {
+	data := s.data
+	defer func() {
+		if ok || s.atEOF {
+			n := len(data) - len(s.data)
+			if ok {
+				n -= utf8.RuneLen(s.separator)
+			}
+			s.token = append(s.token, data[:n]...)
+		}
+	}()
+
+	begins, cases := 0, 0
+	end := false // Resolve END after the next word or separator.
+	for {
+		before := s.data
+		if ok, err := s.scanComment(false); err != nil {
+			return false, err
+		} else if ok {
+			if !s.comments {
+				s.token = append(s.token, data[:len(data)-len(before)]...)
+				n := len(before) - len(s.data)
+				if before[0] == minus { // Preserve the line comment's terminating CR/LF.
+					if n > 0 && before[n-1] == nl {
+						n--
+					}
+					if n > 0 && before[n-1] == cr {
+						n--
+					}
+				}
+				data = before[n:]
+				if len(s.token) > 0 && len(data) > 0 {
+					last, _ := utf8.DecodeLastRune(s.token)
+					first, _ := utf8.DecodeRune(data)
+					if !unicode.IsSpace(last) && !unicode.IsSpace(first) {
+						s.token = append(s.token, space) // Keep adjoining SQL tokens separate.
+					}
+				}
+			}
+			continue
+		}
+
+		r, width, err := s.nextRune()
 		if err != nil {
 			return false, err
 		}
+		if r != s.separator && isWordRune(r) {
+			word, err := s.scanWord()
+			if err != nil {
+				return false, err
+			}
+			if end {
+				end = false
+				if cases == 0 {
+					continue // END followed by a word does not close BEGIN.
+				}
+				cases--
+				if bytes.EqualFold(word, caseKeyword) {
+					continue // END CASE closes the existing CASE.
+				}
+			}
+			switch {
+			case bytes.EqualFold(word, beginKeyword):
+				begins++
+			case bytes.EqualFold(word, caseKeyword):
+				cases++
+			case bytes.EqualFold(word, endKeyword):
+				end = true
+			}
+			continue
+		}
+		if end && (r == s.separator || !unicode.IsSpace(r)) {
+			if cases > 0 {
+				cases--
+			} else if r == s.separator && begins > 0 {
+				begins--
+			}
+			end = false
+		}
+		s.data = s.data[width:]
 
 		switch r {
 		case singleQuote, doubleQuote:
@@ -173,10 +278,8 @@ func (s *scanner) scanStatement() (bool, error) {
 				return false, err
 			}
 		case s.separator:
-			return true, nil
-		default:
-			if r != nl && r != cr { // skip line endings
-				s.appendRune(r)
+			if begins == 0 && cases == 0 {
+				return true, nil
 			}
 		}
 	}
@@ -187,15 +290,12 @@ func (s *scanner) _scan() (bool, error) {
 		if err := s.scanWhitespace(); err != nil {
 			return false, err
 		}
-		ok, err := s.scanComment()
+		ok, err := s.scanComment(s.comments)
 		if err != nil {
 			return false, err
 		}
 		if !ok {
 			break
-		}
-		if s.comments {
-			s.appendRune(nl)
 		}
 	}
 	s.pending = len(s.data) > 0 // statement content present
@@ -231,18 +331,17 @@ func (s *scanner) scan(data []byte, atEOF bool) (int, []byte, error) {
 	return advance, s.token, nil
 }
 
-// Scan is a split function for a bufio.Scanner that returns each statement as a token.
-// It uses the default separator ';'. Comments are discarded - for adding leading comments
-// to each statement or specify a different separator please use ScanFunc.
-// Invalid UTF-8 is reported as ErrInvalidUTF8.
+// Scan splits SQL statements for a bufio.Scanner using ';' as the separator.
+// It removes comments and preserves quoted text and line endings.
+// Separators inside quotes, comments, or BEGIN/CASE blocks do not split statements.
+// Invalid UTF-8 returns ErrInvalidUTF8.
 func Scan(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	s := scanner{separator: DefaultSeparator, comments: false}
 	return s.scan(data, atEOF)
 }
 
-// ScanFunc returns a split function for a bufio.Scanner that returns each command as a token.
-// In contrast to using the Scan function directly, the command separator can be specified.
-// If comments is true, leading comments are added to each statement and discarded otherwise.
+// ScanFunc returns a split function like Scan, with a custom separator.
+// If comments is true, comments are retained.
 func ScanFunc(separator rune, comments bool) bufio.SplitFunc {
 	s := scanner{separator: separator, comments: comments}
 	return s.scan

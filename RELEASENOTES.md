@@ -1,6 +1,35 @@
 Release Notes
 =============
 
+## v1.21.0
+
+### New features
+
+- `sqlscript` supports nested `BEGIN ... END` blocks and `CASE ... END`
+  expressions, respecting escaped quotes and comments when splitting statements.
+
+### Incompatible changes
+
+- Go 1.27: `*Lob` and `*NullLob` implement `io.Writer` instead of
+  `sql.Scanner`; their `Scan` methods are removed. They remain scan
+  destinations. Embedded pointer fields must be initialized.
+  Go 1.26 retains the Scanner API.
+- Go 1.27: custom `sql.Scanner` methods take precedence over `io.Writer`
+  and are honored on named string and byte-slice types. LOB values reach
+  custom scanners as `[]byte`, or `nil` for SQL NULL.
+- `sqlscript` preserves line endings. Comment removal now includes inline
+  comments; `ScanFunc` with `comments=true` retains comments.
+
+### Changes
+
+- Fixed nil input handling, decimal conversion panics, and float-to-BIGINT
+  bounds checks. Nil-aware `driver.Valuer` methods are now honored.
+- Fixed Go 1.27 LOB string retention and repeated character-LOB scans.
+- Malformed DSN query parameters are rejected; bulkbench redacts DSN passwords.
+- TLS handshakes complete during connection setup, with a separate
+  `DialTimeout` budget after TCP dialing.
+- Updated dependencies and build checks.
+
 ## v1.20.0
 
 ### Minor revisions

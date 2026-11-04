@@ -9,16 +9,10 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/unsafe"
-)
-
-var (
-	lobReflectType        = reflect.TypeFor[Lob]()
-	nullLobReflectType    = reflect.TypeFor[NullLob]()
-	lobPtrReflectType     = reflect.TypeFor[*Lob]()
-	nullLobPtrReflectType = reflect.TypeFor[*NullLob]()
 )
 
 // scanColumn scans a single column value into the destination. Lob values are scanned
@@ -58,6 +52,15 @@ func convertAssign(scanCtx driver.ScanContext, dest, src any) error {
 			return nil
 		}
 	default:
+		if src != nil {
+			return sql.ConvertAssign(scanCtx, dest, src)
+		}
+	}
+
+	if handled, err := scanDestination(scanCtx, nil, dest, src); handled {
+		return err
+	}
+	if src == nil {
 		return sql.ConvertAssign(scanCtx, dest, src)
 	}
 
@@ -71,6 +74,9 @@ func convertAssign(scanCtx driver.ScanContext, dest, src any) error {
 	for dv.Kind() == reflect.Pointer {
 		if dv.IsNil() {
 			dv.Set(reflect.New(dv.Type().Elem()))
+		}
+		if handled, err := scanDestination(scanCtx, nil, dv.Interface(), src); handled {
+			return err
 		}
 		dv = dv.Elem()
 	}
@@ -97,19 +103,15 @@ func convertAssign(scanCtx driver.ScanContext, dest, src any) error {
 
 func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src any) error {
 	if src == nil {
-		// for compatibility with the previous behavior, a NULL value is handled
-		// by the default conversion: it does not allocate nested pointers.
-		if d, ok := dest.(*NullLob); ok { // NullLob does not implement the Scanner interface in this build
-			d.Valid = false
-			return nil
-		}
-		return sql.ConvertAssign(scanCtx, dest, src)
+		return convertAssign(scanCtx, dest, src)
 	}
 	switch d := dest.(type) {
 	case *string:
 		switch s := src.(type) {
 		case *p.LobOutDescr:
-			b := unsafe.String2ByteSlice(*d)[:0]
+			// Use fresh storage to preserve any strings retained by the caller.
+			// See TestLob/stringRetention.
+			var b []byte
 			wr := (*byteSliceWriter)(&b)
 			err := session.readLobComplete(s, wr)
 			*d = unsafe.ByteSlice2String(b)
@@ -134,87 +136,18 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 			*d = s
 			return nil
 		}
-	case io.Writer:
-		switch s := src.(type) {
-		case *p.LobOutDescr:
-			return session.readLobComplete(s, d)
-		case string: // mock source
-			_, err := d.Write([]byte(s))
-			return err
-		case []byte: // mock source
-			_, err := d.Write(s)
-			return err
-		}
-	case *Lob:
-		if d.wr == nil {
-			d.wr = new(bytes.Buffer)
-		}
-		switch s := src.(type) {
-		case *p.LobOutDescr:
-			return session.readLobComplete(s, d.wr)
-		case string: // mock source
-			_, err := d.wr.Write([]byte(s))
-			return err
-		case []byte: // mock source
-			_, err := d.wr.Write(s)
-			return err
-		}
-	case *NullLob:
-		if d.Lob == nil {
-			d.Lob = new(Lob)
-		}
-		if d.Lob.wr == nil {
-			d.Lob.wr = new(bytes.Buffer)
-		}
-		d.Valid = true
-		switch s := src.(type) {
-		case *p.LobOutDescr:
-			return session.readLobComplete(s, d.Lob.wr)
-		case string: // mock source
-			_, err := d.Lob.wr.Write([]byte(s))
-			return err
-		case []byte: // mock source
-			_, err := d.Lob.wr.Write(s)
-			return err
-		}
-	case *sql.Null[Lob]:
-		if d.V.wr == nil {
-			d.V.wr = new(bytes.Buffer)
-		}
-		d.Valid = true
-		switch s := src.(type) {
-		case *p.LobOutDescr:
-			return session.readLobComplete(s, d.V.wr)
-		case string: // mock source
-			_, err := d.V.wr.Write([]byte(s))
-			return err
-		case []byte: // mock source
-			_, err := d.V.wr.Write(s)
-			return err
-		}
-	case *sql.Null[*Lob]:
-		if d.V == nil {
-			d.V = new(Lob)
-		}
-		if d.V.wr == nil {
-			d.V.wr = new(bytes.Buffer)
-		}
-		d.Valid = true
-		switch s := src.(type) {
-		case *p.LobOutDescr:
-			return session.readLobComplete(s, d.V.wr)
-		case string: // mock source
-			_, err := d.V.wr.Write([]byte(s))
-			return err
-		case []byte: // mock source
-			_, err := d.V.wr.Write(s)
-			return err
-		}
+	}
+
+	if handled, err := scanDestination(scanCtx, session, dest, src); handled {
+		return err
 	}
 
 	dpv := reflect.ValueOf(dest)
 	if dpv.Kind() != reflect.Pointer {
 		return errors.New("destination not a pointer")
+	}
+	if dpv.IsNil() {
+		return errors.New("destination pointer is nil")
 	}
 
 	dv := reflect.Indirect(dpv)
@@ -227,7 +160,7 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 		return convertAssignLob(scanCtx, session, dv.Interface(), src)
 	}
 
-	// support database/sql sql.Null[T] destinations
+	// Preserve support for structs shaped like sql.Null[T] without a Scanner.
 	if isGenNull, _ := isGenericNull(dv.Type()); isGenNull {
 		vField := dv.FieldByName("V")
 		validField := dv.FieldByName("Valid")
@@ -236,26 +169,6 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 		}
 		validField.SetBool(true)
 		return nil
-	}
-
-	// support structs embedding Lob or NullLob (by value or by pointer)
-	// stream directly into the embedded value, avoiding the buffering fallback below
-	// (vflow embedding pattern go < 1.27)
-	if dv.Kind() == reflect.Struct && dv.CanAddr() {
-		for f, fv := range dv.Fields() {
-			if !f.Anonymous {
-				continue
-			}
-			switch f.Type {
-			case lobReflectType, nullLobReflectType:
-				return convertAssignLob(scanCtx, session, fv.Addr().Interface(), src)
-			case lobPtrReflectType, nullLobPtrReflectType:
-				if fv.IsNil() {
-					fv.Set(reflect.New(fv.Type().Elem()))
-				}
-				return convertAssignLob(scanCtx, session, fv.Interface(), src)
-			}
-		}
 	}
 
 	if descr, ok := src.(*p.LobOutDescr); ok {
@@ -267,4 +180,56 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	}
 
 	return sql.ConvertAssign(scanCtx, dest, src)
+}
+
+// scanDestination handles destinations whose methods control assignment.
+// Standard sql.Null[T] is unwrapped first so its V can receive streamed data.
+func scanDestination(scanCtx driver.ScanContext, session *session, dest, src any) (bool, error) {
+	if scanner, ok := dest.(sql.Scanner); ok {
+		if src == nil {
+			return true, scanner.Scan(src)
+		}
+		dv := reflect.ValueOf(dest)
+		if dv.Kind() == reflect.Pointer && !dv.IsNil() {
+			dv = dv.Elem()
+			t := dv.Type()
+			if t.PkgPath() == "database/sql" && strings.HasPrefix(t.Name(), "Null[") {
+				_, isLob := src.(*p.LobOutDescr)
+				err := scanColumn(scanCtx, session, isLob, dv.FieldByName("V").Addr().Interface(), src)
+				dv.FieldByName("Valid").SetBool(err == nil)
+				return true, err
+			}
+		}
+		if descr, ok := src.(*p.LobOutDescr); ok {
+			var b bytes.Buffer
+			if err := session.readLobComplete(descr, &b); err != nil {
+				return true, err
+			}
+			src = b.Bytes()
+		}
+		return true, scanner.Scan(src)
+	}
+	if src == nil {
+		if n, ok := dest.(interface{ setNull() }); ok {
+			n.setNull()
+			return true, nil
+		}
+		return false, nil
+	}
+	wr, ok := dest.(io.Writer)
+	if !ok {
+		return false, nil
+	}
+	switch src := src.(type) {
+	case *p.LobOutDescr:
+		return true, session.readLobComplete(src, wr)
+	case []byte:
+		_, err := wr.Write(src)
+		return true, err
+	case string:
+		_, err := wr.Write([]byte(src))
+		return true, err
+	default:
+		return false, nil
+	}
 }

@@ -289,7 +289,8 @@ func (c *Connector) SetDefaultSchema(schema string) {
 	})
 }
 
-// TLSConfig returns the TLS configuration of the connector.
+// TLSConfig returns a shallow clone of the connector's TLS configuration.
+// Nested TLS configuration data remains shared; see [ConnectorConfig].
 //
 // Deprecated: read from own ConnectorConfig or Connector.Config() instead.
 func (c *Connector) TLSConfig() *tls.Config {
@@ -310,7 +311,8 @@ func (c *Connector) SetTLS(serverName string, insecureSkipVerify bool, rootCAFil
 	return nil
 }
 
-// SetTLSConfig sets the TLS configuration of the connector.
+// SetTLSConfig sets the connector's TLS configuration to a shallow clone of tlsConfig.
+// Nested TLS configuration data remains shared; see [ConnectorConfig].
 //
 // Deprecated: configure via ConnectorConfig.TLSConfig.
 func (c *Connector) SetTLSConfig(tlsConfig *tls.Config) {

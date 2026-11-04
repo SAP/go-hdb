@@ -23,13 +23,16 @@ func reorderNVArgs(pos int, name string, nvargs []driver.NamedValue) {
 	}
 }
 
+var valuerReflectType = reflect.TypeFor[driver.Valuer]()
+
 func valuerValue(v driver.Valuer) (driver.Value, error) {
-	// This is taken from the database/sql package.
-	// The Elem() test is not needed because the function is only
-	// called for values implementing the driver.Valuer interface.
+	// Match database/sql: nil pointers to value-receiver Valuers mean NULL.
+	// Pointer-receiver Value methods handle their nil receiver themselves.
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
-		// && rv.Type().Elem().Implements(valuerReflectType) {
-		return nil, nil
+		if rv.Type().Elem().Implements(valuerReflectType) {
+			return nil, nil
+		}
+		return v.Value()
 	}
 	// changes in sql.Null Value handling
 	// <= go1.23

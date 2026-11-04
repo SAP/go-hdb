@@ -112,6 +112,11 @@ func ParseDSN(s string) (*DSN, error) {
 		return nil, &ParseError{err: err}
 	}
 
+	values, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, &ParseError{s: "invalid DSN query: " + err.Error(), err: err}
+	}
+
 	dsn := &DSN{host: u.Host}
 	if u.User != nil {
 		dsn.username = u.User.Username()
@@ -119,7 +124,7 @@ func ParseDSN(s string) (*DSN, error) {
 		dsn.password = password
 	}
 
-	for k, v := range u.Query() {
+	for k, v := range values {
 		switch k {
 
 		default:

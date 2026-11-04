@@ -47,9 +47,21 @@ func newIndexTestDef(batchCount, batchSize int) *indexTestDef {
 	}
 }
 
+func flagValue(fl *flag.Flag) string {
+	if fl.Name != fnDSN {
+		return fl.Value.String()
+	}
+	parsed, err := driver.ParseDSN(fl.Value.String())
+	if err != nil {
+		return "[invalid DSN]"
+	}
+	return parsed.Redacted()
+}
+
 // newIndexHandler returns a new indexHandler instance.
 func newIndexHandler(dba *dba, templateFS fs.FS) (*indexHandler, error) {
 	funcMap := template.FuncMap{
+		"flagValue":     flagValue,
 		"gomaxprocs":    func() int { return runtime.GOMAXPROCS(0) },
 		"numcpu":        runtime.NumCPU,
 		"driverversion": func() string { return driver.DriverVersion },

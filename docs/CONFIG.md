@@ -7,8 +7,8 @@ To surface them in your application, run `golangci-lint run`
 (`staticcheck` `SA1019` is enabled by default).
 
 Why move: `NewConfigConnector` validates once and reports every bad
-value (numbers, pairs, required fields); your `ConnectorConfig` is deep-copied at handoff so
-later mutations affect nothing; `Connector.Config()` supports
+value (numbers, pairs, required fields); your `ConnectorConfig` is copied at
+handoff according to the rules below; `Connector.Config()` supports
 derive-tweak-construct cycles; new settings land here only.
 
 ## Basic use
@@ -18,10 +18,16 @@ See `ExampleNewConfigConnector` ([godoc](https://pkg.go.dev/github.com/SAP/go-hd
 fill endpoint and credentials, `NewConfigConnector` to construct,
 `sql.OpenDB` to use.
 
-`NewConfigConnector` validates and deep-copies `cfg`: mutating
-`cfg` afterwards affects nothing. Mutable values (TLS config, session
-variables, cert bytes) are copied; stateless handles (`Logger`,
-`Dialer`, `Compressor`, refresh callbacks) stay shared by design.
+`NewConfigConnector` validates and copies the configuration struct, the
+`SessionVariables` map, and the `ClientCert` and `ClientKey` byte slices.
+`TLSConfig` is shallow-cloned using
+[`tls.Config.Clone`](https://pkg.go.dev/crypto/tls#Config.Clone). Nested TLS
+configuration data, including certificate pools and slices, remains shared
+and must remain immutable after handoff; copy that data explicitly before
+modifying it. Callbacks and interface-valued resources (`Logger`, `Dialer`,
+`Compressor`, and resources referenced by the TLS configuration) remain shared.
+These copying rules also apply to `Connector.Config()`.
+
 Invalid values are returned as
 `error`, and all violations are reported at once. Start from
 `NewConnectorConfig`: `Host` must not be empty, and the function and interface
@@ -98,14 +104,19 @@ connections.
 
 - `TLSConfig *tls.Config`: assign directly, or build file-based
   config with `driver.NewTLSConfig(serverName, insecureSkipVerify,
-  rootCAFiles...)`.
+  rootCAFiles...)`. The configuration is shallow-cloned; nested configuration
+  data remains shared as described under Basic use.
 - `DialTimeout`/`ReadTimeout`/`WriteTimeout`: independent budgets for
   establishment, socket reads, and socket writes (`NewConnectorConfig`
   defaults all three to 5 minutes, `0` disables). They split the old
   single `Timeout`; legacy `SetTimeout` sets all three at once. The DSN
   `timeout` key fans out the same way when present — a DSN without the
   key leaves all three at `0` (no deadlines), preserving long-standing
-  DSN behavior.
+  DSN behavior. TCP dialing and the TLS handshake each get a separate
+  `DialTimeout` budget: with 5 seconds configured, the handshake gets up to
+  5 seconds after dialing succeeds. An earlier caller deadline or cancellation
+  still applies; `0` adds no driver deadline. The TLS handshake completes
+  during connection setup, before the first database read or write.
 - `CancelTimeout`: budget for the synchronous `CANCEL` plus victim drain
   after request-context cancellation (`NewConnectorConfig` defaults to
   2 seconds, `0` selects the legacy async-`DISCONNECT` sever). The
