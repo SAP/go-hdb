@@ -78,13 +78,27 @@ var defaultTCPKeepAliveConfig = net.KeepAliveConfig{Enable: true}
 // rejects nil function/interface fields and out-of-range numbers).
 type ConnectorConfig struct {
 	// Endpoint.
-	Host         string
+	Host string
+	// DatabaseName routes the connection through the SAP HANA system
+	// database for tenant lookup. When set, Connect dials Host, issues a
+	// DBCONNECTINFO request to resolve the named tenant's actual host:port,
+	// and connects there instead. Leave empty when Host already points at
+	// the tenant's port directly.
 	DatabaseName string
 
-	// Authentication. Password doubles as external-ticket carrier
-	// when Username is empty (hdbcli parity: ticket prefix selects
-	// the method); Token is the explicit JWT door. Refresh callbacks
-	// may run concurrently when shared across Connectors.
+	// Authentication. HANA selects the auth method from the set the client
+	// offers. Basic and LDAP are offered only when Password != ""; X509
+	// only when cert+key (bytes or files) are set; JWT only when Token != "".
+	// Refresh callbacks are invoked only after a real auth failure, so the
+	// corresponding credential must be non-empty before the first connect.
+	//
+	// Password doubles as external-ticket carrier when Username is empty
+	// (hdbcli parity: ticket prefix selects the method); Token is the
+	// explicit JWT door. Refresh callbacks may run concurrently when shared
+	// across Connectors.
+	//
+	// When ClientCertFile/ClientKeyFile are set and RefreshClientCert is
+	// nil, the files are re-read automatically on each auth failure.
 	Username        string
 	Password        string
 	RefreshPassword func() (password string, ok bool)

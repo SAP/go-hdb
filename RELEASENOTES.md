@@ -3,6 +3,18 @@ Release Notes
 
 ## v1.21.0
 
+### Minor revisions
+
+#### v1.21.1
+
+- updated Go toolchain to go1.27.4 / go1.26.11
+- updated dependencies
+- extended `ConnectorConfig` documentation
+- documented LOB scanning (destinations, nullable forms, streaming, and the
+  legacy `Lob` / `NullLob` types) in the [LOB guide](docs/LOB.md);
+  `Null[io.Writer]` now streams into a caller-supplied writer
+- reduced LOB scan allocations
+
 ### New features
 
 - `sqlscript` supports nested `BEGIN ... END` blocks and `CASE ... END`

@@ -12,8 +12,8 @@ all:
 	@echo execute tests with active lz4 compression on latest go version
 	go test ./... -tags=liblz4
 	@echo execute tests on older supported go versions
-	GOTOOLCHAIN=go1.26.10 go1.26.10 test ./...
-	GOTOOLCHAIN=go1.26.10 go1.26.10 test ./... -race
+	GOTOOLCHAIN=go1.26.11 go1.26.11 test ./...
+	GOTOOLCHAIN=go1.26.11 go1.26.11 test ./... -race
 	@echo execute tests on the new go version
 
 #see fsfe reuse tool (https://git.fsfe.org/reuse/tool)
@@ -53,5 +53,5 @@ tools:
 
 #install additional go versions
 go:
-	go install golang.org/dl/go1.26.10@latest
-	go1.26.10 download
+	go install golang.org/dl/go1.26.11@latest
+	go1.26.11 download

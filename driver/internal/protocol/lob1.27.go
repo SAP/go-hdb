@@ -56,6 +56,11 @@ func decodeLobOutDescr(dec *encoding.Decoder, isCharLob bool) (any, error) {
 // LocatorID returns the lob locator id.
 func (d *LobOutDescr) LocatorID() LocatorID { return d.id }
 
+// ByteSize returns the total lob size in bytes as reported by HANA. For
+// character lobs this is the CESU-8 wire size, an upper bound on the decoded
+// UTF-8 length.
+func (d *LobOutDescr) ByteSize() int64 { return d.numByte }
+
 // NewReadLobReply creates a lob read reply part with the descriptor's locator id
 // and lob type.
 func (d *LobOutDescr) NewReadLobReply() *ReadLobReply {

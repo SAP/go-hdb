@@ -110,8 +110,9 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 		switch s := src.(type) {
 		case *p.LobOutDescr:
 			// Use fresh storage to preserve any strings retained by the caller.
-			// See TestLob/stringRetention.
-			var b []byte
+			// See TestLob/stringRetention. Pre-size from the reported byte count
+			// to avoid append regrowth (upper bound for character lobs).
+			b := make([]byte, 0, s.ByteSize())
 			wr := (*byteSliceWriter)(&b)
 			err := session.readLobComplete(s, wr)
 			*d = unsafe.ByteSlice2String(b)
@@ -126,7 +127,13 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	case *[]byte:
 		switch s := src.(type) {
 		case *p.LobOutDescr:
-			*d = (*d)[:0]
+			// Reuse the caller's capacity; grow once to the reported byte count
+			// if short, to avoid append regrowth (upper bound for character lobs).
+			if n := s.ByteSize(); int64(cap(*d)) < n {
+				*d = make([]byte, 0, n)
+			} else {
+				*d = (*d)[:0]
+			}
 			wr := (*byteSliceWriter)(d)
 			return session.readLobComplete(s, wr)
 		case string: // mock source
@@ -172,6 +179,29 @@ func convertAssignLob(scanCtx driver.ScanContext, session *session, dest, src an
 	}
 
 	if descr, ok := src.(*p.LobOutDescr); ok {
+		// string- and []byte-kind named types: stream pre-sized, mirroring the
+		// exact *string / *[]byte cases above (ByteSize is an upper bound for
+		// character lobs).
+		switch dv.Kind() {
+		case reflect.String:
+			b := make([]byte, 0, descr.ByteSize())
+			wr := (*byteSliceWriter)(&b)
+			if err := session.readLobComplete(descr, wr); err != nil {
+				return err
+			}
+			dv.SetString(unsafe.ByteSlice2String(b))
+			return nil
+		case reflect.Slice:
+			if dv.Type().Elem().Kind() == reflect.Uint8 {
+				b := make([]byte, 0, descr.ByteSize())
+				wr := (*byteSliceWriter)(&b)
+				if err := session.readLobComplete(descr, wr); err != nil {
+					return err
+				}
+				dv.SetBytes(b)
+				return nil
+			}
+		}
 		wr := &bytes.Buffer{}
 		if err := session.readLobComplete(descr, wr); err != nil {
 			return err
@@ -195,7 +225,17 @@ func scanDestination(scanCtx driver.ScanContext, session *session, dest, src any
 			t := dv.Type()
 			if t.PkgPath() == "database/sql" && strings.HasPrefix(t.Name(), "Null[") {
 				_, isLob := src.(*p.LobOutDescr)
-				err := scanColumn(scanCtx, session, isLob, dv.FieldByName("V").Addr().Interface(), src)
+				vField := dv.FieldByName("V")
+				// An interface-typed V (e.g. io.Writer) must receive the value it
+				// holds, not its address: *io.Writer is not itself a writer. A
+				// concrete V is written through its address, as usual.
+				var vDest any
+				if vField.Kind() == reflect.Interface && !vField.IsNil() {
+					vDest = vField.Interface()
+				} else {
+					vDest = vField.Addr().Interface()
+				}
+				err := scanColumn(scanCtx, session, isLob, vDest, src)
 				dv.FieldByName("Valid").SetBool(err == nil)
 				return true, err
 			}
