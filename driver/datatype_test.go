@@ -92,11 +92,26 @@ func formatAlphanum(s string) string {
 	return strconv.FormatUint(i, 10)
 }
 
+// tester is one row of the datatype test table: a column type with its test data and scan target.
+type tester interface {
+	columnType() coltest.Type
+	run(t *testing.T, db *sql.DB, dfv int)
+}
+
 type dttDef struct {
 	_columnType coltest.Type
 	testData    []any        // static test data
 	testDataFn  func() []any // test data built fresh per run (lobs: stateful readers)
 	tx          bool         // insert within a transaction (LOB streaming: "596 - not permitted in auto-commit mode")
+	scanTarget  *scanTarget  // scan destination to check against; nil = scan back into the same Go type
+}
+
+// scanTarget is the scan destination a column is checked against. dest builds a fresh destination
+// per row; verify checks the scanned destination (or scan error) against the known source value.
+// A nil dttDef.scanTarget means the same-type round-trip (see sameTypeTarget).
+type scanTarget struct {
+	dest   func() any
+	verify func(dtt *dttDef, dfv int, in any, dest any, scanErr error) error
 }
 
 func (dtt *dttDef) columnType() coltest.Type { return dtt._columnType }
@@ -333,8 +348,40 @@ func (dtt *dttDef) checkValue(dfv int, in, out any) (bool, error) {
 	return dtt.compare(dfv, inValue, outValue)
 }
 
-func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName driver.Identifier, dtv int, testData []any, numRecs int) {
-	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select * from %s order by i", tableName))
+// sameTypeTarget is the default scan target: scan the column back into the same Go type that was
+// written and verify with checkValue (null-wrapper aware). Used whenever a dttDef has no explicit
+// scanTarget. The destination type is derived per row from the source value.
+func sameTypeTarget(in any) scanTarget {
+	return scanTarget{
+		dest: func() any {
+			outRef := reflect.New(reflect.TypeOf(in)).Interface()
+			// a NullLob scan target needs its inner *Lob allocated (NullLob.Scan writes through it).
+			if nl, ok := outRef.(*driver.NullLob); ok {
+				nl.Lob = new(driver.Lob)
+			}
+			return outRef
+		},
+		verify: func(dtt *dttDef, dfv int, in, dest any, scanErr error) error {
+			if scanErr != nil {
+				return scanErr
+			}
+			out := reflect.ValueOf(dest).Elem().Interface()
+			ok, err := dtt.checkValue(dfv, in, out)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("value %v - expected %v", out, in)
+			}
+			return nil
+		},
+	}
+}
+
+// check verifies the inserted data against the column's scan target (the same-type default, or the
+// explicit scanTarget). One "select x, i order by i" scans each row into a fresh destination.
+func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName driver.Identifier, dfv int, testData []any, numRecs int) {
+	rows, err := db.QueryContext(t.Context(), fmt.Sprintf("select x, i from %s order by i", tableName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,28 +390,19 @@ func (dtt *dttDef) check(t *testing.T, db *sql.DB, tableName driver.Identifier, 
 	i := 0
 	for rows.Next() {
 		in := testData[i]
-		outRef := reflect.New(reflect.TypeOf(in)).Interface()
-
-		// a NullLob scan target needs its inner *Lob allocated (NullLob.Scan writes through it).
-		if outRef, ok := outRef.(*driver.NullLob); ok {
-			outRef.Lob = new(driver.Lob)
+		tgt := dtt.scanTarget
+		if tgt == nil {
+			st := sameTypeTarget(in)
+			tgt = &st
 		}
-
+		dest := tgt.dest()
 		var id int
-		if err := rows.Scan(outRef, &id); err != nil {
-			t.Fatal(err)
-		}
-		if id != i { // rows are inserted with column i = index and queried "order by i"
+		scanErr := rows.Scan(dest, &id)
+		if scanErr == nil && id != i { // rows inserted with column i = index, queried "order by i"
 			t.Fatalf("row order mismatch: got id %d at position %d", id, i)
 		}
-		outVal := reflect.ValueOf(outRef).Elem().Interface()
-
-		ok, err := dtt.checkValue(dtv, in, outVal)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("%d value %v - expected %v", i, outVal, in)
+		if err := tgt.verify(dtt, dfv, in, dest, scanErr); err != nil {
+			t.Fatalf("row %d: %v", i, err)
 		}
 		i++
 	}
@@ -705,11 +743,7 @@ func TestDataType(t *testing.T) {
 		}
 	}
 
-	type tester interface {
-		columnType() coltest.Type
-		run(t *testing.T, db *sql.DB, dfv int)
-	}
-
+	//nolint:prealloc // static table; the trailing append of extraScanTargetTests folds into this literal once go1.28 drops the go1.26 split.
 	tests := []tester{
 		&dttDef{_columnType: coltest.NullTinyint, testData: tinyintTestData},
 		&dttDef{_columnType: coltest.NullSmallint, testData: smallintTestData},
@@ -758,6 +792,8 @@ func TestDataType(t *testing.T) {
 		&dttDef{_columnType: coltest.NullText, testDataFn: lobTestData, tx: true},
 		&dttDef{_columnType: coltest.NullBintext, testDataFn: lobASCIITestData, tx: true},
 	}
+
+	tests = append(tests, extraScanTargetTests()...)
 
 	version := driver.MT.Version().Major()
 
