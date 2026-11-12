@@ -1,4 +1,4 @@
-//go:build go1.27 && !go1.28
+//go:build (go1.27 && !go1.28 && !go_hdb_compat_go1_28) || (go1.28 && !go1.29 && go_hdb_compat_go1_28)
 
 package driver
 
@@ -11,17 +11,23 @@ import (
 	"strings"
 )
 
-// ScanLobBytes deprecated: starting with go1.27 bytes based scan targets are supported natively.
+// ScanLobBytes scans a LOB into a byte slice.
+//
+// Deprecated: starting with go1.27 []byte scan targets are supported natively.
 func ScanLobBytes(src any, b *[]byte) error {
 	return sql.ConvertAssign(driver.ScanContext{}, b, src)
 }
 
-// ScanLobString deprecated: starting with go1.27 string based scan targets are supported natively.
+// ScanLobString scans a LOB into a string.
+//
+// Deprecated: starting with go1.27 string scan targets are supported natively.
 func ScanLobString(src any, s *string) error {
 	return sql.ConvertAssign(driver.ScanContext{}, s, src)
 }
 
-// ScanLobWriter deprecated: starting with go1.27 io.Writer based scan targets are supported natively.
+// ScanLobWriter scans a LOB into an io.Writer.
+//
+// Deprecated: starting with go1.27 io.Writer scan targets are supported natively.
 func ScanLobWriter(src any, wr io.Writer) error {
 	if wr == nil {
 		return fmt.Errorf("lob scan error: parameter wr %T is nil", wr)

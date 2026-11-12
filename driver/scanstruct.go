@@ -248,7 +248,6 @@ var (
 	nullInt64Type   = reflect.TypeFor[sql.NullInt64]()
 	nullStringType  = reflect.TypeFor[sql.NullString]()
 	nullTimeType    = reflect.TypeFor[sql.NullTime]()
-	nullBytesType   = reflect.TypeFor[NullBytes]()
 	nullDecimalType = reflect.TypeFor[NullDecimal]()
 	nullLobType     = reflect.TypeFor[NullLob]()
 )
@@ -266,7 +265,6 @@ var typeSQLDatatypes = map[reflect.Type]string{
 	nullInt64Type:   "bigint",
 	nullStringType:  "nvarchar(256)",
 	nullTimeType:    "timestamp",
-	nullBytesType:   "varchar(256)",
 	nullDecimalType: "decimal",
 	nullLobType:     "blob",
 }

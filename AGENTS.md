@@ -41,19 +41,5 @@ prior knowledge of its contents.
 
 - Reviewing or rating the driver, protocol, commands, or tests, or judging
   repo quality: read `.agents/skills/repo-review/SKILL.md`.
-
-## Release Process
-
-### Standard Release
-- Update `DriverVersion` in `driver/driver.go`.
-- Update `prometheus/go.mod` version reference.
-- Update `RELEASENOTES.md`.
-- Run `make`.
-- Commit and tag.
-
-### Go Version Upgrade (additional steps)
-- Update `go` and `toolchain` directives in `go.mod` and `prometheus/go.mod`.
-- Update minimum supported Go version in `Makefile` (`GOTOOLCHAIN` line and `go` install target) and `prometheus/Makefile` (`GOTOOLCHAIN` line).
-- Update `.github/workflows/build.yml` Go version matrix.
-- Drop version-gated compatibility files if the minimum version floor rises past them.
-- Update `RELEASENOTES.md` to document the new Go version support.
+- Cutting a release or upgrading the supported Go version: read
+  `.agents/skills/release/SKILL.md`.

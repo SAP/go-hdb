@@ -10,7 +10,7 @@ import (
 )
 
 // DriverVersion is the version number of the hdb driver.
-const DriverVersion = "1.21.1"
+const DriverVersion = "1.22.0"
 
 // DriverName is the driver name to use with sql.Open for hdb databases.
 const DriverName = "hdb"
@@ -44,12 +44,6 @@ func register() {
 	// register driver
 	sql.Register(DriverName, stdHdbDriver)
 }
-
-// Unregister is deprecated.
-//
-// Deprecated: Unregister no longer performs any action; it exists only to keep
-// existing callers compiling.
-func Unregister() error { return nil }
 
 // driver
 

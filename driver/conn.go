@@ -76,7 +76,7 @@ func supportedIsolationLevel(opts driver.TxOptions) (sql.IsolationLevel, error) 
 
 var (
 	// register as var to execute even before init functions are called.
-	_ = p.RegisterScanType(p.DtBytes, reflect.TypeFor[[]byte](), reflect.TypeFor[NullBytes]())
+	_ = p.RegisterScanType(p.DtBytes, reflect.TypeFor[[]byte](), reflect.TypeFor[[]byte]())
 	_ = p.RegisterScanType(p.DtDecimal, reflect.TypeFor[Decimal](), reflect.TypeFor[NullDecimal]())
 	_ = p.RegisterScanType(p.DtLob, reflect.TypeFor[Lob](), reflect.TypeFor[NullLob]())
 )
