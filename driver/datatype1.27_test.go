@@ -130,10 +130,6 @@ func targetNullString() *scanTarget {
 	return lobTarget(nullNotValid, func() any { return new(sql.NullString) },
 		func(d any) ([]byte, bool) { v := d.(*sql.NullString); return strBytes(v.String), v.Valid })
 }
-func targetNullBytes() *scanTarget {
-	return lobTarget(nullNotValid, func() any { return new(driver.NullBytes) },
-		func(d any) ([]byte, bool) { v := d.(*driver.NullBytes); return v.Bytes, v.Valid })
-}
 func targetNullGenString() *scanTarget {
 	return lobTarget(nullNotValid, func() any { return new(sql.Null[string]) },
 		func(d any) ([]byte, bool) { v := d.(*sql.Null[string]); return strBytes(v.V), v.Valid })
@@ -177,7 +173,6 @@ func extraScanTargetTests() []tester {
 
 		&dttDef{_columnType: coltest.NullBlob, testDataFn: blobData, tx: true, scanTarget: targetBytes()},
 		&dttDef{_columnType: coltest.NullBlob, testDataFn: blobData, tx: true, scanTarget: targetNamedBytes()},
-		&dttDef{_columnType: coltest.NullBlob, testDataFn: blobData, tx: true, scanTarget: targetNullBytes()},
 		&dttDef{_columnType: coltest.NullBlob, testDataFn: blobData, tx: true, scanTarget: targetNullGenBytes()},
 		&dttDef{_columnType: coltest.NullBlob, testDataFn: blobData, tx: true, scanTarget: targetNullWriter()},
 	}

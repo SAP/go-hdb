@@ -1,6 +1,40 @@
 Release Notes
 =============
 
+## v1.22.0
+
+### New features
+
+- A [deprecation and removal policy](docs/DEPRECATIONS.md) aligned with the Go
+  release cycle: go-hdb supports the current and previous Go release. Each
+  deprecation bundle is guarded by a `go_hdb_compat_go1_NN` build tag whose
+  lifecycle flips with the Go release — compiled by default with an opt-out
+  self-check, then opt-in, then removed. Build with
+  `-tags go_hdb_compat_go1_28` to check whether your code still uses anything
+  slated for removal. The current deprecated surface is listed in the generated
+  [docs/DEPRECATED.md](docs/DEPRECATED.md).
+
+### Deprecations
+
+Nothing is removed in this release. The following are placed on the compat
+scheme (default-on through Go 1.27, opt-in on Go 1.28, removed on Go 1.29):
+
+- The deprecated connector surface, the `ScanLob*` helpers, and `Unregister`.
+- `NullBytes`. `[]byte` is already null-aware — `database/sql` represents a SQL
+  NULL as a nil `[]byte` — so the wrapper adds nothing. Scan into a plain
+  `[]byte` (nil on NULL) or use `sql.Null[[]byte]`.
+
+### Incompatible changes
+
+- The scan type reported by `Rows.ColumnTypes()` for a nullable BYTES column is
+  now `[]byte` instead of `driver.NullBytes`. Scanning is unaffected (a nullable
+  BYTES column always scanned into a plain `[]byte`, nil on NULL); only the
+  reflected `ColumnType.ScanType()` value changed.
+
+### Changes
+
+- updated dependencies
+
 ## v1.21.0
 
 ### Minor revisions

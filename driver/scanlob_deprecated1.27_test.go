@@ -1,4 +1,4 @@
-//go:build !unit && go1.27 && !go1.28
+//go:build !unit && ((go1.27 && !go1.28 && !go_hdb_compat_go1_28) || (go1.28 && !go1.29 && go_hdb_compat_go1_28))
 
 package driver_test
 

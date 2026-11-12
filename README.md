@@ -68,6 +68,8 @@ For diagnosing latency and tuning throughput, see the [performance guide](docs/P
 - API + examples: [pkg.go.dev](https://pkg.go.dev/github.com/SAP/go-hdb/driver)
 - Connector configuration: [docs/CONFIG.md](docs/CONFIG.md)
 - LOB handling: [docs/LOB.md](docs/LOB.md)
+- Deprecation and removal policy: [docs/DEPRECATIONS.md](docs/DEPRECATIONS.md)
+- Deprecated surface (generated): [docs/DEPRECATED.md](docs/DEPRECATED.md)
 - Compression: [driver/compress/README.md](driver/compress/README.md)
 - Changes: [RELEASENOTES.md](RELEASENOTES.md)
 
