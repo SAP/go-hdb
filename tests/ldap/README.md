@@ -44,6 +44,13 @@ The tests use the `ldap` build tag. Run from the `tests/ldap/` directory:
 go test --tags ldap
 ```
 
+By default the driver offers LDAP authentication only over verified TLS: LDAP
+encrypts the password with a server-supplied key but does not authenticate the
+server, so verified TLS is required to trust that key. Because this test
+connects to HANA without TLS, it opts in via
+`ConnectorConfig.AllowLDAPWithoutVerifiedTLS`. Production deployments should
+rely on verified TLS rather than this opt-in.
+
 ## Step 4: Shut Down the Containers
 
 ```bash

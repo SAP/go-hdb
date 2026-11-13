@@ -3,6 +3,14 @@ Release Notes
 
 ## v1.22.0
 
+### Minor revisions
+
+#### v1.22.1
+
+- fixed the LDAP integration test to opt in to LDAP over unverified TLS via
+  `ConnectorConfig.AllowLDAPWithoutVerifiedTLS`; the driver only offers LDAP
+  authentication over verified TLS unless this is set
+
 ### New features
 
 - A [deprecation and removal policy](docs/DEPRECATIONS.md) aligned with the Go

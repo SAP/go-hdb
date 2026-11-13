@@ -72,6 +72,9 @@ func TestLDAPAuthentication(t *testing.T) {
 		cfg.Host = hdbHost
 		cfg.Username = username
 		cfg.Password = password
+		// The test connects without TLS, so opt in to offering LDAP
+		// authentication on an unverified connection.
+		cfg.AllowLDAPWithoutVerifiedTLS = true
 		connector, err := driver.NewConfigConnector(cfg)
 		if err != nil {
 			t.Fatal(err)
