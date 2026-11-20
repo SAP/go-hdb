@@ -26,6 +26,8 @@ type PartEncoder interface {
 func (*HdbErrors) kind() PartKind           { return PkError }
 func (*AuthInitRequest) kind() PartKind     { return PkAuthentication }
 func (*AuthInitReply) kind() PartKind       { return PkAuthentication }
+func (*AuthContinueRequest) kind() PartKind { return PkAuthentication }
+func (*AuthContinueReply) kind() PartKind   { return PkAuthentication }
 func (*AuthFinalRequest) kind() PartKind    { return PkAuthentication }
 func (*AuthFinalReply) kind() PartKind      { return PkAuthentication }
 func (ClientID) kind() PartKind             { return PkClientID }
@@ -52,18 +54,20 @@ func (*StatementContext) kind() PartKind    { return PkStatementContext }
 func (*TransactionFlags) kind() PartKind    { return PkTransactionFlags }
 
 // numArg methods (result == 1).
-func (*AuthInitRequest) numArg() int  { return 1 }
-func (*AuthFinalRequest) numArg() int { return 1 }
-func (ClientID) numArg() int          { return 1 }
-func (Command) numArg() int           { return 1 }
-func (StatementID) numArg() int       { return 1 }
-func (ResultsetID) numArg() int       { return 1 }
-func (Fetchsize) numArg() int         { return 1 }
-func (*ReadLobRequest) numArg() int   { return 1 }
+func (*AuthInitRequest) numArg() int     { return 1 }
+func (*AuthContinueRequest) numArg() int { return 1 }
+func (*AuthFinalRequest) numArg() int    { return 1 }
+func (ClientID) numArg() int             { return 1 }
+func (Command) numArg() int              { return 1 }
+func (StatementID) numArg() int          { return 1 }
+func (ResultsetID) numArg() int          { return 1 }
+func (Fetchsize) numArg() int            { return 1 }
+func (*ReadLobRequest) numArg() int      { return 1 }
 
 // check if part types implement the part encoder interface.
 var (
 	_ PartEncoder = (*AuthInitRequest)(nil)
+	_ PartEncoder = (*AuthContinueRequest)(nil)
 	_ PartEncoder = (*AuthFinalRequest)(nil)
 	_ PartEncoder = (*ClientID)(nil)
 	_ PartEncoder = (*clientInfo)(nil)
@@ -84,6 +88,7 @@ var (
 	_ PartDecoder = (*HdbErrors)(nil)
 	_ PartDecoder = (*AuthInitRequest)(nil)
 	_ PartDecoder = (*AuthInitReply)(nil)
+	_ PartDecoder = (*AuthContinueReply)(nil)
 	_ PartDecoder = (*AuthFinalRequest)(nil)
 	_ PartDecoder = (*AuthFinalReply)(nil)
 	_ PartDecoder = (*ClientID)(nil)

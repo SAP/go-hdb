@@ -104,6 +104,10 @@ type ConnectorConfig struct {
 	RefreshPassword func() (password string, ok bool)
 	Token           string
 	RefreshToken    func() (token string, ok bool)
+	// GSS authenticates with Kerberos via GSS-API, offered alone: the
+	// server maps the client principal to the database user, so Username,
+	// Password, Token and the X509 client identity must not be set.
+	GSS GSSInitiator
 
 	// PBKDF2 iteration-count bounds for SCRAMPBKDF2SHA256
 	// authentication. The server supplies the rounds count during
@@ -307,6 +311,9 @@ func (cfg *ConnectorConfig) validate() error {
 	}
 	if certSet && certFileSet {
 		errs = append(errs, errors.New("client cert bytes and cert files are mutually exclusive"))
+	}
+	if cfg.GSS != nil && (cfg.Username != "" || cfg.Password != "" || cfg.Token != "" || certSet || certFileSet) {
+		errs = append(errs, errors.New("GSS authentication is offered alone: username, password, token and client cert must not be set"))
 	}
 	if cfg.DialTimeout < minTimeout {
 		errs = append(errs, fmt.Errorf("invalid dial timeout %s: must not be negative", cfg.DialTimeout))
@@ -723,6 +730,11 @@ func (c *Connector) authHnd() *p.AuthHnd {
 	defer c.mu.RUnlock()
 
 	cfg := c.config()
+	if cfg.GSS != nil {
+		authHnd := p.NewAuthHnd("") // the server maps the principal to the logonname
+		authHnd.AddGSS(cfg.GSS)
+		return authHnd
+	}
 	authHnd := p.NewAuthHnd(cfg.Username) // use username as logonname
 	if c._certKey != nil {
 		authHnd.AddX509(c._certKey)

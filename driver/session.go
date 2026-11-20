@@ -269,6 +269,29 @@ func (s *session) _authenticate(ctx context.Context, authHnd *p.AuthHnd, co *p.C
 		}
 	}
 
+	if continueRequest := authHnd.ContinueRequest(); continueRequest != nil {
+		if err := s.pwr.Write(ctx, p.MtAuthenticate, false, continueRequest); err != nil {
+			return nil, nil, err
+		}
+		continueReply := authHnd.ContinueReply(continueRequest)
+		for pi, err := range s.prd.Parts(ctx) {
+			if err != nil {
+				return nil, nil, err
+			}
+			switch pi.Header.Kind() {
+			case p.PkError:
+				err = pi.ReadHDBErrors(ctx)
+			case p.PkAuthentication:
+				err = pi.ReadPart(ctx, continueReply)
+			default:
+				err = pi.SkipPart(ctx)
+			}
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+
 	finalRequest, err := authHnd.FinalRequest()
 	if err != nil {
 		return nil, nil, err

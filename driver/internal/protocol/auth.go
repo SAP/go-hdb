@@ -51,6 +51,9 @@ func (a *AuthHnd) AddLDAP(username, password string) {
 	a.methods[auth.MtLDAP] = auth.NewLDAP(username, password)
 }
 
+// AddGSS adds GSS (Kerberos) authentication method.
+func (a *AuthHnd) AddGSS(initiator auth.GSSInitiator) { a.methods[auth.MtGSS] = auth.NewGSS(initiator) }
+
 // Selected returns the selected authentication method.
 func (a *AuthHnd) Selected() auth.Method { return a.selected }
 
@@ -70,6 +73,21 @@ func (a *AuthHnd) InitRequest() (*AuthInitRequest, error) {
 
 // InitReply returns the init reply part.
 func (a *AuthHnd) InitReply() (*AuthInitReply, error) { return &AuthInitReply{authHnd: a}, nil }
+
+// ContinueRequest returns the second authentication request part if the
+// selected method exchanges one before the final request, nil otherwise.
+func (a *AuthHnd) ContinueRequest() *AuthContinueRequest {
+	c, ok := a.selected.(auth.Continuer)
+	if !ok {
+		return nil
+	}
+	return &AuthContinueRequest{logonname: a.logonname, method: c}
+}
+
+// ContinueReply returns the reply part to a ContinueRequest.
+func (a *AuthHnd) ContinueReply(r *AuthContinueRequest) *AuthContinueReply {
+	return &AuthContinueReply{method: r.method}
+}
 
 // FinalRequest returns the final request part holding the selected method.
 func (a *AuthHnd) FinalRequest() (*AuthFinalRequest, error) {
@@ -197,6 +215,42 @@ func (r *AuthInitReply) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAt
 	}
 	r.Method = m
 	return nil
+}
+
+// AuthContinueRequest represents a second authentication request: the
+// logonname and the selected method with its detail parameters.
+type AuthContinueRequest struct {
+	logonname string
+	method    auth.Continuer
+}
+
+func (r *AuthContinueRequest) String() string { return r.method.String() }
+
+func (r *AuthContinueRequest) encode(enc *encoding.Encoder) error {
+	prms := new(auth.Prms)
+	prms.AddCESU8String(r.logonname)
+	prms.AddString(r.method.Typ())
+	if err := r.method.EncodeContinueReq(prms); err != nil {
+		return err
+	}
+	return prms.Encode(enc)
+}
+
+// AuthContinueReply represents the reply to a second authentication request.
+type AuthContinueReply struct {
+	method auth.Continuer
+}
+
+func (r *AuthContinueReply) String() string { return r.method.String() }
+
+func (r *AuthContinueReply) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
+	if err := auth.DecodeAndCheckNumPrm(dec, 2); err != nil {
+		return err
+	}
+	if mt := dec.AuthString(); mt != r.method.Typ() {
+		return fmt.Errorf("invalid method %s - expected %s", mt, r.method.Typ())
+	}
+	return r.method.DecodeContinueReply(dec)
 }
 
 // AuthFinalRequest represents an authentication final request. The generic

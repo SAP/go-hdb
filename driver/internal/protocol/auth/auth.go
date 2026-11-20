@@ -15,7 +15,8 @@ import (
 authentication method types supported by the driver:
   - basic authentication (username, password based) (whether SCRAMSHA256 or SCRAMPBKDF2SHA256) and
   - X509 (client certificate) authentication and
-  - JWT (token) authentication
+  - JWT (token) authentication and
+  - GSS (Kerberos) authentication
 */
 const (
 	MtSCRAMSHA256       = "SCRAMSHA256"       // password
@@ -24,6 +25,7 @@ const (
 	MtJWT               = "JWT"               // json web token
 	MtSessionCookie     = "SessionCookie"     // session cookie
 	MtLDAP              = "LDAP"              // LDAP authentication
+	MtGSS               = "GSS"               // Kerberos via GSS-API
 )
 
 // authentication method orders.
@@ -34,6 +36,7 @@ const (
 	MoSCRAMPBKDF2SHA256
 	MoSCRAMSHA256
 	MoLDAP
+	MoGSS
 )
 
 // A Method defines the interface for an authentication method.
@@ -56,6 +59,16 @@ type Method interface {
 	DecodeFinalReply(dec *encoding.Decoder) error
 }
 
+// A Continuer is a method that exchanges a second authentication request and
+// reply after the initial reply and before the final request: GSS sends its
+// initial context token there, for the service principal the initial reply
+// names.
+type Continuer interface {
+	Method
+	EncodeContinueReq(prms *Prms) error
+	DecodeContinueReply(dec *encoding.Decoder) error
+}
+
 // Methods defines a collection of methods.
 type Methods map[string]Method // key equals authentication method type.
 
@@ -75,12 +88,13 @@ type CookieGetter interface {
 }
 
 var (
-	_ Method = (*SCRAMSHA256)(nil)
-	_ Method = (*SCRAMPBKDF2SHA256)(nil)
-	_ Method = (*JWT)(nil)
-	_ Method = (*X509)(nil)
-	_ Method = (*SessionCookie)(nil)
-	_ Method = (*LDAP)(nil)
+	_ Method    = (*SCRAMSHA256)(nil)
+	_ Method    = (*SCRAMPBKDF2SHA256)(nil)
+	_ Method    = (*JWT)(nil)
+	_ Method    = (*X509)(nil)
+	_ Method    = (*SessionCookie)(nil)
+	_ Method    = (*LDAP)(nil)
+	_ Continuer = (*GSS)(nil)
 )
 
 // ErrAuthVerifyFailed indicates that the server response failed client-side
@@ -110,6 +124,8 @@ func NewMethod(mt string) (Method, bool) {
 		return NewSessionCookie(nil, "", ""), true
 	case MtLDAP:
 		return NewLDAP("", ""), true
+	case MtGSS:
+		return NewGSS(nil), true
 	default:
 		return nil, false
 	}
