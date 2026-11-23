@@ -29,6 +29,14 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// Authentication method flags for ConnectorConfig.AuthMethods.
+const (
+	AuthBasic = 1 << iota // SCRAMSHA256 and SCRAMPBKDF2SHA256
+	AuthLDAP              // LDAP
+	AuthX509              // client certificate
+	AuthJWT               // JSON web token
+)
+
 // ConnectorConfig default values.
 const (
 	defaultBufferSize    = 1 << 14           // 16384 - default value bufferSize.
@@ -89,6 +97,7 @@ type ConnectorConfig struct {
 	// Authentication. HANA selects the auth method from the set the client
 	// offers. Basic and LDAP are offered only when Password != ""; X509
 	// only when cert+key (bytes or files) are set; JWT only when Token != "".
+	// AuthMethods further restricts this offered set.
 	// Refresh callbacks are invoked only after a real auth failure, so the
 	// corresponding credential must be non-empty before the first connect.
 	//
@@ -104,6 +113,9 @@ type ConnectorConfig struct {
 	RefreshPassword func() (password string, ok bool)
 	Token           string
 	RefreshToken    func() (token string, ok bool)
+	// AuthMethods is a bitset of the Auth* flags that filters which of the
+	// methods above are offered. The zero value offers all of them.
+	AuthMethods int
 
 	// PBKDF2 iteration-count bounds for SCRAMPBKDF2SHA256
 	// authentication. The server supplies the rounds count during
@@ -611,7 +623,10 @@ func (c *Connector) connect(ctx context.Context, host string) (driver.Conn, bool
 	c.cbmu.Lock() // synchronize refresh calls
 	defer c.cbmu.Unlock()
 	for {
-		authHnd := c.authHnd()
+		authHnd, err := c.authHnd()
+		if err != nil {
+			return nil, false, err
+		}
 
 		conn, connErr := newConn(ctx, host, c.metrics, c._routing, attrs, c.lifecycle)
 		if connErr != nil {
@@ -718,34 +733,55 @@ func (c *Connector) cookieAuth() *p.AuthHnd {
 	return auth
 }
 
-func (c *Connector) authHnd() *p.AuthHnd {
+// isAuthSet reports whether method flag is offered: a zero AuthMethods
+// offers all methods, otherwise the flag must be set.
+func (cfg *ConnectorConfig) isAuthSet(flag int) bool {
+	return cfg.AuthMethods == 0 || cfg.AuthMethods&flag != 0
+}
+
+func (c *Connector) authHnd() (*p.AuthHnd, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	cfg := c.config()
 	authHnd := p.NewAuthHnd(cfg.Username) // use username as logonname
-	if c._certKey != nil {
+	added := false
+	if cfg.isAuthSet(AuthX509) && c._certKey != nil {
 		authHnd.AddX509(c._certKey)
+		added = true
 	}
-	if c._token != "" {
-		authHnd.AddJWT(c._token)
-	}
-	// mimic standard drivers and use password as token if user is empty
-	if c._token == "" && cfg.Username == "" && isJWTToken(c._password) {
-		authHnd.AddJWT(c._password)
+	if cfg.isAuthSet(AuthJWT) {
+		if c._token != "" {
+			authHnd.AddJWT(c._token)
+			added = true
+		}
+		// mimic standard drivers and use password as token if user is empty
+		if c._token == "" && cfg.Username == "" && isJWTToken(c._password) {
+			authHnd.AddJWT(c._password)
+			added = true
+		}
 	}
 	if c._password != "" {
-		// rounds bounds validated to fit uint32 by validate.
-		authHnd.AddBasic(cfg.Username, c._password, uint32(cfg.MinPBKDF2Rounds), uint32(cfg.MaxPBKDF2Rounds)) //nolint:gosec // bounds checked in validate
+		if cfg.isAuthSet(AuthBasic) {
+			// rounds bounds validated to fit uint32 by validate.
+			authHnd.AddBasic(cfg.Username, c._password, uint32(cfg.MinPBKDF2Rounds), uint32(cfg.MaxPBKDF2Rounds)) //nolint:gosec // bounds checked in validate
+			added = true
+		}
 		// LDAP does not authenticate the server and sends the password
 		// encrypted to a server-supplied key, so offer it only over
 		// verified TLS unless explicitly allowed.
-		verifiedTLS := cfg.TLSConfig != nil && !cfg.TLSConfig.InsecureSkipVerify
-		if verifiedTLS || cfg.AllowLDAPWithoutVerifiedTLS {
-			authHnd.AddLDAP(cfg.Username, c._password)
+		if cfg.isAuthSet(AuthLDAP) {
+			verifiedTLS := cfg.TLSConfig != nil && !cfg.TLSConfig.InsecureSkipVerify
+			if verifiedTLS || cfg.AllowLDAPWithoutVerifiedTLS {
+				authHnd.AddLDAP(cfg.Username, c._password)
+				added = true
+			}
 		}
 	}
-	return authHnd
+	if !added {
+		return nil, errors.New("no authentication method offered")
+	}
+	return authHnd, nil
 }
 
 func (c *Connector) refresh() (bool, error) {

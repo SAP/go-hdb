@@ -295,7 +295,12 @@ func (c *connLifecycle) cancelSession(host string, serverConnID int, force bool,
 		return
 	}
 	defer conn.Close()
-	if err := conn.authenticate(ctx, host, c.connector.authHnd()); err != nil {
+	authHnd, err := c.connector.authHnd()
+	if err != nil {
+		logErr(err)
+		return
+	}
+	if err := conn.authenticate(ctx, host, authHnd); err != nil {
 		logErr(err)
 		return
 	}

@@ -25,3 +25,6 @@ go.work
 .vscode
 cmd/bulkbench/bulkbench
 cmd/sniffer/sniffer
+
+# Local scratch / working design docs, not for the repo
+scratch/
