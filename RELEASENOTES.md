@@ -5,6 +5,15 @@ Release Notes
 
 ### Minor revisions
 
+#### v1.22.2
+
+- `ConnectorConfig.AuthMethods` restricts which authentication methods the
+  driver offers to the server, as a bitset of the new `AuthBasic`, `AuthLDAP`,
+  `AuthX509` and `AuthJWT` flags; the offered set is their intersection with the
+  methods for which credentials are present. The zero value offers all methods,
+  so existing configurations are unaffected. Kerberos (GSS-API) authentication
+  is planned for a later release.
+
 #### v1.22.1
 
 - fixed the LDAP integration test to opt in to LDAP over unverified TLS via
