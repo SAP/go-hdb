@@ -23,6 +23,7 @@ import (
 
 	"github.com/SAP/go-hdb/driver/compress"
 	"github.com/SAP/go-hdb/driver/dial"
+	"github.com/SAP/go-hdb/driver/gss"
 	p "github.com/SAP/go-hdb/driver/internal/protocol"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/unicode/cesu8"
@@ -35,6 +36,7 @@ const (
 	AuthLDAP              // LDAP
 	AuthX509              // client certificate
 	AuthJWT               // JSON web token
+	AuthGSS               // Kerberos via GSS-API
 )
 
 // ConnectorConfig default values.
@@ -113,6 +115,10 @@ type ConnectorConfig struct {
 	RefreshPassword func() (password string, ok bool)
 	Token           string
 	RefreshToken    func() (token string, ok bool)
+	// GSS returns the Kerberos initiator for GSS-API authentication, offered
+	// when the AuthGSS method flag is set. It is called once per connection,
+	// so each connection gets its own GSS security context. nil disables GSS.
+	GSS func() (gss.Initiator, error)
 	// AuthMethods is a bitset of the Auth* flags that filters which of the
 	// methods above are offered. The zero value offers all of them.
 	AuthMethods int
@@ -748,6 +754,17 @@ func (c *Connector) authHnd() (*p.AuthHnd, error) {
 	added := false
 	if cfg.isAuthSet(AuthX509) && c._certKey != nil {
 		authHnd.AddX509(c._certKey)
+		added = true
+	}
+	if cfg.isAuthSet(AuthGSS) && cfg.GSS != nil {
+		initiator, err := cfg.GSS()
+		if err != nil {
+			return nil, err
+		}
+		if initiator == nil {
+			return nil, errors.New("gss: nil initiator")
+		}
+		authHnd.AddGSS(initiator)
 		added = true
 	}
 	if cfg.isAuthSet(AuthJWT) {

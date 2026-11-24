@@ -1,0 +1,63 @@
+services:
+  kdc:
+    image: docker.io/library/debian:stable-slim
+    hostname: kdc
+    networks:
+      gss_network:
+        aliases:
+          - kdc
+    # kdcInit.sh installs the KDC, creates the realm and principals, exports
+    # the HANA service keytab to the shared volume, and keeps the KDC running.
+    command: ["/bin/bash", "/kdcInit.sh"]
+    ports:
+      - "88:88/tcp"
+      - "88:88/udp"
+    volumes:
+      - ./kdcInit.sh:/kdcInit.sh
+      - gss_keytab:/keytab
+
+  hana:
+    image: docker.io/saplabs/hanaexpress:latest
+    hostname: hana
+    ports:
+      - "39017:39017"
+      - "39013:39013"
+    networks:
+      gss_network:
+        aliases:
+          - hana
+    command:
+      - --master-password
+      - HanaSystem1234
+      - --agree-to-sap-license
+    ulimits:
+      nofile:
+        hard: 1048576
+        soft: 1048576
+    sysctls:
+      kernel.shmmax: "1073741824"
+      kernel.shmmni: "4096"
+      kernel.shmall: "8388608"
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - gss_keytab:/keytab
+      - ./hanaKrbSetup.sh:/hanaKrbSetup.sh
+
+  # Test runner: compiles the cgo reference initiator, kinits, runs the test.
+  # Build context is the repo root (../..) so the module is built into the image
+  # (see Dockerfile.runner / Dockerfile.runner.dockerignore). No bind mount.
+  runner:
+    build:
+      context: ../..
+      dockerfile: tests/gss/Dockerfile.runner
+    networks:
+      - gss_network
+    profiles:
+      - runner
+
+networks:
+  gss_network:
+
+volumes:
+  gss_keytab:

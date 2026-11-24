@@ -1,0 +1,8 @@
+# Build context is the repo root; the runner only needs the module sources.
+# Exclude everything, re-include just what the build requires.
+*
+
+!go.mod
+!go.sum
+!driver
+!tests/ldap

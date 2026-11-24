@@ -40,8 +40,14 @@ type snifferReaderState struct {
 	parameterFields []*p.ParameterField
 	connectOptions  *p.ConnectOptions
 	isClient        bool
-	authCount       int
-	authMethod      auth.Method // selected auth method
+}
+
+// snifferAuthState tracks the auth handshake across both directions. It is
+// local to one Sniffer.Run whose directions are read in sequence, so no
+// locking is needed.
+type snifferAuthState struct {
+	method     auth.Method // selected method, learned from the init reply
+	connecting bool        // the client's final request (MtConnect) was seen
 }
 
 func filterFields(fields []*p.ParameterField, out bool) []*p.ParameterField {
@@ -54,7 +60,7 @@ func filterFields(fields []*p.ParameterField, out bool) []*p.ParameterField {
 	return rv
 }
 
-func readMsg(ctx context.Context, prd *p.Reader, state *snifferReaderState, params map[p.StatementID][]*p.ParameterField, lob *lobLocator) error {
+func readMsg(ctx context.Context, prd *p.Reader, state *snifferReaderState, authState *snifferAuthState, params map[p.StatementID][]*p.ParameterField, lob *lobLocator) error {
 	var stmtID p.StatementID // statement id of the current message, if present
 	for pi, err := range prd.Parts(ctx) {
 		if err != nil {
@@ -109,21 +115,31 @@ func readMsg(ctx context.Context, prd *p.Reader, state *snifferReaderState, para
 				err = pi.SkipPart(ctx) // no request -> cannot decode
 			}
 		case p.PkAuthentication:
-			state.authCount++
 			switch {
-			case state.isClient && state.authCount == 1:
-				err = pi.ReadPart(ctx, new(p.AuthInitRequest))
-			case state.isClient && state.authCount == 2:
+			case state.isClient && prd.MessageType() == p.MtConnect:
+				authState.connecting = true
 				err = pi.ReadPart(ctx, new(p.AuthFinalRequest))
-			case !state.isClient && state.authCount == 1:
+			case state.isClient && authState.method == nil:
+				err = pi.ReadPart(ctx, new(p.AuthInitRequest))
+			case state.isClient: // GSS token request
+				if _, ok := authState.method.(auth.TokenExchanger); ok {
+					err = pi.ReadPart(ctx, p.NewAuthTokenRequest(authState.method.Typ()))
+				} else {
+					err = pi.SkipPart(ctx)
+				}
+			case authState.method == nil: // init reply, selects the method
 				rep := new(p.AuthInitReply)
 				if err = pi.ReadPart(ctx, rep); err == nil {
-					state.authMethod = rep.Method // selected method, decodes the final reply
+					authState.method = rep.Method
 				}
-			case !state.isClient && state.authCount == 2 && state.authMethod != nil:
-				err = pi.ReadPart(ctx, &p.AuthFinalReply{Method: state.authMethod})
-			default:
-				err = pi.SkipPart(ctx)
+			case authState.connecting:
+				err = pi.ReadPart(ctx, &p.AuthFinalReply{Method: authState.method})
+			default: // GSS token reply
+				if _, ok := authState.method.(auth.TokenExchanger); ok {
+					err = pi.ReadPart(ctx, p.NewAuthTokenReply(authState.method.Typ()))
+				} else {
+					err = pi.SkipPart(ctx)
+				}
 			}
 			// Verification errors (ErrAuthVerifyFailed) must not abort, a real decode error must.
 			if err != nil && errors.Is(err, auth.ErrAuthVerifyFailed) {
@@ -173,6 +189,7 @@ func (s *Sniffer) Run() error {
 
 	clientState := &snifferReaderState{isClient: true}
 	dbState := &snifferReaderState{}
+	authState := &snifferAuthState{}
 	params := make(map[p.StatementID][]*p.ParameterField)
 	lob := &lobLocator{}
 
@@ -185,14 +202,14 @@ func (s *Sniffer) Run() error {
 
 	compression := false
 	for {
-		if err := readMsg(ctx, clientRd, clientState, params, lob); err != nil {
+		if err := readMsg(ctx, clientRd, clientState, authState, params, lob); err != nil {
 			return err
 		}
 		if co := clientState.connectOptions; co != nil {
 			compression = compression || co.CompressionLevelAndFlagsOrZero()&p.CoCompressionLZ4Supported != 0
 			clientState.connectOptions = nil
 		}
-		if err := readMsg(ctx, dbRd, dbState, params, lob); err != nil {
+		if err := readMsg(ctx, dbRd, dbState, authState, params, lob); err != nil {
 			return err
 		}
 		if co := dbState.connectOptions; co != nil {

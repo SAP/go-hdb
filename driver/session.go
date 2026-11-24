@@ -269,6 +269,44 @@ func (s *session) _authenticate(ctx context.Context, authHnd *p.AuthHnd, co *p.C
 		}
 	}
 
+	// GSS (Kerberos) exchanges context tokens between the init reply and the
+	// final connect. The establishing token is not sent (HANA fails with error
+	// 1033 on a token after establishment).
+	if te := authHnd.TokenExchanger(); te != nil {
+		var serverToken []byte
+		for {
+			clientToken, established, err := te.NextToken(ctx, serverToken)
+			if err != nil {
+				return nil, nil, err
+			}
+			if established {
+				break
+			}
+			req := authHnd.TokenRequest(te.Typ(), clientToken)
+			if err := s.pwr.Write(ctx, p.MtAuthenticate, false, req); err != nil {
+				return nil, nil, err
+			}
+			tokenReply := authHnd.TokenReply(te.Typ())
+			for pi, err := range s.prd.Parts(ctx) {
+				if err != nil {
+					return nil, nil, err
+				}
+				switch pi.Header.Kind() {
+				case p.PkError:
+					err = pi.ReadHDBErrors(ctx)
+				case p.PkAuthentication:
+					err = pi.ReadPart(ctx, tokenReply)
+				default:
+					err = pi.SkipPart(ctx)
+				}
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+			serverToken = tokenReply.ServerToken()
+		}
+	}
+
 	finalRequest, err := authHnd.FinalRequest()
 	if err != nil {
 		return nil, nil, err

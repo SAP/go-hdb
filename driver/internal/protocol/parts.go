@@ -26,6 +26,8 @@ type PartEncoder interface {
 func (*HdbErrors) kind() PartKind           { return PkError }
 func (*AuthInitRequest) kind() PartKind     { return PkAuthentication }
 func (*AuthInitReply) kind() PartKind       { return PkAuthentication }
+func (*AuthTokenRequest) kind() PartKind    { return PkAuthentication }
+func (*AuthTokenReply) kind() PartKind      { return PkAuthentication }
 func (*AuthFinalRequest) kind() PartKind    { return PkAuthentication }
 func (*AuthFinalReply) kind() PartKind      { return PkAuthentication }
 func (ClientID) kind() PartKind             { return PkClientID }
@@ -53,6 +55,7 @@ func (*TransactionFlags) kind() PartKind    { return PkTransactionFlags }
 
 // numArg methods (result == 1).
 func (*AuthInitRequest) numArg() int  { return 1 }
+func (*AuthTokenRequest) numArg() int { return 1 }
 func (*AuthFinalRequest) numArg() int { return 1 }
 func (ClientID) numArg() int          { return 1 }
 func (Command) numArg() int           { return 1 }
@@ -64,6 +67,7 @@ func (*ReadLobRequest) numArg() int   { return 1 }
 // check if part types implement the part encoder interface.
 var (
 	_ PartEncoder = (*AuthInitRequest)(nil)
+	_ PartEncoder = (*AuthTokenRequest)(nil)
 	_ PartEncoder = (*AuthFinalRequest)(nil)
 	_ PartEncoder = (*ClientID)(nil)
 	_ PartEncoder = (*clientInfo)(nil)
@@ -84,6 +88,8 @@ var (
 	_ PartDecoder = (*HdbErrors)(nil)
 	_ PartDecoder = (*AuthInitRequest)(nil)
 	_ PartDecoder = (*AuthInitReply)(nil)
+	_ PartDecoder = (*AuthTokenRequest)(nil)
+	_ PartDecoder = (*AuthTokenReply)(nil)
 	_ PartDecoder = (*AuthFinalRequest)(nil)
 	_ PartDecoder = (*AuthFinalReply)(nil)
 	_ PartDecoder = (*ClientID)(nil)

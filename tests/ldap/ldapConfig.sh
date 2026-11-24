@@ -1,15 +1,16 @@
 #!/bin/bash
 
-# Define common variables
-LDAP_URL="ldap://localhost:389"
-ADMIN_DN="cn=admin,dc=example,dc=com"
-ADMIN_PWD="admin1234"
+# Define common variables.
+# Administer OpenLDAP over the local ldapi:/// socket with SASL EXTERNAL: this
+# is the canonical local-admin path (no TCP port, no admin password needed) and
+# is independent of whatever TCP port the image listens on.
+LDAP_URL="ldapi:///"
 USER_DN="cn=ldapuser,ou=users,dc=example,dc=com"
 USER_PWD="LdapUser1234"
 GROUP_DN="cn=hanausers,ou=groups,dc=example,dc=com"
 
 # Start by adding the organizational units
-cat <<EOF | ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PWD" -H "$LDAP_URL"
+cat <<EOF | ldapadd -Y EXTERNAL -H "$LDAP_URL"
 dn: ou=users,dc=example,dc=com
 objectClass: organizationalUnit
 ou: users
@@ -20,7 +21,7 @@ ou: groups
 EOF
 
 # Add the test user
-cat <<EOF | ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PWD" -H "$LDAP_URL"
+cat <<EOF | ldapadd -Y EXTERNAL -H "$LDAP_URL"
 dn: $USER_DN
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -35,10 +36,12 @@ userPassword: $USER_PWD
 distinguishedName: $USER_DN
 EOF
 
-# Add the group
-cat <<EOF | ldapadd -x -D "$ADMIN_DN" -w "$ADMIN_PWD" -H "$LDAP_URL"
+# Add the group. groupOfNames/member matches the memberof overlay config
+# (OPENLDAP_BOOTSTRAP_MEMBEROF), so members get a memberOf attribute that HANA
+# uses to map the LDAP group to a role.
+cat <<EOF | ldapadd -Y EXTERNAL -H "$LDAP_URL"
 dn: $GROUP_DN
-objectClass: groupOfUniqueNames
+objectClass: groupOfNames
 cn: testusers
-uniqueMember: $USER_DN
+member: $USER_DN
 EOF

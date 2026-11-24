@@ -26,7 +26,7 @@ type CertValidationError struct {
 	cert *x509.Certificate
 }
 
-func (e CertValidationError) Error() string {
+func (e *CertValidationError) Error() string {
 	return fmt.Sprintf("certificate issuer %s subject %s not in validity period from %s to %s - now %s",
 		e.cert.Issuer.ToRDNSequence().String(),
 		e.cert.Subject.ToRDNSequence().String(),

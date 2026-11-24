@@ -1,6 +1,31 @@
 Release Notes
 =============
 
+## v1.23.0
+
+### New features
+
+- Kerberos authentication via GSS-API. Set `ConnectorConfig.GSS` to a function
+  returning a `gss.Initiator` and enable the `AuthGSS` method flag; the driver
+  performs the HANA Kerberos handshake and the server maps the client principal
+  to a database user (no username or password). The `gss` subpackage defines the
+  `Initiator` interface — the application supplies the implementation wrapping
+  its platform's GSS library, keeping the default build free of cgo and
+  third-party dependencies. A reference implementation for Linux over the system
+  `libgssapi_krb5` is included behind the `gssapi` build tag (`gss.NewInitiator`)
+  for testing and as a known-correct example. See `driver/gss` and `tests/gss`.
+  Kerberos/GSS-API support was requested in #194; this implementation is
+  independent of that contribution.
+
+### Tests
+
+- Reworked the integration test rigs to run self-contained on Docker or Podman
+  (a `runner` container builds and runs the test, so the host needs only a
+  container engine). Fixed the LDAP rig for the current `osixia/openldap` image
+  (bootstrap env, memberof overlay, listener port) and added a shared
+  `tests/README.md` describing the common setup. The GSS rig (`tests/gss`) is
+  new.
+
 ## v1.22.0
 
 ### Minor revisions
