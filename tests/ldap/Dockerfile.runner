@@ -1,0 +1,12 @@
+FROM docker.io/library/golang:latest
+
+WORKDIR /src
+
+# pre-cache module downloads; only re-run when go.mod/go.sum change.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# the module sources (see Dockerfile.runner.dockerignore).
+COPY . .
+
+ENTRYPOINT ["/bin/bash", "tests/ldap/runnerEntrypoint.sh"]

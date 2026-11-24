@@ -3,6 +3,7 @@ package auth
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -24,12 +25,14 @@ const (
 	MtJWT               = "JWT"               // json web token
 	MtSessionCookie     = "SessionCookie"     // session cookie
 	MtLDAP              = "LDAP"              // LDAP authentication
+	MtGSS               = "GSS"               // Kerberos via GSS-API
 )
 
 // authentication method orders.
 const (
 	MoSessionCookie byte = iota
 	MoX509
+	MoGSS
 	MoJWT
 	MoSCRAMPBKDF2SHA256
 	MoSCRAMSHA256
@@ -74,13 +77,25 @@ type CookieGetter interface {
 	Cookie() (logonname string, cookie []byte)
 }
 
+// TokenExchanger is implemented by authentication methods that exchange
+// context tokens with the server between the init reply and the final request
+// (GSS/Kerberos). NextToken takes the server's last token (nil on the first
+// call) and returns the next client token; when established the context is
+// complete and the returned token must not be sent.
+type TokenExchanger interface {
+	Method
+	NextToken(ctx context.Context, serverToken []byte) (clientToken []byte, established bool, err error)
+}
+
 var (
-	_ Method = (*SCRAMSHA256)(nil)
-	_ Method = (*SCRAMPBKDF2SHA256)(nil)
-	_ Method = (*JWT)(nil)
-	_ Method = (*X509)(nil)
-	_ Method = (*SessionCookie)(nil)
-	_ Method = (*LDAP)(nil)
+	_ Method         = (*SCRAMSHA256)(nil)
+	_ Method         = (*SCRAMPBKDF2SHA256)(nil)
+	_ Method         = (*JWT)(nil)
+	_ Method         = (*X509)(nil)
+	_ Method         = (*SessionCookie)(nil)
+	_ Method         = (*LDAP)(nil)
+	_ Method         = (*GSS)(nil)
+	_ TokenExchanger = (*GSS)(nil)
 )
 
 // ErrAuthVerifyFailed indicates that the server response failed client-side
@@ -110,6 +125,9 @@ func NewMethod(mt string) (Method, bool) {
 		return NewSessionCookie(nil, "", ""), true
 	case MtLDAP:
 		return NewLDAP("", ""), true
+	case MtGSS:
+		// credential-free decode (e.g. the sniffer) never calls the initiator.
+		return NewGSS(nil), true
 	default:
 		return nil, false
 	}

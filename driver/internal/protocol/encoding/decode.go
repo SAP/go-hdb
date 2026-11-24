@@ -19,7 +19,7 @@ import (
 // meant to escape the protocol layer.
 type ShortBufferError struct{ Need, Have int }
 
-func (e ShortBufferError) Error() string {
+func (e *ShortBufferError) Error() string {
 	return fmt.Sprintf("decode: short buffer: need %d bytes, have %d", e.Need, e.Have)
 }
 
@@ -57,7 +57,7 @@ func (d *Decoder) Transformer() transform.Transformer { return d.tr }
 // Skip skips cnt bytes from reading.
 func (d *Decoder) Skip(cnt int) {
 	if len(d.buf) < cnt {
-		panic(ShortBufferError{Need: cnt, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: cnt, Have: len(d.buf)})
 	}
 	d.buf = d.buf[cnt:]
 }
@@ -65,7 +65,7 @@ func (d *Decoder) Skip(cnt int) {
 // Byte decodes a byte.
 func (d *Decoder) Byte() byte {
 	if len(d.buf) < 1 {
-		panic(ShortBufferError{Need: 1, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 1, Have: len(d.buf)})
 	}
 	b := d.buf[0]
 	d.buf = d.buf[1:]
@@ -78,7 +78,7 @@ func (d *Decoder) Bytes(n int) []byte {
 		panic(fmt.Sprintf("corrupt frame: negative field length %d", n))
 	}
 	if len(d.buf) < n {
-		panic(ShortBufferError{Need: n, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: n, Have: len(d.buf)})
 	}
 	b := d.buf[:n]
 	d.buf = d.buf[n:]
@@ -91,7 +91,7 @@ func (d *Decoder) Str(n int) string {
 		panic(fmt.Sprintf("corrupt frame: negative field length %d", n))
 	}
 	if len(d.buf) < n {
-		panic(ShortBufferError{Need: n, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: n, Have: len(d.buf)})
 	}
 	b := d.buf[:n]
 	d.buf = d.buf[n:]
@@ -111,7 +111,7 @@ func (d *Decoder) Int8() int8 {
 // Int16 decodes an int16.
 func (d *Decoder) Int16() int16 {
 	if len(d.buf) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
 	i16 := int16(binary.LittleEndian.Uint16(d.buf)) //nolint: gosec
 	d.buf = d.buf[2:]
@@ -121,7 +121,7 @@ func (d *Decoder) Int16() int16 {
 // Uint16 decodes an uint16.
 func (d *Decoder) Uint16() uint16 {
 	if len(d.buf) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
 	u16 := binary.LittleEndian.Uint16(d.buf)
 	d.buf = d.buf[2:]
@@ -131,7 +131,7 @@ func (d *Decoder) Uint16() uint16 {
 // Uint16ByteOrder decodes an uint16 in given byte order.
 func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
 	if len(d.buf) < 2 {
-		panic(ShortBufferError{Need: 2, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 2, Have: len(d.buf)})
 	}
 	u16 := byteOrder.Uint16(d.buf)
 	d.buf = d.buf[2:]
@@ -141,7 +141,7 @@ func (d *Decoder) Uint16ByteOrder(byteOrder binary.ByteOrder) uint16 {
 // Int32 decodes an int32.
 func (d *Decoder) Int32() int32 {
 	if len(d.buf) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
 	i32 := int32(binary.LittleEndian.Uint32(d.buf)) //nolint: gosec
 	d.buf = d.buf[4:]
@@ -151,7 +151,7 @@ func (d *Decoder) Int32() int32 {
 // Uint32 decodes an uint32.
 func (d *Decoder) Uint32() uint32 {
 	if len(d.buf) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
 	u32 := binary.LittleEndian.Uint32(d.buf)
 	d.buf = d.buf[4:]
@@ -161,7 +161,7 @@ func (d *Decoder) Uint32() uint32 {
 // Uint32ByteOrder decodes an uint32 in given byte order.
 func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
 	if len(d.buf) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
 	u32 := byteOrder.Uint32(d.buf)
 	d.buf = d.buf[4:]
@@ -171,7 +171,7 @@ func (d *Decoder) Uint32ByteOrder(byteOrder binary.ByteOrder) uint32 {
 // Int64 decodes an int64.
 func (d *Decoder) Int64() int64 {
 	if len(d.buf) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
 	i64 := int64(binary.LittleEndian.Uint64(d.buf)) //nolint: gosec
 	d.buf = d.buf[8:]
@@ -181,7 +181,7 @@ func (d *Decoder) Int64() int64 {
 // Uint64 decodes an uint64.
 func (d *Decoder) Uint64() uint64 {
 	if len(d.buf) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
 	u64 := binary.LittleEndian.Uint64(d.buf)
 	d.buf = d.buf[8:]
@@ -191,7 +191,7 @@ func (d *Decoder) Uint64() uint64 {
 // Float32 decodes a float32.
 func (d *Decoder) Float32() float32 {
 	if len(d.buf) < 4 {
-		panic(ShortBufferError{Need: 4, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 4, Have: len(d.buf)})
 	}
 	bits := binary.LittleEndian.Uint32(d.buf)
 	d.buf = d.buf[4:]
@@ -201,7 +201,7 @@ func (d *Decoder) Float32() float32 {
 // Float64 decodes a float64.
 func (d *Decoder) Float64() float64 {
 	if len(d.buf) < 8 {
-		panic(ShortBufferError{Need: 8, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: 8, Have: len(d.buf)})
 	}
 	bits := binary.LittleEndian.Uint64(d.buf)
 	d.buf = d.buf[8:]
@@ -212,7 +212,7 @@ func (d *Decoder) Float64() float64 {
 // - error is only returned in case of conversion errors.
 func (d *Decoder) Decimal() (*big.Int, int, error) { // m, exp
 	if len(d.buf) < decSize {
-		panic(ShortBufferError{Need: decSize, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: decSize, Have: len(d.buf)})
 	}
 	bs := d.buf[:decSize]
 	d.buf = d.buf[decSize:]
@@ -259,7 +259,7 @@ func (d *Decoder) Fixed(size int) *big.Int { // m, exp
 		panic(fmt.Sprintf("corrupt frame: negative field length %d", size))
 	}
 	if len(d.buf) < size {
-		panic(ShortBufferError{Need: size, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: size, Have: len(d.buf)})
 	}
 	bs := d.buf[:size]
 	d.buf = d.buf[size:]
@@ -301,7 +301,7 @@ func (d *Decoder) CESU8Bytes(size int) ([]byte, error) {
 		panic(fmt.Sprintf("corrupt frame: negative field length %d", size))
 	}
 	if len(d.buf) < size {
-		panic(ShortBufferError{Need: size, Have: len(d.buf)})
+		panic(&ShortBufferError{Need: size, Have: len(d.buf)})
 	}
 	p := d.buf[:size]
 	d.buf = d.buf[size:]
@@ -578,7 +578,7 @@ func (d *Decoder) AlphanumField(alphanumDfv1 bool) (any, error) {
 	   ignore first byte for now
 	*/
 	if len(b) == 0 { // non-null indicator but no leading size byte: truncated payload
-		panic(ShortBufferError{Need: 1, Have: 0})
+		panic(&ShortBufferError{Need: 1, Have: 0})
 	}
 	return b[1:], nil
 }

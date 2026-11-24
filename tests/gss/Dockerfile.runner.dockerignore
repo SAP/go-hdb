@@ -1,0 +1,9 @@
+# Build context is the repo root, but the runner only needs the module sources
+# to compile and run the GSS test. Exclude everything, then re-include just
+# what the build requires (allowlist: robust against new top-level cruft).
+*
+
+!go.mod
+!go.sum
+!driver
+!tests/gss

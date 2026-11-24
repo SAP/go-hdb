@@ -30,7 +30,7 @@ var errShortRead = errors.New("short read: buffer shorter than frame declares")
 // propagates unchanged and stays fatal.
 func recoverShortBuffer(errp *error) {
 	if rec := recover(); rec != nil {
-		if _, ok := rec.(encoding.ShortBufferError); !ok {
+		if _, ok := rec.(*encoding.ShortBufferError); !ok {
 			panic(rec)
 		}
 		*errp = errShortRead
@@ -202,6 +202,10 @@ func (r *Reader) SessionID() int64 { return r.mh.sessionID }
 
 // FunctionCode returns the function code of the protocol.
 func (r *Reader) FunctionCode() FunctionCode { return r.sh.functionCode }
+
+// MessageType returns the message type of a request segment (zero value for
+// reply segments, which carry a function code instead).
+func (r *Reader) MessageType() MessageType { return r.sh.messageType }
 
 // ReadProlog reads the protocol prolog.
 func (r *Reader) ReadProlog(ctx context.Context) error {

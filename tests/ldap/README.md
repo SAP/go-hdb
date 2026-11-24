@@ -1,58 +1,50 @@
-# LDAP Authentication Tests
+# LDAP Authentication Test
 
-This package tests LDAP authentication against a SAP HANA database. Both a HANA instance and an OpenLDAP server are required. The provided `docker-compose.yml` sets up both services automatically.
+Tests LDAP authentication against SAP HANA. See [../README.md](../README.md) for
+the common prerequisites (a container engine only), the run model, Podman notes,
+and the HANA startup caveat.
 
-## Prerequisites
-
-- Docker and Docker Compose installed
+The test runs inside the `runner` container, so the host needs no Go toolchain.
 
 ## Services
 
-The `docker-compose.yml` starts two containers on a shared `ldap_network`:
+`docker-compose.yml` defines, on a shared `ldap_network`:
 
-- OpenLDAP (osixia/openldap:latest)
-- HANA Express (saplabs/hanaexpress:latest)
+- `ldap` — OpenLDAP (`osixia/openldap`), configured via the `OPENLDAP_BOOTSTRAP_*`
+  environment: suffix `dc=example,dc=com`, admin `cn=admin,dc=example,dc=com` /
+  `admin1234` (set as a pre-hashed password), the memberof overlay enabled, and
+  listening on 3890 (the image runs unprivileged and cannot bind 389).
+- `hana` — SAP HANA Express.
+- `runner` — runs the test.
 
-## Network Configuration
-
-A network called `ldap_network` is defined in the Docker Compose file to allow communication between the services.
-
-## Step 1: Start the Containers
-
-Run from within the `tests/ldap/` directory:
+## Steps
 
 ```bash
 cd tests/ldap
-docker compose up -d
-```
 
-Wait until both containers are healthy before continuing. HANA Express can take several minutes to initialize.
+# 1. start OpenLDAP and HANA
+docker compose up -d ldap hana
+#    wait for "Startup finished!" in: docker compose logs hana
 
-## Step 2: Configure the LDAP Server
-
-Once the containers are running, execute the LDAP configuration script inside the `ldap` container:
-
-```bash
+# 2. populate the LDAP directory (users, group; memberof populates memberOf)
 docker compose exec ldap /ldapConfig.sh
+
+# 3. run the test (creates the LDAP provider + user on HANA, then authenticates)
+docker compose --profile runner run --rm runner
+
+# 4. tear down
+docker compose down -v
 ```
 
-## Step 3: Run the Tests
+`ldapConfig.sh` administers OpenLDAP over the local `ldapi:///` socket with SASL
+EXTERNAL (no TCP port or admin password needed), adding `ldapuser` and the
+`groupOfNames` group `hanausers`. The memberof overlay then gives `ldapuser` a
+`memberOf` attribute, which HANA uses to map the LDAP group to a role.
 
-The tests use the `ldap` build tag. Run from the `tests/ldap/` directory:
+The test, as SYSTEM, creates an LDAP provider pointing at `openldap:3890`, a role
+mapped to the LDAP group, and a HANA user identified externally as the LDAP
+user; it then connects as that user over LDAP and asserts `current_user`.
 
-```bash
-go test --tags ldap
-```
-
-By default the driver offers LDAP authentication only over verified TLS: LDAP
-encrypts the password with a server-supplied key but does not authenticate the
-server, so verified TLS is required to trust that key. Because this test
-connects to HANA without TLS, it opts in via
-`ConnectorConfig.AllowLDAPWithoutVerifiedTLS`. Production deployments should
-rely on verified TLS rather than this opt-in.
-
-## Step 4: Shut Down the Containers
-
-```bash
-docker compose down
-```
+Because the test connects to HANA without TLS, it opts into offering LDAP on an
+unverified connection via `ConnectorConfig.AllowLDAPWithoutVerifiedTLS`.
+Production deployments should rely on verified TLS instead.

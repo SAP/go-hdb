@@ -1,0 +1,21 @@
+FROM docker.io/library/golang:latest
+
+# krb5 client runtime + headers for the cgo reference initiator (-tags gssapi),
+# and kinit for obtaining the client ticket.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		krb5-user libkrb5-dev libgssapi-krb5-2 \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# pre-cache module downloads; only re-run when go.mod/go.sum change.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# the module sources (see Dockerfile.runner.dockerignore: only go.mod/go.sum,
+# driver and tests/gss are in the build context).
+COPY . .
+
+COPY tests/gss/krb5.conf /etc/krb5.conf
+ENTRYPOINT ["/bin/bash", "tests/gss/runnerEntrypoint.sh"]

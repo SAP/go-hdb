@@ -1,22 +1,32 @@
 services:
   ldap:
-    image: osixia/openldap:latest
+    image: docker.io/osixia/openldap:latest
     networks:
       ldap_network:
         aliases:
           - openldap
     environment:
-      LDAP_ORGANISATION: "test"
-      LDAP_DOMAIN: "example.com"
-      LDAP_ADMIN_PASSWORD: "admin1234"
-      LDAP_TLS: "false"
+      # osixia/openldap 2.6.x bootstrap API. Suffix dc=example,dc=com matches
+      # the DNs used by ldapConfig.sh and the test.
+      OPENLDAP_BOOTSTRAP_ORGANIZATION: "test"
+      OPENLDAP_BOOTSTRAP_SUFFIX: "dc=example,dc=com"
+      # Enable the memberof overlay so HANA's LDAP-group-to-role mapping works.
+      # The overlay tracks groupOfNames/member (see ldapConfig.sh).
+      OPENLDAP_BOOTSTRAP_MEMBEROF: "true"
+      # The image accepts only a pre-hashed root password (else it generates a
+      # random one). This is slappasswd -s admin1234 (a test credential); HANA's
+      # LDAP provider binds as cn=admin,dc=example,dc=com / admin1234.
+      OPENLDAP_BOOTSTRAP_DATA_ROOT_PASSWORD_HASHED: "{SSHA}NBgDAAfeZ1uY6JOXBmfFwF92/y8kPZBe"
+      # The image runs unprivileged and cannot bind 389; pin the listener to
+      # 3890 (referenced by the test). ldapConfig.sh uses the ldapi:/// socket.
+      OPENLDAP_URLS: "ldap://:3890 ldapi:///"
     ports:
-      - "389:389"
+      - "3890:3890"
     volumes:
       - ./ldapConfig.sh:/ldapConfig.sh
 
   hana:
-    image: saplabs/hanaexpress:latest
+    image: docker.io/saplabs/hanaexpress:latest
     ports:
       - "39017:39017"
       - "39013:39013"
@@ -38,6 +48,18 @@ services:
       kernel.shmall: "8388608"
     security_opt:
       - seccomp=unconfined
+
+  # Test runner: runs the LDAP test against hana/openldap on the compose
+  # network, so the host needs only the container engine (no Go). Build context
+  # is the repo root. Enable with --profile runner.
+  runner:
+    build:
+      context: ../..
+      dockerfile: tests/ldap/Dockerfile.runner
+    networks:
+      - ldap_network
+    profiles:
+      - runner
 
 networks:
   ldap_network:

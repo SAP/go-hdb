@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/SAP/go-hdb/driver/gss"
 	"github.com/SAP/go-hdb/driver/internal/protocol/auth"
 	"github.com/SAP/go-hdb/driver/internal/protocol/encoding"
 	"github.com/SAP/go-hdb/driver/internal/trace"
@@ -51,6 +52,11 @@ func (a *AuthHnd) AddLDAP(username, password string) {
 	a.methods[auth.MtLDAP] = auth.NewLDAP(username, password)
 }
 
+// AddGSS adds GSS (Kerberos) authentication method.
+func (a *AuthHnd) AddGSS(initiator gss.Initiator) {
+	a.methods[auth.MtGSS] = auth.NewGSS(initiator)
+}
+
 // Selected returns the selected authentication method.
 func (a *AuthHnd) Selected() auth.Method { return a.selected }
 
@@ -79,6 +85,28 @@ func (a *AuthHnd) FinalRequest() (*AuthFinalRequest, error) {
 // FinalReply returns the final reply part.
 func (a *AuthHnd) FinalReply() (*AuthFinalReply, error) {
 	return &AuthFinalReply{Method: a.selected}, nil
+}
+
+// TokenExchanger returns the selected method if it exchanges context tokens
+// between the initial reply and the final request (GSS), nil otherwise.
+func (a *AuthHnd) TokenExchanger() auth.TokenExchanger {
+	te, ok := a.selected.(auth.TokenExchanger)
+	if !ok {
+		return nil
+	}
+	return te
+}
+
+// TokenRequest returns a token request part carrying the client token to send
+// for the given method name.
+func (a *AuthHnd) TokenRequest(methodType string, clientToken []byte) *AuthTokenRequest {
+	return &AuthTokenRequest{logonname: a.logonname, methodType: methodType, clientToken: clientToken}
+}
+
+// TokenReply returns the reply part to a token request. After decode its
+// serverToken field holds the server's token (nil if none).
+func (a *AuthHnd) TokenReply(methodType string) *AuthTokenReply {
+	return &AuthTokenReply{methodType: methodType}
 }
 
 // AuthInitRequest represents an authentication initial request. The generic
@@ -262,4 +290,89 @@ func (r *AuthFinalReply) decode(dec *encoding.Decoder, _ *PartHeader, attrs *Rea
 	}
 
 	return r.Method.DecodeFinalReply(dec)
+}
+
+// AuthTokenRequest represents a context token request exchanged between the
+// initial reply and the final request. It carries the logonname, the method
+// name and the client token to send.
+type AuthTokenRequest struct {
+	logonname   string
+	methodType  string
+	clientToken []byte
+}
+
+func (r *AuthTokenRequest) encode(enc *encoding.Encoder) error {
+	prms := new(auth.Prms)
+	prms.AddCESU8String(r.logonname)
+	prms.AddString(r.methodType)
+	if err := auth.EncodeToken(prms, r.clientToken); err != nil {
+		return err
+	}
+	return prms.Encode(enc)
+}
+
+// NewAuthTokenRequest returns a token request part decoding against the given
+// method name. Used by the sniffer.
+func NewAuthTokenRequest(methodType string) *AuthTokenRequest {
+	return &AuthTokenRequest{methodType: methodType}
+}
+
+func (r *AuthTokenRequest) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
+	numPrm := int(dec.Int16())
+	if numPrm != 3 {
+		return fmt.Errorf("invalid number of parameters %d - expected 3", numPrm)
+	}
+	_, logonname, err := dec.CESU8LIString()
+	if err != nil {
+		return err
+	}
+	r.logonname = logonname
+	if _, mt := dec.LIString(); mt != r.methodType {
+		return fmt.Errorf("invalid method %s - expected %s", mt, r.methodType)
+	}
+	clientToken, err := auth.DecodeTokenReq(dec)
+	if err != nil {
+		return err
+	}
+	r.clientToken = clientToken
+	return nil
+}
+
+func (r *AuthTokenRequest) String() string {
+	return fmt.Sprintf("%s token %s", r.methodType, trace.Redacted(r.clientToken))
+}
+
+// AuthTokenReply represents the reply to a context token request. After decode
+// serverToken holds the server's token, nil if the server sent none.
+type AuthTokenReply struct {
+	methodType  string
+	serverToken []byte
+}
+
+// NewAuthTokenReply returns a token reply part decoding against the given
+// method name. Used by the sniffer.
+func NewAuthTokenReply(methodType string) *AuthTokenReply {
+	return &AuthTokenReply{methodType: methodType}
+}
+
+// ServerToken returns the server token decoded from the reply, nil if none.
+func (r *AuthTokenReply) ServerToken() []byte { return r.serverToken }
+
+func (r *AuthTokenReply) String() string {
+	return fmt.Sprintf("%s token %s", r.methodType, trace.Redacted(r.serverToken))
+}
+
+func (r *AuthTokenReply) decode(dec *encoding.Decoder, _ *PartHeader, _ *ReaderAttrs) error {
+	if err := auth.DecodeAndCheckNumPrm(dec, 2); err != nil {
+		return err
+	}
+	if mt := dec.AuthString(); mt != r.methodType {
+		return fmt.Errorf("invalid method %s - expected %s", mt, r.methodType)
+	}
+	serverToken, err := auth.DecodeTokenRep(dec)
+	if err != nil {
+		return err
+	}
+	r.serverToken = serverToken
+	return nil
 }

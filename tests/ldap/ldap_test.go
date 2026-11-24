@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 
@@ -23,9 +24,15 @@ func TestLDAPAuthentication(t *testing.T) {
 		groupDN           = "cn=hanausers,ou=groups,dc=example,dc=com"
 	)
 
+	// HANA host:port, set by the runner container to the network alias
+	// (GOHDB_LDAP_HOST=hana:39017).
+	hdbHost := os.Getenv("GOHDB_LDAP_HOST")
+	if hdbHost == "" {
+		t.Fatal("GOHDB_LDAP_HOST not set")
+	}
+
 	var (
-		hdbHost     = net.JoinHostPort("localhost", "39017")
-		ldapHost    = net.JoinHostPort("openldap", "389")
+		ldapHost    = net.JoinHostPort("openldap", "3890")
 		testUserDN  = fmt.Sprintf("cn=%s,ou=users,dc=example,dc=com", testUser)
 		testHDBUser = strings.ToUpper(testUser)
 	)
