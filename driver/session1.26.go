@@ -28,7 +28,7 @@ func (s *session) readLob(ctx context.Context, request *p.ReadLobRequest, reply 
 
 	var err error
 	for err != io.EOF { //nolint: errorlint
-		if err = s.pwr.Write(ctx, p.MtWriteLob, false, request); err != nil {
+		if err = s.pwr.Write(ctx, p.MtReadLob, false, request); err != nil {
 			return err
 		}
 

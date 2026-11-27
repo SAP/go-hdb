@@ -63,7 +63,7 @@ func (s *session) readLob(request *p.ReadLobRequest, reply *p.ReadLobReply) erro
 
 	ctx := context.Background()
 
-	if err := s.pwr.Write(ctx, p.MtWriteLob, false, request); err != nil {
+	if err := s.pwr.Write(ctx, p.MtReadLob, false, request); err != nil {
 		return err
 	}
 
