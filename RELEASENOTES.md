@@ -3,6 +3,16 @@ Release Notes
 
 ## v1.23.0
 
+### Minor revisions
+
+#### v1.23.1
+
+- fixed the swapped `MtReadLob` / `MtWriteLob` constant names to match the wire
+  message types defined in the SAP HANA SQL Command Network Protocol Reference;
+  the numeric values are unchanged, so there is no behavior change
+  ([#197](https://github.com/SAP/go-hdb/issues/197))
+- added Kerberos (GSS-API) to the README authentication feature list
+
 ### New features
 
 - Kerberos authentication via GSS-API. Set `ConnectorConfig.GSS` to a function
@@ -14,7 +24,8 @@ Release Notes
   third-party dependencies. A reference implementation for Linux over the system
   `libgssapi_krb5` is included behind the `gssapi` build tag (`gss.NewInitiator`)
   for testing and as a known-correct example. See `driver/gss` and `tests/gss`.
-  Kerberos/GSS-API support was requested in #194; this implementation is
+  Kerberos/GSS-API support was requested in
+  [#194](https://github.com/SAP/go-hdb/issues/194); this implementation is
   independent of that contribution.
 
 ### Tests

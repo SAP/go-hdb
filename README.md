@@ -38,8 +38,9 @@ For HANA Cloud (SNI/TLS), see the [cloud connection guide](docs/HANACLOUD.md).
 **Core**
 
 - `database/sql` compliant, `driver.Connector` support
-- TLS, PBKDF2 (default) with user/password fallback
-- Auth: LDAP, X.509 client cert, JWT - with refresh callbacks
+- TLS transport
+- Auth: user/password (PBKDF2, default), X.509 client cert, JWT, LDAP, Kerberos (GSS-API)
+- Credential refresh callbacks for user/password (also used by LDAP), X.509 and JWT
 - Bulk execution, stored procedures with table output parameters
 - Little-endian (e.g. amd64) and big-endian (e.g. s390x) architecture support
 

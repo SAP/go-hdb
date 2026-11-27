@@ -12,8 +12,8 @@ const (
 	mtXAStart         MessageType = 5
 	mtXAJoin          MessageType = 6
 	MtExecute         MessageType = 13
-	MtWriteLob        MessageType = 16
-	MtReadLob         MessageType = 17
+	MtReadLob         MessageType = 16
+	MtWriteLob        MessageType = 17
 	mtFindLob         MessageType = 18
 	MtAuthenticate    MessageType = 65
 	MtConnect         MessageType = 66

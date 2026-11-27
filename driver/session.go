@@ -1076,7 +1076,7 @@ func (s *session) writeLobs(ctx context.Context, ids []p.LocatorID, inPrmFields 
 
 		writeLobRequest.Descrs = descrs
 
-		if err := s.pwr.Write(ctx, p.MtReadLob, false, writeLobRequest); err != nil {
+		if err := s.pwr.Write(ctx, p.MtWriteLob, false, writeLobRequest); err != nil {
 			return 0, err
 		}
 

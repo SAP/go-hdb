@@ -136,8 +136,8 @@ func _() {
 	_ = x[mtXAStart-5]
 	_ = x[mtXAJoin-6]
 	_ = x[MtExecute-13]
-	_ = x[MtWriteLob-16]
-	_ = x[MtReadLob-17]
+	_ = x[MtReadLob-16]
+	_ = x[MtWriteLob-17]
 	_ = x[mtFindLob-18]
 	_ = x[MtAuthenticate-65]
 	_ = x[MtConnect-66]
@@ -169,14 +169,14 @@ const (
 	_MessageType_name_0 = "mtNil"
 	_MessageType_name_1 = "MtExecuteDirectMtPreparemtAbapStreammtXAStartmtXAJoin"
 	_MessageType_name_2 = "MtExecute"
-	_MessageType_name_3 = "MtWriteLobMtReadLobmtFindLob"
+	_MessageType_name_3 = "MtReadLobMtWriteLobmtFindLob"
 	_MessageType_name_4 = "MtAuthenticateMtConnectMtCommitMtRollbackMtCloseResultsetMtDropStatementIDMtFetchNextmtFetchAbsolutemtFetchRelativemtFetchFirstmtFetchLast"
 	_MessageType_name_5 = "MtDisconnectmtExecuteITabmtFetchNextITabmtInsertNextITabmtBatchPrepareMtDBConnectInfomtXopenXAStartmtXopenXAEndmtXopenXAPreparemtXopenXACommitmtXopenXARollbackmtXopenXARecovermtXopenXAForget"
 )
 
 var (
 	_MessageType_index_1 = [...]uint8{0, 15, 24, 36, 45, 53}
-	_MessageType_index_3 = [...]uint8{0, 10, 19, 28}
+	_MessageType_index_3 = [...]uint8{0, 9, 19, 28}
 	_MessageType_index_4 = [...]uint8{0, 14, 23, 31, 41, 57, 74, 85, 100, 115, 127, 138}
 	_MessageType_index_5 = [...]uint8{0, 12, 25, 40, 56, 70, 85, 99, 111, 127, 142, 159, 175, 190}
 )
